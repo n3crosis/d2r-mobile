@@ -120,7 +120,8 @@ jobs:
           dotnet --info
           git rev-parse HEAD
       - name: Install pinned wasm-tools workload
-        run: dotnet workload install wasm-tools --skip-manifest-update
+        # global.json pins the set. --skip-manifest-update is incompatible with that pin.
+        run: dotnet workload install wasm-tools
       - name: Record workload diagnostics
         if: ${{ !cancelled() }}
         run: |

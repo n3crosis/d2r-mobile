@@ -15,7 +15,7 @@ Node 22.12+ is for development only, not an end-user requirement:
 
 ```sh
 cd web
-npm install
+npm ci
 npm run dev
 npm test
 npm run build
@@ -41,8 +41,8 @@ implementation-plan document in a full repository checkout. Hosted builds contai
 only this workspace, so that document and the native Python oracle tests are not
 required by `npm run build`; run `npm test` in the full checkout.
 
-Commit the generated lockfile after successful dependency resolution, then use
-`npm ci` for reproducible installs. No lockfile is included at this checkpoint.
+The dependency lockfile is committed from a checksum-verified CI artifact. Use
+`npm ci` for reproducible installs; dependency security review remains a separate gate.
 
 Open the localhost URL printed by Vite. For deployment, serve the built `dist/`
 assets over HTTPS, not the source directory. Production CSP blocks fetch/WebSocket
@@ -95,3 +95,8 @@ The React/shadcn preview completed a private Sites remote build and deployment
 on 2026-10-20. This supersedes the earlier local-build blocker for that preview;
 no old project files were deleted. Independent browser interaction testing remains
 unverified because the browser runtime was unavailable. No real IPA was produced.
+
+The hosted synthetic-export preview subsequently passed ESLint, Prettier,
+TypeScript and the Vite production build. Its save-picker interaction still needs
+independent desktop Chromium testing. The experimental shader compile job is
+separate and has not yet established browser translation parity.

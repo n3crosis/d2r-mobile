@@ -38,6 +38,8 @@ function entry(path, bytes, mode = 0o644) {
  * Browser writable streams stage writes until close; abort discards staged data.
  * A save picker can still create an empty placeholder. Never promises deletion.
  * close is the commit boundary; late cancellation cannot undo completed output.
+ * @param {{write(bytes: Uint8Array<ArrayBuffer>): Promise<void>, close(): Promise<void>, abort(reason?: unknown): Promise<void>}} sink
+ * @param {{signal?: AbortSignal, crypto?: Crypto, onProgress?: (progress: {phase: string, bytesWritten: number}) => void}} [options]
  */
 export async function exportSyntheticArchive(
   sink,
