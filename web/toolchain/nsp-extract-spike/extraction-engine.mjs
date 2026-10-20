@@ -1,4 +1,9 @@
-import { inspectNsp, inspectKeyBytes, NSP_INPUT_LIMITS } from "../../nsp-input.mjs";
+import {
+  inspectNsp,
+  inspectKeyBytes,
+  normalizeProdKeyBytes,
+  NSP_INPUT_LIMITS,
+} from "../../nsp-input.mjs";
 import { extractionDiagnosticError } from "../../extraction-errors.mjs";
 import { parseCnmt } from "../../content-selection.mjs";
 import { resolveD2rExpansionSelection } from "../../d2r-expansion-policy.mjs";
@@ -32,7 +37,8 @@ async function readKeys(file, kind) {
     diagnostic(`${prefix}_UNREADABLE`);
   }
   try {
-    inspectKeyBytes(bytes, kind);
+    if (kind === "prod") bytes = normalizeProdKeyBytes(bytes);
+    else inspectKeyBytes(bytes, kind);
     return bytes;
   } catch (error) {
     bytes.fill(0);

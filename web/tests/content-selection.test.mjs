@@ -82,6 +82,27 @@ test("patch extended data bounds and both DLC extended headers", () => {
   new DataView(b.buffer).setBigUint64(48, 1n, true);
   assert.throws(() => parseCnmt(b), code("UNSUPPORTED_DATA_PATCH"));
 });
+test("full patch ignores authenticated delta fragment records during selection", () => {
+  const original = fixture(129, 24);
+  const bytes = new Uint8Array(original.length + 56);
+  bytes.set(original.subarray(0, 32 + 24 + 56));
+  new DataView(bytes.buffer).setUint16(16, 2, true);
+  bytes.set(original.subarray(32 + 24 + 56), 32 + 24 + 112);
+  const fragment = 32 + 24 + 56;
+  bytes[fragment + 31] = 2;
+  bytes[fragment + 47] = 2;
+  new DataView(bytes.buffer).setUint32(fragment + 48, 200, true);
+  bytes[fragment + 54] = 6;
+  const parsed = parseCnmt(bytes);
+  assert.equal(parsed.contents.length, 1);
+  assert.equal(parsed.deltaFragmentCount, 1);
+  assert.equal(parsed.contents[0].type, 1);
+  bytes[fragment + 53] = 1;
+  assert.throws(() => parseCnmt(bytes), code("UNSUPPORTED_CONTENT_TYPE"));
+  bytes[fragment + 53] = 0;
+  bytes[fragment + 47] = 1;
+  assert.throws(() => parseCnmt(bytes), code("DUPLICATE_CONTENT"));
+});
 test("all truncations and trailing data fail closed", () => {
   const b = fixture();
   for (let i = 0; i < b.length; i++)

@@ -5,6 +5,7 @@ import {
   discoverNspFiles,
   inspectNsp,
   inspectKeyFile,
+  normalizeProdKeyBytes,
   preflightNspFolder,
   NSP_INPUT_LIMITS,
 } from "../nsp-input.mjs";
@@ -277,6 +278,26 @@ test("key parser supports verified ASCII subset, separators, case, CRLF and meta
   assert.ok(!JSON.stringify(result).includes("a5"));
   assert.equal((await inspectKeyFile(keys()[1], "title")).verifiedEntries, 1);
   assert.equal((await inspectKeyFile(localFile("title.keys", ""), "title")).entries, 0);
+});
+
+test("native master KEK source widths are checked before loading keys", async () => {
+  for (const name of ["master_kek_source_06", "mariko_master_kek_source_05"]) {
+    const valid = await inspectKeyFile(
+      localFile("prod.keys", `${name} = ${fakeHex(16)}\n`),
+      "prod",
+    );
+    assert.equal(valid.verifiedEntries, 1);
+    const padded = `${name} = ${fakeHex(16)}00\r\n`;
+    assert.equal((await inspectKeyFile(localFile("prod.keys", padded), "prod")).verifiedEntries, 1);
+    const owned = new TextEncoder().encode(padded);
+    const normalized = normalizeProdKeyBytes(owned);
+    assert.equal(new TextDecoder().decode(normalized), `${name} = ${fakeHex(16)}\r\n`);
+    assert.deepEqual([...owned.subarray(normalized.length)], [0, 0]);
+    await assert.rejects(
+      inspectKeyFile(localFile("prod.keys", `${name} = ${fakeHex(17)}\n`), "prod"),
+      code("KEY_LINE"),
+    );
+  }
 });
 
 test("key parser rejects malformed, odd, wrong-width, duplicate, nonASCII and oversized lines without disclosure", async () => {

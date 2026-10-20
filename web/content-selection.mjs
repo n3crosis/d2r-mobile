@@ -113,17 +113,28 @@ export function parseCnmt(bytes) {
     fail("INVALID_CNMT_SIZE", "CNMT tables, extended data and digest do not exactly fit input.");
   if (metaCount) fail("UNSUPPORTED_DEPENDENCIES", "Content-meta dependencies are unsupported.");
   const titleId = v.getBigUint64(0, true);
-  const contents = [];
+  const contents = [],
+    contentIds = new Set();
+  let deltaFragmentCount = 0;
   for (let i = 0; i < count; i++) {
     const p = 32 + ext + i * 56;
-    contents.push({
+    const entry = {
       sha256: hex(bytes.subarray(p, p + 32)),
       contentId: hex(bytes.subarray(p + 32, p + 48)),
       size: BigInt(v.getUint32(p + 48, true)) | (BigInt(v.getUint8(p + 52)) << 32n),
       attributes: v.getUint8(p + 53),
       type: v.getUint8(p + 54),
       idOffset: v.getUint8(p + 55),
-    });
+    };
+    if (contentIds.has(entry.contentId)) fail("DUPLICATE_CONTENT", "Duplicate content ID in CNMT.");
+    contentIds.add(entry.contentId);
+    if (entry.type === 6) {
+      // Delta fragments are not needed when the full patch content is present.
+      // They may share an ID offset, so keep them out of selectable contents.
+      if (type !== "Patch" || entry.attributes !== 0 || entry.idOffset !== 0)
+        fail("UNSUPPORTED_CONTENT_TYPE", "Unsupported delta fragment metadata.");
+      deltaFragmentCount++;
+    } else contents.push(entry);
   }
   const parsed = record({
     type,
@@ -147,6 +158,7 @@ export function parseCnmt(bytes) {
     cnmtDigest: hex(bytes.subarray(end)),
     digestVerified: false,
     extendedDataSize: extra,
+    deltaFragmentCount,
   };
 }
 const fingerprint = (value) =>

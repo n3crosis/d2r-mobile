@@ -237,11 +237,14 @@ function verifiedProdLength(name) {
   )
     return 16;
   const family =
-    /^(master_key|master_kek|titlekek|key_area_key_application|key_area_key_ocean|key_area_key_system)_([0-9a-f]{2})$/u.exec(
+    /^(master_key|master_kek|master_kek_source|mariko_master_kek_source|titlekek|key_area_key_application|key_area_key_ocean|key_area_key_system)_([0-9a-f]{2})$/u.exec(
       name,
     );
   return family && Number.parseInt(family[2], 16) < 32 ? 16 : null;
 }
+const paddedMasterKekSource = (name) =>
+  /^(?:master_kek_source|mariko_master_kek_source)_[0-9a-f]{2}$/u.test(name) &&
+  Number.parseInt(name.slice(-2), 16) < 32;
 /** Parses ASCII key text for metadata only. Does not retain or return keys/rights IDs. */
 export async function inspectKeyFile(file, kind) {
   if (kind !== "prod" && kind !== "title") fail("KEY_KIND", "Unsupported key-file kind.");
@@ -294,7 +297,17 @@ export function inspectKeyBytes(bytes, kind) {
         if (!/^[0-9a-f]{32}$/u.test(name)) invalid();
         length = 16;
       } else length = verifiedProdLength(name);
-      if (length !== null && match[2].length !== length * 2) invalid();
+      if (
+        length !== null &&
+        match[2].length !== length * 2 &&
+        !(
+          kind === "prod" &&
+          paddedMasterKekSource(name) &&
+          match[2].length === 34 &&
+          match[2].endsWith("00")
+        )
+      )
+        invalid();
       entries++;
       if (length !== null) verifiedEntries++;
     }
@@ -310,6 +323,57 @@ export function inspectKeyBytes(bytes, kind) {
   } finally {
     seen.clear();
   }
+}
+
+/** Narrow compatibility for master KEK source dumps with one trailing zero byte.
+ * Mutates an owned key buffer, clears the removed tail, and returns its shorter view.
+ * Only the isolated Worker calls this before the pinned native key parser.
+ */
+export function normalizeProdKeyBytes(bytes) {
+  inspectKeyBytes(bytes, "prod");
+  let read = 0,
+    write = 0;
+  while (read < bytes.length) {
+    let end = read;
+    while (end < bytes.length && bytes[end] !== 10) end++;
+    const next = end < bytes.length ? end + 1 : end;
+    let delimiter = read;
+    while (delimiter < end && bytes[delimiter] !== 61 && bytes[delimiter] !== 44) delimiter++;
+    let nameStart = read,
+      nameEnd = delimiter;
+    while (nameStart < nameEnd && (bytes[nameStart] === 32 || bytes[nameStart] === 9)) nameStart++;
+    while (nameEnd > nameStart && (bytes[nameEnd - 1] === 32 || bytes[nameEnd - 1] === 9))
+      nameEnd--;
+    let name = "";
+    for (let i = nameStart; i < nameEnd; i++) name += String.fromCharCode(bytes[i]);
+    name = name.toLowerCase();
+    let valueStart = delimiter + 1,
+      valueEnd = end;
+    while (valueStart < valueEnd && (bytes[valueStart] === 32 || bytes[valueStart] === 9))
+      valueStart++;
+    while (
+      valueEnd > valueStart &&
+      (bytes[valueEnd - 1] === 32 || bytes[valueEnd - 1] === 9 || bytes[valueEnd - 1] === 13)
+    )
+      valueEnd--;
+    const padded =
+      paddedMasterKekSource(name) &&
+      valueEnd - valueStart === 34 &&
+      bytes[valueEnd - 2] === 48 &&
+      bytes[valueEnd - 1] === 48;
+    if (padded) {
+      bytes.copyWithin(write, read, valueEnd - 2);
+      write += valueEnd - 2 - read;
+      bytes.copyWithin(write, valueEnd, next);
+      write += next - valueEnd;
+    } else {
+      bytes.copyWithin(write, read, next);
+      write += next - read;
+    }
+    read = next;
+  }
+  bytes.fill(0, write);
+  return bytes.subarray(0, write);
 }
 
 /** Accepts a directory handle or webkitdirectory FileList. Retains no file handles in its result. */
