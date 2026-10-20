@@ -73,3 +73,53 @@ test("early requests still reject synchronously without starting runtime or acce
   assert.equal(replies[0].error, "Runtime not initialized");
   assert.equal(sandbox.onmessage, null);
 });
+
+const nativeSource = JSON.parse(
+  await readFile(new URL("./dotnet-native-url-source.json", import.meta.url), "utf8"),
+);
+const nativeResolution = `${nativeSource.locateFile}\n${nativeSource.wasmBinaryFile}`.replaceAll(
+  "import.meta.url",
+  "nativeModuleUrl",
+);
+function resolveNativeFile(moduleConfig) {
+  const sandbox = {
+    Module: moduleConfig,
+    URL,
+    nativeModuleUrl: "blob:https://example.test/verified-native-module",
+    scriptDirectory: "",
+    ENVIRONMENT_IS_SHELL: false,
+    isDataURI: () => false,
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(nativeResolution, sandbox);
+  return sandbox.wasmBinaryFile;
+}
+
+test("packaged Emscripten glue reproduces the blob-relative native URL failure", () => {
+  assert.throws(() => resolveNativeFile({}), { code: "ERR_INVALID_URL" });
+});
+
+for (const worker of ["../dotnet-worker.mjs", "../../../sealed-runtime/dotnet-worker.mjs"]) {
+  test(`${worker} supplies native alias resolution before Emscripten startup`, async () => {
+    const workerSource = await readFile(new URL(worker, import.meta.url), "utf8");
+    const { sandbox } = context();
+    vm.runInContext(workerSource, sandbox);
+    const resources = {
+      wasmNative: [
+        {
+          name: "dotnet.native.verified.wasm",
+          resolvedUrl: "https://offline.invalid/dotnet.native.verified.wasm",
+        },
+      ],
+    };
+    const moduleConfig = sandbox.nativeModuleConfig(resources);
+    assert.equal(resolveNativeFile(moduleConfig), resources.wasmNative[0].resolvedUrl);
+    assert.throws(() => moduleConfig.locateFile("undeclared.wasm"), /Unknown native runtime file/);
+    assert.throws(() => sandbox.nativeModuleConfig({ wasmNative: [] }), /Expected one resolved/);
+    assert.throws(
+      () => sandbox.nativeModuleConfig({ wasmNative: [{ name: "unresolved.wasm" }] }),
+      /Expected one resolved/,
+    );
+    assert.match(workerSource, /\.withModuleConfig\(nativeModuleConfig\(config\.resources\)\)/);
+  });
+}

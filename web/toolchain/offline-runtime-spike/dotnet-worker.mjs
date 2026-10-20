@@ -21,6 +21,26 @@ self.addEventListener("error", (event) =>
   reportInitializationFailure(event.error ?? event.message),
 );
 
+function nativeModuleConfig(resources) {
+  const nativeWasm = resources.wasmNative;
+  if (
+    !Array.isArray(nativeWasm) ||
+    nativeWasm.length !== 1 ||
+    typeof nativeWasm[0]?.resolvedUrl !== "string"
+  )
+    throw new Error("Expected one resolved native runtime asset");
+  const { name, resolvedUrl } = nativeWasm[0];
+  return {
+    // Emscripten resolves this alias before .NET installs its startup hooks.
+    // Without locateFile it calls new URL(alias, import.meta.url) on a blob URL.
+    locateFile(path) {
+      if (path !== "dotnet.native.wasm" && path !== name)
+        throw new Error("Unknown native runtime file");
+      return resolvedUrl;
+    },
+  };
+}
+
 async function probe(destinations) {
   let blocked = 0;
   for (const url of destinations) {
@@ -143,7 +163,11 @@ async function initialize(data) {
     })();
   }
   setPhase("runtime-create");
-  const runtime = await dotnet.withConfig(config).withResourceLoader(resourceLoader).create();
+  const runtime = await dotnet
+    .withConfig(config)
+    .withModuleConfig(nativeModuleConfig(config.resources))
+    .withResourceLoader(resourceLoader)
+    .create();
   setPhase("assembly-exports");
   exports = await runtime.getAssemblyExports(runtime.getConfig().mainAssemblyName);
   if (typeof exports?.ShaderBridge?.Translate !== "function")
