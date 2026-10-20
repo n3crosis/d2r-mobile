@@ -62,13 +62,23 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
     disposed = false,
     used = false,
     pipeline = null;
-  const retained = [];
+  const retained = [],
+    releaseEntries = [];
   function dispose() {
     disposed = true;
-    active?.abort();
-    pipeline?.dispose();
-    for (const bytes of retained) bytes.fill(0);
-    retained.length = 0;
+    try {
+      active?.abort();
+      pipeline?.dispose();
+    } finally {
+      try {
+        for (const bytes of retained) bytes.fill(0);
+      } finally {
+        retained.length = 0;
+        // 保留元数据，但解除已清理输出在条目闭包中的引用。
+        // Keep metadata, but release cleaned output references held by entry closures.
+        for (const release of releaseEntries.splice(0)) release();
+      }
+    }
   }
   return Object.freeze({
     async generateShaders({ extracted, selection, signal } = {}) {
@@ -204,16 +214,21 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
         // Native local source/header labels need not equal the shell label.
         const chain = trustedShell.trustedRecipe.chain,
           entries = [];
-        const entry = (path, bytes) =>
-          Object.freeze({
+        const entry = (path, bytes) => {
+          releaseEntries.push(() => {
+            bytes = undefined;
+          });
+          return Object.freeze({
             path,
             size: bytes.length,
             mode: 0o644,
             async *chunks() {
               check();
+              if (!bytes) fail("Shader adapter disposed");
               yield bytes.slice();
             },
           });
+        };
         for (const row of pending.sort((a, b) => a.key.localeCompare(b.key))) {
           row.replay.chain = chain;
           const json = encoder.encode(JSON.stringify(row.replay, null, 1));

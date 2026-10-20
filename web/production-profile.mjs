@@ -17,7 +17,7 @@ export async function loadProductionProfile(runtime, { signal } = {}) {
   )
     throw new Error("SHELL_CAPACITY_BINDING");
   const read = (path) => runtime.readPublicAsset(path);
-  const shellBytes = read("profile/shell.zip");
+  let shellBytes = read("profile/shell.zip");
   const sha = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", shellBytes)), (x) =>
     x.toString(16).padStart(2, "0"),
   ).join("");
@@ -49,7 +49,10 @@ export async function loadProductionProfile(runtime, { signal } = {}) {
   const loadShell = createShellLoader({
     source: {
       size: shellBytes.length,
-      read: async (offset, length) => shellBytes.slice(offset, offset + length),
+      read: async (offset, length) => {
+        if (!shellBytes) throw new Error("PROFILE_CLOSED");
+        return shellBytes.slice(offset, offset + length);
+      },
     },
     releaseId: evidence.release,
     resolveTrustedRelease: async () => trustedShell,
@@ -93,7 +96,13 @@ export async function loadProductionProfile(runtime, { signal } = {}) {
     hud,
     hudSha256,
     close() {
-      shellBytes.fill(0);
+      try {
+        shellBytes?.fill(0);
+      } finally {
+        // 清除闭包中的缓冲区引用；已释放的条目不可再次读取。
+        // Release the closure-held buffer; disposed entries cannot be read again.
+        shellBytes = undefined;
+      }
     },
   };
 }

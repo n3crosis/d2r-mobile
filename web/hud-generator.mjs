@@ -70,10 +70,14 @@ export async function generateHud({
     fail("HUD_ATLAS_SET");
   let total = 0,
     pixels = 0;
-  const owned = [],
+  const owned = new Set(),
     images = {},
     fonts = {},
     atlases = {};
+  const release = (bytes) => {
+    bytes.fill(0);
+    owned.delete(bytes);
+  };
   const read = async (path) => {
     check();
     const bytes = await logicalAssets.read(path, {
@@ -86,13 +90,15 @@ export async function generateHud({
       (total += bytes.length) > 40 * 1024 * 1024
     )
       fail("HUD_READ_LIMIT");
-    owned.push(bytes);
+    owned.add(bytes);
     check();
     return bytes;
   };
   try {
     for (const [name, path] of Object.entries(IMAGE_PATHS)) {
-      const decoded = await decodeAtlas(await read(path), { signal });
+      const source = await read(path);
+      const decoded = await decodeAtlas(source, { signal });
+      if (decoded.pixels instanceof Uint8Array) owned.add(decoded.pixels);
       check();
       const { width, height } = decoded;
       if (
@@ -107,13 +113,23 @@ export async function generateHud({
         decoded.pixels.length !== width * height * 4
       )
         fail("HUD_DECODE_GEOMETRY");
-      owned.push(decoded.pixels);
       images[name] = { size: [width, height], rgba: encode(decoded.pixels) };
+      // 像素编码完成后再一起擦除源数据和像素，兼容重叠视图。
+      // Wipe source and pixels together after pixel encoding, allowing overlapping views.
+      release(source);
+      release(decoded.pixels);
     }
-    for (const name of FONT_NAMES) fonts[name] = encode(await read(`hd/ui/fonts/${name}`));
-    const layout = new TextDecoder("utf-8", { fatal: true }).decode(
-      await read("global/ui/Layouts/Controller/HUDPanelHD.json"),
-    );
+    for (const name of FONT_NAMES) {
+      const bytes = await read(`hd/ui/fonts/${name}`);
+      fonts[name] = encode(bytes);
+      release(bytes);
+    }
+    let layout;
+    {
+      const bytes = await read("global/ui/Layouts/Controller/HUDPanelHD.json");
+      layout = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      release(bytes);
+    }
     if (new TextEncoder().encode(layout).length > 2 * 1024 * 1024) fail("HUD_LAYOUT_LIMIT");
     for (const asset of assets) {
       const input = nativeArtFiles?.[asset.asset];
@@ -138,7 +154,10 @@ export async function generateHud({
     const payload = new TextEncoder().encode(
       JSON.stringify({ metadata, images, fonts, layout, atlases }),
     );
-    owned.push(payload);
+    owned.add(payload);
+    // 负载已独立编码；仅清空本地映射，保留借用的图集和元数据。
+    // The payload is independently encoded; clear only local maps, preserving borrowed atlases and metadata.
+    for (const map of [images, fonts, atlases]) for (const key of Object.keys(map)) delete map[key];
     if (payload.length > 64 * 1024 * 1024) fail("HUD_INPUT_LIMIT");
     check();
     const result = await assetWorker.run("hud-v4", payload, { mode, metadataSha256 });

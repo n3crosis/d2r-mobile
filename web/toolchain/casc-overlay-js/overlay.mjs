@@ -625,7 +625,15 @@ export function createPinnedCascOverlayTransform({ codec, SparkMD5 } = {}) {
   );
   return createCascOverlayTransform({
     md5(bytes) {
-      const raw = SparkMD5.ArrayBuffer.hash(bytes.slice().buffer, true);
+      // SparkMD5 仅读取完整缓冲区；子视图仍复制精确范围，避免散列额外字节。
+      // SparkMD5 only reads full buffers; copy subviews to avoid hashing unrelated bytes.
+      const buffer =
+        bytes.buffer instanceof ArrayBuffer &&
+        bytes.byteOffset === 0 &&
+        bytes.byteLength === bytes.buffer.byteLength
+          ? bytes.buffer
+          : bytes.slice().buffer;
+      const raw = SparkMD5.ArrayBuffer.hash(buffer, true);
       return Uint8Array.from(raw, (c) => c.charCodeAt(0));
     },
     compress: (bytes) => codec.compressZlib(bytes, { level: 9 }),

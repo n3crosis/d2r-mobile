@@ -62,7 +62,11 @@ export async function generateNativeArt({
     fail("NATIVE_ART_TABLE_SET");
   const raw = {},
     rgba = {};
-  const owned = [];
+  const owned = new Set();
+  const release = (bytes) => {
+    bytes.fill(0);
+    owned.delete(bytes);
+  };
   let total = 0,
     pixels = 0;
   try {
@@ -81,14 +85,14 @@ export async function generateNativeArt({
       check();
       if (!(bytes instanceof Uint8Array) || bytes.length > MAX_INPUT - total)
         fail("NATIVE_ART_RAW_LIMIT");
-      owned.push(bytes);
+      owned.add(bytes);
       total += bytes.length;
       if ((await digest(bytes)) !== hash) fail("NATIVE_ART_SOURCE_HASH");
       raw[path] = base64(bytes);
       return bytes;
     };
     for (const table of manifest.official_tables)
-      await read(`global/excel/${table.file}`, table.sha256);
+      release(await read(`global/excel/${table.file}`, table.sha256));
     for (const asset of manifest.assets) {
       const [width, height] = asset.atlas_px ?? [];
       if (
@@ -104,6 +108,7 @@ export async function generateNativeArt({
       if (!asset.official_path?.startsWith("data:data/")) fail("NATIVE_ART_INPUT_PATH");
       const bytes = await read(asset.official_path.slice(10), asset.official_sprite_sha256);
       const decoded = await decodeAtlas(bytes, { signal });
+      if (decoded.pixels instanceof Uint8Array) owned.add(decoded.pixels);
       check();
       if (
         decoded.width !== width ||
@@ -114,11 +119,17 @@ export async function generateNativeArt({
         decoded.bytesPerPixel !== 4
       )
         fail("NATIVE_ART_DECODE_GEOMETRY");
-      owned.push(decoded.pixels);
       rgba[asset.asset] = base64(decoded.pixels);
+      // 原始数据及像素均已编码后再擦除，兼容解码器返回重叠视图。
+      // Wipe only after encoding both source and pixels, allowing overlapping decoder views.
+      release(bytes);
+      release(decoded.pixels);
     }
     const payload = new TextEncoder().encode(JSON.stringify({ metadata, raw, rgba }));
-    owned.push(payload);
+    owned.add(payload);
+    // 负载已独立编码；等待工作线程前释放本地 base64 字符串。
+    // The payload is independently encoded; release local base64 strings before awaiting the worker.
+    for (const map of [raw, rgba]) for (const key of Object.keys(map)) delete map[key];
     if (payload.length > MAX_PAYLOAD) fail("NATIVE_ART_INPUT_LIMIT");
     check();
     const result = await assetWorker.run("native-art", payload, { metadataSha256 });

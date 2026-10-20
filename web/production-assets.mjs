@@ -23,21 +23,28 @@ const fileViews = (files) =>
   );
 
 export function createProductionAssetAdapter({ runtime, profile }) {
-  const owned = [];
-  let pipeline;
+  const owned = [],
+    releaseEntries = [];
+  let pipeline,
+    disposed = false;
   const entry = (path, bytes) => {
     owned.push(bytes);
+    releaseEntries.push(() => {
+      bytes = undefined;
+    });
     return {
       path,
       size: bytes.length,
       mode: 0o644,
       async *chunks() {
+        if (disposed || !bytes) throw new Error("PRODUCTION_ASSET_DISPOSED");
         yield bytes;
       },
     };
   };
   return {
     async generateAssets({ extracted, selection, signal }) {
+      if (disposed) throw new Error("PRODUCTION_ASSET_DISPOSED");
       const { logicalAssets } = readAuthenticatedAssets(extracted, selection, { signal });
       const worker = runtime.createAssetWorker(),
         texture = runtime.createTextureClient(),
@@ -133,9 +140,19 @@ export function createProductionAssetAdapter({ runtime, profile }) {
       }
     },
     dispose() {
-      pipeline?.dispose();
-      for (const bytes of owned) bytes.fill(0);
-      owned.length = 0;
+      disposed = true;
+      try {
+        pipeline?.dispose();
+      } finally {
+        try {
+          for (const bytes of owned) bytes.fill(0);
+        } finally {
+          owned.length = 0;
+          // 清理时解除输出闭包引用，不改变暂存前可重复读取的行为。
+          // Release output closure references at cleanup, preserving repeatable reads before staging.
+          for (const release of releaseEntries.splice(0)) release();
+        }
+      }
     },
   };
 }

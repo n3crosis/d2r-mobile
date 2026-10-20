@@ -97,7 +97,8 @@ export function createAssetPipelineAdapter({
     disposed = false,
     cleanupFailed = false;
   const clients = [],
-    outputs = [];
+    outputs = [],
+    releaseEntries = [];
   let internalAbort;
   const closeClients = () => {
     for (const client of clients.splice(0)) {
@@ -109,13 +110,26 @@ export function createAssetPipelineAdapter({
     }
   };
   const wipe = () => {
-    for (const bytes of outputs.splice(0)) bytes.fill(0);
+    try {
+      for (const bytes of outputs) bytes.fill(0);
+    } finally {
+      outputs.length = 0;
+      // 已返回的条目仍可存活；显式解除它们捕获的输出引用。
+      // Returned entries may remain alive; explicitly release their captured output references.
+      for (const release of releaseEntries.splice(0)) release();
+    }
   };
   const dispose = () => {
     disposed = true;
-    internalAbort?.abort();
-    closeClients();
-    wipe();
+    try {
+      internalAbort?.abort();
+      closeClients();
+    } finally {
+      // 仅解除借用对象引用，不修改调用方对象或字节。
+      // Drop only our borrowed reference, without mutating the caller's object or bytes.
+      nativeOverlayGenerated = null;
+      wipe();
+    }
     if (cleanupFailed) fail("ASSET_PIPELINE_CLEANUP");
   };
   async function generateAssets({ extracted, selection, signal } = {}) {
@@ -188,20 +202,22 @@ export function createAssetPipelineAdapter({
       const bytes = view(value);
       if (!bytes?.length || (outputBytes += bytes.length) > ASSET_PIPELINE_LIMITS.outputBytes)
         fail("ASSET_PIPELINE_OUTPUT_LIMIT");
-      const stored = bytes.slice();
+      let stored = bytes.slice();
+      const size = stored.length;
       outputs.push(stored);
+      releaseEntries.push(() => {
+        stored = undefined;
+      });
       entries.push(
         Object.freeze({
           path: name,
-          size: stored.length,
+          size,
           mode: 0o100644,
           async *chunks() {
-            for (
-              let offset = 0;
-              offset < stored.length;
-              offset += ASSET_PIPELINE_LIMITS.chunkBytes
-            ) {
+            check();
+            for (let offset = 0; offset < size; offset += ASSET_PIPELINE_LIMITS.chunkBytes) {
               check();
+              if (!stored) fail("ASSET_PIPELINE_CANCELLED");
               yield stored.slice(offset, offset + ASSET_PIPELINE_LIMITS.chunkBytes);
             }
           },

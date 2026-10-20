@@ -1,3 +1,5 @@
+// 依据合成提取夹具检查资源流水线的验证、生命周期和清理契约。
+// Check asset pipeline validation, lifetime and cleanup contracts using synthetic extraction fixtures.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -104,9 +106,25 @@ test("map-goal and BC3 replacement compose through real bounded CASC writer into
   assert.equal(f.closed(), 3);
   for (const b of f.owned) assert.ok(b.every((v) => v === 0));
   for (const entry of entries) assert.equal((await bytes(entry)).length, entry.size);
+  // 暂存和校验前可重复读取；清理只失效生产器，不修改条目元数据或已返回副本。
+  // Reads remain repeatable before staging/validation; cleanup invalidates producers,
+  // not entry metadata or previously yielded copies.
+  const metadata = entries.map(({ path, size, mode }) => ({ path, size, mode }));
+  const first = await bytes(entries[0]);
+  assert.deepEqual(await bytes(entries[0]), first);
+  const iterator = entries[0].chunks();
+  const yielded = (await iterator.next()).value;
+  const saved = yielded.slice();
+  await iterator.return();
   assert.equal(adapter.capabilities.completeAssetPipeline, false);
   await adapter.dispose();
-  await assert.rejects(bytes(entries[0]), /CANCELLED/);
+  assert.deepEqual(yielded, saved);
+  assert.deepEqual(
+    entries.map(({ path, size, mode }) => ({ path, size, mode })),
+    metadata,
+  );
+  for (const entry of entries) await assert.rejects(bytes(entry), /CANCELLED/);
+  await adapter.dispose();
   await assert.rejects(adapter.generateAssets(f.auth), /SINGLE_USE/);
 });
 test("default resolver rejects forged extracted capabilities before workers or reads", async () => {

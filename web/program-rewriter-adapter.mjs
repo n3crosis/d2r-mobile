@@ -177,21 +177,30 @@ export function createProgramRewriterAdapter({
     disposed = false,
     activeWorker,
     rejectActive;
-  const owned = [];
+  const owned = [],
+    releaseEntries = [];
   const own = (bytes) => {
     owned.push(bytes);
     return bytes;
   };
   const wipe = () => {
-    for (const bytes of owned) bytes.fill(0);
-    owned.length = 0;
+    try {
+      for (const bytes of owned) bytes.fill(0);
+    } finally {
+      owned.length = 0;
+      // 擦除后解除条目闭包引用；仅清空所有权列表不会释放输出缓冲区。
+      // Release entry closure references after wiping; clearing ownership alone is insufficient.
+      for (const release of releaseEntries.splice(0)) release();
+    }
   };
   function close() {
     const worker = activeWorker;
     activeWorker = undefined;
     worker?.close();
   }
-  async function dispose() {
+  // 清理没有异步步骤；同步抛错可让调用方汇总清理失败。
+  // Cleanup has no asynchronous steps; synchronous errors let callers collect failures.
+  function dispose() {
     disposed = true;
     rejectActive?.(new ProgramAdapterError("PROGRAM_DISPOSED"));
     try {
@@ -353,20 +362,26 @@ export function createProgramRewriterAdapter({
         fail("PROGRAM_GUEST_DIGEST_MISMATCH");
       check(signal);
       close();
-      const entry = (path, data, mode = 0o644, signature) => ({
-        path,
-        size: data.length,
-        mode,
-        ...(signature ? { signature } : {}),
-        async *chunks() {
-          if (disposed) fail("PROGRAM_DISPOSED");
-          for (let at = 0; at < data.length; at += 65536) {
-            check(signal);
+      const entry = (path, data, mode = 0o644, signature) => {
+        const size = data.length;
+        releaseEntries.push(() => {
+          data = undefined;
+        });
+        return {
+          path,
+          size,
+          mode,
+          ...(signature ? { signature } : {}),
+          async *chunks() {
             if (disposed) fail("PROGRAM_DISPOSED");
-            yield data.slice(at, at + 65536);
-          }
-        },
-      });
+            for (let at = 0; at < size; at += 65536) {
+              check(signal);
+              if (disposed || !data) fail("PROGRAM_DISPOSED");
+              yield data.slice(at, at + 65536);
+            }
+          },
+        };
+      };
       return [
         entry("Frameworks/Guest.framework/Guest", guest, 0o755, {
           kind: "ad-hoc",

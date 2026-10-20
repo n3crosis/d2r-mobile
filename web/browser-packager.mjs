@@ -36,13 +36,33 @@ export async function prepareBrowserPackager({ manifestSha256, signal, onProgres
     onProgress,
   });
   let profile, program, assets, shaders, shellVariantBytes;
+  let closed = false;
   const close = () => {
-    program?.dispose();
-    assets?.dispose();
-    shaders?.dispose();
-    profile?.close();
-    runtime.close();
-    shellVariantBytes?.fill(0);
+    if (closed) return;
+    closed = true;
+    let failure,
+      failed = false;
+    // 即使某项清理失败，也继续释放其余运行时及输出缓冲区。
+    // Release remaining runtimes and output buffers even if one cleanup fails.
+    for (const release of [
+      () => program?.dispose(),
+      () => assets?.dispose(),
+      () => shaders?.dispose(),
+      () => profile?.close(),
+      () => runtime.close(),
+      () => shellVariantBytes?.fill(0),
+    ]) {
+      try {
+        release();
+      } catch (error) {
+        if (!failed) {
+          failure = error;
+          failed = true;
+        }
+      }
+    }
+    shellVariantBytes = profile = program = assets = shaders = undefined;
+    if (failed) throw failure;
   };
   try {
     profile = await loadProductionProfile(runtime, { signal });
@@ -74,7 +94,7 @@ export async function prepareBrowserPackager({ manifestSha256, signal, onProgres
       ready: true,
       realGameVerified: false,
       async generate({ input, selectedNspNames, signal, onProgress }) {
-        if (used) throw new Error("RELOAD_REQUIRED");
+        if (closed || used) throw new Error("RELOAD_REQUIRED");
         if (
           input?.kind !== "directory" ||
           typeof input.queryPermission !== "function" ||
@@ -157,6 +177,7 @@ export async function prepareBrowserPackager({ manifestSha256, signal, onProgres
                         sha256: variant.receipt.sha256,
                         async *chunks() {
                           signal.throwIfAborted();
+                          if (!shellVariantBytes) throw new Error("SHELL_CLOSED");
                           yield shellVariantBytes;
                         },
                       },
