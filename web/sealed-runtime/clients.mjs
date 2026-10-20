@@ -61,7 +61,8 @@ export function validateRuntimeInventory(manifest) {
 }
 async function read(url, cap, signal) {
   const response = await fetch(url, {
-    credentials: "omit",
+    // Preserve the hosting session for owner-private Sites; URLs are same-origin.
+    credentials: "same-origin",
     redirect: "error",
     cache: "no-store",
     signal,

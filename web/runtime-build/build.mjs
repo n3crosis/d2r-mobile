@@ -75,7 +75,12 @@ function run(command, args, cwd = root, capture = false) {
     encoding: "utf8",
     stdio: capture ? "pipe" : "inherit",
     timeout: 45 * 60_000,
-    env: { ...process.env, DOTNET_CLI_TELEMETRY_OPTOUT: "1", DOTNET_NOLOGO: "1" },
+    env: {
+      ...process.env,
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1",
+      DOTNET_NOLOGO: "1",
+      D2R_EMSCRIPTEN_ENVIRONMENT: "worker",
+    },
   });
   if (result.error || result.status !== 0)
     throw new Error(

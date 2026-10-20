@@ -197,6 +197,7 @@ export async function assembleRuntime({ build } = {}) {
       await copy(`${asset}/generated/${record.path}`, record);
     for (const [name, pin] of [
       ["shader_map.tsv", SHADER_CATALOG_SOURCES.map],
+      ["bf_want.tsv", "8e91845e3b2e8793a97b7a0e7c33c58ad92761e7d2ed7ffe60f8fb0e196649cf"],
       ["shader_facts.tsv", SHADER_CATALOG_SOURCES.facts],
       ["shader_map.tsv.conflicts.tsv", SHADER_CATALOG_SOURCES.conflicts],
     ]) {

@@ -25,5 +25,6 @@ for (const name of ["nsp-worker", "cross-worker", "program-worker"]) {
   // All literal imports must be closed by the build. The only dynamic imports
   // remaining are verified in-memory Pyodide blob URLs created at initialization.
   const imports = new globalThis.Bun.Transpiler({ loader: "js" }).scanImports(code);
-  if (imports.length) throw new Error(`Unclosed worker import graph: ${name}`);
+  if (imports.length)
+    throw new Error(`Unclosed worker import graph: ${name}: ${JSON.stringify(imports)}`);
 }

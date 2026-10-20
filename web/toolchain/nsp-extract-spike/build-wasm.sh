@@ -31,7 +31,7 @@ emcc -O2 -std=gnu11 -D_FILE_OFFSET_BITS=64 -D_DEFAULT_SOURCE \
   -include "$HERE/quiet.h" -I"$SRC" -I"$SRC/mbedtls/include" \
   "${sources[@]}" "$HERE/boundary.c" "$BUILD/crypto-fixture.c" \
   -L"$SRC/mbedtls/library" -lmbedtls -lmbedx509 -lmbedcrypto \
-  --no-entry -lworkerfs.js -sMODULARIZE=1 -sEXPORT_ES6=1 -sENVIRONMENT=worker,node \
+  --no-entry -lworkerfs.js -sMODULARIZE=1 -sEXPORT_ES6=1 "-sENVIRONMENT=${D2R_EMSCRIPTEN_ENVIRONMENT:-worker,node}" \
   -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=33554432 -sMAXIMUM_MEMORY=268435456 \
   -sSTACK_SIZE=1048576 -sFORCE_FILESYSTEM=1 -sEXIT_RUNTIME=0 \
   '-sEXPORTED_RUNTIME_METHODS=["FS","WORKERFS","ccall","HEAPU8"]' \
