@@ -34,10 +34,6 @@ jobs:
     name: Frontend lint, format, synthetic tests and build
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    env:
-      # TEMPORARY: regenerate once for the reviewed Vite/TS-ESLint security pins.
-      # Remove/reset after adopting the uploaded lock; never repair drift silently.
-      REGENERATE_DEPENDENCY_LOCK: "true"
     defaults:
       run:
         shell: bash
@@ -51,14 +47,8 @@ jobs:
           node-version: "22"
       - name: Confirm Python oracle prerequisite
         run: python3 --version
-      # Bootstrap only until the generated lock is reviewed and committed.
-      # Subsequent runs use npm ci against the committed lock without resolving anew.
-      - name: Resolve missing lockfile, then install locked dependencies
-        run: |
-          if [ "$REGENERATE_DEPENDENCY_LOCK" = true ] || [ ! -f package-lock.json ]; then
-            npm install --package-lock-only --ignore-scripts
-          fi
-          npm ci
+      - name: Install committed locked dependencies
+        run: npm ci
       - name: Preserve exact dependency lock for review (no build/game artifacts)
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

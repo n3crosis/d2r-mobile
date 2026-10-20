@@ -69,3 +69,7 @@ transitive lockfile entries manually.
 - [Vite custom-middleware cross-origin execution, fixed in 7.3.7](https://github.com/vitejs/vite/security/advisories/GHSA-9jrq-w75r-8gcw)
 - [Vite WASM-prefix disclosure, Vite 8 only](https://github.com/vitejs/vite/security/advisories/GHSA-vfpm-58rq-9qcg)
 - [ESLint version support](https://eslint.org/version-support/)
+
+## Verified remediation
+
+GitHub Actions run [39387602517](https://github.com/n3crosis/d2r-mobile/actions/runs/39387602517) regenerated the reviewed lock and reported **0 vulnerabilities**, including development dependencies. The checksum-verified lock artifact was adopted into the source tree; CI now uses strict `npm ci` with no automatic lock repair. Frontend tests, lint, formatting, TypeScript and production build passed in that run. This records the audit at that time, not a guarantee against future advisories. The separate ESLint support-lifecycle migration remains open.
