@@ -18,4 +18,6 @@ Abort signals interrupt waiting for upstream input. Cancellation requests upstre
 
 Run `node --test web/tests/zlib-stream.test.mjs`. Mocked ABI tests cover lifecycle, backpressure, budgets and cancellation; they are explicitly not WASM execution evidence. When the existing local `dist/png_codec_native.so` is present, a separate native check verifies pinned zlib 1.2.13 fragmented calls plus an empty final call against the original whole-buffer call sequence, including empty and incompressible inputs. It checks decompression independently with Python's zlib. The native check is explicitly skipped when that artifact is absent.
 
-The local WASM artifact was unavailable for this change. Real WASM execution, browser-worker cancellation and future CASC pack integration remain separate gates. No dependency, toolchain, UI, CI job or deployed pack has been added.
+The local WASM artifact was unavailable for this change. Separate CI WASM evidence is recorded below; browser-worker cancellation and future CASC pack integration remain separate gates. No dependency, toolchain, UI, CI job or deployed pack has been added.
+
+CI run [39481188951](https://github.com/n3crosis/d2r-mobile/actions/runs/39481188951), source 69b5955, passed actual WASM streaming checks against four small committed native zlib 1.2.13 deterministic fixtures using eight fragmented streams. These fixtures do not depend on ignored local generated files. This is not browser-worker or full-pack proof.

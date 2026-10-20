@@ -4,6 +4,12 @@ const MAX_OUTPUT = 64 * 1024 * 1024;
 const MAX_TABLE = 16 * 1024 * 1024;
 const MAX_REPLACEMENT = 16 * 1024 * 1024;
 const MAX_JOBS = 4096;
+// 补充包元数据具有独立预算，不扩大现有覆盖层任务或载荷限制。
+// Supplemental-pack metadata has separate budgets; existing overlay job and payload caps remain unchanged.
+export const CASC_PACK_METADATA_LIMITS = Object.freeze({
+  entries: 32768,
+  pathBytes: 8 * 1024 * 1024,
+});
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 const fail = () => {
@@ -72,7 +78,7 @@ function utf8(value) {
   return encoder.encode(value);
 }
 function checkedPath(path) {
-  requireValue(typeof path === "string" && utf8(path).length <= 4096);
+  requireValue(typeof path === "string" && path.length <= 4096 && utf8(path).length <= 4096);
   // Python strip 所用空白码点；不能把 BOM 当空白。 | Python strip whitespace, excluding BOM.
   requireValue(Array.from(path).every((c) => c.codePointAt(0) >= 32 && c !== ":" && c !== "\\"));
   requireValue(
@@ -409,13 +415,93 @@ function setCftSizes(raw, pos, encoded, decoded) {
   put32(raw, pos + 16, encoded);
   put32(raw, pos + 20 + width, decoded);
 }
-function cftPosition(raw, start, end, key) {
-  const table = byteKey(raw.subarray(start, end)),
+function cftPosition(raw, start, end, key, search = byteKey(raw.subarray(start, end))) {
+  const table = search,
     needle = byteKey(key);
   const first = table.indexOf(needle);
   requireValue(first >= 0 && table.indexOf(needle, first + 1) === -1);
   return start + first;
 }
+// 对原始 CFT 统一解析请求，防止写入的新键影响后续旧键查找。
+// Resolve all requests against the original CFT so newly written keys cannot alter later old-key lookup.
+function resolveCascPackRecords(vfs, entries) {
+  requireValue(
+    vfs instanceof Uint8Array &&
+      vfs.buffer instanceof ArrayBuffer &&
+      !vfs.buffer.resizable &&
+      Array.isArray(entries) &&
+      entries.length <= CASC_PACK_METADATA_LIMITS.entries,
+  );
+  const layout = table(vfs),
+    search = byteKey(vfs.subarray(layout.cft, layout.end));
+  const paths = new Set(),
+    keys = new Set();
+  let pathBytes = 0;
+  return entries.map((entry) => {
+    requireValue(isObject(entry) && !Object.hasOwn(entry, "add"));
+    const path = checkedPath(entry.path),
+      key = unhex(entry.oldEkey),
+      oldEkey = hex(key);
+    requireValue(!path.includes(String.fromCharCode(127)));
+    pathBytes += utf8(path).length;
+    requireValue(
+      pathBytes <= CASC_PACK_METADATA_LIMITS.pathBytes && !paths.has(path) && !keys.has(oldEkey),
+    );
+    paths.add(path);
+    keys.add(oldEkey);
+    const position = cftPosition(vfs, layout.cft, layout.end, key, search);
+    requireValue((position - layout.cft) % 25 === 0 && position + 25 <= layout.end);
+    const specIndex = vfs[position + 20];
+    return {
+      path,
+      oldEkey,
+      position,
+      specIndex,
+      spec: layout.specs[specIndex],
+      encodedSize: u32(vfs, position + 16),
+      decodedSize: u32(vfs, position + 21),
+    };
+  });
+}
+
+/**
+ * 检查现有路径请求对应的原始存储规格；不认证路径到旧键的关联或外部包字节。
+ * Inspect original storage specs for existing-path requests; does not authenticate path-to-key association or external pack bytes.
+ */
+export function inspectCascPackStorageSpecs(vfs, entries) {
+  return Object.freeze(
+    resolveCascPackRecords(vfs, entries).map(({ position: _position, ...record }) =>
+      Object.freeze(record),
+    ),
+  );
+}
+
+/**
+ * 仅复制一次 TVFS 并改写现有引用及长度，保留原编码规格序号；不添加路径或读取载荷。
+ * Copy TVFS once and rewrite existing references and lengths, retaining original spec indices; no added paths or payload reads.
+ */
+export function patchCascPrebuiltReferences(vfs, records) {
+  const resolved = resolveCascPackRecords(vfs, records);
+  const changes = resolved.map((entry, index) => {
+    const record = records[index],
+      key = unhex(record.newEkey);
+    for (const value of [record.encodedSize, record.decodedSize])
+      requireValue(Number.isSafeInteger(value) && value >= 0 && value <= 0xffffffff);
+    return {
+      position: entry.position,
+      key,
+      encodedSize: record.encodedSize,
+      decodedSize: record.decodedSize,
+    };
+  });
+  const output = new Uint8Array(vfs);
+  for (const { position, key, encodedSize, decodedSize } of changes) {
+    output.set(key, position);
+    setCftSizes(output, position, encodedSize, decodedSize);
+  }
+  return output;
+}
+
 /* eslint-disable no-control-regex -- 精确 Python 换行集合。 | Exact Python line-ending set. */
 function configLines(text) {
   const expression =

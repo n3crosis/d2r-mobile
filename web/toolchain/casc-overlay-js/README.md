@@ -15,6 +15,43 @@ concatenated config + decoded TVFS tables + ordered replacements and trusted
 - The original functions and bounded adapter, plus vendored SparkMD5, are source
   pinned by `scripts/verify-source.mjs`; runtime bytes use the existing SHA inventory.
 
+## Supplemental-pack metadata primitives
+
+These standalone synchronous helpers are not wired into production workers:
+
+- `inspectCascPackStorageSpecs(vfs, entries)` accepts decoded TVFS bytes and ordered
+  `{path, oldEkey}` requests. It returns a frozen array of frozen
+  `{path, oldEkey, specIndex, spec, encodedSize, decodedSize}` records. Specs are
+  exactly `n`, `z` or `b:256K*=z`; old keys are returned as lowercase hex.
+- `patchCascPrebuiltReferences(vfs, records)` accepts
+  `{path, oldEkey, newEkey, encodedSize, decodedSize}` records and returns a new
+  TVFS byte array. It resolves all old references and validates all changes before
+  copying TVFS once. Only the selected EKeys and encoded/decoded lengths change;
+  every original spec index, path table and unrelated byte stays unchanged.
+
+`CASC_PACK_METADATA_LIMITS` allows 32,768 requests and 8 MiB aggregate UTF-8 path
+bytes, with 4,096 bytes per path and the existing 16 MiB table bound. These are
+metadata-only budgets, not changes to the overlay's 4,096-job/64 MiB payload caps.
+Requests must use canonical lowercase safe paths; duplicate paths or old keys,
+missing or ambiguous keys, unaligned CFT hits and any `add` field reject. Replacement
+lengths must be unsigned 32-bit integers. Input TVFS bytes are never mutated, and
+all lookups use the original table, so swapping two keys cannot redirect a later
+lookup to an already changed record.
+
+These helpers validate metadata structure only. The supplied path-to-old-EKey
+association must come from the authenticated input workflow; they do not establish
+that association, authenticate an external pack, verify its byte extents/checksums,
+reserve archive locations, or prove that replacement payload encoding matches its
+preserved spec. Those are separate caller obligations. No payload is accepted and
+no new path is inserted. Exact unique matching shares the existing CFT search
+semantics, including rejection of a second unaligned occurrence. The CFT search
+string is constructed once per call, but each requested key still requires a scan;
+large requests should run off the UI thread.
+
+Run `node --test web/tests/casc-pack-metadata.test.mjs` for synthetic spec/size,
+mutation, key-swap, rejection and 27,000-request checks. The original serializer
+parity suite remains an independent regression check.
+
 ## Compression is not interchangeable
 
 The bundled CPython uses zlib 1.2.13, while bundled Pillow uses zlib 1.3.1.

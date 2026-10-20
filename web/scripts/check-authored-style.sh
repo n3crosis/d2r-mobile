@@ -6,6 +6,7 @@ cd "$(dirname "$0")/../.."
 
 python_sources=(
   web/toolchain/astc-encoder-wasm/bc3-native-reference.py
+  web/toolchain/sha256-stream-wasm/native-check.py
   web/scripts/generate-i18n.py
   web/toolchain/nsp-extract-spike/prepare-source.py
   web/toolchain/synthetic-signed-nca/inject-test-root.py
@@ -66,6 +67,8 @@ ruff check --no-cache --config web/toolchain/style/ruff.toml "${python_sources[@
 ruff format --check --no-cache --config web/toolchain/style/ruff.toml "${python_sources[@]}"
 
 clang-format --dry-run --Werror --style=file:web/toolchain/style/clang-format.yaml \
+  web/toolchain/sha256-stream-wasm/bridge.c \
+  web/toolchain/sha256-stream-wasm/sha256_config.h \
   web/toolchain/astc-encoder-wasm/bridge.cpp \
   web/toolchain/astc-encoder-wasm/native-smoke.cpp \
   web/toolchain/nsp-extract-spike/boundary.c \

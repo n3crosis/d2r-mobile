@@ -12,6 +12,36 @@
   返回文件名和回执字段保持一致。
 - `scripts/verify-source.mjs` 锁定原始函数、边界适配器和 SparkMD5；运行时字节仍使用现有 SHA 清单。
 
+## 补充包元数据原语
+
+以下独立同步函数尚未接入生产工作线程：
+
+- `inspectCascPackStorageSpecs(vfs, entries)` 接受解码的 TVFS 字节和有序
+  `{path, oldEkey}` 请求，返回冻结数组，其中每个冻结记录为
+  `{path, oldEkey, specIndex, spec, encodedSize, decodedSize}`。
+  规格仅为 `n`、`z` 或 `b:256K*=z`；旧键以小写十六进制返回。
+- `patchCascPrebuiltReferences(vfs, records)` 接受
+  `{path, oldEkey, newEkey, encodedSize, decodedSize}` 记录并返回新的 TVFS 字节数组。
+  它先解析全部旧引用并验证全部修改，再复制一次 TVFS。仅修改选中的 EKey 及编码、
+  解码长度；原规格序号、路径表和所有无关字节均不变。
+
+`CASC_PACK_METADATA_LIMITS` 允许 32,768 条请求、总计 8 MiB 的 UTF-8 路径字节，
+单路径最多 4,096 字节，表大小仍受现有 16 MiB 上限约束。这些只是元数据预算，
+不改变覆盖层的 4,096 任务或 64 MiB 载荷上限。
+请求必须使用规范化的小写安全路径；拒绝重复路径或旧键、缺失或歧义键、未对齐的
+CFT 命中及任何 `add` 字段。替换长度必须是无符号 32 位整数。不会修改输入 TVFS，
+全部查找基于原表，因此交换两个键不会让后续查找错误定位到已修改的记录。
+
+这些函数只验证元数据结构。调用方必须从已认证输入流程取得路径到旧 EKey 的关联；
+函数不建立该关联，不认证外部包，不验证其字节范围或校验和，不预留归档位置，
+也不证明替换载荷符合保留的编码规格。这些均是独立的调用方责任。
+函数不接受载荷，也不插入新路径。精确唯一匹配沿用现有 CFT 搜索语义，
+包括第二次未对齐命中也会拒绝。每次调用只构造一次 CFT 搜索字符串，
+但每个请求键仍需要扫描；大请求应在 UI 线程之外运行。
+
+运行 `node --test web/tests/casc-pack-metadata.test.mjs` 可检查合成规格与长度、
+输入不变、交换键、拒绝情形及 27,000 条请求。原序列化对照套件仍是独立回归检查。
+
 ## 压缩版本不可随意替换
 
 打包的 CPython 使用 zlib 1.2.13，Pillow 使用 zlib 1.3.1。
