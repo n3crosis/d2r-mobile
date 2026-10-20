@@ -1,11 +1,17 @@
 # Production runtime loading and local-data boundary
 
-Audit date: 2026-10-20. **Design only; production integration is blocked.**
+Historical design audit: 2026-10-20. The initial blocked state and narrow proof
+records below are retained as evidence, not current enablement instructions.
+Production integration now lives in `browser-packager.mjs` and the runtime-build
+modules; see [production flow](PRODUCTION_FLOW.md) for the preload/seal boundary.
+The complete public runtime assembly passed Verify at `158d6cf`; that build result
+is not a real-input network-isolation or game-execution proof. References below
+to Vite and disabled processing describe the earlier audited implementation.
 No CSP, production UI, dependency, or runtime-loading behavior is changed by this
 document. Synthetic parity is not evidence of network isolation. Do not enable
 real-input processing based on this audit.
 
-## Requirement and present evidence
+## Original requirement and audit evidence
 
 The required boundary is: download only application-owned assets before accepting
 local inputs; thereafter, no network requests carrying local inputs, filenames,

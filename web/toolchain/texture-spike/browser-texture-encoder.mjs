@@ -42,7 +42,7 @@ export function validateEncodeRequest(header, width, height) {
     pkg_block_h: header[23] + 1,
   };
 }
-/** encodeRGBA must call the source-pinned original Python bc3 implementation. */
+/** encodeRGBA implements the source-pinned BC3 algorithm (production: bounded Rust/WASM). */
 export async function createTextureEncoder(createModule, encodeRGBA, options = {}) {
   const module = await createModule(options);
   const decoder = await createTextureDecoder(async () => module);

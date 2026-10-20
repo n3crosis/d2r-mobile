@@ -24,18 +24,16 @@ executes before the entire public inventory is verified. It rejects cross-origin
 bases, redirects, duplicate/colliding paths, missing files, unexpected byte
 counts, service-worker-controlled pages and unavailable browser capabilities.
 
-It appends a restrictive CSP with `connect-src 'none'`, blob-only script/worker
-sources, and WASM compilation permission without general JavaScript eval. It
-then creates fresh blob workers and transfers owned copies of verified bytes.
-It resolves only after each requested real runtime returns completed
-initialization. It returns no URL loader, fetch callback, source-code input, or
-network fallback. The existing production CSP is unchanged: if it prohibits
-public preload or blob workers, bootstrap fails instead of relaxing that policy.
-Any future initial CSP integration needs explicit review.
+The prototype does not inject a CSP network lockdown. This avoids blocking
+styles and runtime startup while the user trials the build. The legacy
+`prepareSealedRuntime` API name remains, but it is not a network-isolation claim.
+It creates fresh blob workers from verified bytes and resolves only after each
+requested runtime initializes. No game files or keys are cached or uploaded.
+Public runtime bytes may use the hash-verified, versioned local cache.
 
-A failure after seal is terminal for this page session. Reload the page to retry
-public preload. Cancellation terminates all live workers; no runtime recycling
-across partially failed private jobs is attempted.
+A bootstrap failure is terminal for that page session. The UI shows the failing
+public component/stage and reload guidance. Cancellation terminates workers;
+private-operation errors remain sanitized.
 
 ## Existing adapter interfaces
 
@@ -74,7 +72,7 @@ workers and revoke bootstrap blob URLs.
 The optional `components` array selects a strict subset of assets, texture,
 translator, extraction, program and spirvCross. The default requires all six.
 Subset selection is not a full-chain readiness assertion, and all top-level
-public assets are still verified before sealing.
+public assets are still verified before initialization.
 
 ## Packaging contract and unresolved evidence
 
@@ -84,11 +82,11 @@ existing texture adapters. NSP, program and Cross are supplied by the remaining
 runtime worker owner as `sealed-workers/{nsp,program,cross}-worker.mjs`. Their init
 uses `{id:0,type:'initialize',assets:[[name,ArrayBuffer],...]}` and returns a real
 `{id:0,ok:true,result:{initialized:true}}` after initialization. Missing bundles
-or dependencies fail before seal; there are no substitute implementations.
+or dependencies fail before initialization; there are no substitute implementations.
 
 Program uses the adapted, verified offline Pyodide runtime bytes plus
 capstone-lz4.wasm, patch_nso.py and python-adapters.py. Its fixture-only manifest
-must not be loaded after seal. NSP/Cross use their explicitly supplied WASM
+must not be loaded after initialization. NSP/Cross use their explicitly supplied WASM
 bytes. The exact complete-title catalog, shell recipe and shader metadata remain
 separate authenticated inputs; these factories do not fabricate them.
 

@@ -1,3 +1,4 @@
+import { createRuntimeTransport } from "./transport.mjs";
 import { SHADER_CATALOG_SOURCES } from "../shader-catalog-adapter.mjs";
 import {
   readFile,
@@ -40,7 +41,8 @@ export async function assembleRuntime({ build } = {}) {
   await mkdir(parent, { recursive: true });
   const staging = await mkdtemp(resolve(parent, "bundle-"));
   const assets = [],
-    seen = new Set();
+    seen = new Set(),
+    contents = new Map();
   let total = 0;
   async function add(path, bytes, source) {
     safe(path);
@@ -54,10 +56,9 @@ export async function assembleRuntime({ build } = {}) {
     )
       throw new Error("Runtime inventory limit or duplicate");
     seen.add(key);
-    const destination = resolve(staging, path);
-    await mkdir(resolve(destination, ".."), { recursive: true });
-    await writeFile(destination, bytes);
-    assets.push({ path, bytes: bytes.length, sha256: hash(bytes), source });
+    const sha256 = hash(bytes);
+    contents.set(`${sha256}:${bytes.length}`, { sha256, bytes: bytes.length, data: bytes });
+    assets.push({ path, bytes: bytes.length, sha256, source });
   }
   async function copy(path, expected, destination = path) {
     safe(path);
@@ -103,7 +104,7 @@ export async function assembleRuntime({ build } = {}) {
   try {
     const offline = "toolchain/offline-runtime-spike";
     await sealed(`${offline}/dist`);
-    const python = await sealed(`${offline}/pyodide-dist`);
+    await sealed(`${offline}/pyodide-dist`);
     await copy(`${offline}/pyodide-dist/loader-provenance.json`);
     await sealed(`${offline}/dotnet-dist`);
     // Include production worker entry points with their original relative URL
@@ -124,16 +125,12 @@ export async function assembleRuntime({ build } = {}) {
       "toolchain/nsp-extract-spike/dist/hactool-boundary.mjs",
       "toolchain/nsp-extract-spike/dist/hactool-boundary.wasm",
       "toolchain/nsp-extract-spike/dist/UPSTREAM_COMMIT",
-      "toolchain/texture-spike/texture-worker.mjs",
       "toolchain/texture-spike/browser-texture.mjs",
-      "toolchain/texture-spike/texture-encode-worker.mjs",
       "toolchain/texture-spike/browser-texture-encoder.mjs",
-      "toolchain/texture-spike/bounded_encoder.py",
       "toolchain/texture-spike/dist/texture.mjs",
       "toolchain/texture-spike/dist/texture.wasm",
-      "toolchain/texture-spike/dist/original_bc3.py",
+      "toolchain/texture-spike/dist/bc3.wasm",
       "toolchain/texture-spike/dist/encoder-provenance.json",
-      "toolchain/asset-generation-spike/public/worker.mjs",
       "toolchain/spirv-cross-spike/wwwroot/worker.mjs",
       "toolchain/spirv-cross-spike/wwwroot/convert.mjs",
       "toolchain/spirv-cross-spike/wwwroot/spirv-contract.mjs",
@@ -183,18 +180,8 @@ export async function assembleRuntime({ build } = {}) {
     ])
       await copy(`${program}/runtime/${name}`);
     const asset = "toolchain/asset-generation-spike/public";
-    const vendor = JSON.parse(
-      await readFile(resolve(web, `${asset}/vendor/pyodide/vendor-manifest.json`), "utf8"),
-    );
-    if (vendor.version !== "0.27.7") throw new Error("Asset runtime version drift");
-    await copy(`${asset}/vendor/pyodide/vendor-manifest.json`);
-    for (const [name, sha256] of Object.entries(vendor.sha256)) {
-      const path = `${asset}/vendor/pyodide/${safe(name)}`;
-      const bytes = await readFile(resolve(web, path));
-      await copy(path, { bytes: bytes.length, sha256 });
-    }
-    for (const record of python.filter((entry) => entry.path.endsWith(".py")))
-      await copy(`${asset}/generated/${record.path}`, record);
+    // Production uses the sealed Python closure only. Ordinary worker/vendor/generated
+    // mirrors belong to manual reference harnesses and are never shipped.
     for (const [name, pin] of [
       ["shader_map.tsv", SHADER_CATALOG_SOURCES.map],
       ["bf_want.tsv", "8e91845e3b2e8793a97b7a0e7c33c58ad92761e7d2ed7ffe60f8fb0e196649cf"],
@@ -250,7 +237,11 @@ export async function assembleRuntime({ build } = {}) {
       },
       "profile/shell.zip",
     );
+    const { transport, payloads } = createRuntimeTransport(contents);
+    await mkdir(resolve(staging, "payloads"));
+    for (const [path, bytes] of payloads) await writeFile(resolve(staging, path), bytes);
     const manifest = {
+      transport,
       version: 1,
       build,
       totalBytes: total,
@@ -263,21 +254,18 @@ export async function assembleRuntime({ build } = {}) {
         },
         texture: {
           sealedEntry: "sealed-runtime/texture-worker.mjs",
-          entry: "toolchain/texture-spike/texture-worker.mjs",
+          entry: "sealed-runtime/texture-worker.mjs",
           sealedProof: `${offline}/dist/manifest.json`,
           sealedJobAdapter: false,
         },
         textureEncoder: {
-          sealedEntries: [
-            `${offline}/pyodide-dist/worker.mjs`,
-            "sealed-runtime/texture-worker.mjs",
-          ],
-          entry: "toolchain/texture-spike/texture-encode-worker.mjs",
+          sealedEntries: ["sealed-runtime/texture-worker.mjs"],
+          entry: "sealed-runtime/texture-worker.mjs",
           sealedJobAdapter: false,
         },
         assets: {
           sealedEntry: `${offline}/pyodide-dist/worker.mjs`,
-          entry: `${asset}/worker.mjs`,
+          entry: `${offline}/pyodide-dist/worker.mjs`,
           sealedProof: `${offline}/pyodide-dist/manifest.json`,
           sealedJobAdapter: false,
         },
@@ -321,6 +309,8 @@ export async function assembleRuntime({ build } = {}) {
       JSON.stringify({
         directory: relative(web, out),
         files: assets.length,
+        transportFiles: transport.files.length,
+        transportBytes: transport.totalBytes,
         totalBytes: total,
         manifestSha256: hash(json),
         productionEnabled: false,

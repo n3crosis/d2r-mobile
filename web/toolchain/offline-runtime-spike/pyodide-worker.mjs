@@ -12,7 +12,6 @@ const OPERATION_LIMITS = Object.freeze({
   "mercenary-art": [20, 4096],
   "overlay-recipe": [128, 4096],
   "remaining-art": [20, 4096],
-  "encode-linear-bc3": [16, 4096],
 });
 const RUNTIME_ORIGIN = "https://offline.invalid";
 let initialized = false;
@@ -153,8 +152,6 @@ async function initialize(data) {
     "remaining_art_original.py",
     "trove_original.py",
     "remaining_art.py",
-    "original_bc3.py",
-    "bounded_encoder.py",
   ]) {
     const bytes = assets.get(name);
     if (!bytes) throw new Error("Missing packaged Python source");
@@ -173,7 +170,6 @@ async function initialize(data) {
     ["import-mercenary", "import mercenary_original, mercenary"],
     ["import-overlay-recipe", "import overlay_recipe_sources, overlay_recipe"],
     ["import-remaining-art", "import remaining_art_original, trove_original, remaining_art"],
-    ["import-bc3", "import original_bc3, bounded_encoder"],
     ["import-core", "from core import execute"],
   ]) {
     phase = stage;

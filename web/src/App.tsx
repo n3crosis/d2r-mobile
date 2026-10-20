@@ -11,7 +11,20 @@ type LocalPickers = typeof globalThis & {
 };
 const browser = globalThis as LocalPickers;
 type Packager = Awaited<ReturnType<typeof prepareBrowserPackager>>;
+type LoadingProgress = {
+  phase: string;
+  loadedBytes: number;
+  totalBytes: number;
+  downloadedBytes: number;
+  cachedBytes: number;
+  completedFiles: number;
+  totalFiles: number;
+  label: string;
+};
+const megabytes = (bytes: number) => `${(bytes / 1_000_000).toFixed(1)} MB`;
 export default function App() {
+  const [loading, setLoading] = useState<LoadingProgress | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [status, setStatus] = useState("Loading application files…");
   const [ready, setReady] = useState(false),
     [busy, setBusy] = useState(false);
@@ -31,19 +44,33 @@ export default function App() {
       );
       return;
     }
-    void prepareBrowserPackager({ manifestSha256: digest, signal: controller.signal })
+    void prepareBrowserPackager({
+      manifestSha256: digest,
+      signal: controller.signal,
+      onProgress: (event: LoadingProgress) => {
+        if (!controller.signal.aborted) {
+          setLoading(event);
+          setStatus(event.label);
+        }
+      },
+    })
       .then((value) => {
         if (controller.signal.aborted) {
           value.close();
           return;
         }
         packager.current = value;
+        setLoading(null);
         setReady(true);
         setStatus("Ready. Files stay on this device.");
       })
-      .catch(() => {
-        if (!controller.signal.aborted)
-          setStatus("Application files could not be prepared. Reload to try again.");
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          setLoadFailed(true);
+          setStatus(
+            `Application setup failed: ${String(error instanceof Error ? error.message : error).slice(0, 1400)}. Reload to retry. No game files have been opened.`,
+          );
+        }
       });
     return () => {
       controller.abort();
@@ -148,6 +175,37 @@ export default function App() {
           <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
             {status}
           </p>
+          {loading && !loadFailed && (
+            <div className="space-y-2 text-xs text-muted-foreground">
+              {loading.phase === "download" && loading.totalBytes > 0 ? (
+                <>
+                  <progress
+                    className="h-2 w-full accent-primary"
+                    aria-label="Application files loaded"
+                    value={loading.loadedBytes}
+                    max={loading.totalBytes}
+                  />
+                  <p>
+                    {megabytes(loading.loadedBytes)} / {megabytes(loading.totalBytes)} ·{" "}
+                    {loading.completedFiles} / {loading.totalFiles} files ready
+                  </p>
+                  <p>
+                    {megabytes(loading.downloadedBytes)} downloaded
+                    {loading.cachedBytes > 0
+                      ? ` · ${megabytes(loading.cachedBytes)} from cache`
+                      : ""}
+                  </p>
+                </>
+              ) : (
+                <progress className="h-2 w-full accent-primary" aria-label={loading.label} />
+              )}
+            </div>
+          )}
+          {loadFailed && (
+            <Button variant="outline" onClick={() => window.location.reload()}>
+              Reload and retry
+            </Button>
+          )}
           <p className="text-xs text-muted-foreground">
             Unsigned IPA plus a separate game-resource folder. Files never leave this device.
           </p>

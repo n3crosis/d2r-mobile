@@ -1,3 +1,4 @@
+import { validateRuntimeTransport, verifyTransportPayload } from "./transport.mjs";
 import { Buffer } from "node:buffer";
 import { readdir, readFile, lstat } from "node:fs/promises";
 import { createHash } from "node:crypto";
@@ -42,6 +43,7 @@ export async function verifyRuntimeInventory(directory, expectedDigest, expected
       !/^[A-Za-z0-9_.+/-]+$/.test(entry.path) ||
       entry.path.split("/").some((part) => !part || part === "." || part === "..") ||
       folded.has(entry.path.toLowerCase()) ||
+      ["runtime-manifest.json", "runtime-integrity.mjs"].includes(entry.path.toLowerCase()) ||
       !Number.isSafeInteger(entry.bytes) ||
       entry.bytes < 1 ||
       entry.bytes > 64 * 1024 * 1024 ||
@@ -57,6 +59,11 @@ export async function verifyRuntimeInventory(directory, expectedDigest, expected
     total += entry.bytes;
   }
   if (total !== manifest.totalBytes) throw new Error("Runtime total mismatch");
+  const transportFiles = manifest.transport ? validateRuntimeTransport(manifest) : null;
+  if (transportFiles) {
+    records.clear();
+    for (const [path, record] of transportFiles) records.set(path, record);
+  }
   const integrity = `export const runtimeManifestSha256 = ${JSON.stringify(expectedDigest)};\nexport const productionEnabled = false;\n`;
   for (const [path, bytes] of [
     ["runtime-manifest.json", raw],
@@ -84,6 +91,7 @@ export async function verifyRuntimeInventory(directory, expectedDigest, expected
           throw new Error("Unexpected runtime file or size");
         const bytes = await readFile(child);
         if (sha(bytes) !== record.sha256) throw new Error("Runtime payload digest mismatch");
+        if (transportFiles?.has(path)) verifyTransportPayload(record, bytes);
         found.push({ path, bytes: bytes.length, sha256: record.sha256 });
       }
     }

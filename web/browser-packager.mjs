@@ -42,7 +42,7 @@ function guestTarget(bytes) {
   if (!target || offset !== end) throw new Error("GUEST_TARGET");
   return target;
 }
-export async function prepareBrowserPackager({ manifestSha256, signal } = {}) {
+export async function prepareBrowserPackager({ manifestSha256, signal, onProgress } = {}) {
   if (
     !globalThis.isSecureContext ||
     !navigator.storage?.getDirectory ||
@@ -50,7 +50,12 @@ export async function prepareBrowserPackager({ manifestSha256, signal } = {}) {
     !globalThis.crypto?.subtle
   )
     throw new Error("BROWSER_UNSUPPORTED");
-  const runtime = await prepareSealedRuntime({ baseUrl: "./runtime/", manifestSha256, signal });
+  const runtime = await prepareSealedRuntime({
+    baseUrl: "./runtime/",
+    manifestSha256,
+    signal,
+    onProgress,
+  });
   let profile, program, assets, shaders, shellVariantBytes;
   const close = () => {
     program?.dispose();

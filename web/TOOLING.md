@@ -18,9 +18,11 @@ bun run format:docs:check
 bun run format:workflows:check
 bun run build
 bun run build:bundle # rebuild static assets without repeating quality gates
-bun run test
 bun audit --audit-level=high
 ```
+
+`bun run test` is an optional local synthetic suite, not part of the commands
+required to produce a build.
 
 `bun.lock` is the authoritative frontend dependency lock. Commit it together with
 `package.json`; do not restore a parallel frontend npm lock. Deliberate dependency

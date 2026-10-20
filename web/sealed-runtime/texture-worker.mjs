@@ -12,6 +12,7 @@ async function initialize(data) {
   const expected = [
     "texture.mjs",
     "texture.wasm",
+    "bc3.wasm",
     "browser-texture.mjs",
     "browser-texture-encoder.mjs",
   ];
@@ -56,10 +57,22 @@ async function initialize(data) {
   });
   if (instantiations !== 1) throw new Error("WASM byte instantiation not used");
   decoder = await createTextureDecoder(async () => module);
+  const bc3Module = new WebAssembly.Module(assets.get("bc3.wasm"));
+  if (WebAssembly.Module.imports(bc3Module).length) throw new Error("BC3 host imports forbidden");
+  const bc3 = new WebAssembly.Instance(bc3Module, {}).exports;
   encoder = await createTextureEncoder(
     async () => module,
-    () => {
-      throw new Error("BC3 encoding must use initialized asset runtime");
+    (rgba, width, height) => {
+      let outputLength = 0;
+      try {
+        new Uint8Array(bc3.memory.buffer, bc3.bc3_input(), rgba.byteLength).set(rgba);
+        outputLength = bc3.bc3_encode(width, height, rgba.byteLength);
+        if (outputLength !== Math.ceil(width / 4) * Math.ceil(height / 4) * 16)
+          throw new Error("BC3 encoder rejected input");
+        return new Uint8Array(bc3.memory.buffer, bc3.bc3_output(), outputLength).slice();
+      } finally {
+        bc3.bc3_clear(rgba.byteLength, outputLength);
+      }
     },
   );
   ready = true;
@@ -78,7 +91,9 @@ async function run(data) {
     if (!(data.source instanceof Uint8Array) || data.source.byteLength > 64 * 1024 * 1024 + 40)
       throw new Error("Input cap");
     result = decoder.decodeV61(data.source);
-  } else if (data.operation === "packLinearBC3")
+  } else if (data.operation === "encodeAndPack")
+    result = await encoder.encodeAndPack(data.templateHeader, data.rgba, data.width, data.height);
+  else if (data.operation === "packLinearBC3")
     result = encoder.packLinearBC3(data.templateHeader, data.linearBC3, data.width, data.height);
   else throw new Error("Unsupported texture operation");
   const transfers = [];
@@ -96,8 +111,15 @@ self.addEventListener("message", ({ data }) => {
       if (data?.type === "initialize")
         self.postMessage({ id: 0, ok: true, result: await initialize(data) });
       else await run(data);
-    } catch {
-      self.postMessage({ id: data?.id ?? 0, ok: false, error: "Sealed texture operation failed" });
+    } catch (error) {
+      self.postMessage({
+        id: data?.id ?? 0,
+        ok: false,
+        error:
+          data?.type === "initialize"
+            ? String(error?.message ?? "Texture initialization failed").slice(0, 1200)
+            : "Sealed texture operation failed",
+      });
     }
   });
 });

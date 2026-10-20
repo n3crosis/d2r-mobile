@@ -4,7 +4,6 @@ import contextlib
 import io
 import struct
 import types
-import numpy as np
 from PIL import Image
 import native_functions as native
 
@@ -50,24 +49,12 @@ def execute(operation, payload, options):
             "overlay-recipe": 128,
             "hud-v4": 64,
             "casc-overlay": 64,
-            "encode-linear-bc3": 16,
         }.get(operation, 20)
         * 1024
         * 1024
     )
     if len(payload) > limit:
         raise ValueError("Input exceeds operation byte limit")
-    if operation == "encode-linear-bc3":
-        from bounded_encoder import encode_rgba
-
-        if set(options) != {"width", "height"}:
-            raise ValueError("ENCODER_OPTIONS")
-        width, height = options["width"], options["height"]
-        return {
-            "width": width,
-            "height": height,
-            "files": {"linear.bc3": encode_rgba(payload, width, height)},
-        }
     if operation == "vault-table":
         from vault import generate
 
@@ -121,7 +108,7 @@ def execute(operation, payload, options):
                 "frame.png": png.getvalue(),
                 "frame.sprite": encode_v31(im),
             },
-            "versions": {"pillow": Image.__version__, "numpy": np.__version__},
+            "versions": {"pillow": Image.__version__},
         }
     if operation == "experience-table":
         # Run the original main body with a bounded in-memory reader, not native CLI imports.

@@ -96,8 +96,10 @@ files, keys and IPA output; unexpected hidden/key/game files fail packaging.
 
 Extract the artifact and serve its contents through HTTPS static hosting. Opening
 `index.html` through `file://` is not a supported folder-picker/runtime setup.
-This artifact is the current webpage preview, **not a working real-game IPA**.
-It does not enable unfinished generation or publish to the private hosted Site.
+This artifact contains the implemented packaging webpage and its public runtimes,
+not a generated game IPA. Generation is enabled after runtime/capability checks;
+no real game-input conversion or device execution has been demonstrated.
+Uploading the artifact does not publish it to the private hosted Site.
 Synthetic component results do not prove complete game processing, shell/device
 compatibility, installation or execution; see the delivery checklist.
 

@@ -12,6 +12,8 @@ on:
         "dm/gfx/nvn/**",
         "dm/gfx/tex/**",
         ".github/workflows/verify.yml",
+        "!**/*.md",
+        "!**/*.MD",
       ]
   pull_request:
     paths:
@@ -24,6 +26,8 @@ on:
         "dm/gfx/nvn/**",
         "dm/gfx/tex/**",
         ".github/workflows/verify.yml",
+        "!**/*.md",
+        "!**/*.MD",
       ]
   workflow_dispatch:
 
@@ -65,6 +69,7 @@ jobs:
           "$RUNNER_TEMP/browser-emsdk/emsdk" install 4.0.20
           "$RUNNER_TEMP/browser-emsdk/emsdk" activate 4.0.20
           source "$RUNNER_TEMP/browser-emsdk/emsdk_env.sh"
+          rustup toolchain install 1.99.1 --profile minimal --target wasm32-unknown-unknown --component rustfmt --component clippy
           printf '{"sdk":{"version":"10.0.402","rollForward":"disable","allowPrerelease":false,"workloadVersion":"10.0.402"}}\n' > web/toolchain/shader-spike/global.json
           (cd web/toolchain/shader-spike && dotnet workload install wasm-tools)
           node web/runtime-build/build.mjs

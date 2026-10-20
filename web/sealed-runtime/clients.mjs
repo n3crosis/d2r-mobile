@@ -8,8 +8,6 @@ const LIMIT = Object.freeze({
   manifest: 2 * 1024 * 1024,
   files: 4096,
 });
-const SEAL =
-  "default-src 'none'; connect-src 'none'; script-src blob: 'wasm-unsafe-eval'; worker-src blob:; style-src 'none'; img-src 'none'; font-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
 let attempted = false;
 const sealedRuntimes = new WeakSet();
 /** Accept only live sessions created by this module after verified preload and initialization. */
@@ -59,14 +57,72 @@ export function validateRuntimeInventory(manifest) {
   if (total > LIMIT.total || manifest.totalBytes !== total) fail("Runtime byte budget mismatch");
   return manifest.assets;
 }
-async function read(url, cap, signal) {
-  const response = await fetch(url, {
-    // Preserve the hosting session for owner-private Sites; URLs are same-origin.
-    credentials: "same-origin",
-    redirect: "error",
-    cache: "no-store",
-    signal,
+/** Transport is optional: old manifests continue to fetch their logical paths. */
+function runtimeTransport(manifest, inventory) {
+  if (manifest.transport === undefined)
+    return { files: inventory, totalBytes: manifest.totalBytes, entries: undefined };
+  const transport = manifest.transport;
+  if (
+    transport?.version !== 1 ||
+    !Array.isArray(transport.entries) ||
+    !transport.entries.length ||
+    transport.entries.length > inventory.length
+  )
+    fail("Invalid runtime transport");
+  const files = validateRuntimeInventory({
+    version: 1,
+    assets: transport.files,
+    totalBytes: transport.totalBytes,
   });
+  let decodedTotal = 0;
+  for (const file of files) {
+    if (
+      !["identity", "gzip"].includes(file.encoding) ||
+      !Number.isSafeInteger(file.decodedBytes) ||
+      file.decodedBytes < 1 ||
+      file.decodedBytes > LIMIT.file ||
+      (file.encoding === "identity" && file.decodedBytes !== file.bytes)
+    )
+      fail("Invalid runtime transport encoding");
+    decodedTotal += file.decodedBytes;
+  }
+  if (decodedTotal > LIMIT.total) fail("Decoded runtime byte budget exceeded");
+  const physical = new Map(files.map((file) => [file.path, file]));
+  const expected = new Set(inventory.map((asset) => `${asset.sha256}-${asset.bytes}`));
+  const entries = new Map();
+  const ranges = new Map(files.map((file) => [file.path, []]));
+  for (const entry of transport.entries) {
+    const key = `${entry.sha256}-${entry.bytes}`;
+    const file = physical.get(entry.file);
+    if (
+      !expected.has(key) ||
+      entries.has(key) ||
+      !file ||
+      !Number.isSafeInteger(entry.offset) ||
+      entry.offset < 0 ||
+      !Number.isSafeInteger(entry.bytes) ||
+      entry.bytes < 1 ||
+      entry.offset + entry.bytes > file.decodedBytes
+    )
+      fail("Invalid runtime transport entry");
+    entries.set(key, entry);
+    ranges.get(entry.file).push(entry);
+  }
+  if (entries.size !== expected.size) fail("Incomplete runtime transport");
+  for (const [path, segments] of ranges) {
+    let end = 0;
+    for (const entry of segments.sort((a, b) => a.offset - b.offset)) {
+      if (entry.offset !== end) fail("Runtime transport overlap or gap");
+      end += entry.bytes;
+    }
+    if (end !== physical.get(path).decodedBytes) fail("Unused runtime transport bytes");
+  }
+  return { files, totalBytes: transport.totalBytes, entries };
+}
+// Only verified public inventory assets enter this cache, before private inputs are opened.
+const PUBLIC_CACHE = "d2r-public-runtime-sha256-v1";
+const DOWNLOAD_CONCURRENCY = 4;
+async function responseBytes(response, cap, onChunk) {
   if (!response.ok || !response.body) fail("Missing public runtime asset");
   const reader = response.body.getReader();
   const chunks = [];
@@ -78,6 +134,7 @@ async function read(url, cap, signal) {
       size += value.length;
       if (size > cap) fail("Public runtime byte cap");
       chunks.push(value);
+      onChunk?.(value.length);
     }
   } catch (error) {
     await reader.cancel();
@@ -92,6 +149,66 @@ async function read(url, cap, signal) {
     offset += chunk.length;
   }
   return bytes;
+}
+async function read(url, cap, signal, onChunk) {
+  const controller = new AbortController();
+  const abort = () => controller.abort(signal?.reason);
+  signal?.addEventListener("abort", abort, { once: true });
+  if (signal?.aborted) abort();
+  const timeout = setTimeout(
+    () => controller.abort(new Error("Application download timed out. Reload to retry.")),
+    90000,
+  );
+  try {
+    const response = await fetch(url, {
+      // Preserve the hosting session for owner-private Sites; URLs are same-origin.
+      credentials: "same-origin",
+      redirect: "error",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    return await responseBytes(response, cap, onChunk);
+  } finally {
+    clearTimeout(timeout);
+    signal?.removeEventListener("abort", abort);
+  }
+}
+// A browser storage failure must not prevent the uncached public-download path.
+async function optionalStorage(operation) {
+  let timer;
+  try {
+    return await Promise.race([
+      operation(),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error("Public cache unavailable")), 3000);
+      }),
+    ]);
+  } catch {
+    return undefined;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+function progressReporter(onProgress) {
+  const state = {
+    phase: "manifest",
+    loadedBytes: 0,
+    totalBytes: 0,
+    downloadedBytes: 0,
+    cachedBytes: 0,
+    completedFiles: 0,
+    totalFiles: 0,
+    label: "Reading application file list…",
+  };
+  let last = 0;
+  return (change, force = false) => {
+    Object.assign(state, change);
+    const now = performance.now();
+    if (force || now - last >= 100) {
+      last = now;
+      onProgress?.({ ...state });
+    }
+  };
 }
 function jsonOptions(value, cap = 65536) {
   const text = JSON.stringify(value);
@@ -108,7 +225,7 @@ function input(bytes, cap) {
     fail("Runtime input cap");
   return bytes.slice();
 }
-function channel(worker, onFatal) {
+function channel(worker, onFatal, onStage) {
   let next = 1,
     closed = false,
     entry;
@@ -124,6 +241,10 @@ function channel(worker, onFatal) {
     }
   };
   worker.onmessage = ({ data }) => {
+    if (entry?.id === 0 && data?.type === "initialization-stage") {
+      onStage?.(data.stage);
+      return;
+    }
     if (!entry || data?.id !== entry.id) return;
     const p = entry;
     entry = undefined;
@@ -131,10 +252,22 @@ function channel(worker, onFatal) {
     p.signal?.removeEventListener("abort", p.abort);
     data.ok
       ? p.resolve(data.result === undefined ? data : data.result)
-      : p.reject(new Error("Sealed runtime operation failed"));
+      : p.reject(
+          new Error(
+            p.id === 0
+              ? String(data.error ?? "Runtime initialization failed").slice(0, 1200)
+              : "Runtime operation failed",
+          ),
+        );
   };
-  worker.onerror = () => {
-    stop();
+  worker.onerror = (event) => {
+    stop(
+      new Error(
+        entry?.id === 0
+          ? String(event.message || "Worker initialization failed").slice(0, 1200)
+          : "Runtime worker failed",
+      ),
+    );
     onFatal();
   };
   worker.onmessageerror = () => {
@@ -181,13 +314,14 @@ function channel(worker, onFatal) {
 }
 /** Trusted application bootstrap only. Call before asking for private files/keys.
  * manifestSha256 MUST come from the built runtime-integrity.mjs, never user input.
- * Resolves only after every requested actual runtime has initialized under CSP.
+ * Resolves only after every requested actual runtime has initialized with verified public bytes.
  */
 export async function prepareSealedRuntime({
   baseUrl,
   manifestSha256,
   components = ["assets", "texture", "translator", "extraction", "program", "spirvCross"],
   signal,
+  onProgress,
 } = {}) {
   if (attempted) fail("Runtime bootstrap is one-shot per page");
   attempted = true;
@@ -221,18 +355,155 @@ export async function prepareSealedRuntime({
     !base.pathname.endsWith("/")
   )
     fail("Runtime base must be same-origin directory");
+  const report = progressReporter(onProgress);
+  report({}, true);
   const publicBytes = await read(new URL("runtime-manifest.json", base), LIMIT.manifest, signal);
   if ((await hash(publicBytes)) !== manifestSha256) fail("Runtime manifest integrity mismatch");
   const manifest = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(publicBytes));
   const inventory = validateRuntimeInventory(manifest),
     assets = new Map();
-  for (const record of inventory) {
-    const bytes = await read(new URL(record.path, base), record.bytes, signal);
-    if (bytes.length !== record.bytes || (await hash(bytes)) !== record.sha256)
-      fail("Runtime asset integrity mismatch");
-    assets.set(record.path, bytes);
+  const transport = runtimeTransport(manifest, inventory);
+  const downloadFiles = transport.files;
+  const downloadedAssets = new Map();
+  let cache = await optionalStorage(() => caches.open(PUBLIC_CACHE));
+  const cacheKey = (record) =>
+    new URL(`__public-runtime-cache__/${record.sha256}-${record.bytes}`, base).href;
+  let downloadedBytes = 0,
+    cachedBytes = 0,
+    completedFiles = 0,
+    cursor = 0;
+  const update = (force = false) =>
+    report(
+      {
+        phase: "download",
+        loadedBytes: downloadedBytes + cachedBytes,
+        downloadedBytes,
+        cachedBytes,
+        completedFiles,
+        totalFiles: downloadFiles.length,
+        totalBytes: transport.totalBytes,
+        label: "Loading application files…",
+      },
+      force,
+    );
+  update(true);
+  const downloads = new AbortController();
+  const abortDownloads = () => downloads.abort(signal?.reason);
+  signal?.addEventListener("abort", abortDownloads, { once: true });
+  if (signal?.aborted) abortDownloads();
+  const deadline = setTimeout(
+    () => downloads.abort(new Error("Application loading timed out. Reload to retry.")),
+    300000,
+  );
+  async function download() {
+    while (cursor < downloadFiles.length) {
+      if (downloads.signal.aborted) throw downloads.signal.reason;
+      const record = downloadFiles[cursor++];
+      const key = cacheKey(record);
+      let bytes;
+      if (cache) {
+        const publicCache = cache;
+        const cached = await optionalStorage(async () => {
+          const response = await publicCache.match(key);
+          if (!response) return { value: undefined };
+          try {
+            const value = await responseBytes(response, record.bytes);
+            if (value.length === record.bytes && (await hash(value)) === record.sha256)
+              return { value };
+          } catch {
+            // A truncated or oversized cache record is never trusted or retained.
+          }
+          await publicCache.delete(key);
+          return { value: undefined };
+        });
+        if (!cached) cache = undefined;
+        if (cached?.value) {
+          bytes = cached.value;
+          cachedBytes += bytes.length;
+          update();
+        }
+      }
+      if (!bytes) {
+        bytes = await read(new URL(record.path, base), record.bytes, downloads.signal, (size) => {
+          downloadedBytes += size;
+          update();
+        });
+        if (bytes.length !== record.bytes || (await hash(bytes)) !== record.sha256)
+          fail("Runtime asset integrity mismatch. Reload to retry.");
+        if (cache) {
+          const publicCache = cache;
+          const stored = await optionalStorage(async () => {
+            await publicCache.put(key, new Response(bytes));
+            return true;
+          });
+          if (!stored) cache = undefined;
+        }
+      }
+      downloadedAssets.set(record.path, bytes);
+      completedFiles++;
+      update();
+    }
   }
-  // Validate executable closure before applying an irreversible page seal.
+  try {
+    await Promise.all(
+      Array.from({ length: Math.min(DOWNLOAD_CONCURRENCY, downloadFiles.length) }, download),
+    );
+    if (downloads.signal.aborted) throw downloads.signal.reason;
+    if (cache) {
+      // Evict only obsolete entries from our public cache, never any private browser storage.
+      const activeKeys = new Set(downloadFiles.map(cacheKey));
+      await optionalStorage(async () => {
+        for (const request of await cache.keys())
+          if (!activeKeys.has(request.url)) await cache.delete(request);
+      });
+    }
+  } catch (error) {
+    downloads.abort(error);
+    throw error;
+  } finally {
+    clearTimeout(deadline);
+    signal?.removeEventListener("abort", abortDownloads);
+  }
+  update(true);
+  report({ phase: "initializing", label: "Preparing application…" }, true);
+  if (transport.entries) {
+    for (const file of downloadFiles) {
+      if (signal?.aborted) throw new DOMException("Runtime cancelled", "AbortError");
+      if (file.encoding === "gzip") {
+        if (typeof DecompressionStream !== "function")
+          fail(
+            "This browser cannot decompress application files. Use current desktop Chrome or Edge.",
+          );
+        const stream = new Blob([downloadedAssets.get(file.path)])
+          .stream()
+          .pipeThrough(new DecompressionStream("gzip"));
+        const decoded = await responseBytes(new Response(stream), file.decodedBytes);
+        if (decoded.length !== file.decodedBytes) fail("Decoded runtime size mismatch");
+        downloadedAssets.set(file.path, decoded);
+      }
+    }
+  }
+  const verifiedContents = new Map();
+  for (const record of inventory) {
+    if (signal?.aborted) throw new DOMException("Runtime cancelled", "AbortError");
+    if (!transport.entries) {
+      assets.set(record.path, downloadedAssets.get(record.path));
+      continue;
+    }
+    const key = `${record.sha256}-${record.bytes}`;
+    let value = verifiedContents.get(key);
+    if (!value) {
+      const entry = transport.entries.get(key);
+      value = downloadedAssets.get(entry.file).subarray(entry.offset, entry.offset + entry.bytes);
+      if (value.length !== record.bytes || (await hash(value)) !== record.sha256)
+        fail("Packed runtime asset integrity mismatch");
+      verifiedContents.set(key, value);
+    }
+    assets.set(record.path, value);
+  }
+  downloadedAssets.clear();
+  verifiedContents.clear();
+  // Validate executable closure before allowing private inputs.
   function bytes(path) {
     const value = assets.get(path);
     if (!value) fail(`Missing verified runtime asset: ${path}`);
@@ -273,6 +544,9 @@ export async function prepareSealedRuntime({
       assets: [
         ["texture.mjs", bytes(`${TEXTURE}/dist/texture.mjs`)],
         ["texture.wasm", bytes(`${TEXTURE}/dist/texture.wasm`)],
+        ...(assets.has(`${TEXTURE}/dist/bc3.wasm`)
+          ? [["bc3.wasm", bytes(`${TEXTURE}/dist/bc3.wasm`)]]
+          : []),
         ["browser-texture.mjs", bytes(`${TEXTURE}/browser-texture.mjs`)],
         ["browser-texture-encoder.mjs", bytes(`${TEXTURE}/browser-texture-encoder.mjs`)],
       ],
@@ -308,10 +582,7 @@ export async function prepareSealedRuntime({
     };
   for (const plan of Object.values(plans)) bytes(plan.entry);
   if (signal?.aborted) throw new DOMException("Runtime cancelled", "AbortError");
-  const seal = document.createElement("meta");
-  seal.httpEquiv = "Content-Security-Policy";
-  seal.content = SEAL;
-  document.head.append(seal);
+  // Prototype: no page-level CSP lockdown. Input handling remains local.
   const channels = {},
     urls = [];
   let closed = false;
@@ -329,15 +600,47 @@ export async function prepareSealedRuntime({
     for (const [name, plan] of Object.entries(plans)) {
       const url = URL.createObjectURL(new Blob([bytes(plan.entry)], { type: "text/javascript" }));
       urls.push(url);
-      const c = (channels[name] = channel(new Worker(url, { type: "module" }), close));
+      const labels = {
+        assets: "game resources",
+        texture: "textures",
+        translator: "shaders",
+        extraction: "package reader",
+        program: "application compiler",
+        spirvCross: "shader converter",
+      };
+      const label = `Preparing ${labels[name] ?? "application"}…`;
+      report({ phase: "initializing", label }, true);
+      let initializationStage = "starting";
+      const c = (channels[name] = channel(new Worker(url, { type: "module" }), close, (stage) => {
+        initializationStage = String(stage).slice(0, 80);
+        const stages = {
+          "probe-before": "starting runtime",
+          "config-module": "reading configuration",
+          "loader-module": "loading engine",
+          "runtime-create": "starting engine",
+          "assembly-exports": "loading functions",
+          "probe-after": "finishing startup",
+        };
+        report(
+          { phase: "initializing", label: stages[stage] ? `${label} ${stages[stage]}` : label },
+          true,
+        );
+      }));
       const transferred = plan.assets.map(([local, value]) => [local, value.slice().buffer]);
       const buffers = transferred.map(([, buffer]) => buffer);
-      const result = await c.request(
-        { type: "initialize", assets: transferred },
-        buffers,
-        signal,
-        true,
-      );
+      let result;
+      try {
+        result = await c.request(
+          { type: "initialize", assets: transferred },
+          buffers,
+          signal,
+          true,
+        );
+      } catch (error) {
+        throw new Error(
+          `${name} initialization (${initializationStage}): ${String(error?.message ?? error).slice(0, 1200)}`,
+        );
+      }
       if (result?.initialized !== true || buffers.some((buffer) => buffer.byteLength !== 0))
         fail("Actual runtime initialization/transfer failed");
       initialized[name] = result;
@@ -434,6 +737,23 @@ export async function prepareSealedRuntime({
           );
           return { ...result, ...geometry };
         },
+        encodeAndPack({ templateHeader, rgba, width, height }, { signal } = {}) {
+          if (signal?.aborted) throw new DOMException("Encoding cancelled", "AbortError");
+          validateEncodeRequest(templateHeader, width, height);
+          if (
+            ![width, height].every((n) => Number.isSafeInteger(n) && n > 0 && n <= 8192) ||
+            width * height > 4194304 ||
+            rgba?.byteLength !== width * height * 4
+          )
+            fail("RGBA dimensions mismatch");
+          const header = input(templateHeader, 40),
+            pixels = input(rgba, 16 * 1024 * 1024);
+          return l.request(
+            { operation: "encodeAndPack", templateHeader: header, rgba: pixels, width, height },
+            [header.buffer, pixels.buffer],
+            signal,
+          );
+        },
         packLinearBC3({ templateHeader, linearBC3, width, height }, { signal } = {}) {
           const header = input(templateHeader, 40),
             linear = input(linearBC3, 16 * 1024 * 1024);
@@ -453,12 +773,20 @@ export async function prepareSealedRuntime({
       };
     }
     function createTextureEncoder() {
-      const asset = createAssetWorker();
-      let texture;
+      const texture = createTextureClient();
+      // The integrity-verified inventory advertises capability by including the Rust binary.
+      // A present but broken binary fails initialization; it never falls back.
+      if (assets.has(`${TEXTURE}/dist/bc3.wasm`))
+        return {
+          packLinearBC3: texture.packLinearBC3,
+          encodeAndPack: texture.encodeAndPack,
+          close: texture.close,
+        };
+      let asset;
       try {
-        texture = createTextureClient();
+        asset = createAssetWorker();
       } catch (error) {
-        asset.close();
+        texture.close();
         throw error;
       }
       return {
@@ -614,6 +942,7 @@ export async function prepareSealedRuntime({
       close,
     });
     sealedRuntimes.add(session);
+    report({ phase: "initializing", label: "Preparing application profile…" }, true);
     return session;
   } catch (error) {
     close();

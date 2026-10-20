@@ -1,8 +1,9 @@
 # Browser production flow
 
 `prepareBrowserPackager` verifies the manifest against the build-substituted HTML
-digest, preloads the complete same-origin runtime inventory, irreversibly seals
-network access, and initializes every worker before permitting folder selection.
+digest, preloads the complete same-origin runtime inventory, and initializes
+every worker before permitting folder selection. The prototype no longer imposes
+a CSP network lockdown; local processing and no-upload behavior remain.
 Public shell bytes and metadata are included in that inventory. The shell ZIP
 additionally matches the independently bundled release SHA-256 and per-entry
 inventory; its actual Mach-O target is inspected.

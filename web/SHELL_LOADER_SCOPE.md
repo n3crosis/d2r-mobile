@@ -57,11 +57,13 @@ source read. Callback errors and abort reasons are not copied into error text.
 ## Readiness
 
 This is a concrete ZIP-to-contract/streaming adapter, not a usable real release
-loader by itself. Authenticated release registry acquisition and genuine
-Mach-O/plist inspection remain mandatory unsupplied dependencies. No game
-conversion, UI controls, signing or installability is enabled.
+loader by itself. The production integration supplies the pinned release inventory and target
+inspection through the runtime manifest and `shell-target.mjs`; see
+[production flow](PRODUCTION_FLOW.md). This primitive alone does not implement
+conversion, UI controls or signing, and its checks do not establish installability.
 
 Focused tests use Python-generated ZIPs with only synthetic public bytes and
 exercise existing writer integration, inventory/hash binding, recipe/target
 mismatch, detached metadata, cancellation and concurrent stream rejection.
-Full project/browser/device validation remains CI work.
+Browser/device acceptance remains separate from the build. These focused tests
+are optional local work, not default CI requirements.

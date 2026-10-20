@@ -1,5 +1,18 @@
 # Local browser IPA packager: implementation and validation plan
 
+## Current implementation reference
+
+This document retains the original architecture and acceptance plan. The current
+source implements the single-folder base/update/key flow with optional compatible
+DLC, program/assets/shader conversion, an unsigned IPA and separate streamed game
+resources. The complete public runtime build passed
+[Verify at 158d6cf](https://github.com/n3crosis/d2r-mobile/actions/runs/39415236827).
+Real game-input conversion and device execution have not been demonstrated.
+See [the frontend overview](../web/README.md),
+[production flow](../web/PRODUCTION_FLOW.md) and
+[current tooling/CI](../web/TESTING.md) for operational instructions.
+The milestones below are acceptance criteria, not a claim that all proofs ran.
+
 ## Outcome and boundaries
 
 Build a guided website for desktop Chromium-based browsers on Windows and macOS. The user places all of their NSP inputs, prod.keys and title.keys in one folder and selects that folder once. The browser processes those local inputs, selects compatible content and a matching prebuilt application shell, and saves an IPA for subsequent signing and installation. NSP extraction/decryption and content selection are required stages, not an assumption that ExeFS/RomFS were prepared externally. The user should not install Python, .NET, a C compiler, SPIRV-Cross, Xcode, or use a terminal.
@@ -171,9 +184,9 @@ Acceptance: actual signed-device smoke results are recorded. Until then the accu
 - Job lifecycle: cancel mid-read/decode/write, worker crash, quota exceeded, permission revoked, input changed, stale cache, app refresh and repeated clean run.
 - Privacy: no request contains input bytes, private file names or derived game content; failure logs stay local; dependencies are pinned and not dynamically fetched from arbitrary third-party URLs.
 
-## Implemented checkpoint
+## Historical initial implementation checkpoint
 
-The current checkpoint has 59 passing Node tests across preflight, deterministic Guest framework generation, streaming ZIP32 output, synthetic archive export, bounded native-record/BLTE reading, and legacy NSO segment validation. The Guest writer matches the stdlib Python reference byte-for-byte on synthetic inputs, including 16 KiB layout, UUID and structural ad-hoc signature page hashes. Python zipfile verifies ZIP contents, CRCs, UTF-8 names, timestamps and Unix modes. These checks do not prove device acceptance or a completed IPA pipeline.
+The initial checkpoint recorded 59 passing Node tests across preflight, deterministic Guest framework generation, streaming ZIP32 output, synthetic archive export, bounded native-record/BLTE reading, and legacy NSO segment validation. The Guest writer matches the stdlib Python reference byte-for-byte on synthetic inputs, including 16 KiB layout, UUID and structural ad-hoc signature page hashes. Python zipfile verifies ZIP contents, CRCs, UTF-8 names, timestamps and Unix modes. These checks do not prove device acceptance or a completed IPA pipeline.
 
 The React + TypeScript frontend uses Bun’s browser bundler, Tailwind CSS 4 and official shadcn/ui Button, Card and Alert components. It offers a synthetic large-file header demo, optional read-only checks of ExeFS/main and ExeFS/sdk (the two modules required by the native IPA packager), and export of an unmistakably non-installable synthetic ZIP. The export generates tiny fixture inputs, contains no game data or Payload/app layout, streams bounded chunks to a selected local file, and reports generation, saving and commit status. Cancellation discards staged writes where possible; a save picker may leave an empty placeholder, and a committed save cannot be undone by late cancellation.
 
@@ -187,11 +200,11 @@ The archive reader decodes native raw n/z and BLTE N/Z records through bounded r
 
 The NSO validator handles the documented legacy flag subset, raw LZ4 block materialization, optional format-required decoded-segment SHA-256 verification and bounded memory/reads. It never marks an unknown game build as supported and does not rewrite ARM64 instructions. LZ4 fixed vectors were independently checked with liblz4; timer yields are amortized across byte-work rather than every tiny sequence. See `web/NSO_VALIDATION_SCOPE.md`.
 
-## Evidence and current limits
+## Historical investigation evidence and limits
 
 This plan is based on reading the actual packager, framework writer, shell builder, shader wrapper/project, archive reader and asset-generation code. No game data was read, uploaded or downloaded for this investigation, and no dependency installation or real IPA build is implied. Upstream documentation's device verification describes upstream's native pipeline, not this browser implementation.
 
-The immediate deliverable is the plan plus an honest synthetic preflight foundation. The largest unknown is the practical browser deployment of the shader translation and asset-generation dependencies. Resolve that early, preserve the local-only/no-toolchain user experience, and refuse a completed-package claim until all relevant validation gates pass.
+At that initial checkpoint, the immediate deliverable was the plan plus a synthetic preflight foundation. The largest unknown is the practical browser deployment of the shader translation and asset-generation dependencies. Resolve that early, preserve the local-only/no-toolchain user experience, and refuse a completed-package claim until all relevant validation gates pass.
 
 ## Browser code quality gates
 

@@ -1,6 +1,22 @@
-# Browser NSP-to-unsigned-IPA delivery checklist
+# Historical browser delivery acceptance ledger
 
-## Baseline: 42 / 100 weighted milestone points (42%)
+## Status of this record
+
+The 42-point score below is retained as historical acceptance evidence for
+`664790f0`, not current implementation progress. It is retired from current
+progress reporting. Later changes implemented the production conversion flow,
+optional DLC, resource-folder export and full public runtime assembly. The single
+Linux [Verify run at 158d6cf](https://github.com/n3crosis/d2r-mobile/actions/runs/39415236827)
+succeeded. Real game-input conversion and device execution remain unproven.
+
+See [the current frontend overview](../web/README.md) and
+[production flow](../web/PRODUCTION_FLOW.md) for implemented behavior, and
+[testing](../web/TESTING.md) for the current one-job build and optional local proofs.
+The old run register, test scopes and weighted acceptance rules below are preserved
+without retroactively awarding points or treating superseded failures as current
+build blockers.
+
+## Historical baseline: 42 / 100 weighted milestone points (42%)
 
 Evidence reviewed **2026-10-20**, through pushed commit
 [`664790f0b4d3cbe1082f174f0f1196164828d7f4`](https://github.com/n3crosis/d2r-mobile/commit/664790f0b4d3cbe1082f174f0f1196164828d7f4).

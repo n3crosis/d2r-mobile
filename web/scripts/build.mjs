@@ -1,8 +1,8 @@
-import { rm, mkdir, readFile, writeFile, readdir } from "node:fs/promises";
+import { rm, mkdir, readFile, readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { resolve, dirname } from "node:path";
 import tailwind from "bun-plugin-tailwind";
-import { productionCsp, validateStaticBuild } from "./build-policy.mjs";
+import { validateStaticBuild } from "./build-policy.mjs";
 
 export const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const outputDirectory = resolve(root, "dist");
@@ -26,9 +26,6 @@ export async function build() {
   if (!result.success) throw new AggregateError(result.logs, "Frontend bundling failed");
   const htmlPath = resolve(outputDirectory, "index.html");
   const html = await readFile(htmlPath, "utf8");
-  if (html.split("__APP_CSP__").length !== 2) throw new Error("Missing or duplicate CSP marker");
-  const finalHtml = html.replace("__APP_CSP__", productionCsp);
-  await writeFile(htmlPath, finalHtml);
   const files = await readdir(outputDirectory);
   if (!files.some((name) => name.endsWith(".js")) || !files.some((name) => name.endsWith(".css"))) {
     throw new Error("Missing browser script or Tailwind stylesheet");
@@ -40,7 +37,7 @@ export async function build() {
         .map(async (name) => [name, await readFile(resolve(outputDirectory, name), "utf8")]),
     ),
   );
-  validateStaticBuild(finalHtml, assets);
+  validateStaticBuild(html, assets);
   console.log(`Bun bundled ${files.length} static files into dist/`);
 }
 

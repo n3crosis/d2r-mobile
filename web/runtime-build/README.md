@@ -32,7 +32,8 @@ The build reuses these implementations, without copying their logic:
    pinned SDK/workload set, analyzers and warnings-as-errors, then its sealed packager.
 
 The build packages only after every required component succeeds. The output is
-`web/runtime-build/out/`, preserving original `toolchain/...` relative module URLs.
+`web/runtime-build/out/`. The logical inventory preserves original `toolchain/...`
+relative module URLs; physical downloads use content-addressed payloads.
 This directory is generated and ignored by Git. The single GitHub job then
 stages it into `web/dist/runtime/`. Its manifest digest is passed as a job output,
 not read from the same untrusted artifact directory. The artifact validator
@@ -70,6 +71,24 @@ Required next integration remains:
   stages, compatible shell provenance, and full-title output validation.
 - Actual browser startup and full-chain verification of the assembled clients.
   Having public runtime bytes in the artifact is not a usable-game proof.
+
+## Content-addressed public transport
+
+The version-1 logical inventory optionally includes a version-1 `transport` object.
+Each logical asset retains its original path, SHA-256, byte count and source.
+Identical content is stored once, even when several worker layouts need it.
+`transport.entries` maps each unique SHA-256/length pair to a payload and decoded
+offset; `transport.files` records each payload’s path, encoded SHA-256/length,
+encoding (`identity` or `gzip`) and decoded length. `transport.totalBytes` is the
+physical transfer total, not the logical total inflated by shared dependencies.
+
+Unique files up to 256 KiB are grouped into packs of at most 2 MiB decoded. Larger
+files remain separate. Gzip is used only when it reduces bytes. Payloads live at
+`payloads/<encoded-sha256>.gz` or `.bin`. Staging checks both physical payload
+hashes and every logical slice hash, bounded decompression, exact contiguous pack
+coverage, and rejects extra files, missing mappings and symlinks. Browser loading
+uses the same manifest-bound mapping before sealing the network; no game inputs
+or keys are included. Legacy unpacked manifests remain readable.
 
 ## One GitHub browser-build job
 

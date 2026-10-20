@@ -19,6 +19,7 @@ const stages = [
     ["ci", "--ignore-scripts"],
   ],
   ["texture decoder and BC3 encoder", ".", "bash", ["web/toolchain/texture-spike/build-wasm.sh"]],
+  ["Rust BC3 encoder", ".", "node", ["web/toolchain/texture-spike/build-bc3.mjs"]],
   ["authenticated extraction", ".", "bash", ["web/toolchain/nsp-extract-spike/build-wasm.sh"]],
   ["ARM64 rewrite runtime", ".", "bash", ["web/toolchain/program-rewrite-spike/build-wasm.sh"]],
   [
@@ -80,6 +81,7 @@ function run(command, args, cwd = root, capture = false) {
       DOTNET_CLI_TELEMETRY_OPTOUT: "1",
       DOTNET_NOLOGO: "1",
       D2R_EMSCRIPTEN_ENVIRONMENT: "worker",
+      RUSTUP_TOOLCHAIN: "1.99.1",
     },
   });
   if (result.error || result.status !== 0)
@@ -95,6 +97,7 @@ if (option === "--plan") {
       {
         prerequisites: {
           emscripten: "4.0.20",
+          rust: "1.99.1",
           dotnet: sdk,
           workload: "wasm-tools 10.0.402",
           commands: ["git", "cmake", "make", "python3", "node", "npm"],
