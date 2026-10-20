@@ -1,0 +1,86 @@
+# Sealed Pyodide asset-worker proof (CI pending)
+
+This isolated prototype keeps the production UI, production CSP and original
+asset worker unchanged. It uses the actual generated Python core, Pillow and
+NumPy from the asset-generation spike, including the current complete packaged
+Python module set (`native_functions.py`, `core.py`, `derived.py`, `native_art_original.py`,
+`native_art.py`). The tested
+operations are image-default-frame, experience-table and overlay-paths. Derived-table, native-art and v61 operation parity remain separate proofs.
+The sealed initialization explicitly imports derived and native_art so their
+Python import closure must be present before any operation is accepted. This
+does not claim their output operations passed here. Native-art JSON metadata is
+consumed from explicit operation payloads, not fetched at import time, and is not
+part of this proof's supported operation set.
+
+## Why a pinned loader adaptation is necessary
+
+Inspection of the exact Pyodide 0.27.7 source and npm distribution found:
+
+- `loadPyodide` exposes URL-based stdlib/lock configuration but no public WASM
+  bytes or general resource-read callback.
+- `createSettings` eagerly constructs the fixed indexURL WASM request. Merely
+  wrapping `_createPyodideModule` after that point does not stop it.
+- The bundled package loader has another binary reader in pyodide.asm.js.
+  Fetch prewarming or HTTP cache cannot remove its network fallback capability.
+
+Primary source:
+[loader](https://github.com/pyodide/pyodide/blob/0.27.7/src/js/pyodide.ts),
+[WASM/bootstrap settings](https://github.com/pyodide/pyodide/blob/0.27.7/src/js/emscripten-settings.ts),
+[compatibility reads](https://github.com/pyodide/pyodide/blob/0.27.7/src/js/compat.ts),
+[package loader](https://github.com/pyodide/pyodide/blob/0.27.7/src/js/load-package.ts).
+
+`pyodide-prepare.mjs` therefore makes **three exact, source-hash-locked internal
+call-site substitutions** in two distribution files. It does not claim the result
+is an unmodified upstream runtime or a supported new Pyodide public API. Source
+drift, a missing needle, or multiple matches fail the build. Original hashes,
+exact before/after strings, upstream source link and generated manifest digest
+are retained in loader-provenance.json. The modified-file notice and upstream MPL
+license accompany the output. Upgrading Pyodide requires explicit source review.
+
+The substitutions redirect only the outer binary reader, outer lock reader and
+inner package binary reader to a bounded in-memory Response provider. Global
+fetch is not patched. Neither are XHR, imports, Worker constructors or CSP. The
+provider accepts only exact names from verified public bytes at a fixed inert
+origin, rejects queries/fragments/missing resources, and validates every provided
+SHA-256 subresource-integrity value before returning bytes. That inert HTTPS URL
+is never requested: browser CSP would block it if any unadapted path tried.
+
+## Proof boundary
+
+The bootstrap verifies an embedded manifest digest and every expected asset hash
+and byte count before execution. Each asset is capped at 32 MiB; aggregate assets
+at 96 MiB. All public bytes transfer to a fresh blob Worker created only after a
+new connect-src none / blob-only script CSP is appended. No general unsafe-eval
+permission is added. The original loader's unused dynamic-evaluation paths are
+not excused or weakened; any required path that violates CSP must fail the proof.
+
+The Worker imports the verified adapted runtime from blob URLs, initializes
+Python, loads both packages through the bounded reader with package integrity
+checks, installs the five Python files from bytes, and imports the real core.
+Only then does it report initialized and accept bounded operation messages.
+Normal global fetch and imports attempt both local and second-origin sentinels
+before and after runtime initialization. These are actual browser requests, not
+stubbed APIs. No service worker or request interception supplies the block.
+
+The browser harness then demands exact independently generated native bytes for
+RGBA, v31 sprite, experience header and overlay paths, malformed-input rejection,
+and recovery. All server receipts after the seal must remain empty through
+package loading and conversions; successful preload paths must exactly match the
+manifest plus entry HTML/bootstrap/manifest. Five modified/missing/redirected
+preload cases must fail before any Worker executes. The existing whole-runtime
+CSP is not assumed sufficient for arbitrary hostile JavaScript, extensions,
+WebRTC or top-level navigations.
+
+## Verification status
+
+- Exact pinned npm source inspection, dependency packaging, three patch matches,
+  bundle generation, focused ESLint and formatting checks passed locally.
+- Local Chromium execution was attempted but the process sandbox prevents its
+  required local socket; the supported escalation wrapper also failed before
+  execution. This is an environment limitation, not a passing browser result.
+- `.github/workflows/offline-pyodide-checks.yml` rebuilds pinned public dependencies
+  and native references, prepares this bundle, and runs the browser proof on CI.
+  Browser execution, including any lazy shared-library load under strict CSP,
+  remains pending. Do not claim Pillow/NumPy isolation verified before it passes.
+- No private files, key material, user inputs, generated game data, production
+  deployment or production enablement are part of this work.

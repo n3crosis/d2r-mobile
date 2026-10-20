@@ -236,7 +236,9 @@ that evidence exists and the explicitly reviewed CSP change is accepted.
 for only the existing Emscripten texture converter: exact manifest/hash/byte caps,
 new CSP, fresh blob Worker, transferred WASM bytes and custom instantiation,
 known-red synthetic conversion, and same-/cross-origin network probes checked by
-server receipts without request interception. Its separate CI workflow must run
-before this is called browser-verified. Production CSP/UI and all broader runtime
+server receipts without request interception. Its separate [CI run 39396778404](https://github.com/n3crosis/d2r-mobile/actions/runs/39396778404)
+passed on commit `fe5abb21b5527c6d230f86c94a4a7a42c6982036` with Linux Chromium
+`156.0.8078.4`: all five preload failure cases and the sealed conversion passed.
+This is browser verification only of that narrow texture path. Production CSP/UI and all broader runtime
 release gates above remain unchanged; this prototype is not the missing
 Pyodide/.NET integration or Windows/macOS proof.

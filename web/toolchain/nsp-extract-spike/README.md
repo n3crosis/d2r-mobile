@@ -26,9 +26,13 @@ The new closed synthetic C fixture exercises the same IVFC verifier with six lev
 
 Format evidence: pinned [hactool ivfc.h](https://github.com/SciresM/hactool/blob/1d64a83450e025622f3468c28fc4164dad2c5ef6/ivfc.h) and [nca.c](https://github.com/SciresM/hactool/blob/1d64a83450e025622f3468c28fc4164dad2c5ef6/nca.c). No additional upstream code or license dependency is introduced.
 
-## Pending authenticated legacy BKTR merge
+## Authenticated legacy BKTR boundary
 
-`openPatchedRomfs(baseIndex,patchIndex)` now has a native implementation using simultaneous authenticated base/patch contexts, bounded relocation/subsection parsing, split CTR-Ex reads and mandatory patch-root IVFC verification over the merged virtual section. It returns the same bounded, generation-guarded final-RomFS reader. Modern/unknown variants remain rejected. The native synthetic counter/routing/integrity fixtures and unsigned-base rejection await the next CI run; no valid signed base/update extraction is proven. See [BKTR_SCOPE.md](BKTR_SCOPE.md) for supported layouts, source mapping and remaining integration requirements. Prior JS planner tests passed run 39396778480.
+`openPatchedRomfs(baseIndex,patchIndex)` now has a native implementation using simultaneous authenticated base/patch contexts, bounded relocation/subsection parsing, split CTR-Ex reads and mandatory patch-root IVFC verification over the merged virtual section. It returns the same bounded, generation-guarded final-RomFS reader. Modern/unknown variants remain rejected. The native synthetic counter/routing/integrity fixtures and unsigned-base rejection passed [run 39398141322](https://github.com/n3crosis/d2r-mobile/actions/runs/39398141322); no valid signed base/update extraction is proven. See [BKTR_SCOPE.md](BKTR_SCOPE.md) for supported layouts, source mapping and remaining integration requirements. Prior JS planner tests passed run 39396778480.
+
+## Pending strict extraction Worker integration
+
+`extraction-worker.mjs` and `extraction-engine.mjs` connect production NSP cataloging, full-NCA SHA256 measurement, authenticated CNMT parsing and internal base/patch selection to token-bound ExeFS and RomFS reads. Selected DLC and multi-program layouts explicitly reject. See [EXTRACTION_ENGINE_SCOPE.md](EXTRACTION_ENGINE_SCOPE.md) for the narrow protocol and streaming-lifetime requirements. Synthetic engine tests and real Worker protocol smoke await CI; no UI generation is enabled.
 
 ## Implemented batch and public interface
 

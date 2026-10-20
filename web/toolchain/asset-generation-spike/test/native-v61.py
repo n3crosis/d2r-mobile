@@ -51,3 +51,23 @@ for y in range(h):
         expected.extend((r, g, b, a))
 (OUT / "expected.rgba").write_bytes(expected)
 print("Authored two-frame v61 fixture and independent native pixel oracle prepared")
+
+# Whole-atlas proof: padded frames are not contiguous frame-width crops.
+w, h, fw, frames = 136, 65, 65, 2
+desc = Desc(1, 0x44, 0, 0, w, h, 1, 1, 0, 2)
+layout = Layout()
+lib.nvn_tex_layout(C.byref(desc), C.byref(layout))
+pitch = ((w + 3) // 4) * 16
+raw = bytes((i * 19 + 71) & 255 for i in range(pitch * ((h + 3) // 4)))
+linear = C.create_string_buffer(raw, len(raw))
+storage = C.create_string_buffer(layout.size)
+assert lib.nvn_swizzle(C.byref(desc), 0, 0, linear, pitch, storage) == 0
+pixels = C.create_string_buffer(w * h * 4)
+assert lib.nvn_bc_decode(0x44, linear, pitch, w, h, pixels, w * 4) == 0
+header = bytearray(40)
+struct.pack_into("<4sHHII", header, 0, b"SpA1", 61, fw, w, h)
+struct.pack_into("<H", header, 20, frames)
+header[23] = 1
+(OUT / "atlas.sprite").write_bytes(header + storage.raw)
+(OUT / "atlas.rgba").write_bytes(pixels.raw)
+print("Independent native padded-atlas oracle: width136, frame65, pitch68, frames2")

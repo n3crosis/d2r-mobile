@@ -65,6 +65,7 @@ const labels = Object.freeze({
  * @property {PackagingAdapters} adapters
  * @property {AbortSignal} [signal]
  * @property {object} [selectionOptions]
+ * @property {"extraction"|"archive"} [secretLifetime] Default extraction; explicit archive mode permits isolated lazy plaintext readers until writing finishes.
  * @property {"zip32"|"zip64"} [archiveFormat] ZIP64 is explicit opt-in, not an iOS compatibility claim.
  * @property {number} [maxOutputBytes] Required positive safe-integer archive budget for ZIP64.
  * @property {number} [concurrency] Maximum concurrent generators (1–3; default 2).
@@ -173,6 +174,10 @@ export async function runPackagingJob(options) {
       options.archiveFormat !== "zip64" ||
         (Number.isSafeInteger(options.maxOutputBytes) && options.maxOutputBytes > 0),
     );
+    assertion(
+      options.secretLifetime === undefined ||
+        ["extraction", "archive"].includes(options.secretLifetime),
+    );
     capabilitiesReady = true;
     const inputs = await step("discovery", () =>
       options.input?.kind === "directory"
@@ -193,8 +198,10 @@ export async function runPackagingJob(options) {
     const extracted = await step("extraction", () =>
       adapters.extractSelected({ ...context, session, selection }),
     );
-    await step("disposal", dispose);
+    if (options.secretLifetime !== "archive") await step("disposal", dispose);
     // Generators receive no input/key-file handles or secret-session reference.
+    // Explicit archive mode retains only the isolated session behind bounded,
+    // authenticated plaintext read capabilities supplied by trusted extraction.
     const generationContext = { extracted, selection, signal };
     const tasks = [
       ["program", "generateProgram"],
@@ -271,6 +278,9 @@ export async function runPackagingJob(options) {
           write: (bytes) => output.write(bytes),
           abort: abortOutput,
           close: async () => {
+            // All output entry producers have drained. Lazy extraction can no
+            // longer be needed; dispose secrets before validating or committing.
+            if (session) await step("disposal", dispose);
             await step("archive", async () => {
               const checked = await adapters.validateArchive({ output, manifest, signal });
               assertion(checked?.valid === true);

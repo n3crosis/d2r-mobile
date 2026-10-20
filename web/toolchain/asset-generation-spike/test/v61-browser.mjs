@@ -79,6 +79,24 @@ try {
       await adapter.dispose();
     }
   }, Array.from(input));
+  const atlas = await readFile("test-results/v61/atlas.sprite");
+  const atlasResult = await page.evaluate(async (input) => {
+    const { NativeArtTextureClient } = await import("/native-art-texture.mjs");
+    const client = new NativeArtTextureClient();
+    try {
+      const result = await client.decodeAtlas(new Uint8Array(input));
+      return { ...result, pixels: Array.from(result.pixels) };
+    } finally {
+      client.close();
+    }
+  }, Array.from(atlas));
+  assert.equal(atlasResult.width, 136);
+  assert.equal(atlasResult.height, 65);
+  assert.equal(atlasResult.frameWidth, 65);
+  assert.equal(atlasResult.framePitch, 68);
+  assert.equal(atlasResult.frameCount, 2);
+  assert.deepEqual(Buffer.from(atlasResult.pixels), await readFile("test-results/v61/atlas.rgba"));
+  console.log("Whole padded atlas: exact independent native RGBA parity");
   assert.equal(result.count, 1);
   assert.equal(result.path, "NativeHUD/synthetic.png");
   assert.equal(result.size, result.bytes.length);

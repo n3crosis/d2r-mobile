@@ -47,6 +47,10 @@ def encode_v31(im):
 def execute(operation, payload, options):
     if len(payload) > MAX_BYTES:
         raise ValueError("Input exceeds 20 MiB spike limit")
+    if operation == "native-art":
+        from native_art import generate
+
+        return generate(payload, options)
     if operation == "derived-tables":
         from derived import generate
 

@@ -8,6 +8,8 @@ on:
         "web/toolchain/texture-spike/**",
         "web/asset-generator-adapter.mjs",
         "web/v61-asset-worker.mjs",
+        "web/native-art-generator.mjs",
+        "web/native-art-texture.mjs",
         "dm/gfx/nvn/nvn_tex.*",
         "dm/gfx/tex/nvn_*",
         "dm/ios/tools/**",
@@ -20,6 +22,8 @@ on:
         "web/toolchain/texture-spike/**",
         "web/asset-generator-adapter.mjs",
         "web/v61-asset-worker.mjs",
+        "web/native-art-generator.mjs",
+        "web/native-art-texture.mjs",
         "dm/gfx/nvn/nvn_tex.*",
         "dm/gfx/tex/nvn_*",
         "dm/ios/tools/**",
@@ -59,6 +63,7 @@ jobs:
         run: |
           "$RUNNER_TEMP/asset-reference/bin/python" test/native-reference.py
           python3 test/native-derived.py
+          "$RUNNER_TEMP/asset-reference/bin/python" test/native-art-reference.py
       - name: Execute real Chromium worker and demand exact parity
         run: |
           timeout --kill-after=5s 180s npm run test:browser
@@ -87,6 +92,8 @@ jobs:
             web/toolchain/asset-generation-spike/source-provenance.json
             web/asset-generator-adapter.mjs
             web/v61-asset-worker.mjs
+            web/native-art-generator.mjs
+            web/native-art-texture.mjs
             web/toolchain/texture-spike/texture-worker.mjs
             web/toolchain/texture-spike/browser-texture.mjs
             web/toolchain/texture-spike/dist/

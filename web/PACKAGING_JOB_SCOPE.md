@@ -10,8 +10,20 @@ and content-selection APIs. Adapters must independently verify content hashes,
 perform supported extraction/patching, generate real content and independently
 validate it. Shell and final assembly metadata use the existing shell contract.
 The three generation stages run through a bounded pool (default two, maximum
-three), only after selection/extraction and secret-session disposal. Started work
-is drained on failure; cancellation cannot forcibly stop uncooperative adapters.
+three), only after selection/extraction. The default `secretLifetime: "extraction"`
+disposes the secret session before generation. Started work is drained on failure;
+cancellation cannot forcibly stop uncooperative adapters.
+
+An explicit `secretLifetime: "archive"` supports huge authenticated inputs without
+copying entire decrypted RomFS images into temporary storage. It keeps the isolated
+key worker alive only behind bounded plaintext read capabilities until all archive
+entry producers have drained. No keys, input handles or raw session object are
+passed to generators. Disposal then runs before archive validation, resource
+cleanup and final destination commit. Every failure also attempts disposal exactly
+once; disposal failure prevents commit. This is opt-in plumbing, not proof that
+an arbitrary injected reader isolates secrets. The actual strict extraction worker
+must independently enforce its operation allowlist and generation-token lifetime.
+The UI does not enable this mode yet.
 
 The secret-session adapter owns key reading and an isolated worker. Its dispose
 must wipe secrets and terminate the worker; failed session creation must clean up
@@ -20,11 +32,11 @@ secret-session reference. Adapters must never place keys in logs, caches, output
 reports or extracted results. JavaScript cannot prove erasure or prevent malicious
 adapters from retaining references; this is a trusted capability boundary.
 
-The native extraction spike's `createBoundary` API is deliberately not silently
-wired here: its current metadata-only NCA boundary cannot satisfy full
-`extractSelected`, executable generation or patch application. A real adapter
-must own worker RPC, independent full-NCA hashes, verified selection and eventual
-supported Program/BKTR extraction before this coordinator can produce real IPAs.
+The native extraction spike now includes authenticated ExeFS/RomFS and legacy
+BKTR boundaries, but they are deliberately not silently wired here. A real adapter
+must own strict worker RPC, independent full-NCA hashes, verified content selection,
+small executable staging and bounded plaintext readers. Signed real-package
+coverage and complete content/DLC integration are still missing.
 
 Generated validators return `valid: true` with independently observed target OS;
 archive validators return `valid: true` only after inspecting actual staged ZIP

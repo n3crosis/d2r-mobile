@@ -63,6 +63,9 @@ jobs:
             web/toolchain/shell-release-evidence/test-source-comparison.py
             web/toolchain/asset-generation-spike/scripts/package-core.py
             web/toolchain/asset-generation-spike/src/core.py
+            web/toolchain/asset-generation-spike/scripts/package-native-art.py
+            web/toolchain/asset-generation-spike/src/native_art.py
+            web/toolchain/asset-generation-spike/test/native-art-reference.py
             web/toolchain/asset-generation-spike/src/derived.py
             web/toolchain/asset-generation-spike/test/native-reference.py
             web/toolchain/asset-generation-spike/test/native-derived.py

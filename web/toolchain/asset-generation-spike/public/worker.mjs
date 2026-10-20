@@ -3,7 +3,13 @@ let runtime;
 async function initialize() {
   const py = await loadPyodide({ indexURL: new URL("./vendor/pyodide/", import.meta.url).href });
   await py.loadPackage(["pillow", "numpy"], { checkIntegrity: true });
-  for (const name of ["native_functions.py", "core.py", "derived.py"]) {
+  for (const name of [
+    "native_functions.py",
+    "core.py",
+    "derived.py",
+    "native_art_original.py",
+    "native_art.py",
+  ]) {
     const response = await fetch(new URL(`./generated/${name}`, import.meta.url));
     if (!response.ok) throw new Error(`Missing packaged core: ${name}`);
     py.FS.writeFile(`/home/pyodide/${name}`, await response.text());

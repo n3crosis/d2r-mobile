@@ -8,7 +8,7 @@
   },
   "scripts": {
     "prepare:runtime": "node scripts/vendor-runtime.mjs",
-    "prepare:core": "python3 scripts/package-core.py",
+    "prepare:core": "python3 scripts/package-core.py && python3 scripts/package-native-art.py",
     "test:browser": "node test/browser.mjs"
   },
   "devDependencies": {

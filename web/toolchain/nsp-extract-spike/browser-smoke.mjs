@@ -18,8 +18,11 @@ const server = http.createServer(async (req, res) => {
     res.end("<!doctype html><title>Synthetic WASM smoke</title>");
     return;
   }
-  const target = path.resolve(root, `.${pathname}`);
-  if (!target.startsWith(root + path.sep)) {
+  const shared = ["/nsp-input.mjs", "/content-selection.mjs"].includes(pathname);
+  const target = shared
+    ? path.resolve(root, "../..", pathname.slice(1))
+    : path.resolve(root, `.${pathname}`);
+  if (!shared && !target.startsWith(root + path.sep)) {
     res.writeHead(403);
     res.end();
     return;
@@ -74,6 +77,33 @@ try {
     true,
     `Synthetic browser WASM smoke must pass (stage: ${result.stage ?? "completed"})`,
   );
+  const protocol = await page.evaluate(async () => {
+    const request = (message) =>
+      new Promise((resolve, reject) => {
+        const worker = new Worker("/extraction-worker.mjs", { type: "module" });
+        const timer = setTimeout(() => {
+          worker.terminate();
+          reject(new Error("Protocol timeout"));
+        }, 60000);
+        worker.onmessage = ({ data }) => {
+          clearTimeout(timer);
+          worker.terminate();
+          resolve(data);
+        };
+        worker.onerror = () => {
+          clearTimeout(timer);
+          worker.terminate();
+          reject(new Error("Protocol worker failed"));
+        };
+        worker.postMessage(message);
+      });
+    return [
+      await request({ id: 1, operation: "ccall", payload: { path: "synthetic-private-canary" } }),
+      await request({ id: 1, operation: "dispose", payload: {} }),
+    ];
+  });
+  assert.deepEqual(protocol[0], { id: 1, ok: false, error: "EXTRACTION_FAILED" });
+  assert.deepEqual(protocol[1], { id: 1, ok: true, result: { disposed: true } });
   assert.deepEqual(external, [], "No external traffic");
   assert.deepEqual(diagnostics, [], "No native or runtime diagnostic output");
   console.log(JSON.stringify({ ok: true, checks: result.checks }));

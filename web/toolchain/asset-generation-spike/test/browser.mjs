@@ -72,7 +72,11 @@ try {
   const sprite = await readFile(`${reference}/input.sprite`);
   const derivedSources = await readFile("test-results/derived/sources.json");
   const derivedOptions = JSON.parse(await readFile("test-results/derived/options.json", "utf8"));
+  const artBundle = await readFile("test-results/native-art/bundle.json");
+  const artOptions = JSON.parse(await readFile("test-results/native-art/options.json", "utf8"));
+  const artFiles = JSON.parse(await readFile("test-results/native-art/files.json", "utf8"));
   const cases = [
+    ["native-art", artBundle, artOptions, artFiles],
     ["image-default-frame", sprite, { frame: 1 }, ["frame.rgba", "frame.sprite"]],
     ["experience-table", await readFile(`${reference}/experience.tsv`), {}, ["dm_hud_exp.h"]],
     ["overlay-paths", await readFile(`${reference}/paths.json`), {}, ["overlay-paths.json"]],
@@ -90,7 +94,11 @@ try {
       assert.deepEqual(
         Buffer.from(actual.result.files[name]),
         await readFile(
-          name === "derived.tsv" ? "test-results/derived/expected.tsv" : `${reference}/${name}`,
+          operation === "native-art"
+            ? `test-results/native-art/native-ios/Sources/${name.endsWith(".png") ? "TouchArt/" : ""}${name}`
+            : name === "derived.tsv"
+              ? "test-results/derived/expected.tsv"
+              : `${reference}/${name}`,
         ),
         `${operation}: exact byte parity ${name}`,
       );
@@ -100,7 +108,17 @@ try {
   v61.writeUInt16LE(61, 4);
   const oversized = Buffer.from(sprite);
   oversized.writeUInt32LE(0xffffffff, 8);
+  const badArt = JSON.parse(artBundle);
+  badArt.raw[Object.keys(badArt.raw)[0]] = "eA==";
+  const badPixels = JSON.parse(artBundle);
+  const pixelName = Object.keys(badPixels.rgba)[0];
+  const changedPixels = Buffer.from(badPixels.rgba[pixelName], "base64");
+  changedPixels[0] ^= 255;
+  badPixels.rgba[pixelName] = changedPixels.toString("base64");
   const negatives = [
+    ["native-art", Buffer.from(JSON.stringify(badPixels)), artOptions, "native_art"],
+    ["native-art", artBundle, {}, "NATIVE_ART_TRUST_REQUIRED"],
+    ["native-art", Buffer.from(JSON.stringify(badArt)), artOptions, "native_art"],
     ["derived-tables", derivedSources, {}, "DERIVED_COUNTS_REQUIRED"],
     [
       "derived-tables",

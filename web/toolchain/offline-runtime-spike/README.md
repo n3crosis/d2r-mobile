@@ -3,7 +3,7 @@
 This standalone synthetic harness implements a narrow part of
 `../../OFFLINE_RUNTIME_LOADING_SCOPE.md`. It does not change the production UI or
 CSP, support real inputs, integrate Pyodide/.NET, or certify the entire browser as
-a security sandbox. **Browser execution is pending CI.**
+a security sandbox. **The scoped Linux Chromium proof passed CI; production integration remains disabled.**
 
 ## Concrete boundary
 
@@ -69,3 +69,22 @@ path on that Chromium build; it does not cover Windows/macOS, other runtime
 loaders, WebRTC, navigations, compromised code, extensions, or hosting headers.
 The production app's existing CSP is unchanged. The broader release gates remain
 in the scope document.
+
+## Verified execution (2026-10-20)
+
+[Run 39396778404](https://github.com/n3crosis/d2r-mobile/actions/runs/39396778404),
+job `118541350842`, passed on commit
+`fe5abb21b5527c6d230f86c94a4a7a42c6982036` using Chromium `156.0.8078.4`
+on Ubuntu 24.04. All five preload failures created zero Workers; the valid case
+created one Worker and passed every network-receipt, conversion, transfer and
+custom-instantiation assertion described above. No test interception supplied the
+network block.
+
+The four hashed runtime assets totaled 48,520 bytes (texture JavaScript 8,086;
+WASM 32,418; adapter 4,702; proof Worker 3,314). This excludes bootstrap, manifest,
+HTML and notices, and is not a complete production transfer/memory measurement.
+Manifest SHA-256:
+`d86630081004748cc0ff845b1752f9bb02132b0cbd17bc3af9e2305d9a7b42ba`.
+
+This result does not extend to Pyodide/.NET, Windows/macOS or deployed hosting.
+No production policy or input gate was changed.

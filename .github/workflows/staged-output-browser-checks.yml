@@ -1,0 +1,49 @@
+name: Browser staged output integrity
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "web/browser-staged-output.mjs"
+      - "web/staged-zip-validator.mjs"
+      - "web/zip*-writer.mjs"
+      - "web/preflight.mjs"
+      - "web/tests/*staged*.test.mjs"
+      - "web/toolchain/staged-output-spike/**"
+      - ".github/workflows/staged-output-browser-checks.yml"
+  pull_request:
+    paths:
+      - "web/browser-staged-output.mjs"
+      - "web/staged-zip-validator.mjs"
+      - "web/zip*-writer.mjs"
+      - "web/preflight.mjs"
+      - "web/tests/*staged*.test.mjs"
+      - "web/toolchain/staged-output-spike/**"
+      - ".github/workflows/staged-output-browser-checks.yml"
+permissions:
+  contents: read
+concurrency:
+  group: staged-output-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  real-opfs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "22"
+      - name: Verify synthetic archives and Python ZIP oracle
+        run: node --test web/tests/staged-zip-validator.test.mjs web/tests/browser-staged-output.test.mjs
+      - name: Install pinned browser proof tooling
+        shell: bash
+        run: |
+          npm install --prefix "$RUNNER_TEMP/staged-playwright" --no-audit --no-fund playwright@1.64.1
+          "$RUNNER_TEMP/staged-playwright/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Exercise real Chromium OPFS staging and cancellation
+        shell: bash
+        run: |
+          PLAYWRIGHT_ENTRY="$RUNNER_TEMP/staged-playwright/node_modules/playwright/index.mjs" \
+            node web/toolchain/staged-output-spike/browser-smoke.mjs

@@ -363,3 +363,78 @@ test("ZIP64 rejects an insufficient output budget before destination creation", 
   await assert.rejects(runPackagingJob({ ...f, archiveFormat: "zip64", maxOutputBytes: 1 }));
   assert.equal(f.calls.includes("create"), false);
 });
+
+test("explicit lazy mode retains isolated session through output reads and disposes before validation", async () => {
+  const f = fixture();
+  let alive = false;
+  f.adapters.openSecretSession = async () => {
+    alive = true;
+    f.calls.push("open");
+    return {
+      async dispose() {
+        alive = false;
+        f.calls.push("dispose");
+      },
+    };
+  };
+  f.adapters.generateAssets = async (context) => {
+    assert.equal(context.session, undefined);
+    assert.equal(context.inputs, undefined);
+    return [
+      {
+        path: "dm/assets",
+        mode: 0o100644,
+        size: 1,
+        async *chunks() {
+          assert.equal(alive, true);
+          yield new Uint8Array([1]);
+        },
+      },
+    ];
+  };
+  f.adapters.validateArchive = async () => {
+    assert.equal(alive, false);
+    f.calls.push("archive");
+    return { valid: true };
+  };
+  await runPackagingJob({ ...f, secretLifetime: "archive" });
+  assert.ok(f.calls.indexOf("write") < f.calls.indexOf("dispose"));
+  assert.ok(f.calls.indexOf("dispose") < f.calls.indexOf("archive"));
+  assert.ok(f.calls.indexOf("archive") < f.calls.indexOf("close"));
+});
+test("lazy-mode disposal failure prevents archive validation and commit", async () => {
+  const f = fixture();
+  f.adapters.openSecretSession = async () => ({
+    async dispose() {
+      f.calls.push("dispose");
+      throw new Error("private key session cleanup failure");
+    },
+  });
+  await assert.rejects(runPackagingJob({ ...f, secretLifetime: "archive" }), (e) => {
+    assert.equal(e.report.stage, "disposal");
+    return true;
+  });
+  assert.equal(f.calls.filter((x) => x === "dispose").length, 1);
+  assert.equal(f.calls.includes("archive"), false);
+  assert.equal(f.calls.includes("close"), false);
+  assert.equal(f.calls.includes("abort"), true);
+});
+test("lazy mode still disposes when generation or writing fails", async () => {
+  for (const which of ["generation", "writing"]) {
+    const f = fixture();
+    if (which === "generation")
+      f.adapters.generateAssets = async () => {
+        throw new Error("failed");
+      };
+    else
+      f.adapters.createOutput = async () => ({
+        write: async () => {
+          throw new Error("failed");
+        },
+        close: async () => assert.fail("close"),
+        abort: async () => {},
+      });
+    await assert.rejects(runPackagingJob({ ...f, secretLifetime: "archive" }));
+    assert.equal(f.calls.filter((x) => x === "dispose").length, 1);
+  }
+});
