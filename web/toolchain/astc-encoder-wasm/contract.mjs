@@ -4,7 +4,7 @@
 // Based on the bridge.cpp RGBA8 contract and allocation limits.
 export const MAX_PIXELS = 1048576;
 export const MAX_DIMENSION = 4096;
-export function validateImage({ rgba, width, height, profile = "linear" }) {
+export function validateImage({ rgba, width, height, profile = "linear", preset = "thorough" }) {
   if (
     !Number.isSafeInteger(width) ||
     !Number.isSafeInteger(height) ||
@@ -18,6 +18,7 @@ export function validateImage({ rgba, width, height, profile = "linear" }) {
   if (!(rgba instanceof ArrayBuffer) || rgba.resizable || rgba.byteLength !== width * height * 4)
     throw new TypeError("Expected one exact, fixed-length owned RGBA8 ArrayBuffer");
   if (profile !== "linear" && profile !== "srgb") throw new TypeError("Unknown ASTC profile");
+  if (preset !== "thorough" && preset !== "fast") throw new TypeError("Unknown ASTC preset");
   return Math.ceil(width / 4) * Math.ceil(height / 4) * 16;
 }
 
@@ -25,6 +26,7 @@ export function validateImage({ rgba, width, height, profile = "linear" }) {
 // One WASM copy in, one compact output copy out; no PNG or virtual filesystem.
 export function encodeWithModule(module, input) {
   const size = validateImage(input);
+  if (module._astc_encoder_abi_version?.() !== 2) throw new Error("ASTC encoder ABI mismatch");
   let src = 0,
     dst = 0;
   try {
@@ -41,6 +43,7 @@ export function encodeWithModule(module, input) {
       input.profile === "srgb" ? 1 : 0,
       dst,
       size,
+      input.preset === "fast" ? 1 : 0,
     );
     if (result !== 0) throw new Error(`ASTC encoder failed (${result})`);
     return module.HEAPU8.slice(dst, dst + size).buffer;

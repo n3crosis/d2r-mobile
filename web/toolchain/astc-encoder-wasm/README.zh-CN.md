@@ -10,11 +10,15 @@
 - [固定版本 API](https://github.com/ARM-software/astc-encoder/blob/2ff200e08c98a61775351687ea2b5d38e455ad8b/Source/astcenc.h)、[构建配置](https://github.com/ARM-software/astc-encoder/blob/2ff200e08c98a61775351687ea2b5d38e455ad8b/Source/cmake_core.cmake)、[Apache-2.0 许可证](https://github.com/ARM-software/astc-encoder/blob/2ff200e08c98a61775351687ea2b5d38e455ad8b/LICENSE.txt)。源码保留上游声明，构建时复制许可证到产物旁；未来分发必须保留。
 - 原生基线：`dm/tools/astc_pack.py` 的 `encode_batch()` 使用 `-cl` 或 `-cs`、`4x4`、默认 `-thorough`、原样 RGBA，不加法线图或透明度加权标志。本基元映射到 `ASTCENC_PRF_LDR` / `ASTCENC_PRF_LDR_SRGB`、`ASTCENC_PRE_THOROUGH`、标志 0 与原样通道映射。
 
+## 有界预设
+
+`preset` 仅接受 `thorough`（省略时默认）或 `fast`，分别映射到 Arm `ASTCENC_PRE_THOROUGH` 与 `ASTCENC_PRE_FAST`。fast 可用图像质量换取较少编码工作，但不宣称已测量的浏览器加速。块尺寸、颜色配置、透明度处理、标志、限制及上下文生命周期均不变。ABI 版本 2 增加最后一个整数预设参数（0 thorough，1 fast），其他值拒绝。JS 包装器在分配前拒绝旧 ABI 产物，避免将 fast 请求静默编码为 thorough。模块与 WASM 必须一起重建。调用者应对纹理与描述缓存缩略图统一使用同一预设，对应原生 `--preset` 语义。
+
 ## 契约与限制
 
 以下限制及一次性工作线程生命周期描述独立基元 API，而非[集成生成器的生命周期](../../ASTC_PRODUCER.zh-CN.md)。
 
-`encodeAstc4x4({ rgba, width, height, profile }, { signal, timeoutMs })` 接口返回原始 ASTC 块的 ArrayBuffer，而非 ASTC 文件。输入为一个独占、固定长度、紧密行优先排列的 RGBA8 ArrayBuffer。配置为默认 `linear` 或 `srgb`。RGB 值原样传递，编码解释由所选配置决定。透明度保持线性；不进行预乘、伽马转换、通道重排、垂直翻转或法线重建。输出大小为 `ceil(width/4) * ceil(height/4) * 16`，边缘不足整块时使用上游处理。
+`encodeAstc4x4({ rgba, width, height, profile, preset }, { signal, timeoutMs })` 接口返回原始 ASTC 块的 ArrayBuffer，而非 ASTC 文件。输入为一个独占、固定长度、紧密行优先排列的 RGBA8 ArrayBuffer。配置为默认 `linear` 或 `srgb`。RGB 值原样传递，编码解释由所选配置决定。透明度保持线性；不进行预乘、伽马转换、通道重排、垂直翻转或法线重建。输出大小为 `ceil(width/4) * ceil(height/4) * 16`，边缘不足整块时使用上游处理。
 
 最多 1,048,576 像素，单边最多 4096，同一模块环境仅允许一个任务，编码使用单线程。限制仅描述该基元，不代表支持完整游戏纹理。输入转移后调用者缓冲区分离；失败或取消不会返还。每个结果、取消、错误或最长 120 秒期限都会终止一次性工作线程。取消无需等待同步编码主动让出。不同标签页或独立模块副本没有全局协调。
 
@@ -32,10 +36,14 @@ WASM 初始内存为 32 MiB，线性内存上限 128 MiB，在支持时 malloc �
 
 `bash native-smoke.sh` 使用已有 C++ 编译器，检出相同的准确官方 Arm 提交，读取其包含 22 个文件的静态库源文件清单，并仅在被忽略的 `.build/` 中构建标量原生冒烟程序。它使用 `-ffp-contract=off` 对应启用浮点不变性的后端配置。不安装编译器或 SDK，不获取可执行文件。测试不使用游戏资源。
 
-使用 GCC 14.2.0 执行：线性与 sRGB 配置、1×1、4×4、5×7、17×3 尺寸、纯色 RGBA 与自造颜色及透明度渐变共 16 次真实编码解码往返全部通过。纯色不透明红色精确往返；非平凡渐变的四通道 PSNR 范围为 20.83 到 35.12 dB（仅为冒烟阈值，不是游戏质量目标）。无效尺寸、溢出尺寸、配置、缓冲区长度与空输入均被拒绝。编译器记录与结果保留在被忽略的 `.build/` 下。
+历史 thorough 单预设测试使用 GCC 14.2.0 执行：线性与 sRGB 配置、1×1、4×4、5×7、17×3 尺寸、纯色 RGBA 与自造颜色及透明度渐变共 16 次真实编码解码往返全部通过。纯色不透明红色精确往返；非平凡渐变的四通道 PSNR 范围为 20.83 到 35.12 dB（仅为冒烟阈值，不是游戏质量目标）。无效尺寸、溢出尺寸、配置、缓冲区长度与空输入均被拒绝。编译器记录与结果保留在被忽略的 `.build/` 下。
 
 这验证了真实 C ABI 能够针对固定上游核心编译链接，并产生可解码的 ASTC。源码检查确认上游存在 `astcenc-none-static` 目标和所选 CMake 选项。本地环境没有安装 Emscripten/CMake；下方独立 CI 证据覆盖真实 WASM 编译。仅原生成功不等于 WASM 或完整管线对等。浏览器执行、取消及完整规模的内存行为仍未验证。
 
 ## 历史 CI 证据
 
 [运行 39477410207](https://github.com/n3crosis/d2r-mobile/actions/runs/39477410207)，源码 f4f3326，以固定 Emscripten 4.0.20 编译，并在明确使用测试垫片的 Node 工作线程中通过 16 个样本、32 次真实 WASM 编码。小样本观测到 33,554,432 字节线性堆；这不是浏览器峰值内存或最大堆强制限制的测量。WASM SHA-256：`518e199e5fc29f743909093d478eb3d650c0398f3c0a17dfd25fcc27a115c2ee`。浏览器工作线程执行、原生/WASM 字节一致性、解码保真与完整游戏纹理包集成仍未验证。在该历史源码版本中，其发布运行时载荷不包含 ASTC。当前已提交的组装配置包含上文所述可选生成器闭包；该历史运行不验证后来的集成，也不证明其线上部署状态。
+
+### 双预设原生回归
+
+当前原生冒烟测试覆盖两种预设及两种颜色配置，共 32 个编码解码样本。每个桥接输出均与直接调用固定 Arm API 的结果逐字节比较；thorough 使用原先固定配置。本地使用 GCC 14.2.0 有界重建后，32 个样本全部通过，包括纯色精确往返、既有渐变冒烟阈值及无效预设拒绝。这是自造输入的原生证据，不是速度基准、浏览器/WASM 结果或通用质量比较。更新后的 WASM 冒烟测试要求重新编译的 ABI 版本 2 产物，并检查双预设及省略预设时的默认字节一致性；历史 CI 记录不验证本次修改。

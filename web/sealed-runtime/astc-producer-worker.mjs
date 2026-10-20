@@ -87,6 +87,8 @@ export async function initializeAstcProducerCodecs(entries) {
     });
     if (
       instantiations !== 1 ||
+      typeof module._astc_encoder_abi_version !== "function" ||
+      module._astc_encoder_abi_version() !== 2 ||
       !(module.HEAPU8 instanceof Uint8Array) ||
       ["_malloc", "_free", "_astc_encode_rgba"].some((name) => typeof module[name] !== "function")
     )
@@ -132,6 +134,8 @@ export function createAstcProducerWorkerHandler({
       }
       if (data?.type !== "produce" || state !== "ready") fail();
       state = "running";
+      const preset = data.preset;
+      if (preset !== "thorough" && preset !== "fast") fail();
       if (
         !Array.isArray(data.records) ||
         data.records.length < 1 ||
@@ -222,7 +226,7 @@ export function createAstcProducerWorkerHandler({
         maxDecodedBytes: data.maxDecodedBytes,
         batchBlocks: data.batchBlocks,
         encode: async (input) => {
-          const output = await codecs.encode(input);
+          const output = await codecs.encode({ ...input, preset });
           progress("blocks", (input.width * input.height) / 16);
           return output;
         },
@@ -263,6 +267,7 @@ export function createAstcProducerWorkerHandler({
       // Structured-clone the File, never arrayBuffer it; parent retains the staging directory through export.
       send({
         type: "complete",
+        preset,
         file: pack.source.file,
         pack: pack.pack,
         records: pack.records,

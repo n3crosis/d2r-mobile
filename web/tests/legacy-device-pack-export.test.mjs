@@ -295,3 +295,33 @@ test("abort during streaming reports written bytes and preserves no owned leftov
   );
   assert.deepEqual([...fs.root.entries.keys()], ["unrelated"]);
 });
+
+for (const preset of ["thorough", "fast"])
+  test(`exports optional ${preset} provenance without changing native pack fields`, async () => {
+    const fs = fixture();
+    fs.options.finalizedPack.encoding = { format: "astc", preset };
+    const result = await exportLegacyDevicePack(fs.options);
+    const manifest = JSON.parse(
+      new TextDecoder().decode(fs.root.entries.get(folderName).entries.get("manifest.json").data),
+    );
+    assert.deepEqual(manifest, { files: [fs.pack], encoding: { format: "astc", preset } });
+    assert.deepEqual(result.encoding, { format: "astc", preset });
+    assert.ok(Object.isFrozen(result.encoding));
+  });
+test("invalid encoding provenance rejects before creating export files", async () => {
+  for (const encoding of [
+    null,
+    {},
+    { format: "astc", preset: "other" },
+    { format: "other", preset: "fast" },
+    { format: "astc", preset: "fast", authenticated: true },
+  ]) {
+    const fs = fixture();
+    fs.options.finalizedPack.encoding = encoding;
+    await assert.rejects(
+      exportLegacyDevicePack(fs.options),
+      (error) => error.cause.message === "LEGACY_PACK_INVALID_ENCODING",
+    );
+    assert.ok(!fs.root.entries.has(folderName));
+  }
+});

@@ -63,6 +63,7 @@ function receipt(bytes = Uint8Array.of(91, 93)) {
   const key = md5(bytes).slice(0, 18) + "0002" + "0".repeat(10);
   return {
     type: "complete",
+    preset: "thorough",
     file: new File([bytes], "pack"),
     pack: {
       name: packName,
@@ -228,6 +229,8 @@ test("authenticated producer binds RPC and retains output lease until disposal",
   assert.ok(worker.terminated);
   assert.equal(dir.entries.size, 1);
   assert.equal(result.count, 1);
+  assert.deepEqual(result.encoding, { format: "astc", preset: "thorough" });
+  assert.ok(Object.isFrozen(result.encoding));
   assert.deepEqual([...(await result.source.readAt(0, 2))], [91, 93]);
   await result.dispose();
   assert.equal(dir.removes, 1);
@@ -284,6 +287,7 @@ test("real pack writer index header and metadata pass receipt validation", async
   });
   const value = {
     type: "complete",
+    preset: "thorough",
     file: output.source.file,
     pack: output.pack,
     records: output.records,
@@ -459,51 +463,63 @@ test("failed directory removal retains retryable lease and safe failure codes", 
   await auth.fixture.adapter.cleanup();
 });
 
-test("worker core reports completed encode work and returns a File without whole-pack transfer", async () => {
-  const messages = [],
-    channel = new MessageChannel();
-  const handler = createAstcProducerWorkerHandler({
-    send: (data) => messages.push(data),
-    initialize: async () => ({
-      encode: () => new ArrayBuffer(16),
-      codec: {},
-      hashFile: async (file) => ({ sha256: "a".repeat(64), bytesHashed: file.size }),
-    }),
-    core: (options) => ({
-      maxEntries: 1,
-      dispose: async () => {},
-      jobs: (async function* () {
-        await options.encode({ width: 4, height: 4, rgba: new ArrayBuffer(64), profile: "linear" });
-        yield 1;
-      })(),
-    }),
-    writePack: async (options) => {
-      for await (const ignored of options.jobs) assert.equal(ignored, 1);
-      const value = receipt();
-      await options.hashFile(value.file, {});
-      return { source: { file: value.file }, ...value };
-    },
-  });
-  await handler({ type: "initialize", assets: [] });
-  await handler({
-    type: "produce",
-    port: channel.port1,
-    root: { kind: "directory" },
-    vfs: new ArrayBuffer(1),
-    records: [
-      {
-        path,
-        record: { offset: 0n },
-        source: { id: "12345678-1234-4123-8123-123456789abc", size: "2" },
+for (const preset of ["thorough", "fast"])
+  test(`worker shares ${preset} across texture and thumbnail encoding and echoes receipt`, async () => {
+    const messages = [],
+      channel = new MessageChannel();
+    const handler = createAstcProducerWorkerHandler({
+      send: (data) => messages.push(data),
+      initialize: async () => ({
+        encode: (input) => {
+          assert.equal(input.preset, preset);
+          return new ArrayBuffer(16);
+        },
+        codec: {},
+        hashFile: async (file) => ({ sha256: "a".repeat(64), bytesHashed: file.size }),
+      }),
+      core: (options) => ({
+        maxEntries: 1,
+        dispose: async () => {},
+        jobs: (async function* () {
+          await options.encode({
+            width: 4,
+            height: 4,
+            rgba: new ArrayBuffer(64),
+            profile: "linear",
+          });
+          await options.encode({ width: 4, height: 4, rgba: new ArrayBuffer(64), profile: "srgb" });
+          yield 1;
+        })(),
+      }),
+      writePack: async (options) => {
+        for await (const ignored of options.jobs) assert.equal(ignored, 1);
+        const value = receipt();
+        await options.hashFile(value.file, {});
+        return { source: { file: value.file }, ...value };
       },
-    ],
+    });
+    await handler({ type: "initialize", assets: [] });
+    await handler({
+      type: "produce",
+      preset,
+      port: channel.port1,
+      root: { kind: "directory" },
+      vfs: new ArrayBuffer(1),
+      records: [
+        {
+          path,
+          record: { offset: 0n },
+          source: { id: "12345678-1234-4123-8123-123456789abc", size: "2" },
+        },
+      ],
+    });
+    assert.equal(messages[0].type, "initialized");
+    assert.deepEqual(messages[1], { type: "progress", sequence: 1, bytes: 0, blocks: 1 });
+    assert.equal(messages.at(-1).type, "complete");
+    assert.ok(messages.at(-1).file instanceof File);
+    assert.equal(messages.at(-1).preset, preset);
+    channel.port2.close();
   });
-  assert.equal(messages[0].type, "initialized");
-  assert.deepEqual(messages[1], { type: "progress", sequence: 1, bytes: 0, blocks: 1 });
-  assert.equal(messages.at(-1).type, "complete");
-  assert.ok(messages.at(-1).file instanceof File);
-  channel.port2.close();
-});
 
 // 安全诊断只允许固定代码，未知错误中的私有文本不会被返回。
 // Safe diagnostics allow only fixed codes; private text in unknown errors is never returned.
@@ -515,4 +531,64 @@ test("safe failure diagnostics whitelist quota, limits and integrity", () => {
   assert.equal(astcProducerFailureCode(new Error("CASC_PACK_PACK_SIZE")), "SIZE_LIMIT");
   assert.equal(astcProducerFailureCode(new Error("ARCHIVE_STREAM_CKEY")), "INTEGRITY_FAILED");
   assert.equal(astcProducerFailureCode(new Error("private/key")), "CODEC_FAILED");
+});
+
+// 预设只是内部编码选择，不改变外部数据认证边界。
+// Presets select internal encoding only; they do not alter external authentication boundaries.
+test("receipt rejects missing, wrong or unknown presets", () => {
+  const value = receipt();
+  const limits = { paths: new Set([path]), packName, maxPackBytes: 1000, preset: "fast" };
+  assert.deepEqual(validateAstcProducerReceipt({ ...value, preset: "fast" }, limits).encoding, {
+    format: "astc",
+    preset: "fast",
+  });
+  for (const preset of [undefined, "thorough", "other", 1])
+    assert.throws(() => validateAstcProducerReceipt({ ...value, preset }, limits), /RECEIPT/);
+});
+test("producer rejects unknown preset before authenticating or reading input", async () => {
+  const worker = new WorkerDouble((_data, w) => w.emit(proof));
+  const client = await createAstcProducerClient({ worker, assets: assets() });
+  await assert.rejects(
+    client.produce(null, null, { ...options(directory().root), preset: "other" }),
+    /OPTIONS/,
+  );
+  assert.equal(worker.messages.length, 1);
+  assert.ok(worker.terminated);
+});
+test("fast producer request and receipt stay bound", async () => {
+  const auth = await authenticated(),
+    dir = directory();
+  const worker = new WorkerDouble((data, w) => {
+    if (data.type === "initialize") return w.emit(proof);
+    assert.equal(data.preset, "fast");
+    w.emit({ ...receipt(), preset: "fast" });
+  });
+  const client = await createAstcProducerClient({ worker, assets: assets() });
+  const result = await client.produce(auth.extracted, selection, {
+    ...options(dir.root),
+    preset: "fast",
+  });
+  assert.deepEqual(result.encoding, { format: "astc", preset: "fast" });
+  await result.dispose();
+  await auth.fixture.adapter.cleanup();
+});
+
+test("worker rejects unknown preset before opening record RPC or invoking codec", async () => {
+  const messages = [];
+  let invoked = false;
+  const handler = createAstcProducerWorkerHandler({
+    send: (value) => messages.push(value),
+    initialize: async () => ({
+      encode: () => {
+        invoked = true;
+      },
+    }),
+    core: () => {
+      invoked = true;
+    },
+  });
+  await handler({ type: "initialize", assets: [] });
+  await handler({ type: "produce", preset: "other" });
+  assert.equal(invoked, false);
+  assert.equal(messages.at(-1).type, "failure");
 });

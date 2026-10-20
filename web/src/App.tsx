@@ -56,6 +56,9 @@ export default function App() {
   const [legacyAstc] = useState(
     () => new URLSearchParams(window.location.search).get("legacyAstc") === "1",
   );
+  const [astcPreset] = useState<"thorough" | "fast">(() =>
+    new URLSearchParams(window.location.search).get("astcPreset") === "fast" ? "fast" : "thorough",
+  );
   const [legacyStatus, setLegacyStatus] = useState("");
   const [skipResources, setSkipResources] = useState(false);
   const [resourceOutcome, setResourceOutcome] = useState("");
@@ -165,6 +168,7 @@ export default function App() {
       manifestSha256: digest,
       profileId,
       legacyAstc,
+      astcPreset,
       signal: controller.signal,
       onProgress: (event: LoadingProgress) => {
         if (!controller.signal.aborted) {
@@ -221,7 +225,7 @@ export default function App() {
       packager.current?.close();
       if (downloadUrl.current) URL.revokeObjectURL(downloadUrl.current);
     };
-  }, [appendActivity, profileId, legacyAstc]);
+  }, [appendActivity, profileId, legacyAstc, astcPreset]);
   async function choose() {
     if (!ready || busy || !browser.showDirectoryPicker) return;
     const previousStatus = status;
@@ -517,6 +521,35 @@ export default function App() {
             <p id="legacy-option-help" className="text-xs text-muted-foreground">
               {t("dmWebLegacyHelp")}
             </p>
+            {legacyAstc && (
+              <div className="space-y-2">
+                <label htmlFor="astc-preset" className="text-sm font-medium">
+                  {t("dmWebAstcPreset")}
+                </label>
+                <select
+                  id="astc-preset"
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                  value={astcPreset}
+                  aria-describedby="astc-preset-help"
+                  disabled={hasSelectedFolder || busy || generating || download !== null}
+                  onChange={(event) => {
+                    if (hasSelectedFolder || busy || generating || download !== null) return;
+                    // 在选择私有输入前重载，使预设在整个作业期间保持固定。
+                    // Reload before private input selection so the preset stays fixed for the entire job.
+                    const url = new URL(window.location.href);
+                    if (event.target.value === "fast") url.searchParams.set("astcPreset", "fast");
+                    else url.searchParams.delete("astcPreset");
+                    window.location.assign(url.href);
+                  }}
+                >
+                  <option value="thorough">{t("dmWebAstcThorough")}</option>
+                  <option value="fast">{t("dmWebAstcFast")}</option>
+                </select>
+                <p id="astc-preset-help" className="text-xs text-muted-foreground">
+                  {t("dmWebAstcPresetHelp")}
+                </p>
+              </div>
+            )}
           </div>
           {storageAdvisory && <p className="text-xs text-muted-foreground">{storageAdvisory}</p>}
           <div className="flex flex-wrap gap-3">

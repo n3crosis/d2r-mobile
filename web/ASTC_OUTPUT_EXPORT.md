@@ -53,3 +53,7 @@ As in the existing resource exporter, cancellation is checked around awaited fil
 ## Evidence and limits
 
 Focused tests use synthetic inventories, staged byte sources and fake filesystems. They exercise exact inventories, JSON binding, bounded copies, permission/collision failures, cancellation, commit timing, partial reports and preservation of unknown/replaced entries. This is not real-browser, device, game, hashing or end-to-end installation proof.
+
+## Optional encoding provenance
+
+An internal finalized source may include exactly `encoding: { format: "astc", preset: "thorough" | "fast" }`. When present, the exporter validates and snapshots it, adds it beside `files` in `manifest.json`, and returns it in the successful export report. It never adds fields to native pack metadata. Existing callers omitting it retain the previous manifest shape. Unknown formats, presets or extra encoding fields reject before output creation. This provenance does not authenticate externally imported packs.

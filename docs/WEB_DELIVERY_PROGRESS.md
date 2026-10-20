@@ -4,11 +4,11 @@
 
 ## Latest verified publication
 
-[Commit c49368d](https://github.com/n3crosis/d2r-mobile/commit/c49368daae14b8874e4211892b46dbd1a4aafc4b)
-passed the [full Verify build](https://github.com/n3crosis/d2r-mobile/actions/runs/39492925067)
-and was published on 2026-10-20 at 20:39 UTC to the existing private
+[Commit faae551](https://github.com/n3crosis/d2r-mobile/commit/faae5514b368be523dfd32be3f2022db7f1f5357)
+passed the [full Verify build](https://github.com/n3crosis/d2r-mobile/actions/runs/39498922769)
+and was published on 2026-10-20 at 21:21:15 UTC to the existing private
 [preview Site](https://d2r-ipa-packager.nicekrill34.chatgpt.site).
-The verified artifact is 22,206,196 bytes (about 21.2 MiB compressed ZIP, containing both shell targets), includes
+The verified artifact is 21,982,418 bytes (about 20.96 MiB compressed ZIP, containing both shell targets), includes
 .NET, and contains no Python runtime, packages or scripts. This is archive size,
 not a browser RAM measurement.
 
@@ -21,16 +21,41 @@ ASTC overlays and exports a separate Legacy Device Pack. An explicit resource-ex
 skip avoids rewriting original resources for the same game/update/DLC; it does not
 verify device files or skip the Legacy Device Pack. Browser storage estimates are
 advisory only and do not report free space on the selected output disk.
-Each selection downloads only its own shell and common runtime assets: 17,029,181
-bytes for iOS 26, or 17,025,264 bytes for iOS 18 (about 16.24 MiB, excluding
-frontend files). Selecting the experimental option adds 121,607 bytes (about 119 KiB), for
-17,150,788 bytes on iOS 26 or 17,146,871 on iOS 18. Actual WASM encoding
+Each selection downloads only its own shell and common runtime assets; the
+experimental option additionally selects its closed optional group. Earlier
+revision-specific wire totals are not carried forward here. Frontend files are
+separate from runtime payloads. Actual WASM encoding
 passed 16 synthetic fixtures / 32 calls through an opaque module URL in CI;
 this is not browser, real-game or device proof. See [implementation and acceptance](WEB_IPA_PACKAGER.md).
 
 A successful build and publication do not establish real-game input conversion,
 separately signed device execution, gameplay or measured RAM/speed savings.
 Later source edits need their own build/publication; no new percentage is claimed.
+
+## Publication receipt and pending source changes
+
+The published revision is `faae5514b368be523dfd32be3f2022db7f1f5357`.
+Verify run `39498922769` succeeded. Artifact `12299027640` has ZIP SHA-256
+`70355132875d5bb51b7d4470b335c2e737ce50ae5ae415f9dfefd473c1495c6e`.
+The owner-private Site deployment `appgdep_6ad7db4242308191b331cc37956f9964`
+succeeded at 21:21:15 UTC on 2026-10-20.
+
+The runtime inventory has 297 logical assets and 38 physical files. Its manifest
+SHA-256 is `74f57f3ad5d34585738e3f893f1a9379c85b335eaabb11b49e3f6b72f3edbb45`;
+the ASTC worker is 55,837 bytes. Frontend files are excluded from runtime inventory totals.
+This publication includes canonical Warlock preselection and removal of 48 unused
+raw-source payload assets. The SDK cache recorded an actual hit; no build-time
+or browser-RAM improvement is measured or claimed.
+
+The deployed shader changes tighten final output accounting, bound replay
+copies to 64 KiB and shorten source/replay object lifetimes. All 23 targeted
+shader tests, frontend checks and the full CI passed. The Site source revision
+is `2b73e44584f71308511a342da2b5e12f74991e97`. No browser-RAM measurement or
+real-game/device proof is added, and parity scores are unchanged.
+
+The native fast/thorough option and deterministic build metadata are currently
+uncommitted/pending work, **not part of this publication**. They need their own
+checks and publication.
 
 ## Historical baseline: 42 / 100
 

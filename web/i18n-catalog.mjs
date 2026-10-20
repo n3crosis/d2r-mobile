@@ -668,5 +668,21 @@ export const catalog = Object.freeze({
   "dmWebStorageUnknown": [
     "Browser staging space estimate unavailable; you can continue. Destination disk space was not checked.",
     "浏览器暂存空间估计不可用；仍可继续。目标磁盘空间未检查。"
+  ],
+  "dmWebAstcPreset": [
+    "ASTC encoding preset",
+    "ASTC 编码预设"
+  ],
+  "dmWebAstcThorough": [
+    "Thorough (default)",
+    "精细（默认）"
+  ],
+  "dmWebAstcFast": [
+    "Fast",
+    "快速"
+  ],
+  "dmWebAstcPresetHelp": [
+    "Fast takes less processing time but may reduce image quality. Changing this reloads the page; choose before selecting a folder.",
+    "快速模式处理时间较短，但图像质量可能较低。切换会重新加载页面；请在选择文件夹前设置。"
   ]
 });

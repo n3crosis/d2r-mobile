@@ -5,6 +5,11 @@ mode=${1:?Usage: build.sh native|wasm upstream-source build-directory}
 source_dir=$(realpath "${2:?}")
 build_dir=$(realpath -m "${3:?}")
 test "$(git -C "$source_dir" rev-parse HEAD)" = f11ba9f0b21ba8fc15153d50a2a1ae31ab1cf8f7
+# 使用已验证上游提交的 UTC 时间，避免配置时钟改变编译器字节；这不是实际构建时间。
+# Use the verified upstream commit time in UTC, not the configure clock or actual build time.
+SOURCE_DATE_EPOCH=$(git -C "$source_dir" show -s --format=%ct HEAD)
+[[ $SOURCE_DATE_EPOCH =~ ^[0-9]+$ ]] || { echo "Invalid upstream commit epoch" >&2; exit 1; }
+export SOURCE_DATE_EPOCH TZ=UTC
 options=(-DCMAKE_BUILD_TYPE=Release -DSPIRV_CROSS_ENABLE_TESTS=OFF -DSPIRV_CROSS_CLI=ON -DSPIRV_CROSS_ENABLE_C_API=OFF)
 if [[ $mode == native ]]; then
   cmake -S "$source_dir" -B "$build_dir" "${options[@]}"

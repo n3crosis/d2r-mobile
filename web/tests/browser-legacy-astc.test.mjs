@@ -82,6 +82,8 @@ test("cleanup after IPA commit reports committed outcome instead of silent succe
 });
 test("option fails closed and policy limits are explicit", async () => {
   await assert.rejects(prepareBrowserPackager({ legacyAstc: "yes" }), /LEGACY_ASTC_OPTION/);
+  for (const astcPreset of ["other", "FAST", null, 1])
+    await assert.rejects(prepareBrowserPackager({ astcPreset }), /ASTC_PRESET_OPTION/);
   assert.equal(LEGACY_ASTC_PRODUCTION_LIMITS.maxPackBytes, 8 * 1024 ** 3);
   assert.ok(Object.isFrozen(LEGACY_ASTC_PRODUCTION_LIMITS));
 });

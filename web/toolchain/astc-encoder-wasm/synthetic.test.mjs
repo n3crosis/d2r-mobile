@@ -13,6 +13,10 @@ const image = (width = 4, height = 4) => ({
 });
 test("size, profile, edge dimensions, and bounded allocation", () => {
   assert.equal(validateImage(image()), 16);
+  for (const preset of ["thorough", "fast"])
+    assert.equal(validateImage({ ...image(), preset }), 16);
+  for (const preset of [null, "", "fastest", "FAST", 0, 1, {}, NaN])
+    assert.throws(() => validateImage({ ...image(), preset }), /preset/);
   assert.equal(validateImage(image(5, 1)), 32);
   assert.equal(validateImage(image(1024, 1024)), 1048576);
   for (const width of [0, -1, NaN, Infinity, 1.5, 4097])
@@ -29,11 +33,12 @@ test("module allocations are freed after success, rejection, and partial allocat
     let allocations = 0;
     const freed = [];
     const module = {
+      _astc_encoder_abi_version: () => 2,
       HEAPU8: new Uint8Array(1024),
       _malloc: () => (++allocations === 1 ? 64 : outcome === "allocation" ? 0 : 128),
       _free: (ptr) => freed.push(ptr),
       _astc_encode_rgba: (...args) => {
-        assert.deepEqual(args, [64, 64, 4, 4, 1, 128, 16]);
+        assert.deepEqual(args, [64, 64, 4, 4, 1, 128, 16, 0]);
         module.HEAPU8.fill(73, 128, 144);
         return outcome === "codec" ? 101 : 0;
       },
@@ -68,10 +73,15 @@ test("worker ownership, success, abort, busy guard, malformed response, timeout 
     const input = image();
     let result = encodeAstc4x4(input);
     assert.equal(input.rgba.byteLength, 0);
+    assert.equal(latest.data.preset, "thorough");
     await assert.rejects(encodeAstc4x4(image()), /Only one/);
     latest.onmessage({ data: { ok: true, blocks: new ArrayBuffer(16) } });
     assert.equal((await result).byteLength, 16);
     assert.equal(latest.terminated, true);
+    result = encodeAstc4x4({ ...image(), preset: "fast" });
+    assert.equal(latest.data.preset, "fast");
+    latest.onmessage({ data: { ok: true, blocks: new ArrayBuffer(16) } });
+    await result;
     const controller = new AbortController();
     result = encodeAstc4x4(image(), { signal: controller.signal });
     controller.abort();
@@ -100,4 +110,46 @@ test("worker ownership, success, abort, busy guard, malformed response, timeout 
   } finally {
     globalThis.Worker = original;
   }
+});
+
+test("preset mapping preserves omitted thorough and selects only bounded ABI values", () => {
+  const calls = [];
+  const module = {
+    _astc_encoder_abi_version: () => 2,
+    HEAPU8: new Uint8Array(1024),
+    _malloc: () => 64,
+    _free: () => {},
+    _astc_encode_rgba: (...args) => {
+      calls.push(args);
+      return 0;
+    },
+  };
+  for (const profile of ["linear", "srgb"]) {
+    for (const preset of [undefined, "thorough", "fast"])
+      encodeWithModule(module, { ...image(), profile, preset });
+    const [omitted, thorough, fast] = calls.splice(0);
+    assert.deepEqual(omitted, thorough);
+    assert.equal(thorough[7], 0);
+    assert.equal(fast[7], 1);
+    assert.deepEqual(fast.slice(0, 7), thorough.slice(0, 7));
+  }
+  assert.throws(() => encodeWithModule(module, { ...image(), preset: "invalid" }), /preset/);
+  assert.equal(calls.length, 0);
+});
+
+test("stale WASM ABI fails closed before allocations", () => {
+  for (const version of [undefined, 1, 3])
+    assert.throws(
+      () =>
+        encodeWithModule(
+          {
+            _astc_encoder_abi_version: version === undefined ? undefined : () => version,
+            _malloc: () => {
+              assert.fail("must not allocate");
+            },
+          },
+          { ...image(), preset: "fast" },
+        ),
+      /ABI mismatch/,
+    );
 });

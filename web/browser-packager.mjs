@@ -36,7 +36,7 @@ import { inspectGuestTarget, inspectGuestPlist } from "./guest-target-stream.mjs
 /**
  * 可选补充包在公开引导阶段选择，私有输入开始后不再联网。
  * Select the optional pack during public bootstrap; no networking after private inputs begin.
- * @param {{manifestSha256?: string, signal?: AbortSignal, onProgress?: (event: any) => void, profileId?: string, legacyAstc?: boolean}} [options]
+ * @param {{manifestSha256?: string, signal?: AbortSignal, onProgress?: (event: any) => void, profileId?: string, legacyAstc?: boolean, astcPreset?: "thorough"|"fast"}} [options]
  */
 export async function prepareBrowserPackager({
   manifestSha256,
@@ -44,7 +44,9 @@ export async function prepareBrowserPackager({
   onProgress,
   profileId,
   legacyAstc = false,
+  astcPreset = "thorough",
 } = {}) {
+  if (astcPreset !== "thorough" && astcPreset !== "fast") throw new Error("ASTC_PRESET_OPTION");
   if (typeof legacyAstc !== "boolean") throw new Error("LEGACY_ASTC_OPTION");
   const selectedProfile = resolveShellProfile(profileId);
   if (
@@ -257,6 +259,7 @@ export async function prepareBrowserPackager({
               finalizedPack = await producer.produce(context.extracted, context.selection, {
                 root,
                 ...LEGACY_ASTC_PRODUCTION_LIMITS,
+                preset: astcPreset,
                 signal: context.signal,
                 onProgress: createLegacyAstcDiagnosticObserver(onProgress, context.signal),
               });
@@ -418,7 +421,7 @@ export async function prepareBrowserPackager({
         return {
           ...result,
           resources,
-          ...(legacyPack ? { legacyPack } : {}),
+          ...(legacyPack ? { legacyPack, encoding: finalizedPack.encoding } : {}),
           download: output.getDownload(),
         };
       },

@@ -47,6 +47,7 @@ export function encodeAstc4x4(input, { signal, timeoutMs = 120000 } = {}) {
           width: input.width,
           height: input.height,
           profile: input.profile ?? "linear",
+          preset: input.preset ?? "thorough",
         },
         [input.rgba],
       );

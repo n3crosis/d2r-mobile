@@ -8,6 +8,9 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <LangVersion>preview</LangVersion>
     <AssemblyName>Dmsh.Browser.Spike</AssemblyName>
+    <!-- 外层运行时清单保留源码修订；无关仓库提交不再改变程序集的信息版本。 -->
+    <!-- The outer runtime manifest retains source provenance; unrelated commits do not alter the assembly informational version. -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <WasmEnableHotReload>false</WasmEnableHotReload>
     <PublishTrimmed>false</PublishTrimmed>
     <RunAOTCompilation>false</RunAOTCompilation>

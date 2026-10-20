@@ -22,5 +22,5 @@ target_link_options(astc-encoder PRIVATE
   "--no-entry" "-sMODULARIZE=1" "-sEXPORT_ES6=1" "-sENVIRONMENT=worker"
   "-sFILESYSTEM=0" "-sALLOW_MEMORY_GROWTH=1" "-sINITIAL_MEMORY=33554432"
   "-sMAXIMUM_MEMORY=134217728" "-sSTACK_SIZE=1048576" "-sABORTING_MALLOC=0"
-  "-sEXPORTED_FUNCTIONS=['_malloc','_free','_astc_output_size','_astc_encode_rgba']"
+  "-sEXPORTED_FUNCTIONS=['_malloc','_free','_astc_output_size','_astc_encode_rgba','_astc_encoder_abi_version']"
   "-sEXPORTED_RUNTIME_METHODS=['HEAPU8']")

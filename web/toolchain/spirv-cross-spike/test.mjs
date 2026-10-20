@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { validateSpirv, convertSpirv, MSL_ARGUMENTS, CROSS_COMMIT } from "./wwwroot/convert.mjs";
 import { replayFields } from "./wwwroot/replay-reflection.mjs";
@@ -66,19 +66,43 @@ test("replay parser equals unchanged native Python functions on authored branch 
   );
 });
 
-test("native, WASM and linked CI use the same verified release compiler pin", () => {
+test("native/WASM proof recipes and single browser CI share the verified release compiler pin", () => {
   const lock = JSON.parse(readFileSync(new URL("./toolchain-lock.json", import.meta.url), "utf8"));
   assert.equal(lock.spirvCross.tag, "vulkan-sdk-1.4.363.0");
   assert.equal(lock.spirvCross.commit, "f11ba9f0b21ba8fc15153d50a2a1ae31ab1cf8f7");
   assert.equal(CROSS_COMMIT, lock.spirvCross.commit);
   for (const file of [
     "./build.sh",
-    "../../../.github/workflows/spirv-cross-browser-checks.yml",
-    "../../../.github/workflows/shader-pipeline-browser-checks.yml",
+    "../../runtime-build/build.mjs",
+    "../../verification/recipes/spirv-cross.sh",
+    "../../verification/recipes/shader-pipeline.sh",
   ]) {
     const source = readFileSync(new URL(file, import.meta.url), "utf8");
     assert.ok(source.includes(lock.spirvCross.commit), `${file}: commit drift`);
-    if (file.endsWith(".yml"))
+    if (file.includes("/recipes/")) {
       assert.ok(source.includes(lock.spirvCross.tag), `${file}: tag drift`);
+      assert.match(source, /build\.sh native /);
+      assert.match(source, /build\.sh wasm /);
+      assert.match(source, /--msl-version 20300/);
+      assert.match(source, /--reflect json/);
+      assert.match(source, /node capture-browser\.mjs/);
+    }
   }
+  // 重型原生/浏览器比较保留在本地证明配方；唯一 CI 工作流构建固定的公开浏览器运行时。
+  // Heavy native/browser comparisons remain in local proof recipes; the sole CI workflow builds pinned public browser runtimes.
+  const workflows = new URL("../../../.github/workflows/", import.meta.url);
+  assert.deepEqual(
+    readdirSync(workflows).filter((name) => /\.ya?ml$/.test(name)),
+    ["verify.yml"],
+  );
+  const workflow = readFileSync(new URL("verify.yml", workflows), "utf8");
+  assert.deepEqual(
+    [...workflow.slice(workflow.indexOf("\njobs:")).matchAll(/^ {2}([a-z-]+):/gm)].map(
+      (match) => match[1],
+    ),
+    ["quick"],
+  );
+  assert.match(workflow, /run: node web\/verification\/verify\.mjs quick/);
+  assert.match(workflow, /node web\/runtime-build\/build\.mjs/);
+  assert.match(workflow, /node web\/runtime-build\/stage-preview\.mjs/);
 });

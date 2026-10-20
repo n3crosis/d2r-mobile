@@ -34,6 +34,7 @@ export async function exportLegacyDevicePack({
     bytesWritten = 0,
     filesWritten = 0,
     pack,
+    encoding,
     source,
     lastProgress = 0;
   const owned = [];
@@ -128,6 +129,19 @@ export async function exportLegacyDevicePack({
       fail("LEGACY_PACK_INVALID_SIGNAL");
     check();
     pack = validateLegacyPackMetadata(finalizedPack?.pack);
+    if (finalizedPack?.encoding !== undefined) {
+      const value = finalizedPack.encoding;
+      if (
+        !value ||
+        Object.keys(value).sort().join(",") !== "format,preset" ||
+        value.format !== "astc" ||
+        !["thorough", "fast"].includes(value.preset)
+      )
+        fail("LEGACY_PACK_INVALID_ENCODING");
+      // 编码来源说明不是外部内容认证，原生 pack 字段保持不变。
+      // Encoding provenance is not external-content authentication; native pack fields stay unchanged.
+      encoding = Object.freeze({ format: "astc", preset: value.preset });
+    }
     source = finalizedPack?.source;
     if (
       source?.size !== pack.size ||
@@ -192,7 +206,9 @@ export async function exportLegacyDevicePack({
     if ((await archive.handle.getFile()).size !== pack.size) fail("LEGACY_PACK_WRITTEN_SIZE");
     filesWritten++;
     const manifest = await create(folder.handle, "manifest.json", "file");
-    const manifestBytes = encoder.encode(JSON.stringify({ files: [pack] }, null, 1) + "\n");
+    const manifestBytes = encoder.encode(
+      JSON.stringify({ files: [pack], ...(encoding ? { encoding } : {}) }, null, 1) + "\n",
+    );
     await writeSmall(manifest, manifestBytes);
     check();
     if ((await manifest.handle.getFile()).size !== manifestBytes.length)
@@ -205,6 +221,7 @@ export async function exportLegacyDevicePack({
     emit("complete", true);
     return Object.freeze({
       status: "complete",
+      ...(encoding ? { encoding } : {}),
       directoryName,
       markerName: LEGACY_PACK_EXPORT_MARKER,
       pack,

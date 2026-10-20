@@ -96,10 +96,15 @@ export function bindAstcRecordSource({ source, record }) {
  * 只检查内部已初始化工作线程的收据结构；外部文件和哈希不能借此获得认证。
  * Check only an initialized internal worker receipt; external files and hashes gain no authentication here.
  */
-export function validateAstcProducerReceipt(value, { paths, packName, maxPackBytes }) {
+export function validateAstcProducerReceipt(
+  value,
+  { paths, packName, maxPackBytes, preset = "thorough" },
+) {
   if (
-    !fields(value, ["type", "file", "pack", "records", "index", "count"]) ||
+    !fields(value, ["type", "file", "pack", "records", "index", "count", "preset"]) ||
     value.type !== "complete" ||
+    (preset !== "thorough" && preset !== "fast") ||
+    value.preset !== preset ||
     !(value.file instanceof File) ||
     !fields(value.pack, ["name", "size", "sha256"]) ||
     value.pack.name !== packName ||
@@ -149,6 +154,7 @@ export function validateAstcProducerReceipt(value, { paths, packName, maxPackByt
   )
     fail("RECEIPT");
   return Object.freeze({
+    encoding: Object.freeze({ format: "astc", preset }),
     file: value.file,
     pack: Object.freeze({ ...value.pack }),
     records: Object.freeze(records),
@@ -337,12 +343,14 @@ export async function createAstcProducerClient({ worker, assets, signal } = {}) 
         maxDecodedBytes,
         maxPackBytes,
         batchBlocks = 65536,
+        preset = "thorough",
         signal: operationSignal,
         inactivityTimeoutMs = 300000,
         overallTimeoutMs,
         onProgress,
       } = options;
       if (
+        (preset !== "thorough" && preset !== "fast") ||
         (onProgress !== undefined && typeof onProgress !== "function") ||
         !root ||
         !integer(maxEncodedBytes, 0xffffffff) ||
@@ -430,6 +438,7 @@ export async function createAstcProducerClient({ worker, assets, signal } = {}) 
             maxDecodedBytes,
             maxPackBytes,
             batchBlocks,
+            preset,
           },
           [vfs.buffer, ports.port2],
           "complete",
@@ -451,6 +460,7 @@ export async function createAstcProducerClient({ worker, assets, signal } = {}) 
         combined.throwIfAborted();
         const receipt = validateAstcProducerReceipt(data, {
           paths,
+          preset,
           packName: reservation.packName,
           maxPackBytes,
         });
@@ -487,6 +497,7 @@ export async function createAstcProducerClient({ worker, assets, signal } = {}) 
         return Object.freeze({
           source,
           pack: receipt.pack,
+          encoding: receipt.encoding,
           records: receipt.records,
           index: receipt.index,
           count: receipt.count,
