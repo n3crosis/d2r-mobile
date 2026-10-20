@@ -232,10 +232,14 @@ function input(bytes, cap) {
 function channel(worker, onFatal, onStage) {
   let next = 1,
     closed = false,
+    taken = false,
     entry;
   const stop = (reason = new Error("Sealed runtime closed")) => {
     if (closed) return;
     closed = true;
+    // Native termination emits no event. Notify the acquired extraction
+    // transport first so it can reject its queue and clear request deadlines.
+    if (taken) worker.dispatchEvent(new Event("error", { cancelable: true }));
     worker.terminate();
     if (entry) {
       clearTimeout(entry.timer);
@@ -282,6 +286,7 @@ function channel(worker, onFatal, onStage) {
     stop,
     takeWorker() {
       if (closed || entry) fail("Runtime unavailable");
+      taken = true;
       worker.onmessage = null;
       return worker;
     },
@@ -636,6 +641,7 @@ export async function prepareSealedRuntime({
           `${name} initialization (${initializationStage}): ${String(error?.message ?? error).slice(0, 1200)}`,
         );
       }
+      if (signal?.aborted) throw new DOMException("Runtime cancelled", "AbortError");
       if (result?.initialized !== true || buffers.some((buffer) => buffer.byteLength !== 0))
         fail("Actual runtime initialization/transfer failed");
       initialized[name] = result;
@@ -900,6 +906,7 @@ export async function prepareSealedRuntime({
     });
     sealedRuntimes.add(session);
     report({ phase: "initializing", label: "Preparing application profile…" }, true);
+    if (signal?.aborted) throw new DOMException("Runtime cancelled", "AbortError");
     return session;
   } catch (error) {
     close();

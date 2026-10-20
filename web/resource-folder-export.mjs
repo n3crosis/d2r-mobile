@@ -150,7 +150,7 @@ export async function exportRomfsResources({
     if (!force && now - lastProgress < 100) return;
     lastProgress = now;
     try {
-      onProgress?.(
+      const result = onProgress?.(
         Object.freeze({
           stage,
           state: stage === "complete" ? "complete" : "running",
@@ -161,6 +161,8 @@ export async function exportRomfsResources({
           totalBytes,
         }),
       );
+      // Progress observers must not block export or leak async rejections.
+      Promise.resolve(result).catch(() => {});
     } catch {
       /* Observers never alter an authenticated export. */
     }
