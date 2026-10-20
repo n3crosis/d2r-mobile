@@ -2,7 +2,7 @@
 
 [简体中文](README.zh-CN.md)
 
-Experimental bounded encoder, now included in the explicit optional Legacy Device Pack runtime closure, not the default download. Integration does not establish browser/device validation or full native parity. No game assets, keys, generated binaries, or upstream source copies are included.
+Experimental bounded encoder. The committed runtime assembly code includes it in the explicitly selected `legacy-astc` producer closure, not the default download; this internal path does not enable UI. Repository integration does not confirm a particular live deployment or establish browser/device validation or full native parity. See [optional runtime assets](../../runtime-build/OPTIONAL_ASSETS.md). No game assets, keys, generated binaries, or upstream source copies are included in source control.
 
 ## Provenance
 
@@ -11,6 +11,8 @@ Experimental bounded encoder, now included in the explicit optional Legacy Devic
 - Native baseline: `dm/tools/astc_pack.py`, `encode_batch()`: `-cl` or `-cs`, `4x4`, default `-thorough`, identity RGBA, no normal-map or alpha-weighting flags. The primitive maps these to `ASTCENC_PRF_LDR` / `ASTCENC_PRF_LDR_SRGB`, `ASTCENC_PRE_THOROUGH`, flags 0, and identity swizzle.
 
 ## Contract and limits
+
+The following limits and disposable-worker lifecycle describe the standalone primitive API, not the [integrated producer lifecycle](../../ASTC_PRODUCER.md).
 
 `encodeAstc4x4({ rgba, width, height, profile }, { signal, timeoutMs })` returns an ArrayBuffer of raw ASTC blocks, not an ASTC file. Input is one exact owned, fixed-length ArrayBuffer of tightly packed row-major RGBA8. Profiles are `linear` (default) and `srgb`. RGB values are passed unchanged; the selected ASTC profile determines encoding interpretation. Alpha stays linear; no premultiplication, gamma conversion, channel rearrangement, vertical flip, or normal reconstruction is applied. Output size is `ceil(width/4) * ceil(height/4) * 16`; partial edge blocks use upstream edge handling.
 
@@ -24,7 +26,7 @@ Use an already installed official Emscripten 4.0.20 SDK, Git, and CMake: `bash b
 
 Run `node --test synthetic.test.mjs` for lightweight synthetic JS validation, allocation cleanup, ownership transfer, cancellation, deadline, and error handling. These tests use a fake codec/worker and do not demonstrate actual ASTC encoding, WASM build correctness, quality, speed, or game parity. Separate CI WASM evidence is recorded below; browser codec tests remain unrun.
 
-Remaining pipeline work includes BC3 decoding and rounding parity, block-grid stitching/order, mip/thumbnail rewriting, descriptor cache updates, quality verification, CASC writing, browser execution evidence, and end-to-end independently owned inputs. A scalar source recipe is a correctness-first starting point, not a measured speed improvement.
+The optional producer now connects bounded texture/descriptor transformations and CASC writing in source. Remaining evidence gates include native parity for BC3 decoding/rounding, block-grid stitching/order, mip/thumbnail rewriting and descriptor cache updates, quality verification, browser execution, and end-to-end independently owned inputs. Its streaming SHA stage also retains the [unverified greater-than-4-GiB carry boundary](../sha256-stream-wasm/README.md). A scalar source recipe is a correctness-first starting point, not a measured speed improvement.
 
 ## Native smoke evidence (not WASM)
 
@@ -34,6 +36,6 @@ Executed with GCC 14.2.0: all 16 real encode/decode round trips passed for linea
 
 This verifies the actual C ABI compiles and links against the pinned upstream core and produces decodable ASTC. Source inspection confirms the upstream `astcenc-none-static` target and the selected CMake options exist. The local environment lacks Emscripten/CMake; separate CI evidence below covers actual WASM compilation. Native success alone is not WASM or full-pipeline parity. Browser execution, cancellation and full-scale memory remain unverified.
 
-## CI evidence
+## Historical CI evidence
 
-[Run 39477410207](https://github.com/n3crosis/d2r-mobile/actions/runs/39477410207), source f4f3326, compiled with pinned Emscripten 4.0.20 and passed 16 fixtures / 32 actual WASM encode calls in the explicitly shimmed Node worker. Small fixtures observed a 33,554,432-byte linear heap; this is not a peak browser-memory or maximum-heap enforcement measurement. WASM SHA-256: `518e199e5fc29f743909093d478eb3d650c0398f3c0a17dfd25fcc27a115c2ee`. Browser-worker execution, native/WASM byte equivalence, decode fidelity and full game texture-pack integration remain unverified. ASTC is not included in the published runtime payload.
+[Run 39477410207](https://github.com/n3crosis/d2r-mobile/actions/runs/39477410207), source f4f3326, compiled with pinned Emscripten 4.0.20 and passed 16 fixtures / 32 actual WASM encode calls in the explicitly shimmed Node worker. Small fixtures observed a 33,554,432-byte linear heap; this is not a peak browser-memory or maximum-heap enforcement measurement. WASM SHA-256: `518e199e5fc29f743909093d478eb3d650c0398f3c0a17dfd25fcc27a115c2ee`. Browser-worker execution, native/WASM byte equivalence, decode fidelity and full game texture-pack integration remain unverified. At that historical source revision, ASTC was not included in its published runtime payload. The current committed assembly configuration includes the optional producer closure described above; the historical run does not validate that later integration or establish its live deployment status.
