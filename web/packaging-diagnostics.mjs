@@ -65,10 +65,48 @@ export function packagingFailureSummary(report) {
   const stage = Object.hasOwn(stages, report?.stage) ? stages[report.stage] : "Local packaging";
   return `${stage} failed${code ? ` [${code}]` : ""}. ${code ? `${reasons[code]} ` : ""}No completed IPA is available.`;
 }
+/** Generated destinations only; never copy source filenames or arbitrary nested reports. */
+export function sanitizeResourceOutcome(outcome) {
+  if (!outcome || !["complete", "incomplete"].includes(outcome.status)) return undefined;
+  const directoryName = outcome.directoryName;
+  if (
+    directoryName !== null &&
+    (typeof directoryName !== "string" ||
+      !/^D2R-resources-[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(
+        directoryName,
+      ))
+  )
+    return undefined;
+  if (outcome.status === "complete")
+    return directoryName ? Object.freeze({ status: "complete", directoryName }) : undefined;
+  if (
+    typeof outcome.cleanupComplete !== "boolean" ||
+    typeof outcome.incompleteMarkerPresent !== "boolean"
+  )
+    return undefined;
+  return Object.freeze({
+    status: "incomplete",
+    directoryName,
+    cleanupComplete: outcome.cleanupComplete,
+    incompleteMarkerPresent: outcome.incompleteMarkerPresent,
+  });
+}
 export function packagingFailureMessage(report) {
-  const output =
+  const resources = sanitizeResourceOutcome(report?.resources);
+  let output =
     report?.outputStarted === true
       ? " Resources may have been saved in a D2R-resources subfolder inside the selected folder."
       : " No resources were exported by this attempt.";
+  if (resources?.status === "complete")
+    output = ` Complete game resources remain in ${resources.directoryName} inside the selected folder, but no completed IPA is available.`;
+  else if (resources?.cleanupComplete === true)
+    output =
+      " The incomplete resource export was removed; no resource folder from this attempt remains.";
+  else if (resources?.directoryName)
+    output = ` Incomplete resources may remain in ${resources.directoryName} inside the selected folder. Do not use this as a finished resource set. Check the folder before retrying.${
+      resources.incompleteMarkerPresent
+        ? " An incomplete-export warning marker remains."
+        : " An incomplete-export warning marker could not be confirmed."
+    }`;
   return `${packagingFailureSummary(report)}${output} Reload to try again. Keep key files on this device; the activity log contains no keys or filenames.`;
 }

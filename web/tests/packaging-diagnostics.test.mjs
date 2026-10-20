@@ -4,6 +4,7 @@ import {
   packagingActivity,
   packagingFailureMessage,
   packagingFailureSummary,
+  sanitizeResourceOutcome,
 } from "../packaging-diagnostics.mjs";
 
 test("activity log accepts only fixed stages, bounded counts and public codes", () => {
@@ -29,6 +30,50 @@ test("activity log accepts only fixed stages, bounded counts and public codes", 
     packagingFailureSummary({ stage: "PRIVATE-PATH", detailCode: "PRIVATE-KEY" }),
     /PRIVATE/,
   );
+});
+
+test("resource recovery details stay out of activity logs and copied failure summaries", () => {
+  const directoryName = "D2R-resources-12345678-1234-4123-8123-123456789abc";
+  const resources = sanitizeResourceOutcome({
+    status: "complete",
+    directoryName,
+    private: "PRIVATE-KEY",
+  });
+  assert.deepEqual(resources, { status: "complete", directoryName });
+  assert.equal(Object.isFrozen(resources), true);
+  const report = { stage: "archive", outputStarted: true, resources };
+  assert.match(packagingFailureMessage(report), /Complete game resources remain in D2R-resources-/);
+  assert.doesNotMatch(packagingFailureSummary(report), /D2R-resources|PRIVATE/);
+  assert.doesNotMatch(packagingActivity({ stage: "archive", resources }), /D2R-resources|PRIVATE/);
+  assert.doesNotMatch(
+    packagingFailureMessage({
+      ...report,
+      resources: { status: "complete", directoryName: "PRIVATE-PATH" },
+    }),
+    /PRIVATE/,
+  );
+  const incomplete = {
+    status: "incomplete",
+    directoryName,
+    cleanupComplete: false,
+    incompleteMarkerPresent: true,
+  };
+  assert.match(
+    packagingFailureMessage({ ...report, resources: incomplete }),
+    /Do not use this as a finished resource set/,
+  );
+  assert.match(
+    packagingFailureMessage({ ...report, resources: incomplete }),
+    /warning marker remains/,
+  );
+  assert.match(
+    packagingFailureMessage({
+      ...report,
+      resources: { ...incomplete, cleanupComplete: true, incompleteMarkerPresent: false },
+    }),
+    /no resource folder from this attempt remains/,
+  );
+  assert.equal(sanitizeResourceOutcome({ ...incomplete, cleanupComplete: "true" }), undefined);
 });
 test("early failure never suggests resource exports; key code is actionable", () => {
   const message = packagingFailureMessage({

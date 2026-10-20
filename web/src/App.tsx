@@ -38,13 +38,13 @@ export default function App() {
   const [activity, setActivity] = useState<string[]>([]);
   const [copyStatus, setCopyStatus] = useState("");
   const lastActivity = useRef("");
-  const appendActivity = useCallback((text: string | null, force = false) => {
-    if (!text) return;
-    if (!force && text === lastActivity.current) return;
-    lastActivity.current = text;
-    const line = `${new Date().toISOString()} ${text}`;
-    setActivity((previous) => [...previous, line].slice(-200));
-  }, []);
+  const activityBuffer = useRef<string[]>([]);
+  const activityRevision = useRef(0);
+  const renderedActivityRevision = useRef(0);
+  const copiedActivityRevision = useRef<number | null>(null);
+  const copyRequest = useRef(0);
+  const activityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingGenerationStatus = useRef<string | null>(null);
   const [loading, setLoading] = useState<LoadingProgress | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [status, setStatus] = useState("Loading application files…");
@@ -59,6 +59,49 @@ export default function App() {
   const [finished, setFinished] = useState(false);
   const downloadUrl = useRef<string | null>(null);
   const mounted = useRef(true);
+  const flushActivity = useCallback(() => {
+    if (activityTimer.current !== null) {
+      clearTimeout(activityTimer.current);
+      activityTimer.current = null;
+    }
+    if (!mounted.current) return;
+    if (renderedActivityRevision.current !== activityRevision.current) {
+      renderedActivityRevision.current = activityRevision.current;
+      setActivity([...activityBuffer.current]);
+      if (copiedActivityRevision.current !== activityRevision.current) setCopyStatus("");
+    }
+    if (pendingGenerationStatus.current !== null) {
+      setStatus(pendingGenerationStatus.current);
+      pendingGenerationStatus.current = null;
+    }
+  }, []);
+  const appendActivity = useCallback(
+    (text: string | null, force = false) => {
+      if (!mounted.current) return;
+      if (text && (force || text !== lastActivity.current)) {
+        lastActivity.current = text;
+        activityBuffer.current.push(`${new Date().toISOString()} ${text}`);
+        if (activityBuffer.current.length > 200) activityBuffer.current.shift();
+        activityRevision.current += 1;
+      }
+      // Preserve every bounded log entry, but coalesce transient UI updates.
+      // Terminal events flush the preceding entries immediately.
+      if (force) flushActivity();
+      else if (activityTimer.current === null) {
+        activityTimer.current = setTimeout(flushActivity, 250);
+      }
+    },
+    [flushActivity],
+  );
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      if (activityTimer.current !== null) clearTimeout(activityTimer.current);
+      activityTimer.current = null;
+      pendingGenerationStatus.current = null;
+    };
+  }, []);
   const packager = useRef<Packager | null>(null),
     cancellation = useRef<AbortController | null>(null);
   useEffect(() => {
@@ -204,6 +247,7 @@ export default function App() {
     setReady(false);
     setStatus("Starting IPA generation…");
     appendActivity("Generation started; private inputs remain local", true);
+    let acceptingProgress = true;
     try {
       const controller = new AbortController();
       cancellation.current = controller;
@@ -212,9 +256,12 @@ export default function App() {
         selectedNspNames: [...selectedNsps],
         signal: controller.signal,
         onProgress: (event: { label: string; stage?: string; state?: string }) => {
-          if (controller.signal.aborted || !mounted.current) return;
-          setStatus(event.label);
-          appendActivity(packagingActivity(event), event.state === "failed");
+          if (!acceptingProgress || controller.signal.aborted || !mounted.current) return;
+          pendingGenerationStatus.current = event.label;
+          appendActivity(
+            packagingActivity(event),
+            event.state === "failed" || event.state === "complete",
+          );
         },
       });
       if (!mounted.current) return;
@@ -248,6 +295,8 @@ export default function App() {
       appendActivity(packagingFailureSummary(report), true);
       setStatus(packagingFailureMessage(report));
     } finally {
+      acceptingProgress = false;
+      pendingGenerationStatus.current = null;
       setBusy(false);
       setGenerating(false);
       setCancelling(false);
@@ -290,6 +339,7 @@ export default function App() {
                   setReady(false);
                   setCancelling(true);
                   cancellation.current?.abort();
+                  pendingGenerationStatus.current = null;
                   setStatus("Cancelling… Waiting for the current operation to stop.");
                   appendActivity("Cancellation requested", true);
                 }}
@@ -382,11 +432,24 @@ export default function App() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {
-                void navigator.clipboard.writeText(activity.join("\n")).then(
-                  () => setCopyStatus("Log copied."),
-                  () => setCopyStatus("Copy failed. Select the log text and copy it manually."),
-                );
+              onClick={async () => {
+                const request = ++copyRequest.current;
+                const revision = activityRevision.current;
+                copiedActivityRevision.current = revision;
+                setCopyStatus("");
+                try {
+                  await navigator.clipboard.writeText(activityBuffer.current.join("\n"));
+                  if (!mounted.current || request !== copyRequest.current) return;
+                  setCopyStatus(
+                    revision === activityRevision.current
+                      ? "Log copied."
+                      : "Log copied. New entries have arrived; copy again for the latest log.",
+                  );
+                } catch {
+                  if (mounted.current && request === copyRequest.current) {
+                    setCopyStatus("Copy failed. Select the log text and copy it manually.");
+                  }
+                }
               }}
             >
               Copy log

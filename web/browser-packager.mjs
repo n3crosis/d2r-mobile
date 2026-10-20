@@ -11,9 +11,10 @@ import { createProductionAssetAdapter } from "./production-assets.mjs";
 import { createProductionShaderAdapter } from "./production-shaders.mjs";
 import { createBrowserBlobOutputAdapters, IPA_DOWNLOAD_LIMITS } from "./browser-blob-output.mjs";
 import { planStagedZip } from "./staged-zip-validator.mjs";
-import { exportRomfsResources } from "./resource-folder-export.mjs";
+import { exportRomfsResources, ResourceExportError } from "./resource-folder-export.mjs";
 import { deriveD2rRuntimeContentMode } from "./d2r-runtime-content-mode.mjs";
-import { runPackagingJob } from "./packaging-job.mjs";
+import { runPackagingJob, PackagingJobError } from "./packaging-job.mjs";
+import { sanitizeResourceOutcome } from "./packaging-diagnostics.mjs";
 
 function guestTarget(bytes) {
   const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength),
@@ -98,7 +99,7 @@ export async function prepareBrowserPackager({ manifestSha256, signal, onProgres
         )
           throw new Error("INPUT_FOLDER_WRITE_PERMISSION_REQUIRED");
         used = true;
-        let authenticated, selected, output, resources;
+        let authenticated, selected, output, resources, resourceOutcome;
         const archiveFormat = "zip32";
         const maxOutputBytes = IPA_DOWNLOAD_LIMITS.maxOutputBytes;
         const adapters = {
@@ -111,19 +112,26 @@ export async function prepareBrowserPackager({ manifestSha256, signal, onProgres
           async createOutput(context) {
             planStagedZip(context.manifest, { archiveFormat, maxOutputBytes });
             const { romfs } = readAuthenticatedAssets(authenticated, selected, { signal });
-            resources = await exportRomfsResources({
-              romfs,
-              // Root-only discovery never traverses generated resource folders.
-              // Export writes only to a fresh UUID child, never the source files.
-              outputDirectoryHandle: input,
-              signal,
-              onProgress: () =>
-                onProgress?.({
-                  stage: "resources",
-                  state: "running",
-                  label: "Saving game resources locally",
-                }),
-            });
+            try {
+              resources = await exportRomfsResources({
+                romfs,
+                // Root-only discovery never traverses generated resource folders.
+                // Export writes only to a fresh UUID child, never the source files.
+                outputDirectoryHandle: input,
+                signal,
+                onProgress: () =>
+                  onProgress?.({
+                    stage: "resources",
+                    state: "running",
+                    label: "Saving game resources locally",
+                  }),
+              });
+              resourceOutcome = sanitizeResourceOutcome(resources);
+            } catch (error) {
+              if (error instanceof ResourceExportError)
+                resourceOutcome = sanitizeResourceOutcome(error.report);
+              throw error;
+            }
             output = createBrowserBlobOutputAdapters({ archiveFormat, maxOutputBytes });
             return output.createOutput(context);
           },
@@ -227,18 +235,28 @@ export async function prepareBrowserPackager({ manifestSha256, signal, onProgres
             },
           },
         ];
-        const result = await runPackagingJob({
-          input,
-          selectedNspNames,
-          adapters,
-          signal,
-          onProgress,
-          archiveFormat,
-          maxOutputBytes,
-          selectionOptions: { contentMode: profile.contentMode },
-          secretLifetime: "archive",
-          concurrency: 1,
-        });
+        let result;
+        try {
+          result = await runPackagingJob({
+            input,
+            selectedNspNames,
+            adapters,
+            signal,
+            onProgress,
+            archiveFormat,
+            maxOutputBytes,
+            selectionOptions: { contentMode: profile.contentMode },
+            secretLifetime: "archive",
+            concurrency: 1,
+          });
+        } catch (error) {
+          if (error instanceof PackagingJobError && resourceOutcome)
+            throw new PackagingJobError(
+              error.cause,
+              Object.freeze({ ...error.report, resources: resourceOutcome }),
+            );
+          throw error;
+        }
         return { ...result, resources, download: output.getDownload() };
       },
       close,
