@@ -94,9 +94,8 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
         signal?.throwIfAborted();
         controller.signal.throwIfAborted();
       };
-      let pack = null,
-        image = null,
-        total = 0;
+      const budget = createShaderOutputBudget(MAX_TOTAL);
+      let sources;
       const pending = [],
         c1 = [];
       try {
@@ -110,7 +109,6 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
           crossWorkerUrl: runtime.workerUrls.spirvCross,
           workerFactory: runtime.createShaderWorkerFactory(),
         });
-        let packName = null;
         // 按物理源分组，避免反复解码同一个包；
         // 完成、摘要及 c1 输出采用原生排序后的文件名顺序。
         // Group by physical source to avoid repeatedly decoding the same pack;
@@ -120,29 +118,32 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
             y = catalog.describe(b);
           return x.name < y.name ? -1 : x.name > y.name ? 1 : x.index - y.index;
         });
+        sources = createShaderSourceCache(
+          keys.filter((key) => catalog.describe(key).embedded).length,
+        );
         for (const key of keys) {
           check();
           const descriptor = catalog.describe(key);
           let input;
+          sources.enter(descriptor);
           if (descriptor.embedded) {
-            if (!image) image = await mainImage(modules.main, controller.signal);
-            input = { mainImage: image };
+            if (!sources.image) sources.setImage(await mainImage(modules.main, controller.signal));
+            input = { mainImage: sources.image };
           } else {
-            if (packName !== descriptor.name) {
-              pack?.fill(0);
+            if (sources.packName !== descriptor.name) {
               const path = assets.logicalAssets.findUniquePathSuffix(
                 `/hd/shaders/${descriptor.name}`,
               );
               if (path.toLowerCase() !== `data:data/hd/shaders/${descriptor.name}`)
                 fail("Unexpected logical shader pack path");
-              pack = await assets.logicalAssets.read(path, {
+              const pack = await assets.logicalAssets.read(path, {
                 maxBytes: 256 * 1024 * 1024,
                 signal: controller.signal,
               });
               if (!(pack instanceof Uint8Array)) fail("Shader pack did not return bytes");
-              packName = descriptor.name;
+              sources.setPack(descriptor.name, pack);
             }
-            input = { packBytes: pack };
+            input = { packBytes: sources.pack };
           }
           const prepared = await catalog.prepare(key, {
             ...input,
@@ -190,12 +191,12 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
           if (variant) replay.fetch = variant.metadata;
           const base = encoder.encode(source),
             fetch = variant ? encoder.encode(variant.msl) : null;
-          total +=
-            base.length + (fetch?.length ?? 0) + encoder.encode(JSON.stringify(replay)).length;
-          if (total > MAX_TOTAL) fail("Full shader source/replay byte budget exceeded");
+          const replayReservation = encoder.encode(JSON.stringify(replay)).length;
+          budget.replace(0, base.length + (fetch?.length ?? 0) + replayReservation);
           retained.push(base);
           if (fetch) retained.push(fetch);
-          pending.push({ key, replay, base, fetch });
+          pending.push({ key, replay, base, fetch, replayReservation });
+          if (descriptor.embedded) sources.completeEmbedded();
           // 不联网地让出执行，允许在目录记录之间取消。
           // Yield without networking; permit cancellation between catalog records.
           await new Promise((resolve) => setTimeout(resolve, 0));
@@ -225,13 +226,17 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
             async *chunks() {
               check();
               if (!bytes) fail("Shader adapter disposed");
-              yield bytes.slice();
+              yield* shaderOutputChunks(bytes, check);
             },
           });
         };
         for (const row of pending.sort((a, b) => a.key.localeCompare(b.key))) {
           row.replay.chain = chain;
           const json = encoder.encode(JSON.stringify(row.replay, null, 1));
+          budget.replace(row.replayReservation, json.length);
+          // 最终 JSON 已生成，后续只使用字节；解除回放对象的引用。
+          // Final JSON is encoded; later steps use only bytes, so release the replay object reference.
+          row.replay = undefined;
           retained.push(json);
           entries.push(
             entry(`msl/b-${chain}/${row.key}_b.metallib`, row.base),
@@ -246,6 +251,7 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
               .map((key) => key + "\n")
               .join(""),
         );
+        budget.replace(0, index.length);
         retained.push(index);
         entries.push(entry("dm/c1_full.tsv", index));
         return entries;
@@ -253,8 +259,7 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
         dispose();
         throw error;
       } finally {
-        pack?.fill(0);
-        image?.fill(0);
+        sources?.dispose();
         pipeline?.dispose();
         pipeline = null;
         active = null;
@@ -262,5 +267,89 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
       }
     },
     dispose,
+  });
+}
+
+// 紧凑 JSON 只预留临时预算；最终格式化 JSON 必须替换预留，索引也计入上限。
+// Compact JSON only reserves temporary budget; final formatted JSON replaces that reservation and the index counts too.
+export function createShaderOutputBudget(limit = MAX_TOTAL) {
+  if (!Number.isSafeInteger(limit) || limit < 0 || limit > MAX_TOTAL)
+    fail("Invalid shader output budget");
+  let used = 0;
+  return Object.freeze({
+    replace(previous, actual) {
+      if (
+        !Number.isSafeInteger(previous) ||
+        previous < 0 ||
+        previous > used ||
+        !Number.isSafeInteger(actual) ||
+        actual < 0 ||
+        actual > limit - (used - previous)
+      )
+        fail("Full shader source/replay byte budget exceeded");
+      used = used - previous + actual;
+    },
+    get used() {
+      return used;
+    },
+  });
+}
+
+// 输出每次只复制 64 KiB，且每块交付前检查取消和释放状态。
+// Copy at most 64 KiB per output chunk, checking cancellation and disposal before each delivery.
+export async function* shaderOutputChunks(bytes, check) {
+  for (let offset = 0; offset < bytes.length; offset += 65536) {
+    check();
+    yield bytes.slice(offset, offset + 65536);
+  }
+}
+
+// 按实际使用次数释放镜像，而非假设嵌入记录连续；切换来源时清空物理包身份。
+// Release the image by actual remaining uses, not assumed contiguous embedded ordering; clear physical-pack identity on source switches.
+export function createShaderSourceCache(embeddedCount) {
+  if (!Number.isSafeInteger(embeddedCount) || embeddedCount < 0)
+    fail("Invalid embedded shader count");
+  let pack,
+    packName = null,
+    image;
+  const clearPack = () => {
+    pack?.fill(0);
+    pack = undefined;
+    packName = null;
+  };
+  return Object.freeze({
+    get pack() {
+      return pack;
+    },
+    get packName() {
+      return packName;
+    },
+    get image() {
+      return image;
+    },
+    enter(descriptor) {
+      if (descriptor.embedded || packName !== descriptor.name) clearPack();
+    },
+    setPack(name, bytes) {
+      clearPack();
+      pack = bytes;
+      packName = name;
+    },
+    setImage(bytes) {
+      image?.fill(0);
+      image = bytes;
+    },
+    completeEmbedded() {
+      if (embeddedCount <= 0) fail("Unexpected embedded shader completion");
+      if (--embeddedCount === 0) {
+        image?.fill(0);
+        image = undefined;
+      }
+    },
+    dispose() {
+      clearPack();
+      image?.fill(0);
+      image = undefined;
+    },
   });
 }

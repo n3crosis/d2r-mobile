@@ -158,10 +158,15 @@ test("pack record search keeps native non-overlapping marker boundaries", async 
   const catalog = await loadShaderCatalog(input());
   const key = catalog.keys.find((candidate) => {
     const descriptor = catalog.describe(candidate);
-    return !descriptor.embedded && descriptor.index === 2 && descriptor.stage === "cs";
+    return !descriptor.embedded && descriptor.index === 1 && descriptor.stage === "cs";
   });
   assert.ok(key);
-  const packBytes = new TextEncoder().encode("BTCDBTCDBTCDBTCD");
+  // 仅有一个不重叠标记；若错误地逐字节推进，偏移 4 会被当作第二条记录。
+  // Only one non-overlapping marker exists; advancing bytewise would count offset 4 as a second record.
+  const packText = "BTCDBTCDBTCD";
+  assert.equal(packText.indexOf("BTCDBTCD", 1), 4);
+  assert.equal(packText.indexOf("BTCDBTCD", 8), -1);
+  const packBytes = new TextEncoder().encode(packText);
   await assert.rejects(
     catalog.prepare(key, { packBytes, debug: true, reduced: false }),
     /Catalog record absent from pack/,
