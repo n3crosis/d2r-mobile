@@ -174,7 +174,9 @@ export async function assembleRuntime({ build } = {}) {
     // native binaries, build caches, key files or user-selected resources.
     for (const path of [
       "sealed-runtime/clients.mjs",
+      "runtime-asset-groups.mjs",
       "toolchain/asset-runtime-js/payload-policy.mjs",
+      "toolchain/asset-runtime-js/contract.mjs",
       "sealed-runtime/texture-worker.mjs",
       "sealed-runtime/dotnet-worker.mjs",
       "native-art-texture.mjs",
@@ -308,7 +310,7 @@ export async function assembleRuntime({ build } = {}) {
       await copy(input.evidencePath, undefined, input.metadataPath);
       await copy(input.buildPath, input, input.archivePath);
     }
-    const { transport, payloads } = createRuntimeTransport(contents);
+    const { transport, payloads } = createRuntimeTransport(contents, { assets });
     await mkdir(resolve(staging, "payloads"));
     for (const [path, bytes] of payloads) await writeFile(resolve(staging, path), bytes);
     const manifest = {

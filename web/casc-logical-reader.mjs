@@ -59,22 +59,10 @@ async function exactRead(file, offset, count, signal) {
   return bytes.slice();
 }
 
-/**
- * romfs 是所选已认证镜像上 indexRomfs 的 { getFile(path) }。认证及版本选择属于提取阶段，绝非调用方布尔值。仅清单会立即建立索引；不缓存归档或解码内容。重复逻辑路径采用最后一行，与 dm/tools/dmx.py 完全一致。
- * romfs is indexRomfs's { getFile(path) } over the selected authenticated image.
- * Authentication/version selection belongs to extraction, never a caller boolean.
- * Only the manifest is indexed eagerly. No archive or decoded content is cached.
- * Duplicate logical paths use the last row, exactly like dm/tools/dmx.py.
- */
-export async function createCascLogicalAssets(romfs, { signal } = {}) {
-  signal?.throwIfAborted();
-  if (!romfs || typeof romfs.getFile !== "function") fail("RomFS index required");
-  const getFile = romfs.getFile.bind(romfs);
+async function scanManifest(getFile, accept, signal, nativeAstc = false) {
   const manifest = reader(getFile("data/build_manifest.psv"), "build manifest");
   if (manifest.size > BigInt(CASC_LIMITS.manifestBytes)) fail("manifest byte budget");
   const decoder = new TextDecoder("utf-8", { fatal: true });
-  const index = new Map();
-  const duplicatePaths = new Set();
   let pending = "",
     first = true,
     rowCount = 0;
@@ -84,23 +72,17 @@ export async function createCascLogicalAssets(romfs, { signal } = {}) {
       fail("manifest line budget");
     if (first) {
       first = false;
-      // dmx 无条件跳过首行；不要虚构头部版本。
-      // dmx skips the first line unconditionally; do not invent a header version.
-      return;
+      // dmx 跳过首行；原生 ASTC 将所有行交给路径筛选，不虚构头部版本。
+      // dmx skips the first line; native ASTC path-filters every row without inventing a header version.
+      if (!nativeAstc) return;
     }
-    if (text.startsWith("#")) return;
+    if (!nativeAstc && text.startsWith("#")) return;
     const fields = text.split("|");
     // 原生 dmx 跳过短行及空行。保留此行为。
     // Native dmx skips short/blank rows. Preserve that behavior.
     if (fields.length < 11) return;
     if (++rowCount > CASC_LIMITS.rows) fail("manifest row budget");
-    const key = checkPath(fields[9]);
-    // 仅保留定位及解码请求资源所需字段；数字验证
-    // 惰性执行，避免无关的不支持记录阻碍有效资源读取。
-    // Keep only fields needed to locate/decode a requested asset; numeric validation
-    // is lazy so unrelated unsupported records do not prevent valid asset reads.
-    if (index.has(key)) duplicatePaths.add(key);
-    index.set(key, Object.freeze(fields.slice(0, 11)));
+    accept(fields.slice(0, 11));
   }
   for (let offset = 0n; offset < manifest.size;) {
     signal?.throwIfAborted();
@@ -120,6 +102,30 @@ export async function createCascLogicalAssets(romfs, { signal } = {}) {
   if (pending) line(pending);
   if (first) fail("empty manifest");
   signal?.throwIfAborted();
+}
+
+/**
+ * romfs 是所选已认证镜像上 indexRomfs 的 { getFile(path) }。认证及版本选择属于提取阶段，绝非调用方布尔值。仅清单会立即建立索引；不缓存归档或解码内容。重复逻辑路径采用最后一行，与 dm/tools/dmx.py 完全一致。
+ * romfs is indexRomfs's { getFile(path) } over the selected authenticated image.
+ * Authentication/version selection belongs to extraction, never a caller boolean.
+ * Only the manifest is indexed eagerly. No archive or decoded content is cached.
+ * Duplicate logical paths use the last row, exactly like dm/tools/dmx.py.
+ */
+export async function createCascLogicalAssets(romfs, { signal } = {}) {
+  signal?.throwIfAborted();
+  if (!romfs || typeof romfs.getFile !== "function") fail("RomFS index required");
+  const getFile = romfs.getFile.bind(romfs);
+  const index = new Map();
+  const duplicatePaths = new Set();
+  await scanManifest(
+    getFile,
+    (fields) => {
+      const key = checkPath(fields[9]);
+      if (index.has(key)) duplicatePaths.add(key);
+      index.set(key, Object.freeze(fields));
+    },
+    signal,
+  );
   function lookup(path) {
     signal?.throwIfAborted();
     const key = checkPath(path, true);
@@ -187,6 +193,93 @@ export async function createCascLogicalAssets(romfs, { signal } = {}) {
         },
         { verifyMd5, signal: combined },
       );
+    },
+  });
+}
+
+// ASTC 仅索引首个规范路径匹配；此底层解析器本身不授予认证能力。
+// ASTC indexes only the first normalized path match; this low-level parser grants no authentication.
+export const ASTC_MANIFEST_LIMITS = Object.freeze({
+  records: 32768,
+  metadataBytes: 8 * 1024 * 1024,
+});
+export async function createCascAstcRecords(romfs, { signal } = {}) {
+  signal?.throwIfAborted();
+  if (!romfs || typeof romfs.getFile !== "function") fail("RomFS index required");
+  const getFile = romfs.getFile.bind(romfs);
+  const rows = new Map();
+  let metadataBytes = 0;
+  await scanManifest(
+    getFile,
+    (fields) => {
+      const original = fields[9];
+      const normalized = original.slice(original.indexOf(":") + 1).toLowerCase();
+      if (!normalized.endsWith(".texture") && normalized !== "data/hd/texture_desc_cache.json")
+        return;
+      const path = checkPath(normalized);
+      if (rows.has(path)) return;
+      metadataBytes += utf8.encode(fields.join("|")).length;
+      if (
+        rows.size >= ASTC_MANIFEST_LIMITS.records ||
+        metadataBytes > ASTC_MANIFEST_LIMITS.metadataBytes
+      )
+        fail("ASTC metadata budget");
+      rows.set(path, Object.freeze(fields));
+    },
+    signal,
+    true,
+  );
+  return Object.freeze({
+    entries: () => rows.keys(),
+    open(path, { signal: readSignal } = {}) {
+      signal?.throwIfAborted();
+      readSignal?.throwIfAborted();
+      const combined =
+        signal && readSignal ? AbortSignal.any([signal, readSignal]) : (signal ?? readSignal);
+      const row = rows.get(path);
+      if (!row) fail("ASTC record missing");
+      if (row[1] !== "0") fail("unsupported key layout");
+      const locator = archiveLocator(row[6]);
+      if (uint(row[2], "chunk") !== locator.chunk || uint(row[3], "archive") !== locator.archive)
+        fail("EKey chunk/archive mismatch");
+      const encodedSize = uint(row[7], "encoded size"),
+        decodedSize = uint(row[5], "decoded size");
+      if (encodedSize > 0xffffffff || decodedSize > 0xffffffff) fail("ASTC record size");
+      if (!/^[0-9a-f]{32}$/i.test(row[4])) fail("CKey");
+      const file = reader(getFile(`data/${locator.filename}`), "archive");
+      const offset = BigInt(locator.offset);
+      if (offset > file.size || BigInt(encodedSize) > file.size - offset) fail("record extent");
+      return Object.freeze({
+        record: Object.freeze({
+          offset,
+          encodedSize,
+          decodedSize,
+          encoding: row[8],
+          ckey: row[4],
+          ekey: row[6],
+        }),
+        source: Object.freeze({
+          size: file.size,
+          async readAt(position, count, { signal: operationSignal } = {}) {
+            const active =
+              combined && operationSignal
+                ? AbortSignal.any([combined, operationSignal])
+                : (combined ?? operationSignal);
+            active?.throwIfAborted();
+            if (
+              typeof position !== "bigint" ||
+              !Number.isSafeInteger(count) ||
+              count < 0 ||
+              count > ROMFS_LIMITS.readBytes ||
+              position < offset ||
+              position > offset + BigInt(encodedSize) ||
+              BigInt(count) > offset + BigInt(encodedSize) - position
+            )
+              fail("ASTC record read extent");
+            return exactRead(file, position, count, active);
+          },
+        }),
+      });
     },
   });
 }

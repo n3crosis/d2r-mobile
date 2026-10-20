@@ -1,5 +1,12 @@
 // 依据仓库中的外壳发布证据、资源来源记录及着色器目录加载可信生产配置。
 // Load trusted production profiles from repository shell-release evidence, asset provenance and shader catalogs.
+import {
+  validateAstcOutputs,
+  validateLegacyPackMetadata,
+  validateCascArchiveName,
+  ASTC_OUTPUT_LIMITS,
+} from "./astc-output-validator.mjs";
+import { validateShellContract } from "./shell-contract.mjs";
 import { resolveShellProfile } from "./shell-profiles.mjs";
 import { loadShaderCatalog } from "./shader-catalog-adapter.mjs";
 import { createShellLoader } from "./shell-loader.mjs";
@@ -107,5 +114,105 @@ export async function loadProductionProfile(runtime, { signal, profileId } = {})
         shellBytes = undefined;
       }
     },
+  };
+}
+
+/**
+ * 逐块检查真实条目，只保留验证所需的小前缀；不重建完整 ASTC 文件缓冲区。
+ * Inspect actual streamed entries, retaining only tiny validation prefixes, never reconstructing whole ASTC file buffers.
+ */
+export async function inspectProductionAstcEntries(entries, binding, { signal } = {}) {
+  signal?.throwIfAborted();
+  if (!Array.isArray(entries) || entries.length !== 11 || !binding?.overlayArchives)
+    throw new Error("PRODUCTION_ASTC_INVENTORY");
+  const pack = validateLegacyPackMetadata(binding.pack);
+  const overlayArchives = Object.freeze({
+    base: validateCascArchiveName(binding.overlayArchives.base),
+    item_notes: validateCascArchiveName(binding.overlayArchives.item_notes),
+  });
+  const files = Object.create(null);
+  let totalBytes = 0;
+  try {
+    for (const entry of entries) {
+      signal?.throwIfAborted();
+      if (
+        !entry ||
+        typeof entry.path !== "string" ||
+        entry.path.length > 512 ||
+        Object.hasOwn(files, entry.path) ||
+        !Number.isSafeInteger(entry.size) ||
+        entry.size < 0 ||
+        entry.size > ASTC_OUTPUT_LIMITS.fileBytes ||
+        typeof entry.chunks !== "function" ||
+        !Number.isInteger(entry.mode) ||
+        entry.mode < 0 ||
+        entry.mode > 0xffff ||
+        ![0, 0o100000].includes(entry.mode & 0o170000) ||
+        (entry.mode & 0o7777) !== 0o644 ||
+        (totalBytes += entry.size) > ASTC_OUTPUT_LIMITS.totalBytes
+      )
+        throw new Error("PRODUCTION_ASTC_ENTRY");
+      const metadata = entry.path === "romfs_overlay_astc/pack.json";
+      if (metadata && entry.size > ASTC_OUTPUT_LIMITS.packJsonBytes)
+        throw new Error("PRODUCTION_ASTC_PACK_JSON");
+      const prefix = new Uint8Array(
+        Math.min(
+          entry.size,
+          metadata
+            ? ASTC_OUTPUT_LIMITS.packJsonBytes
+            : entry.path.endsWith("/features.txt")
+              ? 11
+              : 1,
+        ),
+      );
+      files[entry.path] = prefix;
+      let count = 0;
+      for await (const chunk of entry.chunks()) {
+        signal?.throwIfAborted();
+        if (
+          !(chunk instanceof Uint8Array) ||
+          !(chunk.buffer instanceof ArrayBuffer) ||
+          chunk.buffer.resizable ||
+          chunk.buffer.byteLength > 1024 * 1024 ||
+          chunk.length > entry.size - count
+        )
+          throw new Error("PRODUCTION_ASTC_CHUNK");
+        if (count < prefix.length)
+          prefix.set(chunk.subarray(0, Math.min(chunk.length, prefix.length - count)), count);
+        count += chunk.length;
+      }
+      signal?.throwIfAborted();
+      if (count !== entry.size) throw new Error("PRODUCTION_ASTC_SIZE");
+    }
+    // 验证器只检查这些内容前缀；真实大小和总预算已在上面独立验证。
+    // The validator examines only these content prefixes; actual sizes and total budgets were independently checked above.
+    const validation = validateAstcOutputs({ files, pack, overlayArchives });
+    return Object.freeze({ ...validation, totalBytes, overlayArchives });
+  } finally {
+    for (const bytes of Object.values(files)) bytes.fill(0);
+  }
+}
+
+/**
+ * 生成完成后才扩展外壳契约，只加入通过清单、流边界和前缀结构检查的十一个精确文件名；这不是归档内容认证，原配置保持不变。
+ * Extend the shell contract only after inventory, stream-boundary and prefix-structure checks on eleven exact filenames; this does not authenticate archive contents and leaves the original profile unchanged.
+ */
+export async function bindProductionAstcEntries(profile, entries, binding, options) {
+  if (profile.astcOutput) throw new Error("PRODUCTION_ASTC_ALREADY_BOUND");
+  const astcOutput = await inspectProductionAstcEntries(entries, binding, options);
+  const trustedRecipe = Object.freeze({
+    ...profile.trustedShell.trustedRecipe,
+    extraFiles: Object.freeze([
+      ...profile.trustedShell.trustedRecipe.extraFiles,
+      ...astcOutput.paths,
+    ]),
+  });
+  const contract = Object.freeze({ ...profile.shell.contract, trustedRecipe });
+  validateShellContract(contract);
+  return {
+    ...profile,
+    astcOutput,
+    trustedShell: Object.freeze({ ...profile.trustedShell, trustedRecipe }),
+    shell: Object.freeze({ ...profile.shell, contract }),
   };
 }

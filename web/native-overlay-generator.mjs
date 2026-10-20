@@ -7,7 +7,7 @@
  * extraction adapter's private authenticated capability. No whole RomFS copy.
  */
 import { readAuthenticatedAssets } from "./extraction-job-adapter.mjs";
-import { writeCascOverlay } from "./casc-overlay-writer.mjs";
+import { writeCascOverlay, writeCascPrebuiltOverlay } from "./casc-overlay-writer.mjs";
 
 export const NATIVE_OVERLAY_LIMITS = Object.freeze({
   manifest: 128 * 1024 * 1024,
@@ -138,6 +138,7 @@ export async function generateNativeOverlay({
   generated,
   worker,
   signal,
+  prebuiltPack,
 } = {}) {
   signal?.throwIfAborted();
   const assets = readAuthenticatedAssets(extracted, selection, { signal });
@@ -149,6 +150,54 @@ export async function generateNativeOverlay({
     Object.keys(generated).length !== NATIVE_OVERLAY_GENERATED.length
   )
     fail("OVERLAY_OPTIONS");
+  // 只快照有界元数据；包载荷不进入覆盖层或 IPA。
+  // Snapshot bounded metadata only; pack payload never enters the overlay or IPA.
+  let external;
+  if (prebuiltPack !== undefined) {
+    const pack = prebuiltPack?.pack,
+      records = prebuiltPack?.records;
+    if (
+      !pack ||
+      !Array.isArray(records) ||
+      !records.length ||
+      records.length > 32768 ||
+      Object.keys(prebuiltPack).some((key) => !["pack", "records"].includes(key)) ||
+      typeof pack.name !== "string" ||
+      pack.name.length > 32 ||
+      typeof pack.sha256 !== "string" ||
+      pack.sha256.length !== 64 ||
+      !Number.isSafeInteger(pack.size)
+    )
+      fail("OVERLAY_PREBUILT_METADATA");
+    let pathBytes = 0;
+    external = {
+      pack: { name: pack.name, size: pack.size, sha256: pack.sha256 },
+      records: records.map((r) => {
+        if (
+          !r ||
+          typeof r.path !== "string" ||
+          r.path.length > 4096 ||
+          (pathBytes += utf8.encode(r.path).length) > 8 * 1024 * 1024 ||
+          typeof r.oldEkey !== "string" ||
+          r.oldEkey.length !== 32 ||
+          typeof r.newEkey !== "string" ||
+          r.newEkey.length !== 32 ||
+          !Number.isSafeInteger(r.encodedSize) ||
+          !Number.isSafeInteger(r.decodedSize)
+        )
+          fail("OVERLAY_PREBUILT_METADATA");
+        return {
+          path: r.path,
+          oldEkey: r.oldEkey,
+          newEkey: r.newEkey,
+          encodedSize: r.encodedSize,
+          decodedSize: r.decodedSize,
+        };
+      }),
+    };
+    if (utf8.encode(JSON.stringify(external)).length > 16 * 1024 * 1024)
+      fail("OVERLAY_PREBUILT_METADATA");
+  }
   const bundle = { manifest: "", assets: {}, generated: {} };
   let total = 0;
   for (const name of NATIVE_OVERLAY_GENERATED) {
@@ -211,6 +260,8 @@ export async function generateNativeOverlay({
       return data;
     };
     let outputBytes = 0;
+    let astc;
+    const overlayArchives = {};
     for (const variant of result.variants) {
       signal?.throwIfAborted();
       if (
@@ -239,17 +290,68 @@ export async function generateNativeOverlay({
           ? ["ctrl_touch", "touch_strings.tsv"]
           : ["ctrl_touch", "dm_textbox_plain.tsv", "features.txt", "touch_strings.tsv"];
       if (JSON.stringify(sideNames) !== JSON.stringify(expected)) fail("OVERLAY_SIDECAR_SET");
+      let astcPrefix;
+      if (external) {
+        const converted = await writeCascPrebuiltOverlay({
+          romfs: assets.romfs,
+          replacements,
+          external,
+          worker,
+          signal,
+        });
+        const archiveNames = Object.keys(overlay.files).filter((name) => name.endsWith(".data"));
+        const convertedNames = Object.keys(converted.files).filter((name) =>
+          name.endsWith(".data"),
+        );
+        for (const value of Object.values(converted.files)) owned.push(bytes(value));
+        if (
+          archiveNames.length !== 1 ||
+          convertedNames.length !== 1 ||
+          archiveNames[0] !== convertedNames[0] ||
+          converted.external?.count !== external.records.length ||
+          JSON.stringify(converted.external.pack) !== JSON.stringify(external.pack)
+        )
+          fail("OVERLAY_PREBUILT_BINDING");
+        overlayArchives[variant.name] = archiveNames[0].slice("data/".length);
+        astcPrefix =
+          variant.name === "base" ? "romfs_overlay_astc" : "romfs_overlay_astc_variants/item_notes";
+        for (const [name, value] of Object.entries(converted.files)) {
+          const data = bytes(value);
+          if (!data || (outputBytes += data.length) > NATIVE_OVERLAY_LIMITS.output)
+            fail("OVERLAY_OUTPUT_LIMIT");
+          output[`${astcPrefix}/${name}`] = data.slice();
+        }
+        if (variant.name === "base") {
+          const data = utf8.encode(JSON.stringify(external.pack) + "\n");
+          if ((outputBytes += data.length) > NATIVE_OVERLAY_LIMITS.output)
+            fail("OVERLAY_OUTPUT_LIMIT");
+          output[`${astcPrefix}/pack.json`] = data;
+          astc = Object.freeze({
+            count: external.records.length,
+            pack: Object.freeze({ ...external.pack }),
+            overlayArchives,
+          });
+        }
+      }
       for (const side of variant.sidecars) {
         const data = take(side.file);
         if ((outputBytes += data.length) > NATIVE_OVERLAY_LIMITS.output)
           fail("OVERLAY_OUTPUT_LIMIT");
         output[`${prefix}/${side.path}`] = data.slice();
+        if (astcPrefix) {
+          if ((outputBytes += data.length) > NATIVE_OVERLAY_LIMITS.output)
+            fail("OVERLAY_OUTPUT_LIMIT");
+          output[`${astcPrefix}/${side.path}`] = data.slice();
+        }
       }
     }
     if (used.size !== Object.keys(result.files).length) fail("OVERLAY_UNEXPECTED_FILE");
     return Object.freeze({
       files: Object.freeze(output),
       variants: Object.freeze(["base", "item_notes"]),
+      ...(astc
+        ? { astc: Object.freeze({ ...astc, overlayArchives: Object.freeze(overlayArchives) }) }
+        : {}),
     });
   } catch (error) {
     for (const value of Object.values(output)) value.fill(0);

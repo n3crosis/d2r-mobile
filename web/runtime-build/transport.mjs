@@ -1,6 +1,10 @@
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import { gzipSync, gunzipSync } from "node:zlib";
+import {
+  validateRuntimeAssetGroups,
+  validateRuntimeTransportGroups,
+} from "../runtime-asset-groups.mjs";
 
 const maximumFile = 64 * 1024 * 1024;
 const maximumTotal = 512 * 1024 * 1024;
@@ -11,12 +15,21 @@ const validSize = (value, cap = maximumFile) =>
 
 // Transport is separate from the logical path inventory: worker manifests and
 // relative paths stay unchanged, while identical public bytes travel only once.
-export function createRuntimeTransport(contents) {
+export function createRuntimeTransport(contents, { assets } = {}) {
+  const ownership = assets === undefined ? undefined : validateRuntimeAssetGroups(assets);
+  if (
+    ownership &&
+    (ownership.size !== contents.size ||
+      [...contents.values()].some((record) => !ownership.has(contentKey(record))))
+  )
+    throw new Error("Runtime transport grouping inventory mismatch");
+  const groupOf = (record) => ownership?.get(contentKey(record)) ?? "";
   const files = [],
     entries = [],
     payloads = new Map();
   let pending = [],
-    pendingBytes = 0;
+    pendingBytes = 0,
+    pendingGroup = "";
   function flush(group) {
     if (!group.length) return;
     const decoded = Buffer.concat(group.map((record) => record.data));
@@ -40,13 +53,22 @@ export function createRuntimeTransport(contents) {
       offset += record.bytes;
     }
   }
-  for (const record of [...contents.values()].sort((a, b) => a.sha256.localeCompare(b.sha256))) {
+  for (const record of [...contents.values()].sort(
+    (a, b) => groupOf(a).localeCompare(groupOf(b)) || a.sha256.localeCompare(b.sha256),
+  )) {
     if (
       !validSize(record.bytes) ||
       record.data.length !== record.bytes ||
       sha(record.data) !== record.sha256
     )
       throw new Error("Invalid transport source bytes");
+    const group = groupOf(record);
+    if (group !== pendingGroup) {
+      flush(pending);
+      pending = [];
+      pendingBytes = 0;
+      pendingGroup = group;
+    }
     if (record.bytes > 256 * 1024) {
       flush([record]);
     } else {
@@ -72,6 +94,7 @@ export function createRuntimeTransport(contents) {
 }
 
 export function validateRuntimeTransport(manifest) {
+  validateRuntimeAssetGroups(manifest.assets);
   const transport = manifest.transport;
   if (
     transport?.version !== 1 ||
@@ -124,6 +147,7 @@ export function validateRuntimeTransport(manifest) {
     file.entries.push(entry);
   }
   if (seen.size !== expected.size) throw new Error("Incomplete logical runtime transport");
+  validateRuntimeTransportGroups(manifest.assets, transport.entries);
   for (const file of files.values()) {
     let offset = 0;
     for (const entry of file.entries.sort((a, b) => a.offset - b.offset)) {

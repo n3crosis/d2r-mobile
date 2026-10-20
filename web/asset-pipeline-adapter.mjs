@@ -6,6 +6,7 @@ import { generateRemainingArt } from "./remaining-art-generator.mjs";
 import { generateMercenaryArt } from "./mercenary-art-generator.mjs";
 import { generateMapGoal } from "./map-goal-generator.mjs";
 import { writeCascOverlay } from "./casc-overlay-writer.mjs";
+import { validateAstcOutputs, validateLegacyPackMetadata } from "./astc-output-validator.mjs";
 import { validateEncodeRequest } from "./toolchain/texture-spike/browser-texture-encoder.mjs";
 
 export const ASSET_PIPELINE_LIMITS = Object.freeze({
@@ -32,6 +33,59 @@ const path = (value) => {
 const view = (value) =>
   value instanceof Uint8Array ? value : value instanceof ArrayBuffer ? new Uint8Array(value) : null;
 
+// 仅快照受信任调用方的有界元数据；不接受包载荷，也不认证哈希或来源。
+// Snapshot bounded metadata from a trusted caller only; accept no pack payload and authenticate neither hashes nor provenance.
+export function snapshotPrebuiltPackMetadata(value) {
+  if (value === undefined) return undefined;
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.keys(value).sort().join(",") !== "pack,records" ||
+    !Array.isArray(value.records) ||
+    !value.records.length ||
+    value.records.length > 32768
+  )
+    fail("ASSET_PIPELINE_PREBUILT_METADATA");
+  const pack = validateLegacyPackMetadata(value.pack);
+  if (pack.size === 0) fail("ASSET_PIPELINE_PREBUILT_METADATA");
+  let totalPathBytes = 0;
+  const textEncoder = new TextEncoder();
+  const records = value.records.map((record) => {
+    const pathBytes =
+      typeof record?.path === "string" && record.path.length <= 4096
+        ? textEncoder.encode(record.path).length
+        : Infinity;
+    if (
+      !record ||
+      typeof record !== "object" ||
+      Array.isArray(record) ||
+      Object.keys(record).sort().join(",") !== "decodedSize,encodedSize,newEkey,oldEkey,path" ||
+      typeof record.path !== "string" ||
+      !record.path.length ||
+      record.path.length > 4096 ||
+      pathBytes > 4096 ||
+      (totalPathBytes += pathBytes) > 8 * 1024 * 1024 ||
+      typeof record.oldEkey !== "string" ||
+      !/^[0-9a-f]{32}$/.test(record.oldEkey) ||
+      typeof record.newEkey !== "string" ||
+      !/^[0-9a-f]{32}$/.test(record.newEkey) ||
+      [record.encodedSize, record.decodedSize].some(
+        (size) => !Number.isSafeInteger(size) || size < 0 || size > 0xffffffff,
+      )
+    )
+      fail("ASSET_PIPELINE_PREBUILT_METADATA");
+    return Object.freeze({
+      path: record.path,
+      oldEkey: record.oldEkey,
+      newEkey: record.newEkey,
+      encodedSize: record.encodedSize,
+      decodedSize: record.decodedSize,
+    });
+  });
+  return Object.freeze({ pack, records: Object.freeze(records) });
+}
+
 /**
  * 仅用于受信任宿主接线。这里组合真实原语，而非完整游戏配置。纹理变换由源码派生函数显式提供；不虚构布局或替换图像。应用接受任务输入之前，工厂必须返回已预加载并密封的客户端。原生目标：d2rm_pack.py 暂存 mapgoal/ 和 romfs_overlay/。此适配器仅输出覆盖增量文件，绝不克隆整个 RomFS。
  * Trusted host wiring only. This composes real primitives, not a complete game
@@ -47,6 +101,7 @@ export function createAssetPipelineAdapter({
   mercenaryArt = false,
   remainingArt = false,
   nativeOverlayGenerated = null,
+  prebuiltPack,
   textureReplacements = [],
   createAssetWorker,
   createTextureClient,
@@ -57,6 +112,7 @@ export function createAssetPipelineAdapter({
     typeof mercenaryArt !== "boolean" ||
     typeof remainingArt !== "boolean" ||
     (remainingArt && nativeOverlayGenerated === null) ||
+    (prebuiltPack !== undefined && nativeOverlayGenerated === null) ||
     !Array.isArray(textureReplacements) ||
     textureReplacements.length > ASSET_PIPELINE_LIMITS.textures ||
     (!mapGoal && !mercenaryArt && !textureReplacements.length && nativeOverlayGenerated === null) ||
@@ -73,6 +129,8 @@ export function createAssetPipelineAdapter({
       typeof createTextureEncoder !== "function")
   )
     fail("ASSET_PIPELINE_OPTIONS");
+  prebuiltPack = snapshotPrebuiltPackMetadata(prebuiltPack);
+  let astcBinding;
   const destinations = new Set();
   const recipes = textureReplacements.map((recipe) => {
     const input = path(recipe?.input),
@@ -121,6 +179,8 @@ export function createAssetPipelineAdapter({
   };
   const dispose = () => {
     disposed = true;
+    astcBinding = undefined;
+    prebuiltPack = undefined;
     try {
       internalAbort?.abort();
       closeClients();
@@ -133,6 +193,7 @@ export function createAssetPipelineAdapter({
     if (cleanupFailed) fail("ASSET_PIPELINE_CLEANUP");
   };
   async function generateAssets({ extracted, selection, signal } = {}) {
+    astcBinding = undefined;
     if (used || disposed) fail("ASSET_PIPELINE_SINGLE_USE");
     if (signal?.aborted) fail("ASSET_PIPELINE_CANCELLED");
     used = true;
@@ -147,7 +208,9 @@ export function createAssetPipelineAdapter({
     combined.addEventListener("abort", abort, { once: true });
     const owned = new Set();
     const entries = [];
-    let outputBytes = 0;
+    let outputBytes = 0,
+      pendingAstcBinding,
+      completedEntries;
     const own = (value) => {
       const bytes = view(value);
       if (!bytes) fail("ASSET_PIPELINE_BYTES");
@@ -392,18 +455,50 @@ export function createAssetPipelineAdapter({
             extracted,
             selection,
             generated: generatedArt,
+            prebuiltPack,
             worker,
             signal: combined,
           }),
         );
         check();
-        for (const [name, value] of Object.entries(overlay.files)) append(name, own(value));
+        // 验证只持有同一字节视图的11项映射；不再复制整份生成文件映射或载荷。
+        // Validation holds an eleven-entry map of the same byte views, without another generated-file-map or payload copy.
+        const generatedFiles = Object.entries(overlay.files).map(([name, value]) => [
+          name,
+          own(value),
+        ]);
+        const astcFiles = Object.fromEntries(
+          generatedFiles.filter(([name]) => name.startsWith("romfs_overlay_astc")),
+        );
+        if (prebuiltPack) {
+          if (overlay.astc?.count !== prebuiltPack.records.length)
+            fail("ASSET_PIPELINE_ASTC_BINDING");
+          const checked = validateAstcOutputs({
+            files: astcFiles,
+            pack: overlay.astc.pack,
+            overlayArchives: overlay.astc.overlayArchives,
+          });
+          if (
+            checked.pack.name !== prebuiltPack.pack.name ||
+            checked.pack.size !== prebuiltPack.pack.size ||
+            checked.pack.sha256 !== prebuiltPack.pack.sha256
+          )
+            fail("ASSET_PIPELINE_ASTC_BINDING");
+          pendingAstcBinding = Object.freeze({
+            count: overlay.astc.count,
+            pack: checked.pack,
+            overlayArchives: Object.freeze({ ...overlay.astc.overlayArchives }),
+          });
+        } else if (overlay.astc !== undefined || Object.keys(astcFiles).length)
+          fail("ASSET_PIPELINE_ASTC_BINDING");
+        for (const [name, value] of generatedFiles) append(name, value);
       }
       check();
       closeClients();
       if (cleanupFailed) fail("ASSET_PIPELINE_CLEANUP");
-      return entries.sort((a, b) => a.path.localeCompare(b.path, "en"));
+      completedEntries = entries.sort((a, b) => a.path.localeCompare(b.path, "en"));
     } catch (error) {
+      astcBinding = undefined;
       wipe();
       closeClients();
       const safe = new Error(
@@ -419,9 +514,13 @@ export function createAssetPipelineAdapter({
       for (const bytes of owned) bytes.fill(0);
       combined.removeEventListener("abort", abort);
     }
+    check();
+    astcBinding = pendingAstcBinding;
+    return completedEntries;
   }
   return Object.freeze({
     generateAssets,
+    getAstcOutputBinding: () => (disposed ? undefined : astcBinding),
     dispose,
     capabilities: Object.freeze({
       completeAssetPipeline: false,

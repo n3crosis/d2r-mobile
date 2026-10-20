@@ -5,7 +5,11 @@
  * The production entry point. Bootstrap contains public bytes only.
  */
 import { prepareSealedRuntime } from "./sealed-runtime/clients.mjs";
-import { loadProductionProfile } from "./production-profile.mjs";
+import {
+  loadProductionProfile,
+  bindProductionAstcEntries,
+  inspectProductionAstcEntries,
+} from "./production-profile.mjs";
 import { resolveShellProfile } from "./shell-profiles.mjs";
 import {
   createExtractionJobAdapter,
@@ -103,7 +107,7 @@ export async function prepareBrowserPackager({
     const allowed = (path) =>
       profile.trustedShell.trustedRecipe.requiredPaths.some((p) =>
         p.endsWith("/") ? path.startsWith(p) : path === p,
-      );
+      ) || profile.astcOutput?.paths.includes(path);
     return Object.freeze({
       ready: true,
       realGameVerified: false,
@@ -166,8 +170,16 @@ export async function prepareBrowserPackager({
           validateArchive: (context) => output.validateArchive(context),
           generateProgram: async (context) =>
             (await program.generateProgram(context)).filter((e) => allowed(e.path)),
-          generateAssets: async (context) =>
-            (await assets.generateAssets(context)).filter((e) => allowed(e.path)),
+          async generateAssets(context) {
+            const entries = await assets.generateAssets(context);
+            const binding = assets.getAstcOutputBinding?.();
+            const astcEntries = selectProductionAstcEntries(entries, binding);
+            if (binding !== undefined)
+              profile = await bindProductionAstcEntries(profile, astcEntries, binding, {
+                signal: context.signal,
+              });
+            return entries.filter((entry) => allowed(entry.path));
+          },
           generateShaders: (context) => shaders.generateShaders(context),
           async loadShell({ signal }) {
             // 选择来自独立认证的提取边界。
@@ -214,6 +226,9 @@ export async function prepareBrowserPackager({
           async validateGenerated({ generatedEntries, shell, signal }) {
             signal.throwIfAborted();
             if (!shell.contentModeReceipt) throw new Error("SHELL_CONTENT_MODE_UNBOUND");
+            const astcEntries = selectProductionAstcEntries(generatedEntries, profile.astcOutput);
+            if (profile.astcOutput)
+              await inspectProductionAstcEntries(astcEntries, profile.astcOutput, { signal });
             const receiptBytes = new TextEncoder().encode(
               JSON.stringify(shell.contentModeReceipt) + "\n",
             );
@@ -297,4 +312,28 @@ export async function prepareBrowserPackager({
     close();
     throw error;
   }
+}
+
+// 不允许过滤器悄悄丢弃未绑定 ASTC、补充包数据或索引；这些不是 IPA 文件。
+// Never let filtering silently drop unbound ASTC, external supplemental data or index files; those are not IPA entries.
+export function selectProductionAstcEntries(entries, binding) {
+  if (!Array.isArray(entries)) throw new Error("PRODUCTION_ASTC_INVENTORY");
+  const selected = [];
+  for (const entry of entries) {
+    const path = entry?.path;
+    if (typeof path !== "string" || path.length > 512) throw new Error("PRODUCTION_ASTC_PATH");
+    const basename = path.split("/").at(-1);
+    if (
+      basename === "pack_index.tsv" ||
+      /^data\/.*\.data$/.test(path) ||
+      path.startsWith("Legacy Device Pack") ||
+      (binding?.pack?.name && basename === binding.pack.name)
+    )
+      throw new Error("PRODUCTION_EXTERNAL_PACK_IN_IPA");
+    if (path.startsWith("romfs_overlay_astc")) selected.push(entry);
+  }
+  if (binding === undefined && selected.length) throw new Error("PRODUCTION_ASTC_UNBOUND");
+  if (binding !== undefined && (!binding || selected.length !== 11))
+    throw new Error("PRODUCTION_ASTC_INVENTORY");
+  return selected;
 }

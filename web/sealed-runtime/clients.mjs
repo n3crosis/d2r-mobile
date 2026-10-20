@@ -7,6 +7,11 @@ import {
   ASSET_RUNTIME_DIRECTORY,
   validateAssetRuntimeInventory,
 } from "../toolchain/asset-runtime-js/payload-policy.mjs";
+import { OPERATION_LIMITS, validateRequest } from "../toolchain/asset-runtime-js/contract.mjs";
+import {
+  selectRuntimeAssetGroups,
+  validateRuntimeTransportGroups,
+} from "../runtime-asset-groups.mjs";
 const OFFLINE = "toolchain/offline-runtime-spike";
 const TEXTURE = "toolchain/texture-spike";
 const LIMIT = Object.freeze({
@@ -136,13 +141,15 @@ function runtimeTransport(manifest, inventory) {
   return { files, totalBytes: transport.totalBytes, entries };
 }
 /**
- * 验证完整清单后，只省略另一个内置外壳；绝不省略工作线程或通用资产。
- * Validate the complete manifest before omitting only the other built-in shell, never workers or common assets.
+ * 验证完整清单后，省略另一个内置外壳及未选可选闭包；绝不省略通用资产。
+ * Validate the complete manifest before omitting the other shell and unselected optional closures, never common assets.
  */
-export function validateRuntimeProfileSelection(manifest, profileId) {
+export function validateRuntimeProfileSelection(manifest, profileId, { optionalGroups = [] } = {}) {
   const profile = resolveShellProfile(profileId);
   const inventory = validateRuntimeInventory(manifest);
   const transport = runtimeTransport(manifest, inventory);
+  const groupInventory = selectRuntimeAssetGroups(inventory, optionalGroups);
+  if (transport.entries) validateRuntimeTransportGroups(inventory, transport.entries.values());
   const shellPaths = new Set();
   for (const id of SHELL_PROFILE_IDS) {
     const known = resolveShellProfile(id);
@@ -156,13 +163,15 @@ export function validateRuntimeProfileSelection(manifest, profileId) {
   }
   if (!inventory.some((asset) => asset.path === profile.archivePath))
     fail("Selected runtime shell is unavailable");
-  const selectedInventory = inventory.filter(
+  const selectedInventory = groupInventory.filter(
     (asset) => !shellPaths.has(asset.path) || asset.path === profile.archivePath,
   );
   let downloadFiles;
   if (transport.entries) {
     const keys = new Set(selectedInventory.map((asset) => `${asset.sha256}-${asset.bytes}`));
-    for (const asset of inventory.filter((asset) => !selectedInventory.includes(asset))) {
+    for (const asset of inventory.filter(
+      (asset) => shellPaths.has(asset.path) && asset.path !== profile.archivePath,
+    )) {
       const key = `${asset.sha256}-${asset.bytes}`;
       const entry = transport.entries.get(key);
       // 被省略的外壳必须独占载荷，不能与任何保留资产共享内容或物理文件。
@@ -774,21 +783,21 @@ export async function prepareSealedRuntime({
       const l = lease("assets");
       return {
         run(operation, value, options = {}) {
-          const cap =
-            (operation === "overlay-recipe"
-              ? 128
-              : ["hud-v4", "casc-overlay"].includes(operation)
-                ? 64
-                : 20) *
-            1024 *
-            1024;
+          const limits = Object.hasOwn(OPERATION_LIMITS, operation)
+            ? OPERATION_LIMITS[operation]
+            : undefined;
+          if (!limits) fail("Unsupported asset operation");
+          const cap = limits[0] * 1024 * 1024;
+          const metadata = jsonOptions(options, limits[1]);
           const payload = input(value, cap).buffer;
+          if (operation === "casc-prebuilt-overlay")
+            validateRequest({ id: 1, operation, payload, options: metadata });
           return l.request(
             {
               type: "run",
               operation,
               payload,
-              options: jsonOptions(options, operation === "casc-overlay" ? 1048576 : 4096),
+              options: metadata,
             },
             [payload],
           );

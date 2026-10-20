@@ -56,6 +56,7 @@ python_sources=(
   web/toolchain/art-kernels/migrate.py
   web/toolchain/asset-transforms-js/test/reference.py
   web/toolchain/casc-overlay-js/test/fixture.py
+  web/toolchain/casc-overlay-js/test/prebuilt-fixture.py
   web/toolchain/font-rasterizer-exact/test/native-equivalence.py
   web/toolchain/image-kernels-rust/test/make-fixtures.py
   web/toolchain/nsp-extract-spike/native-key-parser-test.py

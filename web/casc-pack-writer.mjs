@@ -230,6 +230,7 @@ export async function writeCascPack({
   root,
   maxPackBytes,
   expectedEntries,
+  maxEntries,
   codec,
   hashFile,
   signal,
@@ -240,7 +241,11 @@ export async function writeCascPack({
     location.length !== 2 ||
     location.some((n) => !integer(n, 255)) ||
     !integer(maxPackBytes, OFFSET_LIMIT) ||
-    !integer(expectedEntries, CASC_PACK_METADATA_LIMITS.entries) ||
+    (expectedEntries === undefined && maxEntries === undefined) ||
+    (expectedEntries !== undefined &&
+      !integer(expectedEntries, CASC_PACK_METADATA_LIMITS.entries)) ||
+    (maxEntries !== undefined && !integer(maxEntries, CASC_PACK_METADATA_LIMITS.entries)) ||
+    (expectedEntries !== undefined && maxEntries !== undefined && expectedEntries > maxEntries) ||
     typeof jobs?.[Symbol.asyncIterator] !== "function" ||
     typeof locationAvailable !== "function" ||
     typeof hashFile !== "function" ||
@@ -249,6 +254,9 @@ export async function writeCascPack({
     codec.genericZlibVersion !== "1.2.13"
   )
     fail("INVALID_OPTIONS");
+  // 精确计数仍是更严格的上限；仅上限模式不证明枚举完整性。
+  // An exact count remains the tighter bound; maximum-only mode does not prove enumeration completeness.
+  const entryLimit = expectedEntries ?? maxEntries;
   if (signal !== undefined && !(signal instanceof AbortSignal)) fail("INVALID_SIGNAL");
   signal?.throwIfAborted();
   const [part, archive] = location;
@@ -302,7 +310,7 @@ export async function writeCascPack({
       };
       signal?.throwIfAborted();
       if (
-        records.length >= expectedEntries ||
+        records.length >= entryLimit ||
         !job ||
         !integer(job.decodedSize, U32) ||
         !["n", "z", "b:256K*=z"].includes(job.spec)
@@ -407,7 +415,7 @@ export async function writeCascPack({
       records.push(record);
       index.push(`${path}\t${ekey}\t${encodedSize}\t${job.decodedSize}\n`);
     }
-    if (records.length !== expectedEntries) fail("ENTRY_COUNT");
+    if (expectedEntries !== undefined && records.length !== expectedEntries) fail("ENTRY_COUNT");
     signal?.throwIfAborted();
     const source = await io.wait(() => stage.finalize());
     if (source.size !== total || source.file?.size !== total || typeof source.readAt !== "function")
@@ -420,6 +428,7 @@ export async function writeCascPack({
       fail("FINAL_HASH");
     return Object.freeze({
       source,
+      count: records.length,
       index: index.join(""),
       records: Object.freeze(records),
       pack: Object.freeze({ name, size: total, sha256: result.sha256 }),

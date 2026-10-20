@@ -6,7 +6,7 @@ import {
   ExtractionClientError,
 } from "./extraction-worker-client.mjs";
 import { indexRomfs } from "./romfs-tree.mjs";
-import { createCascLogicalAssets } from "./casc-logical-reader.mjs";
+import { createCascLogicalAssets, createCascAstcRecords } from "./casc-logical-reader.mjs";
 import { REQUIRED_NSO_MODULES } from "./preflight.mjs";
 import { resolveD2rExpansionSelection, D2R_CONTENT_MODES } from "./d2r-expansion-policy.mjs";
 
@@ -74,6 +74,46 @@ export function readAuthenticatedAssets(extracted, selection, { signal } = {}) {
   } catch {
     fail("EXTRACTION_PROVENANCE_REJECTED");
   }
+}
+
+// 只有认证结果才能铸造记录令牌；令牌副本或清单行不能重新建立来源证明。
+// Only authenticated results mint record tokens; token copies or manifest rows cannot recreate provenance.
+const authenticatedAstcRecords = new WeakMap();
+export async function enumerateAuthenticatedAstcRecords(extracted, selection, { signal } = {}) {
+  const assets = readAuthenticatedAssets(extracted, selection, { signal });
+  const proof = authenticatedPrograms.get(extracted);
+  const records = await createCascAstcRecords(assets.romfs, { signal });
+  proof.check();
+  signal?.throwIfAborted();
+  const textures = [];
+  let descriptor = null;
+  for (const path of records.entries()) {
+    const token = Object.freeze({ path });
+    authenticatedAstcRecords.set(token, { records, path, check: proof.check, signal });
+    if (path === "data/hd/texture_desc_cache.json") descriptor = token;
+    else textures.push(token);
+  }
+  return Object.freeze({ textures: Object.freeze(textures), descriptor });
+}
+export function openAuthenticatedAstcRecord(token, { signal } = {}) {
+  if (signal?.aborted) fail("EXTRACTION_CANCELLED");
+  const proof = authenticatedAstcRecords.get(token);
+  if (!proof) fail("EXTRACTION_PROVENANCE_REJECTED");
+  proof.check();
+  proof.signal?.throwIfAborted();
+  const opened = proof.records.open(proof.path, { signal });
+  return Object.freeze({
+    record: opened.record,
+    source: Object.freeze({
+      size: opened.source.size,
+      async readAt(offset, count, options) {
+        proof.check();
+        const bytes = await opened.source.readAt(offset, count, options);
+        proof.check();
+        return bytes;
+      },
+    }),
+  });
 }
 
 /**

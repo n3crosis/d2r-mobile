@@ -7,11 +7,12 @@ import {
   prepareSealedRuntime,
 } from "../sealed-runtime/clients.mjs";
 import { resolveShellProfile, SHELL_PROFILE_IDS } from "../shell-profiles.mjs";
+import { OPTIONAL_RUNTIME_ASSET_GROUPS } from "../runtime-asset-groups.mjs";
 
 const common = ["assets", "texture", "translator", "extraction", "program", "spirvCross"].map(
   (name, i) => ({ path: `workers/${name}.mjs`, bytes: 32, sha256: String(i + 1).repeat(64) }),
 );
-function fixture({ legacy = true, packed = true } = {}) {
+function fixture({ legacy = true, packed = true, optional = false, shared = false } = {}) {
   const profiles = (legacy ? SHELL_PROFILE_IDS : SHELL_PROFILE_IDS.slice(0, 1)).map(
     resolveShellProfile,
   );
@@ -23,23 +24,40 @@ function fixture({ legacy = true, packed = true } = {}) {
       sha256: profile.evidence.sha256,
     })),
   ];
+  if (optional)
+    assets.push(
+      ...OPTIONAL_RUNTIME_ASSET_GROUPS["legacy-astc"].map((path, i) => ({
+        path,
+        optionalGroup: "legacy-astc",
+        bytes: i + 1,
+        sha256: (i + 10).toString(16).padStart(64, "0"),
+      })),
+    );
+  if (shared) {
+    const alias = { ...assets.at(-1), path: "common/sha-license.txt" };
+    delete alias.optionalGroup;
+    assets.push(alias);
+  }
   const manifest = {
     version: 1,
     assets,
     totalBytes: assets.reduce((n, asset) => n + asset.bytes, 0),
   };
   if (packed) {
+    const contents = [
+      ...new Map(assets.map((asset) => [`${asset.sha256}-${asset.bytes}`, asset])).values(),
+    ];
     manifest.transport = {
       version: 1,
-      totalBytes: manifest.totalBytes,
-      files: assets.map((asset, i) => ({
+      totalBytes: contents.reduce((n, asset) => n + asset.bytes, 0),
+      files: contents.map((asset, i) => ({
         path: `payloads/${i}.bin`,
         bytes: asset.bytes,
         sha256: asset.sha256,
         encoding: "identity",
         decodedBytes: asset.bytes,
       })),
-      entries: assets.map((asset, i) => ({
+      entries: contents.map((asset, i) => ({
         sha256: asset.sha256,
         bytes: asset.bytes,
         file: `payloads/${i}.bin`,
@@ -169,4 +187,76 @@ test("packed progress reports selected wire bytes, not decoded logical bytes", (
   const result = validateRuntimeProfileSelection(manifest);
   assert.equal(result.downloadBytes, common.length * 32 + 100);
   assert.ok(result.downloadBytes < manifest.totalBytes);
+});
+
+test("both shell selections omit optional codec downloads unless explicitly selected", () => {
+  for (const packed of [false, true])
+    for (const profileId of SHELL_PROFILE_IDS) {
+      const manifest = fixture({ optional: true, packed }),
+        baseline = validateRuntimeProfileSelection(fixture({ packed }), profileId),
+        before = structuredClone(manifest),
+        defaultSelection = validateRuntimeProfileSelection(manifest, profileId),
+        enabled = validateRuntimeProfileSelection(manifest, profileId, {
+          optionalGroups: ["legacy-astc"],
+        });
+      assert.deepEqual(defaultSelection.downloadFiles, baseline.downloadFiles);
+      assert.equal(defaultSelection.downloadBytes, baseline.downloadBytes);
+      assert.deepEqual(defaultSelection.selectedInventory, baseline.selectedInventory);
+      assert.equal(
+        enabled.selectedInventory.length,
+        baseline.selectedInventory.length + OPTIONAL_RUNTIME_ASSET_GROUPS["legacy-astc"].length,
+      );
+      assert.equal(
+        enabled.selectedInventory.filter((asset) => asset.path.startsWith("profile/shell")).length,
+        1,
+      );
+      assert.ok(enabled.downloadBytes > defaultSelection.downloadBytes);
+      assert.deepEqual(manifest, before);
+    }
+});
+
+test("optional shared license content stays common without duplicate downloads", () => {
+  const manifest = fixture({ optional: true, shared: true }),
+    selected = validateRuntimeProfileSelection(manifest),
+    enabled = validateRuntimeProfileSelection(manifest, undefined, {
+      optionalGroups: ["legacy-astc"],
+    });
+  assert.ok(selected.selectedInventory.some((asset) => asset.path === "common/sha-license.txt"));
+  assert.ok(selected.selectedInventory.every((asset) => !asset.optionalGroup));
+  assert.equal(
+    enabled.downloadFiles.length - selected.downloadFiles.length,
+    OPTIONAL_RUNTIME_ASSET_GROUPS["legacy-astc"].length - 1,
+  );
+});
+
+test("malformed omitted codec closure, mixed packs, and invalid group selection fail closed", () => {
+  for (const packed of [false, true]) {
+    const incomplete = fixture({ optional: true, packed });
+    delete incomplete.assets.at(-1).optionalGroup;
+    assert.throws(() => validateRuntimeProfileSelection(incomplete), /optional runtime asset/);
+    assert.throws(
+      () =>
+        validateRuntimeProfileSelection(fixture({ packed }), undefined, {
+          optionalGroups: ["legacy-astc"],
+        }),
+      /unavailable/,
+    );
+    assert.throws(
+      () =>
+        validateRuntimeProfileSelection(fixture({ optional: true, packed }), undefined, {
+          optionalGroups: ["unknown"],
+        }),
+      /group selection/,
+    );
+  }
+  const mixed = fixture({ optional: true }),
+    files = mixed.transport.files,
+    common = files[0],
+    optional = files.at(-1);
+  mixed.transport.entries.at(-1).file = common.path;
+  mixed.transport.entries.at(-1).offset = common.bytes;
+  common.bytes += optional.bytes;
+  common.decodedBytes += optional.decodedBytes;
+  files.pop();
+  assert.throws(() => validateRuntimeProfileSelection(mixed), /payload is shared/);
 });

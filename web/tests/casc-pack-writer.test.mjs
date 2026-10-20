@@ -520,3 +520,112 @@ test("oversized paths reject before allocating transformations and hash-prefixed
     String.prototype.toLowerCase = original;
   }
 });
+
+// 上限模式允许单次过滤枚举，但不承诺候选集合完整；精确计数模式保持原行为。
+// Maximum-only mode allows one-pass filtered enumeration but does not promise candidate completeness; exact-count mode retains its behavior.
+test("max-only mode accepts fewer jobs and returns actual count without a pre-pass", async () => {
+  const stage = memoryStage();
+  let enumerations = 0,
+    reads = 0;
+  const stream = {
+    async *[Symbol.asyncIterator]() {
+      enumerations++;
+      yield {
+        path: "data/filtered.bin",
+        spec: "n",
+        decodedSize: 1,
+        source: {
+          async *[Symbol.asyncIterator]() {
+            reads++;
+            yield new Uint8Array([7]);
+          },
+        },
+      };
+    },
+  };
+  const result = await writeCascPack(
+    options([], stage, { jobs: stream, expectedEntries: undefined, maxEntries: 3 }),
+  );
+  assert.equal(result.count, 1);
+  assert.equal(result.records.length, 1);
+  assert.equal(enumerations, 1);
+  assert.equal(reads, 1);
+  await result.dispose();
+  const emptyStage = memoryStage();
+  const empty = await writeCascPack(
+    options([], emptyStage, { expectedEntries: undefined, maxEntries: 0 }),
+  );
+  assert.equal(empty.count, 0);
+  await empty.dispose();
+});
+test("at least one valid explicit entry count or bound is required", async () => {
+  for (const extra of [
+    { expectedEntries: undefined },
+    { expectedEntries: undefined, maxEntries: null },
+    { expectedEntries: undefined, maxEntries: -1 },
+    { expectedEntries: undefined, maxEntries: 1.5 },
+    { expectedEntries: undefined, maxEntries: 32769 },
+    { expectedEntries: 2, maxEntries: 1 },
+    { expectedEntries: null, maxEntries: 1 },
+  ]) {
+    const stage = memoryStage();
+    await assert.rejects(writeCascPack(options([], stage, extra)), /INVALID_OPTIONS/);
+    assert.equal(stage.created, false);
+  }
+});
+test("max-only overrun closes enumeration and cleans partial output", async () => {
+  const stage = memoryStage();
+  let closed = false;
+  const stream = {
+    async *[Symbol.asyncIterator]() {
+      try {
+        yield job("n", new Uint8Array([1]), "data/a");
+        yield job("n", new Uint8Array([2]), "data/b");
+      } finally {
+        closed = true;
+      }
+    },
+  };
+  await assert.rejects(
+    writeCascPack(options([], stage, { jobs: stream, expectedEntries: undefined, maxEntries: 1 })),
+    /INVALID_JOB/,
+  );
+  assert.equal(closed, true);
+  assert.equal(stage.disposed, true);
+  assert.ok(!stage.log.includes("finalize"));
+});
+test("exact counts remain mandatory when supplied alongside a looser maximum", async () => {
+  const stage = memoryStage();
+  const result = await writeCascPack(
+    options([job("n", new Uint8Array([1]))], stage, { expectedEntries: 1, maxEntries: 2 }),
+  );
+  assert.equal(result.count, 1);
+  await result.dispose();
+  for (const items of [
+    [],
+    [job("n", new Uint8Array([1]), "data/a"), job("n", new Uint8Array([2]), "data/b")],
+  ]) {
+    const failed = memoryStage();
+    await assert.rejects(
+      writeCascPack(options(items, failed, { expectedEntries: 1, maxEntries: 2 })),
+      /ENTRY_COUNT|INVALID_JOB/,
+    );
+    assert.equal(failed.disposed, true);
+  }
+});
+test("max-only enumeration errors are not interpreted as successful early completion", async () => {
+  const stage = memoryStage(),
+    reason = new Error("candidate enumeration failed");
+  const stream = {
+    async *[Symbol.asyncIterator]() {
+      yield job("n", new Uint8Array([1]));
+      throw reason;
+    },
+  };
+  await assert.rejects(
+    writeCascPack(options([], stage, { jobs: stream, expectedEntries: undefined, maxEntries: 2 })),
+    reason,
+  );
+  assert.equal(stage.disposed, true);
+  assert.ok(!stage.log.includes("finalize"));
+});

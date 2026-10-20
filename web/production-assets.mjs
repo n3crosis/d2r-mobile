@@ -8,7 +8,10 @@ import { readAuthenticatedAssets } from "./extraction-job-adapter.mjs";
 import { generateNativeArt } from "./native-art-generator.mjs";
 import { generateHud } from "./hud-generator.mjs";
 import { generateProductionDerived } from "./production-derived.mjs";
-import { createAssetPipelineAdapter } from "./asset-pipeline-adapter.mjs";
+import {
+  createAssetPipelineAdapter,
+  snapshotPrebuiltPackMetadata,
+} from "./asset-pipeline-adapter.mjs";
 import { FRONTEND_PANEL_SOURCE, transformFrontendPanel } from "./frontend-panel-transform.mjs";
 
 // 工作线程传回 ArrayBuffer；只建立字节视图，不复制生成文件。
@@ -22,7 +25,9 @@ const fileViews = (files) =>
     }),
   );
 
-export function createProductionAssetAdapter({ runtime, profile }) {
+export function createProductionAssetAdapter({ runtime, profile, prebuiltPack }) {
+  prebuiltPack = snapshotPrebuiltPackMetadata(prebuiltPack);
+  let astcBinding;
   const owned = [],
     releaseEntries = [];
   let pipeline,
@@ -45,10 +50,13 @@ export function createProductionAssetAdapter({ runtime, profile }) {
   return {
     async generateAssets({ extracted, selection, signal }) {
       if (disposed) throw new Error("PRODUCTION_ASSET_DISPOSED");
+      astcBinding = undefined;
       const { logicalAssets } = readAuthenticatedAssets(extracted, selection, { signal });
       const worker = runtime.createAssetWorker(),
         texture = runtime.createTextureClient(),
         encoder = runtime.createTextureEncoder();
+      let completed = false,
+        pendingAstcBinding;
       try {
         const decodeAtlas = (bytes) => texture.decodeAtlas(bytes, { signal });
         const art = await generateNativeArt({
@@ -114,6 +122,7 @@ export function createProductionAssetAdapter({ runtime, profile }) {
           mercenaryArt: true,
           remainingArt: true,
           nativeOverlayGenerated: generated,
+          prebuiltPack,
           createAssetWorker: runtime.createAssetWorker,
           createTextureClient: runtime.createTextureClient,
           createTextureEncoder: runtime.createTextureEncoder,
@@ -132,15 +141,25 @@ export function createProductionAssetAdapter({ runtime, profile }) {
         artFiles["dm_touch_native_art.c"].fill(0);
         for (const [path, bytes] of Object.entries(generated))
           if (path !== "NativeHUD/v4/hud_v4_ui/ui.json") bytes.fill(0);
+        signal?.throwIfAborted();
+        if (disposed) throw new Error("PRODUCTION_ASSET_DISPOSED");
+        pendingAstcBinding = pipeline.getAstcOutputBinding();
+        completed = true;
         return entries;
       } finally {
         worker.close();
         texture.close();
         encoder.close();
+        if (completed && !disposed && !signal?.aborted) astcBinding = pendingAstcBinding;
       }
+    },
+    getAstcOutputBinding() {
+      return disposed ? undefined : astcBinding;
     },
     dispose() {
       disposed = true;
+      astcBinding = undefined;
+      prebuiltPack = undefined;
       try {
         pipeline?.dispose();
       } finally {

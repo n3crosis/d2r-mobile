@@ -10,6 +10,7 @@ export const OPERATION_LIMITS = Object.freeze({
   "hud-v4": [64, 4096],
   "map-goal": [20, 4096],
   "casc-overlay": [64, 1048576],
+  "casc-prebuilt-overlay": [64, 1048576],
   "mercenary-art": [20, 4096],
   "overlay-recipe": [128, 4096],
   "remaining-art": [20, 4096],
@@ -57,6 +58,27 @@ export function validateRequest(data) {
     JSON.stringify(data.options).length > limits[1]
   )
     throw new Error("Invalid bounded asset request");
+  // 外部引用只在最后的独立载荷段中传输；普通选项上限保持不变。
+  // External references travel only in a separate final payload segment; ordinary option limits stay unchanged.
+  if (data.operation === "casc-prebuilt-overlay") {
+    const { parts, jobs, location } = data.options;
+    if (
+      Object.keys(data.options).some((key) => !["parts", "jobs", "location"].includes(key)) ||
+      !Array.isArray(jobs) ||
+      jobs.length > 4096 ||
+      !Array.isArray(parts) ||
+      parts.length !== 4 + jobs.length ||
+      parts.some((n) => !Number.isSafeInteger(n) || n < 0) ||
+      parts.at(-1) < 1 ||
+      parts.at(-1) > 16 * 1024 * 1024 ||
+      parts.reduce((sum, n) => sum + n, 0) !== data.payload.byteLength ||
+      !Array.isArray(location) ||
+      location.length !== 2 ||
+      location.some((n) => !Number.isSafeInteger(n) || n < 0 || n > 255) ||
+      new TextEncoder().encode(JSON.stringify(data.options)).length > 1048576
+    )
+      throw new Error("Invalid bounded external CASC references");
+  }
   return {
     operation: data.operation,
     payload: new Uint8Array(data.payload),

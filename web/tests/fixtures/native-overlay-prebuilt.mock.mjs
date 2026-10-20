@@ -1,0 +1,130 @@
+// 注入仅合成依赖以验证组装；不虚构公开认证开关。
+// Inject synthetic dependencies to test assembly; no public authentication bypass flag.
+import assert from "node:assert/strict";
+import { mock, test } from "node:test";
+const calls = [];
+let badArchive = false;
+const manifest = new Uint8Array();
+mock.module("../../extraction-job-adapter.mjs", {
+  namedExports: {
+    readAuthenticatedAssets() {
+      return {
+        romfs: {
+          getFile() {
+            return { size: 0n, readAt: async () => manifest };
+          },
+        },
+        logicalAssets: {},
+      };
+    },
+  },
+});
+const files = () => ({
+  "data/.build.config": new Uint8Array([1, 2]),
+  "data/00-00000002.data": new Uint8Array([3, 4]),
+});
+mock.module("../../casc-overlay-writer.mjs", {
+  namedExports: {
+    async writeCascOverlay({ replacements }) {
+      calls.push(["bc", replacements.map((r) => Array.from(r.bytes))]);
+      return { files: files() };
+    },
+    async writeCascPrebuiltOverlay({ replacements, external }) {
+      calls.push(["astc", replacements.map((r) => Array.from(r.bytes))]);
+      const out = files();
+      if (badArchive) {
+        out["data/00-00000009.data"] = out["data/00-00000002.data"];
+        delete out["data/00-00000002.data"];
+      }
+      return { files: out, external: { count: external.records.length, pack: external.pack } };
+    },
+  },
+});
+const { generateNativeOverlay, NATIVE_OVERLAY_GENERATED } =
+  await import("../../native-overlay-generator.mjs");
+function options() {
+  return {
+    generated: Object.fromEntries(
+      NATIVE_OVERLAY_GENERATED.map((name) => [name, new Uint8Array([8])]),
+    ),
+    worker: {
+      close() {},
+      async run() {
+        const files = {},
+          variants = ["base", "item_notes"].map((name, i) => {
+            const id = `${i}-replacement`;
+            files[id] = new Uint8Array([10 + i]);
+            const names = i
+              ? ["ctrl_touch", "dm_textbox_plain.tsv", "features.txt", "touch_strings.tsv"]
+              : ["ctrl_touch", "touch_strings.tsv"];
+            return {
+              name,
+              replacements: [{ path: "data/a.bin", add: false, file: id }],
+              sidecars: names.map((path, j) => {
+                const file = `${i}-${j}`;
+                files[file] = new Uint8Array([20 + j]);
+                return { path, file };
+              }),
+            };
+          });
+        return { files, variants };
+      },
+    },
+  };
+}
+const pack = { name: "00-00000008.data", size: 20, sha256: "a".repeat(64) };
+const external = () => ({
+  pack: { ...pack },
+  records: [
+    {
+      path: "data/z.bin",
+      oldEkey: "1".repeat(32),
+      newEkey: "2".repeat(32),
+      encodedSize: 20,
+      decodedSize: 30,
+    },
+  ],
+});
+test("optional ASTC preserves all default bytes, recipes and exact11 output", async () => {
+  calls.length = 0;
+  const base = await generateNativeOverlay(options());
+  assert.equal(Object.hasOwn(base, "astc"), false);
+  assert.deepEqual(
+    calls.map((c) => c[0]),
+    ["bc", "bc"],
+  );
+  calls.length = 0;
+  const out = await generateNativeOverlay({ ...options(), prebuiltPack: external() });
+  for (const [name, value] of Object.entries(base.files)) assert.deepEqual(out.files[name], value);
+  assert.deepEqual(
+    calls.map((c) => c[0]),
+    ["bc", "astc", "bc", "astc"],
+  );
+  assert.deepEqual(calls[0][1], calls[1][1]);
+  assert.deepEqual(calls[2][1], calls[3][1]);
+  assert.equal(Object.keys(out.files).filter((p) => p.startsWith("romfs_overlay_astc")).length, 11);
+  assert.deepEqual(out.astc, {
+    count: 1,
+    pack,
+    overlayArchives: { base: "00-00000002.data", item_notes: "00-00000002.data" },
+  });
+  assert.deepEqual(
+    JSON.parse(new TextDecoder().decode(out.files["romfs_overlay_astc/pack.json"])),
+    pack,
+  );
+  assert.equal(Object.hasOwn(out.files, "romfs_overlay_astc_variants/item_notes/pack.json"), false);
+  for (const side of ["ctrl_touch", "touch_strings.tsv"])
+    assert.deepEqual(out.files[`romfs_overlay/${side}`], out.files[`romfs_overlay_astc/${side}`]);
+});
+test("archive mismatch and payload-bearing input fail closed", async () => {
+  badArchive = true;
+  await assert.rejects(
+    generateNativeOverlay({ ...options(), prebuiltPack: external() }),
+    /OVERLAY_PREBUILT_BINDING/,
+  );
+  badArchive = false;
+  await assert.rejects(
+    generateNativeOverlay({ ...options(), prebuiltPack: { ...external(), source: {} } }),
+    /OVERLAY_PREBUILT_METADATA/,
+  );
+});

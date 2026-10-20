@@ -3,7 +3,10 @@
 import { verifyWasmModule } from "./wasm-contract.mjs";
 import { OPERATION_LIMITS } from "./contract.mjs";
 import { hasAssetTransform, executeAssetTransform } from "../asset-transforms-js/transforms.mjs";
-import { createPinnedCascOverlayTransform } from "../casc-overlay-js/overlay.mjs";
+import {
+  createPinnedCascOverlayTransform,
+  createPinnedCascPrebuiltOverlayTransform,
+} from "../casc-overlay-js/overlay.mjs";
 import { createArtRecipes, isArtRecipeOperation } from "../art-recipes-js/recipes.mjs";
 import {
   createRemainingArtRecipes,
@@ -78,6 +81,7 @@ export async function createAssetRuntime(assets, expected, onStage = () => {}) {
   });
   const remaining = createRemainingArtRecipes({ pixels: kernels, png: codec, numeric });
   const casc = createPinnedCascOverlayTransform({ codec, SparkMD5 });
+  const cascPrebuilt = createPinnedCascPrebuiltOverlayTransform({ codec, SparkMD5 });
   const overlay = createOverlayRecipe({ png: codec, md5, sha1 });
   if (typeof overlay?.execute !== "function")
     throw new Error("Incomplete overlay recipe implementation");
@@ -90,6 +94,7 @@ export async function createAssetRuntime(assets, expected, onStage = () => {}) {
       supportsRemainingArtOperation(operation) &&
         ((payload, options) => remaining.execute(operation, payload, options)),
       operation === "casc-overlay" && casc,
+      operation === "casc-prebuilt-overlay" && cascPrebuilt,
       operation === "hud-v4" &&
         ((payload, options) => generateHud(payload, options, { codec, kernels, font })),
       operation === "overlay-recipe" &&

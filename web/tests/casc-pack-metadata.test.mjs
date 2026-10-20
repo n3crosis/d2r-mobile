@@ -5,6 +5,7 @@ import test from "node:test";
 import { createHash } from "node:crypto";
 import {
   inspectCascPackStorageSpecs,
+  createCascPackStorageLookup,
   patchCascPrebuiltReferences,
   CASC_PACK_METADATA_LIMITS,
 } from "../toolchain/casc-overlay-js/overlay.mjs";
@@ -149,4 +150,24 @@ test("independent metadata count supports 27000 entries without raising overlay 
     /CASC_OVERLAY_INVALID/,
   );
   assert.throws(() => inspectCascPackStorageSpecs(new Uint8Array(10), []), /CASC_OVERLAY_INVALID/);
+});
+
+// 可复用查询不受原始 Buffer 后续修改影响，且不放宽重复字节规则。
+// Reusable lookup ignores later source Buffer mutation and retains duplicate-byte rules.
+test("reusable lookup snapshots once and preserves exact occurrence rejection", () => {
+  const { bytes, entries } = fixture();
+  const expected = inspectCascPackStorageSpecs(bytes, entries);
+  const source = Buffer.from(bytes),
+    lookup = createCascPackStorageLookup(source);
+  source.fill(0);
+  assert.ok(Object.isFrozen(lookup));
+  for (let i = 0; i < entries.length; i++) assert.deepEqual(lookup([entries[i]]), [expected[i]]);
+  assert.throws(() => lookup([entries[0], entries[0]]));
+  const malformed = fixture();
+  // 第二次出现位于下一条记录内部的非对齐位置。
+  // The second occurrence is unaligned inside the following record.
+  malformed.bytes.set(Buffer.from(malformed.entries[0].oldEkey, "hex"), 46 + 25 + 1);
+  const duplicate = createCascPackStorageLookup(malformed.bytes);
+  assert.throws(() => duplicate([malformed.entries[0]]));
+  assert.throws(() => createCascPackStorageLookup(new Uint8Array(16 * 1024 * 1024 + 1)));
 });

@@ -5,11 +5,13 @@
  * Real bounded CASC delta writer. Original archives stay lazy, never cloned.
  * This is an internal primitive, not a production UI or a complete asset pipeline.
  */
+import { readAuthenticatedAssets } from "./extraction-job-adapter.mjs";
 import { archiveLocator, decodeArchiveRecord, ARCHIVE_LIMITS } from "./archive-reader.mjs";
 import { verifyMd5 } from "./checksum-verifier.mjs";
 import SparkMD5 from "./vendor/spark-md5-3.0.2/spark-md5.mjs";
 import { ROMFS_LIMITS } from "./romfs-tree.mjs";
 import { CASC_LIMITS } from "./casc-logical-reader.mjs";
+import { CASC_PACK_METADATA_LIMITS } from "./toolchain/casc-overlay-js/overlay.mjs";
 
 export const OVERLAY_LIMITS = Object.freeze({
   config: 1024 * 1024,
@@ -115,6 +117,16 @@ async function tvfs(romfs, values, name, signal) {
     { verifyMd5, signal },
   );
 }
+// 从绑定的认证资源读取并验证原始 TVFS；调用方不能提供替代字节。
+// Read and verify original TVFS from bound authenticated assets; callers cannot substitute bytes.
+export async function readAuthenticatedCascVfs(extracted, selection, { signal } = {}) {
+  const { romfs } = readAuthenticatedAssets(extracted, selection, { signal });
+  const config = await smallFile(romfs, "data/.build.config", OVERLAY_LIMITS.config, signal);
+  const bytes = await tvfs(romfs, configValues(config), "vfs-1", signal);
+  readAuthenticatedAssets(extracted, selection, { signal });
+  return bytes;
+}
+
 /**
  * 与原生 casc_overlay.read_manifest 完全一致，首个重复项优先，而非 dmx 的规则。
  * First duplicate wins exactly as native casc_overlay.read_manifest, not dmx.
@@ -161,16 +173,135 @@ async function selectedManifest(romfs, wanted, signal) {
   if (pending) line(pending);
   return selected;
 }
+const packName = ([chunk, archive]) =>
+  `${String(chunk).padStart(2, "0")}-${String(archive).padStart(8, "0")}.data`;
+const validLocation = (value) =>
+  Array.isArray(value) &&
+  value.length === 2 &&
+  value.every((n) => Number.isSafeInteger(n) && n >= 0 && n <= 255);
+
 /**
- * romfs：已认证的 indexRomfs 结果，而非任意用户批准的信任标志。replacements：有序的 [{path,bytes:Uint8Array,add?:boolean}]。worker：支持 casc-overlay 操作的现有 Pyodide AssetWorker。返回实际更改文件的字节及替换清单；未变文件仍保留在调用方的惰性 RomFS 树中。不使用磁盘符号链接或占位计划。调用方拥有工作线程生命周期；取消时关闭线程以停止同步 Python 工作。
- * romfs: authenticated indexRomfs result, not arbitrary user-approved trust flags.
- * replacements: ordered [{path,bytes:Uint8Array,add?:boolean}].
- * worker: existing Pyodide AssetWorker with casc-overlay operation.
- * Returns actual changed file bytes plus replacement inventory; unchanged files
- * remain the caller's lazy RomFS tree. No disk symlinks or placeholder plan.
- * Caller owns worker lifetime; abort closes it to stop synchronous Python work.
+ * 根据真实源清单先预留默认覆盖层位置，再选择补充包；不是并发文件系统锁或内容认证。
+ * Reserve the default overlay location from real source inventory before selecting a supplemental pack; not a concurrent filesystem lock or content authentication.
+ */
+export function reserveCascPackLocations(romfs, { packLocation } = {}) {
+  if (!romfs || !Array.isArray(romfs.files) || typeof romfs.getFile !== "function") fail();
+  const used = new Set(romfs.files.map((file) => file.path));
+  const next = () => {
+    for (let chunk = 0; chunk < 256; chunk++)
+      for (let archive = 1; archive < 256; archive++) {
+        const value = [chunk, archive];
+        if (!used.has(`data/${packName(value)}`) && !romfs.getFile(`data/${packName(value)}`))
+          return value;
+      }
+    fail();
+  };
+  const overlayLocation = next();
+  used.add(`data/${packName(overlayLocation)}`);
+  const selected = packLocation === undefined ? next() : packLocation;
+  if (
+    !validLocation(selected) ||
+    used.has(`data/${packName(selected)}`) ||
+    romfs.getFile(`data/${packName(selected)}`)
+  )
+    fail();
+  return Object.freeze({
+    overlayLocation: Object.freeze(overlayLocation),
+    packLocation: Object.freeze([...selected]),
+    packName: packName(selected),
+  });
+}
+
+function externalReferences(external) {
+  const pack = external?.pack,
+    records = external?.records;
+  if (
+    typeof pack?.name !== "string" ||
+    pack.name.length > 17 ||
+    !Number.isSafeInteger(pack.size) ||
+    pack.size < 1 ||
+    pack.size > 2 ** 40 ||
+    typeof pack.sha256 !== "string" ||
+    !/^[0-9a-f]{64}$/.test(pack.sha256) ||
+    !Array.isArray(records) ||
+    records.length < 1 ||
+    records.length > CASC_PACK_METADATA_LIMITS.entries
+  )
+    fail();
+  const match = /^(\d{2,3})-(\d{8})\.data$/.exec(pack.name);
+  const location = match && [Number(match[1]), Number(match[2])];
+  if (!validLocation(location) || packName(location) !== pack.name) fail();
+  let pathBytes = 0;
+  const paths = new Set(),
+    keys = new Set();
+  const checked = records.map((record) => {
+    if (
+      typeof record?.path !== "string" ||
+      record.path.length > 4096 ||
+      record.path.startsWith("+")
+    )
+      fail();
+    const path = normalize(record.path);
+    if (
+      path !== record.path ||
+      paths.has(path) ||
+      typeof record.oldEkey !== "string" ||
+      !/^[0-9a-f]{32}$/.test(record.oldEkey) ||
+      typeof record.newEkey !== "string" ||
+      !/^[0-9a-f]{32}$/.test(record.newEkey) ||
+      keys.has(record.oldEkey)
+    )
+      fail();
+    pathBytes += encoder.encode(path).length;
+    if (pathBytes > CASC_PACK_METADATA_LIMITS.pathBytes) fail();
+    paths.add(path);
+    keys.add(record.oldEkey);
+    for (const size of [record.encodedSize, record.decodedSize])
+      if (!Number.isSafeInteger(size) || size < 0 || size > 0xffffffff) fail();
+    const chunk = Number.parseInt(record.newEkey.slice(18, 20), 16),
+      archive = Number.parseInt(record.newEkey.slice(20, 22), 16),
+      offset = Number.parseInt(record.newEkey.slice(22), 16);
+    if (chunk !== location[0] || archive !== location[1] || offset + record.encodedSize > pack.size)
+      fail();
+    return {
+      path,
+      oldEkey: record.oldEkey,
+      newEkey: record.newEkey,
+      encodedSize: record.encodedSize,
+      decodedSize: record.decodedSize,
+    };
+  });
+  return {
+    pack: { name: pack.name, size: pack.size, sha256: pack.sha256 },
+    records: checked,
+    location,
+  };
+}
+
+/**
+ * 原有默认入口不接受外部引用，保持其空任务行为和字节输出。
+ * The original default entry accepts no external references and preserves empty-job behavior and byte output.
  */
 export async function writeCascOverlay({ romfs, replacements, worker, signal } = {}) {
+  return writeOverlay({ romfs, replacements, worker, signal });
+}
+
+/**
+ * 专用内部入口：引用元数据走单独有界载荷段，不扩大原选项、覆盖层或替换内容上限。
+ * Dedicated internal entry: reference metadata uses a separately bounded payload segment without raising original options, overlay or replacement limits.
+ */
+export async function writeCascPrebuiltOverlay({
+  romfs,
+  replacements = [],
+  external,
+  worker,
+  signal,
+} = {}) {
+  if (!external) return Promise.reject(new Error("CASC_OVERLAY_INVALID"));
+  return writeOverlay({ romfs, replacements, external, worker, signal });
+}
+
+async function writeOverlay({ romfs, replacements, external, worker, signal } = {}) {
   signal?.throwIfAborted();
   if (
     !romfs ||
@@ -183,6 +314,7 @@ export async function writeCascOverlay({ romfs, replacements, worker, signal } =
     replacements.length > OVERLAY_LIMITS.jobs
   )
     fail();
+  const prebuilt = external === undefined ? undefined : externalReferences(external);
   const seen = new Set();
   let total = 0;
   const jobs = replacements.map((job) => {
@@ -199,19 +331,27 @@ export async function writeCascOverlay({ romfs, replacements, worker, signal } =
     if (total > OVERLAY_LIMITS.input) fail();
     return { path, add: job.add ?? false, bytes: job.bytes };
   });
-  if (!jobs.length)
+  if (!jobs.length && !prebuilt)
     return Object.freeze({ files: Object.freeze({}), inventory: Object.freeze([]) });
-  const used = new Set(romfs.files.map((f) => f.path));
   let location;
-  outer: for (let chunk = 0; chunk < 256; chunk++)
-    for (let archive = 1; archive < 256; archive++) {
-      const name = `data/${String(chunk).padStart(2, "0")}-${String(archive).padStart(8, "0")}.data`;
-      if (!used.has(name)) {
-        location = [chunk, archive];
-        break outer;
-      }
+  if (prebuilt) {
+    location = reserveCascPackLocations(romfs, { packLocation: prebuilt.location }).overlayLocation;
+    for (const record of prebuilt.records) {
+      if (seen.has(record.path)) fail();
+      seen.add(record.path);
     }
-  if (!location) fail();
+  } else {
+    const used = new Set(romfs.files.map((f) => f.path));
+    outer: for (let chunk = 0; chunk < 256; chunk++)
+      for (let archive = 1; archive < 256; archive++) {
+        const name = `data/${String(chunk).padStart(2, "0")}-${String(archive).padStart(8, "0")}.data`;
+        if (!used.has(name)) {
+          location = [chunk, archive];
+          break outer;
+        }
+      }
+    if (!location) fail();
+  }
   const config = await smallFile(romfs, "data/.build.config", OVERLAY_LIMITS.config, signal);
   const values = configValues(config);
   const manifest = await selectedManifest(romfs, seen, signal);
@@ -220,9 +360,19 @@ export async function writeCascOverlay({ romfs, replacements, worker, signal } =
     if (job.add ? oldEkey !== undefined : oldEkey === undefined) fail();
     return { path: job.path, add: job.add, ...(!job.add ? { oldEkey } : {}) };
   });
+  if (prebuilt)
+    for (const record of prebuilt.records)
+      if (manifest.get(record.path)?.toLowerCase() !== record.oldEkey) fail();
   const vfs = await tvfs(romfs, values, "vfs-1", signal);
   const root = await tvfs(romfs, values, "vfs-root", signal);
   const buffers = [config, vfs, root, ...jobs.map((j) => j.bytes)];
+  if (prebuilt) {
+    const references = encoder.encode(
+      JSON.stringify({ pack: prebuilt.pack, records: prebuilt.records }),
+    );
+    if (references.length > 16 * 1024 * 1024) fail();
+    buffers.push(references);
+  }
   const parts = buffers.map((b) => b.length);
   total = parts.reduce((a, b) => a + b, 0);
   if (total > OVERLAY_LIMITS.input) fail();
@@ -236,7 +386,7 @@ export async function writeCascOverlay({ romfs, replacements, worker, signal } =
   signal?.addEventListener("abort", abort, { once: true });
   try {
     signal?.throwIfAborted();
-    const result = await worker.run("casc-overlay", payload, {
+    const result = await worker.run(prebuilt ? "casc-prebuilt-overlay" : "casc-overlay", payload, {
       parts,
       jobs: descriptors,
       location,
@@ -252,6 +402,14 @@ export async function writeCascOverlay({ romfs, replacements, worker, signal } =
       result.inventory.length !== jobs.length
     )
       fail();
+    if (
+      prebuilt &&
+      (result.external?.count !== prebuilt.records.length ||
+        result.external?.pack?.name !== prebuilt.pack.name ||
+        result.external.pack.size !== prebuilt.pack.size ||
+        result.external.pack.sha256 !== prebuilt.pack.sha256)
+    )
+      fail();
     total = 0;
     const files = {};
     for (const name of names) {
@@ -264,6 +422,14 @@ export async function writeCascOverlay({ romfs, replacements, worker, signal } =
     return Object.freeze({
       files: Object.freeze(files),
       inventory: Object.freeze(result.inventory),
+      ...(prebuilt
+        ? {
+            external: Object.freeze({
+              count: prebuilt.records.length,
+              pack: Object.freeze({ ...prebuilt.pack }),
+            }),
+          }
+        : {}),
     });
   } finally {
     payload.fill(0);

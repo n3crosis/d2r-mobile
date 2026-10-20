@@ -424,7 +424,7 @@ function cftPosition(raw, start, end, key, search = byteKey(raw.subarray(start, 
 }
 // 对原始 CFT 统一解析请求，防止写入的新键影响后续旧键查找。
 // Resolve all requests against the original CFT so newly written keys cannot alter later old-key lookup.
-function resolveCascPackRecords(vfs, entries) {
+function resolveCascPackRecords(vfs, entries, prepared) {
   requireValue(
     vfs instanceof Uint8Array &&
       vfs.buffer instanceof ArrayBuffer &&
@@ -432,8 +432,8 @@ function resolveCascPackRecords(vfs, entries) {
       Array.isArray(entries) &&
       entries.length <= CASC_PACK_METADATA_LIMITS.entries,
   );
-  const layout = table(vfs),
-    search = byteKey(vfs.subarray(layout.cft, layout.end));
+  const layout = prepared?.layout ?? table(vfs),
+    search = prepared?.search ?? byteKey(vfs.subarray(layout.cft, layout.end));
   const paths = new Set(),
     keys = new Set();
   let pathBytes = 0;
@@ -468,6 +468,27 @@ function resolveCascPackRecords(vfs, entries) {
  * 检查现有路径请求对应的原始存储规格；不认证路径到旧键的关联或外部包字节。
  * Inspect original storage specs for existing-path requests; does not authenticate path-to-key association or external pack bytes.
  */
+// 对单次资源流水线仅快照一次；闭包不暴露可变表或重复建立整张 CFT 字符串。
+// Snapshot once per asset pipeline; expose neither mutable tables nor repeated whole-CFT string construction.
+export function createCascPackStorageLookup(vfs) {
+  requireValue(
+    vfs instanceof Uint8Array &&
+      vfs.buffer instanceof ArrayBuffer &&
+      !vfs.buffer.resizable &&
+      vfs.length <= MAX_TABLE,
+  );
+  const snapshot = new Uint8Array(vfs),
+    layout = table(snapshot),
+    prepared = { layout, search: byteKey(snapshot.subarray(layout.cft, layout.end)) };
+  return Object.freeze((entries) =>
+    Object.freeze(
+      resolveCascPackRecords(snapshot, entries, prepared).map(
+        ({ position: _position, ...record }) => Object.freeze(record),
+      ),
+    ),
+  );
+}
+
 export function inspectCascPackStorageSpecs(vfs, entries) {
   return Object.freeze(
     resolveCascPackRecords(vfs, entries).map(({ position: _position, ...record }) =>
@@ -511,7 +532,15 @@ function configLines(text) {
 /* eslint-enable no-control-regex */
 const replaceConfig = (lines, key, value) =>
   lines.map((line) => (line.startsWith(key + " = ") ? key + " = " + value + "\n" : line));
-export function createCascOverlayTransform({ md5, compress } = {}) {
+export function createCascOverlayTransform(dependencies = {}) {
+  return createOverlayTransform(dependencies, false);
+}
+// 外部引用仅由独立入口接收，默认覆盖层契约不变。
+// External references enter only through this dedicated factory; the default contract is unchanged.
+export function createCascPrebuiltOverlayTransform(dependencies = {}) {
+  return createOverlayTransform(dependencies, true);
+}
+function createOverlayTransform({ md5, compress } = {}, prebuiltMode) {
   requireValue(typeof md5 === "function" && typeof compress === "function");
   const digest = (bytes) => {
     const result = md5(bytes);
@@ -566,9 +595,9 @@ export function createCascOverlayTransform({ md5, compress } = {}) {
     requireValue(
       Array.isArray(parts) &&
         Array.isArray(jobs) &&
-        jobs.length >= 1 &&
+        jobs.length >= (prebuiltMode ? 0 : 1) &&
         jobs.length <= MAX_JOBS &&
-        parts.length === 3 + jobs.length,
+        parts.length === (prebuiltMode ? 4 : 3) + jobs.length,
     );
     requireValue(
       Array.isArray(location) &&
@@ -624,6 +653,73 @@ export function createCascOverlayTransform({ md5, compress } = {}) {
       inventory = [],
       seen = new Set(),
       additions = new Map();
+    // 在任何写入前解析原始位置；不支持普通替换与外部引用重叠。
+    // Resolve original positions before any mutation; ordinary/external overlap is unsupported.
+    let external, externalResolved, ordinaryResolved;
+    if (prebuiltMode) {
+      try {
+        external = JSON.parse(decoder.decode(slices.at(-1)));
+      } catch {
+        fail();
+      }
+      requireValue(
+        isObject(external) && isObject(external.pack) && Array.isArray(external.records),
+      );
+      const { pack, records } = external;
+      requireValue(records.length > 0 && records.length <= CASC_PACK_METADATA_LIMITS.entries);
+      requireValue(typeof pack.name === "string" && /^[0-9]{2,3}-[0-9]{8}\.data$/.test(pack.name));
+      const match = pack.name.match(/^([0-9]+)-([0-9]+)\.data$/),
+        part = Number(match[1]),
+        archive = Number(match[2]);
+      requireValue(
+        part <= 255 &&
+          archive <= 255 &&
+          pack.name ===
+            `${String(part).padStart(2, "0")}-${String(archive).padStart(8, "0")}.data` &&
+          (part !== location[0] || archive !== location[1]) &&
+          Number.isSafeInteger(pack.size) &&
+          pack.size > 0 &&
+          pack.size <= 2 ** 40 &&
+          typeof pack.sha256 === "string" &&
+          /^[0-9a-f]{64}$/.test(pack.sha256),
+      );
+      externalResolved = resolveCascPackRecords(vfs, records).map((entry, index) => {
+        const record = records[index],
+          key = unhex(record.newEkey);
+        let offset = 0;
+        for (const byte of key.subarray(11)) offset = offset * 256 + byte;
+        requireValue(
+          key[9] === part &&
+            key[10] === archive &&
+            Number.isSafeInteger(record.encodedSize) &&
+            record.encodedSize >= 0 &&
+            record.encodedSize <= 0xffffffff &&
+            Number.isSafeInteger(record.decodedSize) &&
+            record.decodedSize >= 0 &&
+            record.decodedSize <= 0xffffffff &&
+            offset < 2 ** 40 &&
+            offset + record.encodedSize <= pack.size,
+        );
+        return { ...entry, key, encodedSize: record.encodedSize, decodedSize: record.decodedSize };
+      });
+      const paths = new Set(externalResolved.map((r) => r.path)),
+        positions = new Set(externalResolved.map((r) => r.position)),
+        ordinaryPositions = new Set();
+      ordinaryResolved = jobs.map((job) => {
+        requireValue(isObject(job) && (!Object.hasOwn(job, "add") || typeof job.add === "boolean"));
+        requireValue(!paths.has(checkedPath(job.path)));
+        if (job.add) return null;
+        const pos = cftPosition(vfs, vfsTable.cft, vfsTable.end, unhex(job.oldEkey));
+        requireValue(
+          (pos - vfsTable.cft) % 25 === 0 &&
+            pos + 25 <= vfsTable.end &&
+            !positions.has(pos) &&
+            !ordinaryPositions.has(pos),
+        );
+        ordinaryPositions.add(pos);
+        return pos;
+      });
+    }
     let outputLength = 0;
     const append = async (content, spec = "b:256K*=z") => {
       const encoded = await encode(content, spec);
@@ -634,6 +730,12 @@ export function createCascOverlayTransform({ md5, compress } = {}) {
       return { ekey: key, decoded: content.length, encoded: encoded.length };
     };
     for (const wantAdd of [false, true]) {
+      if (wantAdd && prebuiltMode) {
+        for (const record of externalResolved) {
+          vfs.set(record.key, record.position);
+          setCftSizes(vfs, record.position, record.encodedSize, record.decodedSize);
+        }
+      }
       for (let i = 0; i < jobs.length; i++) {
         const job = jobs[i];
         requireValue(isObject(job) && (!Object.hasOwn(job, "add") || typeof job.add === "boolean"));
@@ -647,7 +749,9 @@ export function createCascOverlayTransform({ md5, compress } = {}) {
           const found = vfsTable.specs.indexOf("z");
           specIndex = found < 0 ? 0 : found;
         } else {
-          pos = cftPosition(vfs, vfsTable.cft, vfsTable.end, unhex(job.oldEkey));
+          pos = prebuiltMode
+            ? ordinaryResolved[i]
+            : cftPosition(vfs, vfsTable.cft, vfsTable.end, unhex(job.oldEkey));
           requireValue((pos - vfsTable.cft) % 25 === 0 && pos + 25 <= vfsTable.end);
           specIndex = vfs[pos + 20];
         }
@@ -699,17 +803,35 @@ export function createCascOverlayTransform({ md5, compress } = {}) {
           concat(chunks),
       },
       inventory,
+      ...(prebuiltMode
+        ? {
+            external: {
+              count: externalResolved.length,
+              pack: {
+                name: external.pack.name,
+                size: external.pack.size,
+                sha256: external.pack.sha256,
+              },
+            },
+          }
+        : {}),
     };
   };
 }
 // 固定浏览器实现组合，禁止跨 zlib 版本静默替代。 | Bind the pinned browser implementations; reject silent zlib version substitutions.
-export function createPinnedCascOverlayTransform({ codec, SparkMD5 } = {}) {
+export function createPinnedCascOverlayTransform(dependencies = {}) {
+  return pinnedOverlayTransform(dependencies, createCascOverlayTransform);
+}
+export function createPinnedCascPrebuiltOverlayTransform(dependencies = {}) {
+  return pinnedOverlayTransform(dependencies, createCascPrebuiltOverlayTransform);
+}
+function pinnedOverlayTransform({ codec, SparkMD5 } = {}, factory) {
   requireValue(
     codec?.genericZlibVersion === "1.2.13" &&
       typeof codec.compressZlib === "function" &&
       typeof SparkMD5?.ArrayBuffer?.hash === "function",
   );
-  return createCascOverlayTransform({
+  return factory({
     md5(bytes) {
       // SparkMD5 仅读取完整缓冲区；子视图仍复制精确范围，避免散列额外字节。
       // SparkMD5 only reads full buffers; copy subviews to avoid hashing unrelated bytes.

@@ -1,4 +1,5 @@
 import { validateRuntimeTransport, verifyTransportPayload } from "./transport.mjs";
+import { validateRuntimeAssetGroups } from "../runtime-asset-groups.mjs";
 import { Buffer } from "node:buffer";
 import { readdir, readFile, lstat } from "node:fs/promises";
 import { createHash } from "node:crypto";
@@ -59,6 +60,7 @@ export async function verifyRuntimeInventory(directory, expectedDigest, expected
     total += entry.bytes;
   }
   if (total !== manifest.totalBytes) throw new Error("Runtime total mismatch");
+  validateRuntimeAssetGroups(manifest.assets);
   const transportFiles = manifest.transport ? validateRuntimeTransport(manifest) : null;
   if (transportFiles) {
     records.clear();

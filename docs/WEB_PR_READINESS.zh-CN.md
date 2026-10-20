@@ -5,7 +5,7 @@ English: [WEB_PR_READINESS.md](WEB_PR_READINESS.md)
 本清单补充但不替代或放宽[参与开发要求](../CONTRIBUTING.zh-CN.md)
 与 [PR 模板](../.github/PULL_REQUEST_TEMPLATE.md)，不代表已经可以提交 PR。
 只有在检查准确的改动并记录版本、平台和实际输出后才能勾选。仅下文明示记录的源码检查报告为已执行。
-95e20ef 的完整浏览器构建与发布已通过；后续修改仍需各自检查。
+69b5955 的完整浏览器构建与发布已通过；后续修改仍需各自检查。
 游戏/设备测试和截图仍待补充。本次工作没有创建 PR。
 
 ## 改了什么 / 为什么
@@ -32,7 +32,7 @@ python3 dm/ios/tools/dm_i18n.py --header > dm/host/dm_i18n_tab.h
 不需要游戏文件：
 
 - [x] `python3 dm/i18n/scan_literals.py` — `I18N OK：中文字面量 459 条全在白名单（105 行），其余走中英表`
-- [x] `python3 dm/ios/tools/dm_i18n.py --check` — `dm_i18n OK 535 条`
+- [x] `python3 dm/ios/tools/dm_i18n.py --check` — `dm_i18n OK 540 条`
 
 需要游戏文件与经 `./setup.sh` 准备的工作区：
 
