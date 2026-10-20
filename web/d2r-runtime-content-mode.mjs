@@ -1,4 +1,12 @@
-/** Exact v1.0.18 shell data-only derivation. Not an instruction or entitlement patch. */
+// 从准确的 v1.0.18 外壳派生仅数据内容模式。
+// 依据 v1.0.18 外壳布局及 dm/host/hle_misc.c 的缓存附加内容计数。
+// Derives a data-only content mode from the exact v1.0.18 shell.
+// Based on the v1.0.18 shell layout and cached add-on count in dm/host/hle_misc.c.
+
+/**
+ * 准确的 v1.0.18 外壳仅数据派生。不是指令或授权补丁。
+ * Exact v1.0.18 shell data-only derivation. Not an instruction or entitlement patch.
+ */
 export const D2R_RUNTIME_CONTENT_PIN = Object.freeze({
   release: "v1.0.18",
   executablePath: "DmIOS",
@@ -90,7 +98,7 @@ function cacheOffset(bytes) {
     const p = symbols.offset + i * 16,
       type = bytes[p + 4],
       index = u32(p);
-    if (type & 0xe0) continue; // STAB/debug duplicates are not definitions.
+    if (type & 0xe0) continue; // STAB/调试重复项不属于定义。 | STAB/debug duplicates are not definitions.
     if (index >= symbols.stringSize) fail();
     if (
       string(symbols.strings + index, symbols.stringSize - index) !== D2R_RUNTIME_CONTENT_PIN.symbol
@@ -119,6 +127,12 @@ function cacheOffset(bytes) {
 }
 
 /**
+ * 仅在原始外壳验证后对其未修改的可执行文件调用。
+ * 根据已认证的选择派生有效模式，而非 UI 所有权标志。
+ * 源码 dm/host/hle_misc.c:18 将 static int v 初始化为 -1；v<0 触发 getenv，
+ * 否则 Count/List 使用缓存的 v。零初始化值会永久报告无附加内容。
+ * 这四字节修改会使现有签名失效；输出未签名，
+ * 必须由用户在所有封装修改完成后签名。
  * Invoke only after original shell validation, on its unmodified executable.
  * Derive effective mode from authenticated selection, not a UI ownership flag.
  * Source dm/host/hle_misc.c:18 initializes static int v=-1; v<0 triggers getenv,

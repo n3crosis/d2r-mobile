@@ -1,5 +1,9 @@
+// 依据 extraction-protocol 的消息及时限契约管理隔离提取传输。
+// Manage isolated extraction transport using the extraction-protocol message and deadline contracts.
 import { isExtractionWorkerErrorCode, isExtractionProgress } from "./extraction-errors.mjs";
-/** Strict, single-flight transport for the isolated extraction Worker.
+/**
+ * 隔离提取 Worker 的严格单请求传输。createWorker 属于受信任的应用接线；这里不接受 URL、源码或 RPC。
+ * Strict, single-flight transport for the isolated extraction Worker.
  * createWorker is trusted application wiring; no URL/source/RPC is accepted here.
  */
 export class ExtractionClientError extends Error {
@@ -15,7 +19,9 @@ const keys = (value, expected) =>
   typeof value === "object" &&
   Object.keys(value).sort().join(",") === [...expected].sort().join(",");
 const romfsProgress = (stage) => ["romfs-read", "romfs-base", "romfs-merged"].includes(stage);
-/** Total queue-plus-execution deadlines. Long verification never gets an
+/**
+ * 截止时间覆盖排队及执行总时长。长时间验证也不会获得无限期租约或基于心跳的续期；真实游戏的吞吐量尚未测量。
+ * Total queue-plus-execution deadlines. Long verification never gets an
  * unbounded lease or heartbeat-based renewal; real-title throughput is unmeasured.
  */
 export const EXTRACTION_OPERATION_TIMEOUTS = Object.freeze({
@@ -50,6 +56,8 @@ export function createExtractionWorkerClient({
   const deadlines = Object.create(null);
   for (const [operation, limits] of Object.entries(EXTRACTION_OPERATION_TIMEOUTS)) {
     const override = Object.hasOwn(operationTimeoutMs, operation);
+    // 旧的全局选项可以缩短长操作，但绝不会扩大
+    // 新的短操作时限。优先使用显式的逐操作覆盖值。
     // The legacy global option can shorten long operations but never expands the
     // new short-operation ceilings. Explicit per-operation overrides are preferred.
     const value = override
@@ -76,7 +84,7 @@ export function createExtractionWorkerClient({
     try {
       worker?.terminate?.();
     } catch {
-      /* Never expose factory details. */
+      /* 绝不暴露工厂内部细节。 | Never expose factory details. */
     }
     throw error("EXTRACTION_WORKER_UNAVAILABLE");
   }
@@ -100,7 +108,7 @@ export function createExtractionWorkerClient({
     try {
       worker.terminate();
     } catch {
-      /* Local references still revoked. */
+      /* 本地引用仍会被撤销。 | Local references still revoked. */
     }
     if (active) settle(active, error(code));
     active = undefined;
@@ -128,6 +136,7 @@ export function createExtractionWorkerClient({
       try {
         active.onProgress?.(Object.freeze({ ...data.progress }));
       } catch {
+        // 观察者不会更改请求或延长截止时间。
         // Observers do not alter the request or renew its deadline.
       }
       return;
@@ -154,7 +163,7 @@ export function createExtractionWorkerClient({
     try {
       valid = task.validate(data.result);
     } catch {
-      /* Malformed structured-clone data. */
+      /* 结构化克隆数据格式错误。 | Malformed structured-clone data. */
     }
     if (!valid) {
       close("EXTRACTION_PROTOCOL_FAILED");
@@ -191,6 +200,7 @@ export function createExtractionWorkerClient({
         onProgress,
       };
       task.abort = () => close("EXTRACTION_CANCELLED");
+      // 包括排队时间，以约束请求的总生命周期。
       // Includes time spent queued, bounding total request lifetime.
       task.timer = setTimeout(() => close("EXTRACTION_TIMEOUT"), deadlines[operation]);
       signal?.addEventListener("abort", task.abort, { once: true });

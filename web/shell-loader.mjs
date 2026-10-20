@@ -1,4 +1,12 @@
-/** Explicit bridge from real ZIP bytes to the metadata-only shell contract. */
+// 将实际 ZIP 字节连接到仅元数据的外壳约定。
+// 依据 ZIP 读取器、可信发布注册表与外壳约定接口。
+// Bridges actual ZIP bytes to the metadata-only shell contract.
+// Based on the ZIP reader, trusted release registry, and shell-contract interfaces.
+
+/**
+ * 从实际 ZIP 字节到仅元数据外壳约定的显式桥接。
+ * Explicit bridge from real ZIP bytes to the metadata-only shell contract.
+ */
 import { openShellZip, ZIP_LIMITS } from "./zip-reader.mjs";
 import { validateShellContract, SHELL_LIMITS } from "./shell-contract.mjs";
 
@@ -32,6 +40,8 @@ function freezeRecipe(value) {
   return Object.freeze(r);
 }
 function releaseSnapshot(value, releaseId) {
+  // 此布尔值是明确的可信宿主断言，而非签名验证器。
+  // 绝不能从不可信 ZIP 内的字段提供此对象。
   // This boolean is an explicit trusted-host assertion, not a signature verifier.
   // Never provide this object from a field inside the untrusted ZIP.
   if (
@@ -87,6 +97,13 @@ function text(bytes) {
 }
 
 /**
+ * 返回 packaging-job 的 loadShell({signal}) 适配器，不启用生成。
+ * resolveTrustedRelease(releaseId,{signal}) 必须独立认证发布注册表，
+ * 并返回 {verified:true,releaseId,trustedRecipe,files:[{path,size,mode,sha256}]}。
+ * 此模块不提供注册表、签名者信任根或已下载外壳发现功能。
+ * inspectTargetOS({base,entries,readEntry,signal}) 必须独立解析实际已验证的
+ * Mach-O/plist 字节，返回 {platform,minimumVersion}；它不接收配方。
+ * 随机访问源必须不可变。所有读取都经过 CRC 和 SHA-256 检查。
  * Returns packaging-job's loadShell({signal}) adapter, without enabling generation.
  * resolveTrustedRelease(releaseId,{signal}) MUST independently authenticate a release
  * registry and return {verified:true,releaseId,trustedRecipe,files:[{path,size,mode,sha256}]}.
@@ -192,6 +209,8 @@ export function createShellLoader({
       observedTargetOS,
     };
     validateShellContract(fullContract);
+    // 当前协调器的 ZIP32 写入器不支持显式目录。
+    // 验证所有目录记录，然后仅省略冗余的目录元数据。
     // The current coordinator's ZIP32 writer has no explicit-directory support.
     // Validate all directory records, then omit only redundant directory metadata.
     const entries = Object.freeze(

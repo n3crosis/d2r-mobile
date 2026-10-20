@@ -1,4 +1,9 @@
-/** Complete current-name map-goal assets. No OS fonts, private old names, or inferred atlas layout. */
+// 依据 dm/ios/tools/gen_map_goal_art.py 配方生成地图目标资源。
+// Generate map-goal assets based on the dm/ios/tools/gen_map_goal_art.py recipe.
+/**
+ * 使用当前名称的完整地图目标资源。不使用操作系统字体、私有旧名称或推断的图集布局。
+ * Complete current-name map-goal assets. No OS fonts, private old names, or inferred atlas layout.
+ */
 export const MAP_GOAL_IMAGE_PATHS = Object.freeze({
   symbols: "hd/global/ui/PANEL/Quest_Log/TalRashaSymbol.sprite",
   units: "hd/global/ui/AUTOMAP/Units.sprite",
@@ -28,7 +33,10 @@ const encode = (bytes) => {
     value += String.fromCharCode(...bytes.subarray(i, i + 8192));
   return btoa(value);
 };
-/** decodeAtlas must return the validated full atlas plus actual frameWidth and frames. */
+/**
+ * decodeAtlas 必须返回已验证的完整图集，以及实际 frameWidth 和 frames。
+ * decodeAtlas must return the validated full atlas plus actual frameWidth and frames.
+ */
 export async function generateMapGoal({ logicalAssets, assetWorker, decodeAtlas, signal }) {
   const owned = [];
   let total = 0,

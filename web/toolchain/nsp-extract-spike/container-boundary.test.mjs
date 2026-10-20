@@ -1,3 +1,5 @@
+// 依据合成 PFS0 数据验证容器索引的格式与范围约束。
+// Verify container-index format and range constraints using synthetic PFS0 data.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { indexPfs0, blobReader } from "./container-boundary.mjs";

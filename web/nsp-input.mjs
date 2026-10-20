@@ -1,9 +1,17 @@
-/** Browser-local, bounded input inspection only. No decryption or network access. */
+// 在浏览器本地有界检查 NSP 和密钥元数据。
+// 依据 PFS0 索引布局与原生解析器的密钥文本约定。
+// Inspects NSP and key metadata locally in the browser with bounded resources.
+// Based on PFS0 index layout and the native parser’s key-text contract.
+
+/**
+ * 仅在浏览器本地进行有界输入检查。不解密或访问网络。
+ * Browser-local, bounded input inspection only. No decryption or network access.
+ */
 export const NSP_INPUT_LIMITS = Object.freeze({
   directoryEntries: 4096,
   packages: 128,
   keyBytes: 1024 * 1024,
-  keyLineBytes: 4096, // Includes RSA-sized dump entries, not only AES keys.
+  keyLineBytes: 4096, // 包括 RSA 大小的转储条目，而不只是 AES 密钥。 | Includes RSA-sized dump entries, not only AES keys.
   entries: 65536,
   indexBytes: 16 * 1024 * 1024,
   filenameBytes: 255,
@@ -88,7 +96,10 @@ function addName(seen, name) {
   seen.add(folded);
   return folded;
 }
-/** Enumerates only root entries. Does not recurse or open unrelated files. */
+/**
+ * 仅枚举根条目。不递归或打开无关文件。
+ * Enumerates only root entries. Does not recurse or open unrelated files.
+ */
 export async function discoverNspFolder(directory, { signal, onProgress } = {}) {
   const checkAbort = () => {
     if (signal?.aborted) throw new DOMException("Folder check cancelled.", "AbortError");
@@ -108,7 +119,10 @@ export async function discoverNspFolder(directory, { signal, onProgress } = {}) 
         titleKeysFound: records.has("title.keys"),
       });
     } catch {
-      /* Read-only progress observers must not change input validation. */
+      /**
+       * 只读进度观察器不得改变输入验证。
+       * Read-only progress observers must not change input validation.
+       */
     }
   };
   progress();
@@ -129,7 +143,10 @@ export async function discoverNspFolder(directory, { signal, onProgress } = {}) 
   checkAbort();
   return finishDiscovery(records);
 }
-/** Fallback for input[webkitdirectory]. Browser may enumerate recursively before this call. */
+/**
+ * input[webkitdirectory] 的后备路径。浏览器可能在此调用前已递归枚举。
+ * Fallback for input[webkitdirectory]. Browser may enumerate recursively before this call.
+ */
 export function discoverNspFiles(files) {
   const seen = new Set();
   const directories = new Set();
@@ -159,7 +176,10 @@ export function discoverNspFiles(files) {
   return finishDiscovery(records);
 }
 
-/** Validates a PFS0 index. Returned offsets and lengths are BigInt, relative to the NSP. */
+/**
+ * 验证 PFS0 索引。返回的偏移和长度为相对于 NSP 的 BigInt。
+ * Validates a PFS0 index. Returned offsets and lengths are BigInt, relative to the NSP.
+ */
 export async function inspectNsp(file) {
   const size = fileSize(file);
   if (size < 16n) fail("PFS0_HEADER", "NSP header is truncated.");
@@ -227,6 +247,7 @@ export async function inspectNsp(file) {
   return { format: "PFS0", size, dataOffset, entries };
 }
 
+// 仅验证长度，不证明密钥真实或足以支持任何游戏。
 // Verified lengths only, not proof that a key is genuine or sufficient for any game.
 function verifiedProdLength(name) {
   if (name === "header_key" || name === "header_key_source") return 32;
@@ -245,7 +266,10 @@ function verifiedProdLength(name) {
 const paddedMasterKekSource = (name) =>
   /^(?:master_kek_source|mariko_master_kek_source)_[0-9a-f]{2}$/u.test(name) &&
   Number.parseInt(name.slice(-2), 16) < 32;
-/** Parses ASCII key text for metadata only. Does not retain or return keys/rights IDs. */
+/**
+ * 仅为元数据解析 ASCII 密钥文本。不保留或返回密钥/权限 ID。
+ * Parses ASCII key text for metadata only. Does not retain or return keys/rights IDs.
+ */
 export async function inspectKeyFile(file, kind) {
   if (kind !== "prod" && kind !== "title") fail("KEY_KIND", "Unsupported key-file kind.");
   const size = fileSize(file);
@@ -258,7 +282,10 @@ export async function inspectKeyFile(file, kind) {
     bytes.fill(0);
   }
 }
-/** Validate an owned key buffer inside the isolated Worker without another file read.
+/**
+ * 在隔离的 Worker 内验证自有密钥缓冲区，不再次读取文件。
+ * 仅返回元数据；调用方必须在原生密钥加载后擦除字节。
+ * Validate an owned key buffer inside the isolated Worker without another file read.
  * Returns metadata only; the caller MUST wipe bytes after native key loading.
  */
 export function inspectKeyBytes(bytes, kind) {
@@ -285,6 +312,7 @@ export function inspectKeyBytes(bytes, kind) {
       }
       start = end + 1;
       if (/^[ \t]*$/u.test(line)) continue;
+      // 整行注释是特意提供的前端便利功能，不是 hactool 语法。
       // Full-line comments are a deliberate frontend convenience, not hactool syntax.
       if (/^[ \t]*#/u.test(line)) continue;
       const match = /^[ \t]*([A-Za-z0-9_]+)[ \t]*[=,][ \t]*([0-9a-fA-F]+)[ \t]*$/u.exec(line);
@@ -325,7 +353,11 @@ export function inspectKeyBytes(bytes, kind) {
   }
 }
 
-/** Narrow compatibility for master KEK source dumps with one trailing zero byte.
+/**
+ * 仅兼容带一个尾随零字节的主 KEK 源转储。
+ * 修改自有密钥缓冲区，清除移除的尾部，并返回缩短后的视图。
+ * 仅由隔离的 Worker 在固定版本的原生密钥解析器之前调用。
+ * Narrow compatibility for master KEK source dumps with one trailing zero byte.
  * Mutates an owned key buffer, clears the removed tail, and returns its shorter view.
  * Only the isolated Worker calls this before the pinned native key parser.
  */
@@ -376,7 +408,10 @@ export function normalizeProdKeyBytes(bytes) {
   return bytes.subarray(0, write);
 }
 
-/** Accepts a directory handle or webkitdirectory FileList. Retains no file handles in its result. */
+/**
+ * 接受目录句柄或 webkitdirectory FileList。结果不保留文件句柄。
+ * Accepts a directory handle or webkitdirectory FileList. Retains no file handles in its result.
+ */
 export async function preflightNspFolder(input) {
   const files =
     input?.kind === "directory" ? await discoverNspFolder(input) : discoverNspFiles(input);

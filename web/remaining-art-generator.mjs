@@ -1,4 +1,8 @@
-/** Native stash/trove/vault/pouch build order, operating only on authenticated assets.
+// 依据 gen_widestash_art.py 等原生图像生成器与 nvn_deswizzle.c 组合剩余图像。
+// Compose remaining art from native image generators including gen_widestash_art.py and nvn_deswizzle.c.
+/**
+ * 仅操作已认证资源的原生 stash/trove/vault/pouch 构建顺序。原始图像语句由 package-remaining-art.py 打包。MainPanel 直接复制原始 BC3 块而不重新编码，与 gen_widestash_art.py 一致。
+ * Native stash/trove/vault/pouch build order, operating only on authenticated assets.
  * Original image statements are packaged by package-remaining-art.py. MainPanel
  * copies original BC3 blocks without re-encoding, matching gen_widestash_art.py.
  */
@@ -23,8 +27,11 @@ function base64(bytes) {
     text += String.fromCharCode(...bytes.subarray(i, i + 8192));
   return btoa(text);
 }
-/** Source-exact 2D BC3 offset from nvn_deswizzle.c; only the pinned main-panel
- * geometry is accepted. This does not change generic decoder/encoder limits. */
+/**
+ * 与 nvn_deswizzle.c 源码完全一致的二维 BC3 偏移；仅接受固定的主面板几何尺寸。这不会改变通用解码器或编码器限制。
+ * Source-exact 2D BC3 offset from nvn_deswizzle.c; only the pinned main-panel
+ * geometry is accepted. This does not change generic decoder/encoder limits.
+ */
 export function widenMainPanelBlocks(source) {
   if (!(source instanceof Uint8Array) || source.length < 40 || source.length > 8 * 1024 * 1024)
     fail("STASH_MAIN_BYTES");
@@ -67,6 +74,8 @@ export function widenMainPanelBlocks(source) {
       output.set(source.subarray(40 + offset, 40 + offset + 16), (y * 410 + block) * 16);
     }
   }
+  // 编码器模板元数据归一化为一个物理帧。以 width1640 打包后，最终显示
+  // 宽度恢复为原生 fw+EX=1636。
   // Encoder template metadata is normalized to one physical frame. Final display
   // width is restored to native fw+EX=1636 after packing width1640.
   const templateHeader = source.slice(0, 40),
@@ -236,6 +245,8 @@ export async function generateRemainingArt({
       keep(`NativeHUD/widestash/${name}_wide.sprite`, sprite);
       if (name === "StashPanelBGPersonal") personal = sprite;
     }
+    // 原生封面来自有损编码后的 widestash 结果，而非
+    // 编码前的 RGBA。保留这次往返及其原始金框保护检查。
     // Native cover is derived from the lossy encoded widestash result, not the
     // pre-encoding RGBA. Keep this round trip and its original gold-box guard.
     const vault = await transform("vault", "VaultBottom", { image: await decode(personal) });

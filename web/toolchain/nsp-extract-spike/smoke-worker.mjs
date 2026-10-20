@@ -1,3 +1,5 @@
+// 依据公开合成夹具检查浏览器内 WASM 读取、完整性与清理边界。
+// Check in-browser WASM read, integrity and cleanup boundaries using public synthetic fixtures.
 import factory from "./dist/hactool-boundary.mjs";
 import { createBoundary } from "./browser-boundary.mjs";
 const assert = (ok) => {
@@ -40,6 +42,7 @@ try {
     wasm = await factory(options);
     return wasm;
   });
+  // 代码已加载；操作期间不允许再使用任何网络 API。
   // Code has loaded. No further network API is permitted during operations.
   globalThis.fetch = () => {
     throw new Error("Unexpected network operation");
@@ -96,6 +99,9 @@ try {
     rejected = true;
   }
   assert(rejected);
+  // 稀疏的合成只读文件系统节点用于检查实际 WASM off_t 在 4 GiB 之外的定位，
+  // 无需分配或下载 5 GiB Blob。上面的常规路径
+  // 单独检查真实的 Blob/WORKERFS 读取。
   // A sparse synthetic read-only FS node exercises actual WASM off_t seeks
   // beyond 4 GiB without allocating or downloading a 5 GiB Blob. The regular
   // path above separately exercises real Blob/WORKERFS reads.
@@ -125,6 +131,8 @@ try {
   assert(boundary.open(0, "synthetic-pfs0") === 1);
   assert(boundary.entry(0).offset === sparseOffset);
   assert(boundary.read(0, 0n, 1)[0] === 173);
+  // 生产 Meta 入口必须拒绝未签名的合成头部。
+  // 该入口没有测试密钥覆盖选项或跳过签名的标志。
   // The production Meta entrypoint must reject an unsigned synthetic header.
   // There is no test-key override or skip-signature flag in that entrypoint.
   stage = "unsigned-meta-rejection";
@@ -216,6 +224,7 @@ try {
     ],
   });
 } catch {
+  // 绝不显示密钥处理上下文中的异常消息或堆栈。
   // Never surface exception messages or stacks from a key-handling context.
   self.postMessage({ ok: false, error: "Synthetic WASM browser smoke failed", stage });
 }

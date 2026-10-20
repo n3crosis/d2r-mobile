@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Small fail-closed transformations against one pinned upstream revision."""
+"""针对固定上游版本执行小范围、失败即关闭的转换。 | Small fail-closed transformations against one pinned upstream revision."""
 
 from pathlib import Path
 import sys
@@ -19,7 +19,7 @@ def replace_once(old, new):
 replace_once(
     "static int get_kv(FILE *f, char **key, char **value) {",
     """#define NSP_KEY_LINE_BYTES 4096
-static char nsp_parser_line[NSP_KEY_LINE_BYTES + 3]; /* content + CRLF + NUL */
+static char nsp_parser_line[NSP_KEY_LINE_BYTES + 3]; /* 内容 + CRLF + NUL | content + CRLF + NUL */
 void nsp_clear_parser(void) { nsp_zero(nsp_parser_line, sizeof nsp_parser_line); }
 static int get_kv(FILE *f, char **key, char **value) {""",
 )
@@ -32,7 +32,9 @@ replace_once(
     """    if (errno != 0)
         return -2;
 
-    /* Keep one physical line per parser call. RSA-sized dump entries may be
+    /* 每次解析器调用保留一条物理行。RSA 大小的转储条目可能不被 hactool 识别，
+     * 但绝不能被拆成第二条密钥记录。与有界 JS 校验器保持一致，为 CRLF 和 NUL 预留空间。
+     * Keep one physical line per parser call. RSA-sized dump entries may be
      * unrecognized by hactool, but must never split into a second key record.
      * Match the bounded JS validator, reserving room for CRLF and the NUL. */
     size_t line_length = strlen(line), content_length = line_length;
@@ -58,6 +60,7 @@ replace_once(
     "                settings_add_titlekey(settings, rights_id, titlekey);\n                nsp_zero(titlekey, sizeof titlekey);",
 )
 p.write_text(s)
+# 上游将其 64 位名称映射到 fseek；wasm32 上的 long 为 32 位，故使用 off_t。
 # Upstream maps its 64-bit name to fseek; long is 32-bit on wasm32. Use off_t.
 p = root / "utils.h"
 s = p.read_text()

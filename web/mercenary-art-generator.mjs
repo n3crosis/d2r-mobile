@@ -1,4 +1,9 @@
-/** Exact original mercenary image composition, with no invented release hashes. */
+// 依据 dm/ios/tools/gen_merc_art.py 的原始配方生成雇佣兵图像。
+// Generate mercenary art from the original dm/ios/tools/gen_merc_art.py recipe.
+/**
+ * 精确的原始雇佣兵图像合成，不虚构发布哈希。
+ * Exact original mercenary image composition, with no invented release hashes.
+ */
 export const MERCENARY_INPUTS = Object.freeze({
   "hirelinginventory/v2/hirelinginventorybg": Object.freeze([652, 704]),
   "inventorypanel/v2/inventorybg_classic": Object.freeze([507, 700]),
@@ -15,8 +20,11 @@ const base64 = (value) => {
     text += String.fromCharCode(...value.subarray(i, i + 8192));
   return btoa(text);
 };
-/** logicalAssets must be the authenticated extraction capability. Encoder and
- * asset worker must already be loaded/sealed by their owning job controller. */
+/**
+ * logicalAssets 必须是已认证提取能力。编码器及资源工作线程必须已由其所属任务控制器加载并密封。
+ * logicalAssets must be the authenticated extraction capability. Encoder and
+ * asset worker must already be loaded/sealed by their owning job controller.
+ */
 export async function generateMercenaryArt({
   logicalAssets,
   assetWorker,

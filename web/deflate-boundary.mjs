@@ -1,3 +1,11 @@
+// 独立扫描原始 DEFLATE 边界，不生成解码输出。
+// 依据 RFC 1951 的 DEFLATE 帧结构。
+// Independently scans raw DEFLATE boundaries without materializing decoded output.
+// Based on RFC 1951 DEFLATE framing.
+
+// 原生运行时对于原始 DEFLATE 是否静默接受尾随字节的行为各异。
+// 独立扫描 RFC 1951 帧结构，不生成解码输出。
+// 事务在 1 KiB 输入片段之间仅保留不完整的头或符号。
 // Native runtimes differ on whether raw DEFLATE silently accepts trailing bytes.
 // Independently scan the RFC 1951 framing, without materializing decoded output.
 // Transactions retain only an incomplete header/symbol across 1 KiB input slices.
@@ -105,6 +113,7 @@ export function createDeflateBoundary(expectedSize) {
       joined.set(bytes, buffer.length - start);
       buffer = joined;
       bit &= 7;
+      // 动态头最多几 KiB；符号最多六字节。
       // A dynamic header is at most a few KiB; symbols are at most six bytes.
       if (buffer.length > 8192) invalid();
       while (true) {

@@ -1,4 +1,12 @@
-/** Bounded, read-only record decoder. No manifest traversal or game conversion. */
+// 有界只读归档记录解码，不遍历清单或转换游戏。
+// 依据本模块的归档记录约定与原生 BLTE N/Z 解码布局。
+// Bounded read-only archive record decoding without manifest traversal or game conversion.
+// Based on this module’s archive record contract and native BLTE N/Z decoding layout.
+
+/**
+ * 有界只读记录解码器。不遍历清单或转换游戏。
+ * Bounded, read-only record decoder. No manifest traversal or game conversion.
+ */
 import { MAX_READ_BYTES, readRange } from "./preflight.mjs";
 
 export const ARCHIVE_LIMITS = Object.freeze({
@@ -17,7 +25,10 @@ function bounded(value, limit, name) {
     throw new Error(`Invalid ${name}`);
 }
 
-/** Native key-layout-0 locator: chunk, archive, then big-endian 40-bit offset. */
+/**
+ * 原生 key-layout-0 定位器：依次为块、归档和大端 40 位偏移。
+ * Native key-layout-0 locator: chunk, archive, then big-endian 40-bit offset.
+ */
 export function archiveLocator(ekey) {
   if (typeof ekey !== "string" || !/^[0-9a-f]{32}$/i.test(ekey)) throw new Error("Invalid EKey");
   const chunk = parseInt(ekey.slice(18, 20), 16);
@@ -34,6 +45,8 @@ async function inflateInto(encoded, output, start, size, signal) {
   if (typeof DecompressionStream !== "function")
     throw new Error("Zlib DecompressionStream unavailable");
   signal?.throwIfAborted();
+  // Chromium 可能在输出前同步展开一次写入的全部数据。
+  // 以小片段输入，等待每次写入，同时读取输出。
   // Chromium can synchronously expand an entire write before yielding output.
   // Feed small slices, await every write, and drain output concurrently.
   const stream = new DecompressionStream("deflate");
@@ -95,6 +108,7 @@ async function inflateInto(encoded, output, start, size, signal) {
     await Promise.all([producer, consumer]);
     check();
   } finally {
+    // 返回前两个方向都必须结束，包括待完成的写入。
     // Both directions must settle before returning, including pending writes.
     await Promise.allSettled([producer, consumer]);
     if (cleanup) await cleanup;
@@ -105,6 +119,10 @@ async function inflateInto(encoded, output, start, size, signal) {
 }
 
 /**
+ * verifyMd5(bytes, expectedHex, {kind, index?, signal}) 必须解析为严格的 true。
+ * 须提供可信的 MD5 实现；WebCrypto 不提供 MD5，且不允许绕过。
+ * record 结构为 {offset, encodedSize, decodedSize, encoding: 'n'|'z'|'b:...', ckey}。
+ * 只有返回的缓冲区经过校验和验证；不会发布部分输出。
  * verifyMd5(bytes, expectedHex, {kind, index?, signal}) MUST resolve exactly true.
  * Supply a trusted MD5 implementation; WebCrypto does not supply MD5. No bypass.
  * record: {offset, encodedSize, decodedSize, encoding: 'n'|'z'|'b:...', ckey}.
@@ -178,6 +196,7 @@ export async function decodeArchiveRecord(source, record, { verifyMd5, signal } 
     const bytes = await read(block.position, block.encoded);
     if (isBlte) await verify(bytes, block.checksum, { kind: "encoded block", index });
     const mode = isBlte ? String.fromCharCode(bytes[0]).toLowerCase() : encoding;
+    // 拒绝 BLTE 中的小写模式：原生解码器仅接受 N 和 Z。
     // Reject lowercase modes in BLTE: native decoder accepts only N and Z.
     if (isBlte && bytes[0] !== 78 && bytes[0] !== 90)
       throw new Error("Unsupported BLTE block mode");

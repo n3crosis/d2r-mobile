@@ -5,8 +5,8 @@
     "dm/ios/tools/annot_drop.py": "c30b12df91cd9b7186481366c2012ece9098b344e8aad524d67ae7a8d0715368",
     "dm/ios/tools/annot_world.py": "2517bc142a45d80df400ef51c755f11f7b4203b4ed34b63d691e4daa67b14c81",
     "dm/ios/tools/touch_strings.py": "bf8b853cdbefe8adfd0c15d91df8d9c5402879eaad453c4d8d8e7c422b384648",
-    "dm/ios/tools/dm_i18n.py": "bee753ff1e5cf897f417bcd308679d3fb840870e8bd97bb6c1c835f1da7c3412",
-    "dm/i18n/ui_text.tsv": "8e23cd353ef51ea8a6a5e60baa553e88c3799d43d7571d17ae51b7395a7573d0"
+    "dm/ios/tools/dm_i18n.py": "e0a9c1ee8285e798cb3cf588c04c6e7275a9d053c91fee558d3126faf029f274",
+    "dm/i18n/ui_text.tsv": "902d872731b9357104478e66e5c98195e886e573fbb0abbd2a4177b43a4848c7"
   },
   "touch": {
     "tables": {

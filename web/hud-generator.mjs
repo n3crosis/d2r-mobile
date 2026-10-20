@@ -1,4 +1,9 @@
-/** Complete Switch-upscaled native HUD. Fonts are logical archive reads, never OS files. */
+// 依据原生 HUD 生成配方和已验证的前序图像阶段生成 HUD 资源。
+// Generate HUD assets from native HUD recipes and verified preceding art stages.
+/**
+ * 完整的 Switch 放大原生 HUD。字体通过逻辑归档读取，绝非操作系统文件。
+ * Complete Switch-upscaled native HUD. Fonts are logical archive reads, never OS files.
+ */
 const IMAGE_PATHS = Object.freeze({
   front_panel: "hd/global/ui/PANEL/HUD_02/front_panel.sprite",
   levelupbutton: "hd/global/ui/Controller/HUD/LevelUpButton.sprite",
@@ -24,7 +29,10 @@ export const HUD_LOGICAL_INPUTS = Object.freeze([
   ...FONT_NAMES.map((n) => `hd/ui/fonts/${n}`),
   "global/ui/Layouts/Controller/HUDPanelHD.json",
 ]);
-/** nativeArtFiles are the preceding verified native-art stage outputs, not user-selected files. */
+/**
+ * nativeArtFiles 是之前已验证的原生图像阶段输出，而非用户选择的文件。
+ * nativeArtFiles are the preceding verified native-art stage outputs, not user-selected files.
+ */
 export async function generateHud({
   logicalAssets,
   assetWorker,
@@ -125,7 +133,7 @@ export async function generateHud({
         (pixels += w * h) > 4194304
       )
         fail("HUD_PIXEL_LIMIT");
-      atlases[asset.asset] = encode(bytes); // Borrowed prior-stage outputs are never mutated.
+      atlases[asset.asset] = encode(bytes); // 绝不修改借用的前序阶段输出。 | Borrowed prior-stage outputs are never mutated.
     }
     const payload = new TextEncoder().encode(
       JSON.stringify({ metadata, images, fonts, layout, atlases }),

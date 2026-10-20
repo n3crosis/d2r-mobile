@@ -1,5 +1,14 @@
-/** Data-free preflight primitives. No conversion, uploads, or writes. */
+// 提供无游戏数据的预检原语，不转换、上传或写入。
+// 依据 d2rm_pack.py 的模块要求及 NSO 头布局。
+// Provides data-free preflight primitives without conversion, uploads, or writes.
+// Based on d2rm_pack.py module requirements and NSO header layout.
+
+/**
+ * 无数据预检原语。不转换、上传或写入。
+ * Data-free preflight primitives. No conversion, uploads, or writes.
+ */
 export const NSO_HEADER_BYTES = 0x100;
+// 与 d2rm_pack.py 的 MODS 一致：IPA 封装路径不需要 subsdk0。
 // Match d2rm_pack.py MODS: subsdk0 is not required by the IPA packaging path.
 export const REQUIRED_NSO_MODULES = Object.freeze(["main", "sdk"]);
 export const MAX_READ_BYTES = 4 * 1024 * 1024;
@@ -9,6 +18,7 @@ export function safeRelativePath(value) {
     typeof value !== "string" ||
     !value ||
     value !== value.normalize("NFC") ||
+    // 路径验证有意拒绝控制字符。
     // Path validation deliberately rejects control characters.
     // eslint-disable-next-line no-control-regex
     /[\\:\x00-\x1f\x7f]/u.test(value)
@@ -39,6 +49,7 @@ export function indexFiles(files) {
     if (!Number.isSafeInteger(file.size) || file.size < 0) throw new Error("Invalid file size");
     const key = path.toLowerCase();
     if (folded.has(key)) throw new Error(`Conflicting path: ${path}`);
+    // 以 O(总路径深度) 跟踪祖先目录，而非 O(文件数平方)。
     // Track ancestor directories in O(total path depth), not O(file count squared).
     if (directories.has(key)) throw new Error(`File/directory conflict: ${path}`);
     const parts = key.split("/");
@@ -53,7 +64,10 @@ export function indexFiles(files) {
   return index;
 }
 
-/** The adapter must expose size and read(offset, length) => Uint8Array. */
+/**
+ * 适配器必须提供 size 和 read(offset, length) => Uint8Array。
+ * The adapter must expose size and read(offset, length) => Uint8Array.
+ */
 export async function readRange(source, offset, length, signal) {
   signal?.throwIfAborted();
   if (
@@ -83,7 +97,10 @@ export function fileSource(file) {
   };
 }
 
-/** Header validation only. Does NOT authenticate game version or rewrite an NSO. */
+/**
+ * 仅验证头。不认证游戏版本或重写 NSO。
+ * Header validation only. Does NOT authenticate game version or rewrite an NSO.
+ */
 export async function inspectNso(source, signal) {
   const bytes = await readRange(source, 0, NSO_HEADER_BYTES, signal);
   if (bytes[0] !== 0x4e || bytes[1] !== 0x53 || bytes[2] !== 0x4f || bytes[3] !== 0x30) {

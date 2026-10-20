@@ -1,3 +1,5 @@
+// 依据本地合成夹具在 Chromium 中运行 WASM 边界冒烟检查。
+// Run WASM boundary smoke checks in Chromium using local synthetic fixtures.
 import assert from "node:assert/strict";
 import process from "node:process";
 import http from "node:http";

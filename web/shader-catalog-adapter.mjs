@@ -1,8 +1,13 @@
+// 依据固定的目录源摘要和原生 loc/pc_of 规则映射着色器记录。
+// Map shader records using pinned catalog-source digests and native loc/pc_of rules.
 const authenticatedCatalogs = new WeakSet();
 export function assertShaderCatalog(value) {
   if (!authenticatedCatalogs.has(value)) throw new Error("Unauthenticated shader catalog");
 }
-/** Source-pinned catalog mapping only. No fetch, translation, release attestation or packaging. */
+/**
+ * 仅映射源码固定的目录。不进行获取、翻译、发布证明或打包。
+ * Source-pinned catalog mapping only. No fetch, translation, release attestation or packaging.
+ */
 export const SHADER_CATALOG_SOURCES = Object.freeze({
   map: "419dae7adddbaba455045b1d121a01671fcb3bc82fc5d7d193593255df23c628",
   facts: "5f50b1d9934b2f4e85ebddbd62114c6f5acb94ae42b8509fcfc3486e7953f490",
@@ -36,11 +41,15 @@ function options({ debug, reduced }) {
   if (typeof debug !== "boolean" || typeof reduced !== "boolean")
     throw new Error("Explicit debug/reduced options required");
 }
-/** Independently callable record decoder; descriptor is NOT a release recipe. */
+/**
+ * 可独立调用的记录解码器；描述符不是发布配方。
+ * Independently callable record decoder; descriptor is NOT a release recipe.
+ */
 export async function decodeShaderRecord(descriptor, input, flags) {
   supported(descriptor.stage, flags.allowUnverifiedTessellation);
   options(flags);
   if (!HEX.test(descriptor.key)) throw new Error("Invalid control key");
+  // 等待哈希前先拍快照，避免调用方修改已检查字节。
   // Snapshot before awaiting the hash, so a caller cannot mutate checked bytes.
   const rec = bytes(input, 2 * 1024 * 1024, "shader record").slice();
   const ci = find(rec, control);
@@ -139,6 +148,7 @@ export async function loadShaderCatalog(input) {
       !facts.has(key)
     )
       throw new Error("Invalid catalog row/facts");
+    // 原始 loc/pc_of 使用 setdefault：第一个物理源优先。
     // Original loc/pc_of use setdefault: first physical source wins.
     if (!entries.has(key))
       entries.set(key, { key, name, index, stage, pcPaired, embedded, facts: facts.get(key) });
@@ -151,6 +161,8 @@ export async function loadShaderCatalog(input) {
   }
   if (entries.size !== 6927 || facts.size !== entries.size)
     throw new Error("Incomplete pinned catalog");
+  // 当前提交的 bf_want 策略是生成的空列表。可选运行时
+  // 字节必须匹配同一精确来源，绝不能使用调用方添加内容。
   // Current committed bf_want policy is an empty generated list. Optional runtime
   // bytes must match the same exact source, never caller-provided additions.
   const bfWant = input.bfWant ?? new TextEncoder().encode("# generated\n");
@@ -182,6 +194,7 @@ export async function loadShaderCatalog(input) {
       options({ debug, reduced });
       let rec;
       if (e.embedded) {
+        // mainImage 必须已经是原生 nsoimg.load 内存镜像布局，而非原始 NSO。
         // mainImage must already be the native nsoimg.load memory-image layout, NOT raw NSO.
         const image = bytes(mainImage, 512 * 1024 * 1024, "decompressed main image");
         const o = e.index;
@@ -205,7 +218,7 @@ export async function loadShaderCatalog(input) {
               break;
             }
             count++;
-            i += 7; // Python re.finditer uses non-overlapping matches.
+            i += 7; // Python re.finditer 使用不重叠匹配。 | Python re.finditer uses non-overlapping matches.
           }
         if (begin < 0) throw new Error("Catalog record absent from pack");
         rec = pack.subarray(begin, end);

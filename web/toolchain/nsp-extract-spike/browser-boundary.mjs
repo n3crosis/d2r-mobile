@@ -1,4 +1,8 @@
+// 依据 boundary.c 的有界接口封装专用 Worker 的 WASM 元数据桥接。
+// Wrap the dedicated Worker WASM metadata bridge based on the bounded boundary.c interface.
 import { extractionDiagnosticError } from "../../extraction-errors.mjs";
+// 必须在新建的专用 Worker 中运行。这是元数据优先的桥接层，
+// 并非应用的生产 NSP 输入校验器或 IPA 构建器。
 // Must run in a fresh dedicated Worker. This is a metadata-first bridge, not
 // the application's production NSP input validator or an IPA builder.
 const MAX_KEYS = 1024 * 1024;
@@ -20,6 +24,7 @@ export async function createBoundary(factory) {
     throw new Error("A dedicated browser Worker is required");
   let activeVerificationProgress = null;
   let nativeProgressSeen = false;
+  // 连运行时诊断也要抑制；异常绝不暴露上游文本。
   // Suppress even runtime diagnostics; exceptions never expose upstream text.
   const module = await factory({
     print() {},
@@ -43,6 +48,7 @@ export async function createBoundary(factory) {
           total,
         });
       } catch {
+        // 进度观察者不能中断认证校验。
         // Progress observers cannot interrupt authenticated verification.
       }
     },
@@ -68,7 +74,8 @@ export async function createBoundary(factory) {
       if (node.contents?.fill) node.contents.fill(0);
       module.FS.unlink(path);
     } catch {
-      /* File may not have been created. Never log parser state. */
+      /* 文件可能尚未创建。绝不记录解析器状态。
+       * File may not have been created. Never log parser state. */
     }
   };
   const withBuffer = (size, fn) => {
@@ -106,6 +113,8 @@ export async function createBoundary(factory) {
       });
     },
     loadKeys(prod, title) {
+      // 接收可变数组，而非不可变的已解码密钥字符串。调用方将 ArrayBuffer
+      // 转移到此 Worker；所有路径都会擦除两个数组。
       // Take mutable arrays, not immutable decoded key strings. Caller transfers
       // ArrayBuffers into this Worker; both arrays are wiped in every path.
       try {
@@ -163,6 +172,8 @@ export async function createBoundary(factory) {
         return check(module._nsp_entry_count());
       });
     },
+    // 读取器生命周期绑定到这个已认证 NCA。后续打开、检查、加载密钥、
+    // 挂载或输入散列操作即使失败，也会使读取器失效。
     // Reader lifetime is bound to this exact authenticated NCA. A later open,
     // inspect, key load, mount or input hash invalidates it even if that fails.
     openPatchedRomfs(baseIndex, patchIndex, onReadProgress, verifyRomfs = true) {
@@ -189,6 +200,7 @@ export async function createBoundary(factory) {
           try {
             onReadProgress?.({ phase: "read", completed: bytesRead, total: 0 });
           } catch {
+            // 进度观察者不能中断认证校验。
             // Progress observers cannot interrupt authenticated verification.
           }
           lastReported = bytesRead;
@@ -260,6 +272,8 @@ export async function createBoundary(factory) {
         });
       });
     },
+    // 整个 NCA 的输入摘要独立于头部或 CNMT 声明。
+    // 计算输入散列会关闭当前成员目录；之后需要重新打开。
     // Whole-NCA input digest is independent of header/CNMT declarations.
     // Hashing an input closes the current member directory; reopen afterward.
     hashInput(index) {
@@ -360,6 +374,8 @@ export async function createBoundary(factory) {
         wipeFile("/secret/prod.keys");
         wipeFile("/secret/title.keys");
         if (mounted) module.FS.unmount("/input");
+        // 原生层销毁后，擦除持有的线性内存视图。所有者随后必须终止
+        // 这个一次性 Worker；不要再次调用 C。
         // After native teardown, erase the owned linear-memory view. The owner
         // must terminate this one-shot Worker next; do not call C again.
         module.HEAPU8.fill(0);

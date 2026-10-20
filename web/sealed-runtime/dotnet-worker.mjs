@@ -1,3 +1,5 @@
+// 依据 .NET10/Emscripten 加载约定及已验证资源清单启动隔离运行时。
+// Start isolated runtimes using .NET10/Emscripten loading conventions and verified resource inventories.
 let initialized = false;
 let started = false;
 let phase = "new";
@@ -31,6 +33,8 @@ function nativeModuleConfig(resources) {
     throw new Error("Expected one resolved native runtime asset");
   const { name, resolvedUrl } = nativeWasm[0];
   return {
+    // Emscripten 在 .NET 安装启动钩子前解析此别名。
+    // 没有 locateFile 时，它会对 blob URL 调用 new URL(alias, import.meta.url)。
     // Emscripten resolves this alias before .NET installs its startup hooks.
     // Without locateFile it calls new URL(alias, import.meta.url) on a blob URL.
     locateFile(path) {
@@ -116,6 +120,7 @@ async function initialize(data) {
     if (!entry || typeof entry.name !== "string" || !assets.has(entry.name))
       throw new Error("Undeclared runtime dependency");
     declared.add(entry.name);
+    // 提前解析：在加载器回调前，URL(relative, blob:) 无效。
     // Resolve up front: URL(relative, blob:) is invalid before the loader callback.
     entry.resolvedUrl = entry.name.endsWith(".js")
       ? moduleUrl(entry.name)
@@ -132,6 +137,7 @@ async function initialize(data) {
       if (!Array.isArray(value)) throw new Error(`Expected asset array ${kind}`);
       for (const entry of value) {
         configure(entry);
+        // .NET10 不通过 withResourceLoader 路由符号文件。
         // Symbols are not routed through withResourceLoader by .NET10.
         if (kind === "wasmSymbols")
           entry.pendingDownload = {
@@ -201,6 +207,8 @@ function run(data) {
   if (JSON.stringify(result).length > 24 * 1024 * 1024) throw new Error("Shader result cap");
   return result;
 }
+// .NET10 通过未设置的 onmessage 槽识别独立工作线程运行时。
+// 像原始着色器工作线程一样立即注册，但不占用该槽。
 // .NET10 identifies an independent worker runtime by an unset onmessage slot.
 // Register immediately without occupying that slot, like the original shader worker.
 self.addEventListener("message", ({ data }) => {

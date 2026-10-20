@@ -1,3 +1,5 @@
+// 根据 STAGED_OUTPUT_SCOPE.md 和 ZIP 校验器契约，在浏览器 OPFS 中暂存、校验并事务性提交归档。
+// Stage, validate, and transactionally commit archives in browser OPFS based on STAGED_OUTPUT_SCOPE.md and the ZIP validator contract.
 import { fileSource, readRange } from "./preflight.mjs";
 import { planStagedZip, validateStagedZip, STAGED_ZIP_LIMITS } from "./staged-zip-validator.mjs";
 
@@ -9,6 +11,15 @@ const sameManifest = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const snapshot = (manifest) => manifest.map(({ path, size, mode }) => ({ path, size, mode }));
 
 /**
+ * 仅在本地使用 OPFS 的暂存适配器。调用者通过用户操作获得 destinationHandle，
+ * 并在创建输出之前授予读写权限。本模块从不弹出提示、上传、选择目标或操作输入句柄。
+ * 只允许删除自己创建的唯一 OPFS 临时文件，不扫描清理文件，也不清空整个存储。
+ * 崩溃可能遗留该文件；绝不能删除未知文件。
+ *
+ * archiveFormat/maxOutputBytes 必须与 runPackagingJob 选项一致。预算包含元数据在内的所有字节。
+ * 配额估算仅供参考；磁盘写满等错误仍会阻止提交。浏览器 API 不提供用户目标磁盘的可用空间。
+ * 传输时可能同时存在两个本地副本。不会将整个归档加载为 Blob/ArrayBuffer。
+ *
  * Local-only OPFS staging adapter. The caller obtains destinationHandle from a
  * user gesture and grants readwrite permission BEFORE creating the output. This
  * module never prompts, uploads, chooses a destination, or touches input handles.
@@ -78,6 +89,8 @@ export function createBrowserStagedOutputAdapters({
         "OUTPUT_RANDOM_ID_UNAVAILABLE",
       );
       const name = `d2rm-output-${uuid}.tmp`;
+      // OPFS 没有独占创建操作。加密随机 UUID 配合存在性检查可避免复用已有条目；
+      // 同源脚本仍被视为可信，因为它们可以独立修改任何 OPFS 文件。
       // OPFS has no exclusive-create primitive. A cryptographic UUID plus an
       // existence check avoids reusing existing entries; same-origin scripts
       // remain trusted, as they can modify any OPFS file independently.
@@ -88,7 +101,7 @@ export function createBrowserStagedOutputAdapters({
         if (cause?.name !== "NotFoundError") throw cause;
       }
       signal?.throwIfAborted();
-      let stageHandle, stageWriter, destinationWriter, pending;
+      let stageHandle, stageWriter, destinationWriter, pending, abortPending;
       let state = "opening",
         bytesWritten = 0,
         removed = false;
@@ -103,16 +116,20 @@ export function createBrowserStagedOutputAdapters({
       };
       const release = async () => {
         const failures = [];
-        for (const stream of [stageWriter, destinationWriter]) {
+        for (const kind of ["stage", "destination"]) {
+          const stream = kind === "stage" ? stageWriter : destinationWriter;
           if (stream) {
             try {
               await stream.abort();
+              if (kind === "stage") stageWriter = undefined;
+              else destinationWriter = undefined;
             } catch (cause) {
+              // 保留清理失败的流，以便稍后重试。
+              // Keep failed streams available for a later cleanup retry.
               failures.push(cause);
             }
           }
         }
-        stageWriter = destinationWriter = undefined;
         try {
           await remove();
         } catch (cause) {
@@ -140,7 +157,8 @@ export function createBrowserStagedOutputAdapters({
         try {
           await release();
         } catch {
-          /* Preserve failure; no final destination was opened. */
+          // 保留原始错误；最终目标尚未打开。
+          // Preserve failure; no final destination was opened.
         }
         throw cause;
       }
@@ -171,6 +189,7 @@ export function createBrowserStagedOutputAdapters({
               signal?.throwIfAborted();
               const source = fileSource(await stageHandle.getFile());
               assert(source.size === plan.totalBytes, "OUTPUT_STAGE_CHANGED");
+              // 重新校验实际复制的快照，防止它在首次校验和最终传输之间被悄然替换。
               // Revalidate the snapshot actually being copied. It cannot be
               // silently replaced between initial validation and final transfer.
               await validateStagedZip(source, captured, { archiveFormat, maxOutputBytes, signal });
@@ -181,37 +200,47 @@ export function createBrowserStagedOutputAdapters({
                 offset += length;
                 signal?.throwIfAborted();
               }
+              // 清理错误必须发生在不可逆的提交边界之前。
               // Cleanup failures happen before the irreversible commit boundary.
               await remove();
               signal?.throwIfAborted();
               await destinationWriter.close();
               destinationWriter = undefined;
-              state = "committed"; // No post-close cancellation check.
+              state = "committed"; // 关闭后不再检查取消。 | No post-close cancellation check.
             } catch (cause) {
               state = "failed";
               try {
                 await release();
               } catch {
-                /* abort() can retry owned-entry removal. */
+                // abort() 可以重试清理流以及删除自有条目。
+                // abort() can retry stream cleanup and owned-entry removal.
               }
               throw cause;
             }
           });
         },
-        async abort() {
+        abort() {
           cancellation.abort();
-          // Drain an in-flight browser operation before disposing its resources.
-          if (pending) {
-            try {
-              await pending;
-            } catch {
-              /* Preserve caller error. */
+          if (abortPending) return abortPending;
+          abortPending = (async () => {
+            // 等待进行中的浏览器操作结束后，再释放其资源。
+            // Drain an in-flight browser operation before disposing its resources.
+            if (pending) {
+              try {
+                await pending;
+              } catch {
+                // 保留调用者的错误。
+                // Preserve caller error.
+              }
             }
-          }
-          if (state === "committed" || state === "aborted") return;
-          state = "failed";
-          await release();
-          state = "aborted";
+            if (state === "committed" || state === "aborted") return;
+            state = "failed";
+            await release();
+            state = "aborted";
+          })().finally(() => {
+            abortPending = undefined;
+          });
+          return abortPending;
         },
       });
       owned.set(output, {

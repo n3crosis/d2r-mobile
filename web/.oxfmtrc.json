@@ -25,6 +25,7 @@
     "bun.lock",
     "toolchain/**/package-lock.json",
     "runtime-build/.build/**",
-    "runtime-build/out/**"
+    "runtime-build/out/**",
+    "i18n-catalog.mjs"
   ]
 }

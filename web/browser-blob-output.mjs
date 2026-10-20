@@ -1,3 +1,5 @@
+// 依据 OPFS 暂存输出事务和浏览器 Blob 接口提供 IPA 下载目标。
+// Provide IPA download destinations based on OPFS staged-output transactions and the browser Blob interface.
 import { createBrowserStagedOutputAdapters } from "./browser-staged-output.mjs";
 import { planStagedZip } from "./staged-zip-validator.mjs";
 import { ZIP_LIMITS } from "./zip-writer.mjs";
@@ -12,6 +14,7 @@ const requireValue = (value, code) => {
 };
 
 /**
+ * 现有 OPFS 事务之后的有界、仅用于 IPA 的 Blob 目标。资源归档绝不经过此适配器。与文件输出一样，发布 Blob 前会重新检查并删除已验证的暂存数据。不可变 Blob 分块避免再创建一个整归档的 JavaScript ArrayBuffer；浏览器仍可能在内存中保留整个归档。调用方拥有其创建的对象 URL，在提供下载重试期间必须保留，替换或销毁视图时再撤销。
  * Bounded IPA-only Blob destination behind the existing OPFS transaction.
  * Resource archives never pass through this adapter. The validated stage is
  * rechecked and removed before the Blob is published, just as for file output.
@@ -38,6 +41,7 @@ export function createBrowserBlobOutputAdapters({
     opened = false;
   const destinationHandle = {
     kind: "file",
+    // 这是内存接收端，并非访问用户文件系统目标。
     // This is an in-memory sink, not access to a user filesystem destination.
     async queryPermission() {
       return "granted";

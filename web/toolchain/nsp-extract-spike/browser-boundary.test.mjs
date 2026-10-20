@@ -1,3 +1,5 @@
+// 依据模拟原生接口验证浏览器边界的密钥清理与生命周期约束。
+// Verify browser-boundary key cleanup and lifecycle constraints using a mocked native interface.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createBoundary } from "./browser-boundary.mjs";

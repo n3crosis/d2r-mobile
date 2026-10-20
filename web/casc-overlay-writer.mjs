@@ -1,4 +1,8 @@
-/** Real bounded CASC delta writer. Original archives stay lazy, never cloned.
+// 依据原生 casc_overlay 清单规则和现有资源工作线程写入 CASC 增量。
+// Write CASC deltas using native casc_overlay manifest rules and the existing asset worker.
+/**
+ * 真实有界 CASC 增量写入器。原始归档保持惰性读取，绝不克隆。这是内部原语，不是生产 UI 或完整资源流水线。
+ * Real bounded CASC delta writer. Original archives stay lazy, never cloned.
  * This is an internal primitive, not a production UI or a complete asset pipeline.
  */
 import { archiveLocator, decodeArchiveRecord, ARCHIVE_LIMITS } from "./archive-reader.mjs";
@@ -111,7 +115,10 @@ async function tvfs(romfs, values, name, signal) {
     { verifyMd5, signal },
   );
 }
-/** First duplicate wins exactly as native casc_overlay.read_manifest, not dmx. */
+/**
+ * 与原生 casc_overlay.read_manifest 完全一致，首个重复项优先，而非 dmx 的规则。
+ * First duplicate wins exactly as native casc_overlay.read_manifest, not dmx.
+ */
 async function selectedManifest(romfs, wanted, signal) {
   const file = romfs.getFile("data/build_manifest.psv");
   if (!file || file.size > BigInt(CASC_LIMITS.manifestBytes)) fail();
@@ -124,6 +131,7 @@ async function selectedManifest(romfs, wanted, signal) {
     const fields = text.split("|");
     if (fields.length < 11 || fields[0].startsWith("#")) return;
     if (++rows > CASC_LIMITS.rows) fail();
+    // 不拒绝原生代码从不使用的无关路径或记录。
     // Do not reject unrelated paths/records that native never uses.
     let path;
     try {
@@ -154,6 +162,7 @@ async function selectedManifest(romfs, wanted, signal) {
   return selected;
 }
 /**
+ * romfs：已认证的 indexRomfs 结果，而非任意用户批准的信任标志。replacements：有序的 [{path,bytes:Uint8Array,add?:boolean}]。worker：支持 casc-overlay 操作的现有 Pyodide AssetWorker。返回实际更改文件的字节及替换清单；未变文件仍保留在调用方的惰性 RomFS 树中。不使用磁盘符号链接或占位计划。调用方拥有工作线程生命周期；取消时关闭线程以停止同步 Python 工作。
  * romfs: authenticated indexRomfs result, not arbitrary user-approved trust flags.
  * replacements: ordered [{path,bytes:Uint8Array,add?:boolean}].
  * worker: existing Pyodide AssetWorker with casc-overlay operation.

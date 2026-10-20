@@ -1,3 +1,8 @@
+// 依据旧版 hactool BKTR 表布局解析重定位并规划有界读取。
+// Parse relocations and plan bounded reads based on the legacy hactool BKTR table layout.
+
+// 旧版 hactool BKTR 重定位表边界，并非解密入口。
+// 在调用方验证合并后的 IVFC 层级之前，表字节不可信。
 // Legacy hactool BKTR relocation-table boundary, not a decryption entrypoint.
 // Table bytes are untrusted until the caller verifies the merged IVFC hierarchy.
 const NODE = 0x4000;
@@ -65,6 +70,8 @@ export function parseRelocations(bytes, { entryCount, baseSize, patchDataSize })
   return Object.freeze({ size, entries: Object.freeze(entries) });
 }
 
+// 仅规划有界读取。偏移相对于分区，而非最终 RomFS 层级。
+// 不暴露原始输出，也不声称已验证真实性。
 // Pure bounded read planning. Offsets are section-relative, NOT relative to the
 // final RomFS level. No raw output is exposed and no authenticity is asserted.
 export function planRelocationRead(table, offset, count) {

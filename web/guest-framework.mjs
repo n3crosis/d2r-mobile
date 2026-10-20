@@ -1,4 +1,23 @@
-/** Deterministic browser Guest Mach-O writer. Synthetic parity only: not a
+// 在浏览器中确定性生成合成 Guest Mach-O。
+// 依据本模块显式编码的 Mach-O 布局与合成模块输入约定。
+// Deterministically generates synthetic Guest Mach-O in the browser.
+// Based on the Mach-O layout encoded here and the synthetic module input contract.
+
+/**
+ * 确定性的浏览器 Guest Mach-O 写入器。仅用于合成数据一致性：
+ * 不验证游戏可玩性、iOS 加载、安装或签名。
+ * 输入：有序的 {name, image: Uint8Array, textEnd, patchOff} 模块。
+ * 策略：最多 48 个模块，输入总量和填充后的映像数据均不超过 128 MiB。
+ * 输出分配或哈希前验证所有大小、名称和布局。
+ * 一个输出缓冲区（最大约 130 MiB）；借用输入，不复制。
+ * WebCrypto 在哈希 UUID 时可能复制主体（最多 128 MiB），随后每次最多
+ * 复制一个 4 KiB 页。预算约 386 MiB，其中包括调用方紧凑分配的
+ * 128 MiB 输入；调用方保留的超大底层缓冲区及浏览器/GC 开销不在此范围。
+ * 更大的真实输入需要未来的流式写入器，而非盲目提高上限。
+ * 构建期间调用方不得修改输入。AbortSignal 取消在摘要之间检查；
+ * 正在运行的 WebCrypto 摘要无法停止。
+ * 无需文件系统、依赖项、网络或可执行游戏数据。
+ * Deterministic browser Guest Mach-O writer. Synthetic parity only: not a
  * playable-game, iOS loading, installation or signing verification.
  * Input: ordered {name, image: Uint8Array, textEnd, patchOff} modules.
  * Policy: <=48 modules, <=128 MiB aggregate input AND padded image data.
@@ -87,6 +106,7 @@ export function planGuestFramework(modules) {
     outputSize: signatureOffset + signatureSize,
   };
 }
+// 避免引用不存在的浏览器全局对象，同时仍拒绝共享缓冲区。
 // Avoid referencing an absent browser global while still rejecting shared buffers.
 const SharedArrayBufferSafe = globalThis.SharedArrayBuffer ?? class UnavailableSharedBuffer {};
 

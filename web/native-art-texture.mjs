@@ -1,4 +1,9 @@
-/** Whole v61 atlas decoding. Never crops or changes storage/frame dimensions. */
+// 依据 gen_widestash_art.py 的图集几何校验描述完整 v61 纹理。
+// Describe complete v61 textures using gen_widestash_art.py atlas-geometry checks.
+/**
+ * 完整 v61 图集解码。绝不裁剪或改变存储及帧尺寸。
+ * Whole v61 atlas decoding. Never crops or changes storage/frame dimensions.
+ */
 export function nativeArtAtlasDescriptor(bytes) {
   if (!(bytes instanceof Uint8Array) || bytes.length < 40 || bytes.length > 8 * 1024 * 1024)
     throw new Error("NATIVE_ART_ATLAS_BYTES");
@@ -10,6 +15,8 @@ export function nativeArtAtlasDescriptor(bytes) {
     frameWidth = h.getUint16(6, true),
     frameCount = h.getUint16(20, true);
   const framePitch = Math.ceil(frameWidth / 4) * 4;
+  // 原始 gen_widestash_art.py 的 main 显式验证此双面板
+  // 存储几何。解码整个图集，绝不裁掉面板间图像。
   // Original gen_widestash_art.py main explicitly validates this two-panel
   // storage geometry. Decode the complete atlas; never trim its inter-panel art.
   const originalMainPanel =

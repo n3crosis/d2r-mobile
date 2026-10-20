@@ -1,3 +1,5 @@
+// 依据原生资源生成器、已认证提取及 d2rm_pack.py 目标路径连接资源流水线。
+// Wire the asset pipeline from native generators, authenticated extraction and d2rm_pack.py destination paths.
 import { readAuthenticatedAssets } from "./extraction-job-adapter.mjs";
 import { generateNativeOverlay, NATIVE_OVERLAY_GENERATED } from "./native-overlay-generator.mjs";
 import { generateRemainingArt } from "./remaining-art-generator.mjs";
@@ -30,7 +32,9 @@ const path = (value) => {
 const view = (value) =>
   value instanceof Uint8Array ? value : value instanceof ArrayBuffer ? new Uint8Array(value) : null;
 
-/** Trusted host wiring only. This composes real primitives, not a complete game
+/**
+ * 仅用于受信任宿主接线。这里组合真实原语，而非完整游戏配置。纹理变换由源码派生函数显式提供；不虚构布局或替换图像。应用接受任务输入之前，工厂必须返回已预加载并密封的客户端。原生目标：d2rm_pack.py 暂存 mapgoal/ 和 romfs_overlay/。此适配器仅输出覆盖增量文件，绝不克隆整个 RomFS。
+ * Trusted host wiring only. This composes real primitives, not a complete game
  * profile. Texture transforms are explicitly supplied source-derived functions;
  * no layout or replacement image is invented. Factories must return preloaded,
  * sealed clients before job inputs are accepted by the application.
@@ -205,6 +209,7 @@ export function createAssetPipelineAdapter({
       );
     };
     try {
+      // 构造任何运行时或读取输入之前，先检查来源证明。
       // Provenance is checked before constructing any runtime or reading input.
       const assets = readAuthenticatedAssets(extracted, selection, { signal: combined });
       if (!assets?.logicalAssets || !assets?.romfs) fail("ASSET_PIPELINE_PROVENANCE");

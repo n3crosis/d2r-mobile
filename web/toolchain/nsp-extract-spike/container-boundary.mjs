@@ -1,3 +1,8 @@
+// 依据 PFS0 容器布局建立有界索引并适配 Blob 分片读取。
+// Build bounded indexes and adapt Blob slice reads based on the PFS0 container layout.
+
+// 仅建立外层容器索引，不解密 NCA，也不合并 BKTR。
+// 读取接口：readAt(offset: bigint, size: number) -> Promise<Uint8Array>。
 // Outer-container indexing only. This does NOT decrypt NCA or merge BKTR.
 // readAt(offset: bigint, size: number) -> Promise<Uint8Array>.
 export async function indexPfs0(readAt, size) {
@@ -17,6 +22,7 @@ export async function indexPfs0(readAt, size) {
   const count = hv.getUint32(4, true),
     stringSize = hv.getUint32(8, true);
   const metadataSize = count * 24 + stringSize;
+  // 在读取元数据之前限制攻击者可控的内存分配。
   // Bound attacker-controlled allocation before reading metadata.
   if (count > 100000 || metadataSize > 16 * 1024 * 1024) fail();
   const dataStart = 16n + BigInt(metadataSize);
@@ -60,6 +66,7 @@ export async function indexPfs0(readAt, size) {
   return entries;
 }
 
+// 浏览器适配器：使用有界 Blob 分片，绝不对整个 NSP 调用 file.arrayBuffer()。
 // Browser adapter: bounded Blob slices, never file.arrayBuffer() on a whole NSP.
 export function blobReader(blob) {
   return async (offset, size) => {

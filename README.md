@@ -16,8 +16,8 @@ Platforms: iPhone / iPad (iOS 26 and later; iOS 18 – 25 with the older-API bui
   <img src="https://github.com/jhaizhou-ops/d2r-mobile/releases/download/assets/ipad.jpg" width="49%" alt="True full screen on iPad">
 </p>
 
-| 100% | 60 fps | about 1 s | about 3.8 W |
-|:---:|:---:|:---:|:---:|
+|                           100%                            |                     60 fps                     |           about 1 s            |            about 3.8 W            |
+| :-------------------------------------------------------: | :--------------------------------------------: | :----------------------------: | :-------------------------------: |
 | The original gameplay, because it is the original program | Steady, with no drops once the device warms up | From the main menu into a game | Whole-device power draw at 60 fps |
 
 ## What it is, and what it is not
@@ -38,11 +38,11 @@ Platforms: iPhone / iPad (iOS 26 and later; iOS 18 – 25 with the older-API bui
 
 All **44** iPhones and iPads in the closed beta — 35 devices registered for direct install (25 iPhones and 10 iPads), plus 9 TestFlight accounts with one device each — **completed Normal, Nightmare and Hell with multiple characters**, and the experience was excellent. From an iPhone 14 Pro Max with 6 GB of memory to the latest iPad Pro, not one device fell behind.
 
-| | Models |
-|---|---|
-| iPhone | 14 Pro Max, 15, 15 Pro, 15 Pro Max, 16 Plus, 16 Pro, 16 Pro Max, 17 Pro Max and more |
-| iPad | iPad Air, iPad mini, iPad Pro 11-inch and 12.9 / 13-inch (including M2 and M4) and more |
-| Lowest model tested | **iPhone 14 Pro Max (A16, 6 GB): a flawless 60 fps** |
+|                     | Models                                                                                  |
+| ------------------- | --------------------------------------------------------------------------------------- |
+| iPhone              | 14 Pro Max, 15, 15 Pro, 15 Pro Max, 16 Plus, 16 Pro, 16 Pro Max, 17 Pro Max and more    |
+| iPad                | iPad Air, iPad mini, iPad Pro 11-inch and 12.9 / 13-inch (including M2 and M4) and more |
+| Lowest model tested | **iPhone 14 Pro Max (A16, 6 GB): a flawless 60 fps**                                    |
 
 iPhone and iPad share a single install package.
 
@@ -58,16 +58,16 @@ iPhone and iPad share a single install package.
 
 Measured on a real device (iPhone 17 Pro Max):
 
-| Item | Reading |
-|---|---|
-| In-game frame rate | **60 fps**, steady, with no drops once the device warms up |
-| App launch | 0.15 s |
-| To the main menu | about 1 s |
-| From the main menu into a game | **about 1 s** |
-| Quick Restart, back in a game | about 1.2 s |
-| Longest frame when changing acts | about 0.1 s |
-| Whole-device power, 60 fps | **about 3.8 W** (in camp, 50% brightness): nearly 5 hours of continuous play on a full charge |
-| Whole-device power, power saver mode at 30 fps | **about 1.85 W**, about half the 60 fps figure, for about twice the battery life |
+| Item                                           | Reading                                                                                       |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| In-game frame rate                             | **60 fps**, steady, with no drops once the device warms up                                    |
+| App launch                                     | 0.15 s                                                                                        |
+| To the main menu                               | about 1 s                                                                                     |
+| From the main menu into a game                 | **about 1 s**                                                                                 |
+| Quick Restart, back in a game                  | about 1.2 s                                                                                   |
+| Longest frame when changing acts               | about 0.1 s                                                                                   |
+| Whole-device power, 60 fps                     | **about 3.8 W** (in camp, 50% brightness): nearly 5 hours of continuous play on a full charge |
+| Whole-device power, power saver mode at 30 fps | **about 1.85 W**, about half the 60 fps figure, for about twice the battery life              |
 
 <sub>Measurement conditions: power is whole-device power measured on 2026-10-10 on an iPhone 17 Pro Max, standing in the Act I camp at 50% brightness, with 60 fps and power saver mode measured in the same scene; battery life is calculated from the measured power and the battery capacity, not by playing from full to empty. Launch and game-entry times were measured on the same model in 2026-10; frame rate and act-change readings were taken on the same model on 2026-10-12 while moving through areas and changing acts after entering a game.</sub>
 
@@ -138,17 +138,17 @@ Enter through the red portal in Harrogath after completing Hell. There are 100 l
 
 ### Effortless farming
 
-| | |
-|---|---|
-| Auto-recast buffs | Buff skills you have learned do not need a slot on the skill bar: when a buff runs out, it is recast the moment you stand still; buffs that come from your secondary weapons (such as Battle Orders from Call to Arms) swap weapons, recast and swap back on their own |
-| Potions and belt | Auto-drink has two tiers: a healing potion below 50% Life, a rejuvenation potion below 30%; **your mercenary is fed automatically by the same rule**. Potions on the ground are picked up automatically when the belt has room; double-tap an empty belt slot to refill the whole belt |
-| Loot filter | From Nightmare on, the original loot filter is switched on automatically to hide clutter: light filtering in Nightmare, heavy in Hell |
-| Auto-pickup | Low runes and gems go straight into the Pouch; the high ones are left for you to pick up yourself |
-| Valuable drop alerts | High runes and Unique items raise a light beam and land with a different drop sound; the phone vibrates at one of three strengths — light, medium or heavy — according to value |
-| Runeword helper | Long-press a socketed base to list the Runewords it can make and their stats; once you have the runes, socket them all in one tap |
-| Minimap guidance | Every map marks its Waypoint and exits; every quest goal is on the map; when a target is off screen, its name is written along the screen edge |
-| Chores removed | Free identification, free Town Portal with no scrolls needed, spawning right beside the Waypoint, Quick Restart, refreshable vendor stock |
-| Saves | Saved immediately when you switch apps, swipe the app away or quit; iCloud sync across devices (requires signing with a paid developer account) |
+|                      |                                                                                                                                                                                                                                                                                        |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Auto-recast buffs    | Buff skills you have learned do not need a slot on the skill bar: when a buff runs out, it is recast the moment you stand still; buffs that come from your secondary weapons (such as Battle Orders from Call to Arms) swap weapons, recast and swap back on their own                 |
+| Potions and belt     | Auto-drink has two tiers: a healing potion below 50% Life, a rejuvenation potion below 30%; **your mercenary is fed automatically by the same rule**. Potions on the ground are picked up automatically when the belt has room; double-tap an empty belt slot to refill the whole belt |
+| Loot filter          | From Nightmare on, the original loot filter is switched on automatically to hide clutter: light filtering in Nightmare, heavy in Hell                                                                                                                                                  |
+| Auto-pickup          | Low runes and gems go straight into the Pouch; the high ones are left for you to pick up yourself                                                                                                                                                                                      |
+| Valuable drop alerts | High runes and Unique items raise a light beam and land with a different drop sound; the phone vibrates at one of three strengths — light, medium or heavy — according to value                                                                                                        |
+| Runeword helper      | Long-press a socketed base to list the Runewords it can make and their stats; once you have the runes, socket them all in one tap                                                                                                                                                      |
+| Minimap guidance     | Every map marks its Waypoint and exits; every quest goal is on the map; when a target is off screen, its name is written along the screen edge                                                                                                                                         |
+| Chores removed       | Free identification, free Town Portal with no scrolls needed, spawning right beside the Waypoint, Quick Restart, refreshable vendor stock                                                                                                                                              |
+| Saves                | Saved immediately when you switch apps, swipe the app away or quit; iCloud sync across devices (requires signing with a paid developer account)                                                                                                                                        |
 
 Most features can be toggled one by one in game under Options → Custom.
 
@@ -179,13 +179,13 @@ flowchart LR
     X --> A
 ```
 
-| Part | Where | What it does |
-|---|---|---|
+| Part             | Where                   | What it does                                                                                                                                                                                   |
+| ---------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Program rewriter | `dm/tools/patch_nso.py` | Rewrites only the few instructions that cannot run unchanged under Apple's kernel (thread-pointer registers, system calls, timers) and leaves the rest of the program byte-for-byte as shipped |
-| Host | `dm/host` | Loads the rewritten program and provides the platform services it calls |
-| Graphics | `dm/gfx` | Implements the game's graphics API on Metal; shaders are translated offline from the game's originals |
-| iOS app | `dm/ios` | The app shell, touch controls and interface |
-| Verification | `dm/verify` | Checks that the rewritten code behaves exactly like the original, plus the regression gates every change goes through |
+| Host             | `dm/host`               | Loads the rewritten program and provides the platform services it calls                                                                                                                        |
+| Graphics         | `dm/gfx`                | Implements the game's graphics API on Metal; shaders are translated offline from the game's originals                                                                                          |
+| iOS app          | `dm/ios`                | The app shell, touch controls and interface                                                                                                                                                    |
+| Verification     | `dm/verify`             | Checks that the rewritten code behaves exactly like the original, plus the regression gates every change goes through                                                                          |
 
 **Why you can trust it:** the stability is not luck. The test and verification tooling is part of the project — unit tests for the host and graphics layers, an equivalence check for every rewritten instruction, scripted walkthrough regression for the touch interface, and on-device smoke tests. Start with `make -C dm/host/tests run`, `make -C dm/gfx/tests run` and `dm/verify/regress.sh` (run them inside the Python environment prepared in step 2 below; `regress.sh` also needs `brew install llvm`). How to contribute is in [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -193,16 +193,16 @@ flowchart LR
 
 Minimum: **an A14 / M1 chip or later** — the graphics layer needs Metal 3, which Apple supports from A14 / M1 on (see Apple's [Metal support on Apple devices](https://support.apple.com/102894) and [Metal Feature Set Tables](https://developer.apple.com/metal/Metal-Feature-Set-Tables.pdf)).
 
-| Device | Playable? | How | How sure we are |
-|---|---|---|---|
-| **iPhone / iPad, A17 Pro and later** (iPhone 15 Pro and later, iPhone 16 and later, iPads with M-series chips) | Yes | iOS 26 or later: the default shell / default build; iOS 18 – 25: the iOS 18 shell / [older-API build](docs/OLDER_SYSTEMS.md) | Main devices, played daily |
-| **iPhone / iPad, A16 and earlier** (all iPhone 14 models, iPhone 15 / 15 Plus, iPhone 13 series and so on) | Yes, with one extra step | Make a Legacy Device Pack from your own game files as in [docs/LEGACY_DEVICES.md](docs/LEGACY_DEVICES.md) and include it when making the install package; the system split is the same as the row above | Played by players: iPhone 14 Pro Max (A16, 6 GB) at 60 fps; iPhone 13 Pro Max (A15, 6 GB) in the 30 fps mode |
-| **Devices with 4 GB of RAM** (such as the 6th-generation iPad mini or the 4th-generation iPad Air) | Runs, but memory is very tight (we are still reducing memory use) | Same as the A16-and-earlier row (with the Legacy Device Pack) | Tested by a player: on an iPad mini 6 (A15, 4 GB, iPadOS 27) a few minutes of Act I ran at 50–58 fps after automatic quality reduction, with constant system memory warnings and only about 560 MB below the system memory limit — busy scenes with many monsters and effects may be ended by the system; on an earlier version an iPad Air 4 (A14, 4 GB) was ended by the system a few seconds after launch |
-| **A14 chips with 6 GB of RAM or more** (such as iPhone 12 Pro / 12 Pro Max) | No reports yet | Same as the A16-and-earlier row | If you have tried, please open an Issue and tell us |
-| **A13 and earlier chips** (such as the iPhone 11 series and the 2020 iPad Pro) | Not supported | — | The graphics chip does not support Metal 3 (tested by a player on an iPad Pro with A12Z; Apple's references are above the table); the app says so at launch instead of crashing |
-| **Mac, Apple silicon** | Yes (native macOS App) | macOS 26 or later: the default build; macOS 15 – 25: the [older-API build](docs/OLDER_SYSTEMS.md). Keyboard, mouse and gamepad all work; what each can do is in [docs/MAC.md](docs/MAC.md) | A player has played the older-API build on macOS 15.7.7 |
-| **Apple TV 4K (3rd generation, A15)** | Community port ([@yinqingyan](https://github.com/yinqingyan), contributed under the MIT License with the author's consent), developer preview | Build as in [dm/tvos/README.md](dm/tvos/README.md) and copy the game files and the Legacy Device Pack into the app; real hardware only, the Simulator cannot run it; saves live in the Caches directory, which the system may purge | Reached the character-selection screen on real hardware; entering the game, full controller mapping and saves are not verified yet, and the maintainers have not tested it on real hardware |
-| **Intel Macs** | Not supported | — | — |
+| Device                                                                                                         | Playable?                                                                                                                                     | How                                                                                                                                                                                                                                 | How sure we are                                                                                                                                                                                                                                                                                                                                                                                              |
+| -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **iPhone / iPad, A17 Pro and later** (iPhone 15 Pro and later, iPhone 16 and later, iPads with M-series chips) | Yes                                                                                                                                           | iOS 26 or later: the default shell / default build; iOS 18 – 25: the iOS 18 shell / [older-API build](docs/OLDER_SYSTEMS.md)                                                                                                        | Main devices, played daily                                                                                                                                                                                                                                                                                                                                                                                   |
+| **iPhone / iPad, A16 and earlier** (all iPhone 14 models, iPhone 15 / 15 Plus, iPhone 13 series and so on)     | Yes, with one extra step                                                                                                                      | Make a Legacy Device Pack from your own game files as in [docs/LEGACY_DEVICES.md](docs/LEGACY_DEVICES.md) and include it when making the install package; the system split is the same as the row above                             | Played by players: iPhone 14 Pro Max (A16, 6 GB) at 60 fps; iPhone 13 Pro Max (A15, 6 GB) in the 30 fps mode                                                                                                                                                                                                                                                                                                 |
+| **Devices with 4 GB of RAM** (such as the 6th-generation iPad mini or the 4th-generation iPad Air)             | Runs, but memory is very tight (we are still reducing memory use)                                                                             | Same as the A16-and-earlier row (with the Legacy Device Pack)                                                                                                                                                                       | Tested by a player: on an iPad mini 6 (A15, 4 GB, iPadOS 27) a few minutes of Act I ran at 50–58 fps after automatic quality reduction, with constant system memory warnings and only about 560 MB below the system memory limit — busy scenes with many monsters and effects may be ended by the system; on an earlier version an iPad Air 4 (A14, 4 GB) was ended by the system a few seconds after launch |
+| **A14 chips with 6 GB of RAM or more** (such as iPhone 12 Pro / 12 Pro Max)                                    | No reports yet                                                                                                                                | Same as the A16-and-earlier row                                                                                                                                                                                                     | If you have tried, please open an Issue and tell us                                                                                                                                                                                                                                                                                                                                                          |
+| **A13 and earlier chips** (such as the iPhone 11 series and the 2020 iPad Pro)                                 | Not supported                                                                                                                                 | —                                                                                                                                                                                                                                   | The graphics chip does not support Metal 3 (tested by a player on an iPad Pro with A12Z; Apple's references are above the table); the app says so at launch instead of crashing                                                                                                                                                                                                                              |
+| **Mac, Apple silicon**                                                                                         | Yes (native macOS App)                                                                                                                        | macOS 26 or later: the default build; macOS 15 – 25: the [older-API build](docs/OLDER_SYSTEMS.md). Keyboard, mouse and gamepad all work; what each can do is in [docs/MAC.md](docs/MAC.md)                                          | A player has played the older-API build on macOS 15.7.7                                                                                                                                                                                                                                                                                                                                                      |
+| **Apple TV 4K (3rd generation, A15)**                                                                          | Community port ([@yinqingyan](https://github.com/yinqingyan), contributed under the MIT License with the author's consent), developer preview | Build as in [dm/tvos/README.md](dm/tvos/README.md) and copy the game files and the Legacy Device Pack into the app; real hardware only, the Simulator cannot run it; saves live in the Caches directory, which the system may purge | Reached the character-selection screen on real hardware; entering the game, full controller mapping and saves are not verified yet, and the maintainers have not tested it on real hardware                                                                                                                                                                                                                  |
+| **Intel Macs**                                                                                                 | Not supported                                                                                                                                 | —                                                                                                                                                                                                                                   | —                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 **What the dialogs in the App mean**
 
@@ -221,12 +221,15 @@ This project is implemented and verified on the Switch release 1.0.34.0 (which c
 
 **Check your device first**: the "Which devices are supported" table above tells you which build to use and whether you also need a Legacy Device Pack.
 
-| | With a Mac | Without a Mac |
-|---|---|---|
-| Computer | An Apple silicon Mac with Xcode installed | Windows / Linux / a Mac without Xcode |
-| Method | A full build from source | Download a "shell" with no game content, use the packaging tool to add your own game content, then install it with a sideloading tool |
-| Status | The main route; everything above comes from it | Works end to end on Windows, from making the package to playing on a device, and the game program produced on the two systems is byte-for-byte identical; the one step nobody has tried yet is signing with a sideloading tool — try it and tell us |
-| Instructions | The three steps below | [docs/NO_XCODE.md](docs/NO_XCODE.md) |
+|                                                                | With a Mac                                               | Without a Mac                                                                                                                                                                                                                                       |
+| -------------------------------------------------------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Computer                                                       | An Apple silicon Mac with Xcode installed                | Windows / Linux / a Mac without Xcode                                                                                                                                                                                                               |
+| Method                                                         | A full build from source                                 | Download a "shell" with no game content, use the packaging tool to add your own game content, then install it with a sideloading tool                                                                                                               |
+| Status                                                         | The main route; everything above comes from it           | Works end to end on Windows, from making the package to playing on a device, and the game program produced on the two systems is byte-for-byte identical; the one step nobody has tried yet is signing with a sideloading tool — try it and tell us |
+| Instructions                                                   | The three steps below                                    | [docs/NO_XCODE.md](docs/NO_XCODE.md)                                                                                                                                                                                                                |
+| [docs/WEB_IPA_PACKAGER.md](docs/WEB_IPA_PACKAGER.md)           | Browser packaging source contract and pending acceptance |
+| [docs/WEB_DELIVERY_PROGRESS.md](docs/WEB_DELIVERY_PROGRESS.md) | Current browser status versus historical evidence        |
+| [docs/WEB_PR_READINESS.md](docs/WEB_PR_READINESS.md)           | Browser PR checklist; unrun checks remain pending        |
 
 The Apple account used for signing: a paid developer account gives you everything; a free Apple ID works too (no iCloud save sync, and the app has to be re-signed and reinstalled every 7 days). The full list of dependencies is in [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md).
 
@@ -275,15 +278,15 @@ Download our prebuilt "shell" package (`D2RMobile-shell-build-input.zip`; `D2RMo
 
 ## Known limitations
 
-| Item | Status |
-|---|---|
-| Online play | Out of scope; fully offline |
-| `.nsp` / `.xci` game packages | The tools only check the version of the main program and do not distinguish package formats; we ran the whole path with an `.xci` ourselves, and users have reported that `.nsp` packages work perfectly as well |
-| Signing and installing with a sideloading tool (Sideloadly, AltStore and the like) | Not verified; open an issue and tell us how it went |
-| Making the package on Linux | Not verified (verified on Windows and Mac) |
-| Devices that have not moved to iOS 26 / macOS 26 | Playable with the older-API build (minimum iOS 18.0 / macOS 15.0): [docs/OLDER_SYSTEMS.md](docs/OLDER_SYSTEMS.md); the full device table is under "Which devices are supported" above |
-| A16 and earlier devices (iPhone 14 family, iPhone 15 / 15 Plus and so on) | Playable; they need a Legacy Device Pack and an App built with it: [docs/LEGACY_DEVICES.md](docs/LEGACY_DEVICES.md). "One More Step for This Device" (older versions say "Device Not Supported") in the App means this step is missing |
-| The "one-line verdict" and "legacy Chinese name" entries in item notes | These two content tables are not shipped with the repository; you can supply your own, see `dm/ios/tools/annot/README.md` |
+| Item                                                                               | Status                                                                                                                                                                                                                                 |
+| ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Online play                                                                        | Out of scope; fully offline                                                                                                                                                                                                            |
+| `.nsp` / `.xci` game packages                                                      | The tools only check the version of the main program and do not distinguish package formats; we ran the whole path with an `.xci` ourselves, and users have reported that `.nsp` packages work perfectly as well                       |
+| Signing and installing with a sideloading tool (Sideloadly, AltStore and the like) | Not verified; open an issue and tell us how it went                                                                                                                                                                                    |
+| Making the package on Linux                                                        | Not verified (verified on Windows and Mac)                                                                                                                                                                                             |
+| Devices that have not moved to iOS 26 / macOS 26                                   | Playable with the older-API build (minimum iOS 18.0 / macOS 15.0): [docs/OLDER_SYSTEMS.md](docs/OLDER_SYSTEMS.md); the full device table is under "Which devices are supported" above                                                  |
+| A16 and earlier devices (iPhone 14 family, iPhone 15 / 15 Plus and so on)          | Playable; they need a Legacy Device Pack and an App built with it: [docs/LEGACY_DEVICES.md](docs/LEGACY_DEVICES.md). "One More Step for This Device" (older versions say "Device Not Supported") in the App means this step is missing |
+| The "one-line verdict" and "legacy Chinese name" entries in item notes             | These two content tables are not shipped with the repository; you can supply your own, see `dm/ios/tools/annot/README.md`                                                                                                              |
 
 ## Contributing and feedback
 
@@ -307,20 +310,20 @@ The cleaner arrangement is to move these defaults into per-game configuration an
 
 ## Documentation by part
 
-| Document | Covers |
-|---|---|
-| [dm/README.md](dm/README.md) | How the whole thing works, directory layout, common commands, the host's source files |
-| [dm/gfx/README.md](dm/gfx/README.md) | The graphics layer and the shader translation chain |
-| [dm/ios/README.md](dm/ios/README.md) | The iOS shell, building and smoke testing |
-| [dm/verify/README.md](dm/verify/README.md) | What each verification tool checks and what it needs |
-| [docs/GAME_FILES.md](docs/GAME_FILES.md) | Game files: which ones you need, how to get them from your own console, where to put them |
-| [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md) | Dependencies and third-party licenses |
-| [docs/NO_XCODE.md](docs/NO_XCODE.md) | Building without Xcode and without a Mac |
-| [docs/MAC.md](docs/MAC.md) | Playing on a Mac: building the macOS App, key mapping, known gaps |
-| [docs/LEGACY_DEVICES.md](docs/LEGACY_DEVICES.md) | Older devices (A16 and earlier): making the texture pack and putting it on the phone |
-| [docs/OLDER_SYSTEMS.md](docs/OLDER_SYSTEMS.md) | Older systems (iOS 18 – 25, macOS 15 – 25): building the older-API version and combining it with the Legacy Device Pack |
-| [docs/qa-rift-pet-life.md](docs/qa-rift-pet-life.md) | Regression checklist for minion life in Greater Rifts (what has been run and what has not; additions welcome) |
-| [docs/DERIVED.md](docs/DERIVED.md) | Game-related material in this repository: what is here, what is not, and why |
+| Document                                             | Covers                                                                                                                  |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| [dm/README.md](dm/README.md)                         | How the whole thing works, directory layout, common commands, the host's source files                                   |
+| [dm/gfx/README.md](dm/gfx/README.md)                 | The graphics layer and the shader translation chain                                                                     |
+| [dm/ios/README.md](dm/ios/README.md)                 | The iOS shell, building and smoke testing                                                                               |
+| [dm/verify/README.md](dm/verify/README.md)           | What each verification tool checks and what it needs                                                                    |
+| [docs/GAME_FILES.md](docs/GAME_FILES.md)             | Game files: which ones you need, how to get them from your own console, where to put them                               |
+| [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md)         | Dependencies and third-party licenses                                                                                   |
+| [docs/NO_XCODE.md](docs/NO_XCODE.md)                 | Building without Xcode and without a Mac                                                                                |
+| [docs/MAC.md](docs/MAC.md)                           | Playing on a Mac: building the macOS App, key mapping, known gaps                                                       |
+| [docs/LEGACY_DEVICES.md](docs/LEGACY_DEVICES.md)     | Older devices (A16 and earlier): making the texture pack and putting it on the phone                                    |
+| [docs/OLDER_SYSTEMS.md](docs/OLDER_SYSTEMS.md)       | Older systems (iOS 18 – 25, macOS 15 – 25): building the older-API version and combining it with the Legacy Device Pack |
+| [docs/qa-rift-pet-life.md](docs/qa-rift-pet-life.md) | Regression checklist for minion life in Greater Rifts (what has been run and what has not; additions welcome)           |
+| [docs/DERIVED.md](docs/DERIVED.md)                   | Game-related material in this repository: what is here, what is not, and why                                            |
 
 ## Legal
 

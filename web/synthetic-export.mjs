@@ -1,3 +1,8 @@
+// 将固定生成的测试输入导出为不可安装的合成归档。
+// 依据 Guest 框架生成器与 ZIP 写入器的接口约定。
+// Exports fixed generated test inputs as a non-installable synthetic archive.
+// Based on the Guest framework generator and ZIP writer interface contracts.
+
 import { buildGuestFramework, guestInfoPlist, PAGE_SIZE } from "./guest-framework.mjs";
 import { writeZip } from "./zip-writer.mjs";
 
@@ -12,6 +17,7 @@ This archive tests local Guest framework generation and streamed ZIP output only
 Do not rename this archive to .ipa. It cannot be installed or played.
 `;
 
+// 仅使用固定的微小生成输入。绝不接受用户文件或模块。
 // Fixed tiny generated input only. Never accepts user files or modules.
 export function syntheticModules() {
   return ["main", "sdk"].map((name, module) => ({
@@ -34,7 +40,12 @@ function entry(path, bytes, mode = 0o644) {
   };
 }
 
-/** Owns an already-open output sink, including failures before writeZip starts.
+/**
+ * 接管已打开的输出接收器，包括 writeZip 开始前发生的失败。
+ * 浏览器可写流在 close 前暂存写入；abort 丢弃暂存数据。
+ * 保存选择器仍可能创建空占位文件。绝不承诺删除。
+ * close 是提交边界；过晚的取消无法撤销已完成的输出。
+ * Owns an already-open output sink, including failures before writeZip starts.
  * Browser writable streams stage writes until close; abort discards staged data.
  * A save picker can still create an empty placeholder. Never promises deletion.
  * close is the commit boundary; late cancellation cannot undo completed output.
@@ -86,7 +97,10 @@ export async function exportSyntheticArchive(
     try {
       await output.abort(error);
     } catch {
-      /* Preserve the original error. */
+      /**
+       * 保留原始错误。
+       * Preserve the original error.
+       */
     }
     throw error;
   }

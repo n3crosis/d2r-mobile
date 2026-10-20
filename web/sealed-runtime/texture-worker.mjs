@@ -1,3 +1,6 @@
+// 依据已验证的纹理运行时字节及工作线程消息契约桥接纹理解码。
+// 受信任且由应用拥有的运行时桥接。所有代码及 WASM 均以已验证字节到达。
+// Bridge texture decoding using verified texture-runtime bytes and the worker message contract.
 // Trusted app-owned runtime bridge. All code and WASM arrive as verified bytes.
 let ready = false,
   started = false,

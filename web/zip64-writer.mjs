@@ -1,6 +1,21 @@
+// 流式写入显式启用的单磁盘 STORE ZIP64。
+// 依据 PKWARE APPNOTE 6.3.10 的 ZIP64 记录布局。
+// Streams explicitly enabled single-disk STORE ZIP64.
+// Based on ZIP64 record layout in PKWARE APPNOTE 6.3.10.
+
 import { indexFiles } from "./preflight.mjs";
 
-/** Opt-in, STORE-only, single-disk ZIP64. Explicitly selectable by the packaging coordinator.
+/**
+ * 选择启用、仅 STORE、单磁盘的 ZIP64。可由封装协调器显式选择。
+ * 大小与输出计数使用 BigInt。maxTotalBytes 必填，包含
+ * 所有归档字节。接收器写入 Promise 提供背压；接收器在解析后
+ * 不得保留缓冲区。生产者在下一次拉取前不得修改已产出的缓冲区。
+ * 此模块不保留完整的输入/输出缓冲区。
+ * 取消在读写前后协作检查，不会中断待完成的用户代码。
+ * 开始 close() 是提交边界；此后的取消无法撤销它。
+ * close 失败仍会尽力 abort，但不保证回滚。
+ * 依据 PKWARE APPNOTE 6.3.10 §§4.3.7、4.3.9、4.3.12、4.3.14–16、4.5.3。
+ * Opt-in, STORE-only, single-disk ZIP64. Explicitly selectable by the packaging coordinator.
  * Sizes and output accounting use BigInt. maxTotalBytes is REQUIRED and includes
  * every archive byte. Sink write promises provide backpressure; sinks must not
  * retain buffers after resolving. Producers must not mutate a yielded buffer
@@ -68,6 +83,7 @@ function prepare(entries, maxTotalBytes) {
     if (metadata > ZIP64_LIMITS.maxMetadataBytes) throw new Error("ZIP64 metadata limit exceeded");
     return { path: entry.path, name, mode, size, chunks: entry.chunks };
   });
+  // 复用路径/冲突策略，不将 BigInt 载荷大小缩窄为 Number。
   // Reuse path/conflict policy without narrowing BigInt payload sizes to Number.
   indexFiles(files.map(({ path }) => ({ path, size: 0 })));
   files.sort(compareNames);
@@ -84,7 +100,10 @@ function prepare(entries, maxTotalBytes) {
   return { files, centralOffset, centralSize, bytesWritten };
 }
 
-/** Pure declared-size plan; does not pull sources or claim their bytes/CRC valid. */
+/**
+ * 纯声明大小规划；不拉取源，也不声称其字节/CRC 有效。
+ * Pure declared-size plan; does not pull sources or claim their bytes/CRC valid.
+ */
 export function planZip64(entries, { maxTotalBytes } = {}) {
   const plan = prepare(entries, maxTotalBytes);
   return {
@@ -95,7 +114,10 @@ export function planZip64(entries, { maxTotalBytes } = {}) {
   };
 }
 
-/** Pure metadata encoder, also usable to inspect >4GiB offsets without payloads.
+/**
+ * 纯元数据编码器，也可在不使用载荷的情况下检查 >4GiB 偏移。
+ * 结果本身不是完整归档（空目录除外）。
+ * Pure metadata encoder, also usable to inspect >4GiB offsets without payloads.
  * The result is NOT a complete archive by itself (except with an empty directory).
  */
 export function zip64EndRecords({ entries, centralOffset, centralSize }) {
@@ -153,6 +175,7 @@ export async function writeZip64(entries, sink, { maxTotalBytes, signal } = {}) 
       const extra = 30 + file.name.length;
       header.u16(extra, 1);
       header.u16(extra + 2, 16);
+      // 描述符提供 CRC 和实际大小；本地 ZIP64 大小槽位为零。
       // Descriptor supplies CRC and actual sizes; local ZIP64 size slots are zero.
       await write(header.bytes);
       let size = 0n,
@@ -211,7 +234,10 @@ export async function writeZip64(entries, sink, { maxTotalBytes, signal } = {}) 
     try {
       await sink.abort(error);
     } catch {
-      /* Preserve original failure. */
+      /**
+       * 保留原始失败。
+       * Preserve original failure.
+       */
     }
     throw error;
   }

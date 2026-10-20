@@ -1,4 +1,5 @@
-// 发布资产闭包的精确白名单；拒绝误带旧 Python 运行时。 | Exact release asset closure allowlist; reject accidental legacy Python runtime payloads.
+// 发布资产闭包的精确白名单；拒绝误带旧 Python 运行时。 依据资产运行时所需模块与三个 WASM 后端的发布文件集合。
+// Exact release asset closure allowlist; reject accidental legacy Python runtime payloads. Based on the release file set required by the asset runtime modules and three WASM backends.
 export const ASSET_RUNTIME_DIRECTORY = "toolchain/asset-runtime-js/dist";
 export const ASSET_RUNTIME_FILES = Object.freeze([
   "worker.mjs",

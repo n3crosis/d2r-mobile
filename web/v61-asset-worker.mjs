@@ -1,4 +1,8 @@
-/** Composition of the separately CI-proven texture worker and Pyodide asset worker.
+// 依据 texture-spike 与 Pyodide AssetWorker 契约桥接 v61 图像处理。
+// Bridge v61 image processing using the texture-spike and Pyodide AssetWorker contracts.
+/**
+ * 组合分别经 CI 证明的纹理工作线程及 Pyodide 资源工作线程。v61 解码为内部 RGBA 中间表示；v61 仅发布 PNG。这里不实现原生 BC3 编码、重排或 v61 精灵替换。
+ * Composition of the separately CI-proven texture worker and Pyodide asset worker.
  * v61 is decoded to an internal RGBA intermediate; only PNG is released for v61.
  * This does NOT implement native BC3 encoding/swizzle or v61 sprite replacement.
  */
@@ -26,7 +30,10 @@ function checkedHeader(bytes) {
     throw failure();
   return { width, height, frameWidth };
 }
-/** Thin bounded client around the actual texture-spike dedicated Worker. */
+/**
+ * 实际 texture-spike 专用 Worker 的轻量有界客户端。
+ * Thin bounded client around the actual texture-spike dedicated Worker.
+ */
 export class TextureWorkerClient {
   #worker;
   #pending = new Map();
@@ -47,7 +54,7 @@ export class TextureWorkerClient {
     worker.onmessageerror = () => this.close();
   }
   decodeV61(bytes) {
-    checkedHeader(bytes); // Reject oversized geometry BEFORE allocating native decoder memory.
+    checkedHeader(bytes); // 在分配原生解码器内存之前拒绝超大几何尺寸。 | Reject oversized geometry BEFORE allocating native decoder memory.
     if (!this.#worker) return Promise.reject(failure());
     const source = bytes.slice();
     const id = this.#next++;
@@ -68,7 +75,10 @@ export class TextureWorkerClient {
     this.#pending.clear();
   }
 }
-/** Validated internal format bridge, not a claimed v61 replacement asset. */
+/**
+ * 已验证的内部格式桥接，并不声称是 v61 替换资源。
+ * Validated internal format bridge, not a claimed v61 replacement asset.
+ */
 export function decodedV61ToInternalRgba(bytes, decoded) {
   const header = checkedHeader(bytes);
   if (
@@ -95,7 +105,10 @@ export function decodedV61ToInternalRgba(bytes, decoded) {
   out.set(decoded.pixels, 40);
   return out;
 }
-/** Caller supplies existing AssetWorker; texture worker defaults to the real WASM bridge. */
+/**
+ * 调用方提供现有 AssetWorker；纹理工作线程默认使用真实 WASM 桥接。
+ * Caller supplies existing AssetWorker; texture worker defaults to the real WASM bridge.
+ */
 export function createV61AssetWorker({ assetWorker, textureWorker }) {
   if (
     !assetWorker ||
@@ -122,6 +135,7 @@ export function createV61AssetWorker({ assetWorker, textureWorker }) {
       try {
         const result = await assetWorker.run(operation, intermediate, options);
         if (closed || !(result?.files?.["frame.png"] instanceof ArrayBuffer)) throw failure();
+        // 绝不将中间 v31 导出为 v61 输入的原生替换品。
         // Never export the intermediate v31 as a native replacement for a v61 input.
         return { ...result, sourceVersion: 61, files: { "frame.png": result.files["frame.png"] } };
       } finally {

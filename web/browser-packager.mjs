@@ -1,4 +1,9 @@
-/** The production entry point. Bootstrap contains public bytes only. */
+// 依据生产配置、密封运行时及打包适配器契约组装浏览器入口。
+// Assemble the browser entry point from production profiles, sealed runtimes and packaging adapter contracts.
+/**
+ * 生产入口点。引导过程仅包含公开字节。
+ * The production entry point. Bootstrap contains public bytes only.
+ */
 import { prepareSealedRuntime } from "./sealed-runtime/clients.mjs";
 import { loadProductionProfile } from "./production-profile.mjs";
 import {
@@ -71,6 +76,8 @@ export async function prepareBrowserPackager({ manifestSha256, signal, onProgres
     const extraction = createExtractionJobAdapter({
       createWorker: runtime.createExtractionWorker,
       contentMode: profile.contentMode,
+      // 完整 NCA 摘要已按已认证 CNMT 检查。
+      // 避免再次扫描两个数 GB 的 RomFS 视图。
       // Full NCA digests were already checked against authenticated CNMT.
       // Avoid scanning both multi-gigabyte RomFS views a second time.
       verifyRomfs: false,
@@ -118,6 +125,8 @@ export async function prepareBrowserPackager({ manifestSha256, signal, onProgres
             try {
               resources = await exportRomfsResources({
                 romfs,
+                // 仅根目录发现绝不遍历生成的资源文件夹。
+                // 导出只写入新的 UUID 子目录，绝不写入源文件。
                 // Root-only discovery never traverses generated resource folders.
                 // Export writes only to a fresh UUID child, never the source files.
                 outputDirectoryHandle: input,
@@ -145,6 +154,7 @@ export async function prepareBrowserPackager({ manifestSha256, signal, onProgres
             (await assets.generateAssets(context)).filter((e) => allowed(e.path)),
           generateShaders: (context) => shaders.generateShaders(context),
           async loadShell({ signal }) {
+            // 选择来自独立认证的提取边界。
             // Selection came from the independently authenticated extraction boundary.
             readAuthenticatedAssets(authenticated, selected, { signal });
             const path = "Payload/DmIOS.app/DmIOS";

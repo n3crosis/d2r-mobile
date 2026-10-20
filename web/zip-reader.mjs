@@ -1,4 +1,12 @@
-/** Bounded ZIP32 shell input. CRC detects corruption, not cryptographic authenticity. */
+// 有界读取 ZIP32 外壳输入并检查 CRC。
+// 依据 ZIP32 中央目录、本地记录和 CRC 约定。
+// Reads bounded ZIP32 shell input and checks CRC.
+// Based on ZIP32 central-directory, local-record, and CRC conventions.
+
+/**
+ * 有界 ZIP32 外壳输入。CRC 检测损坏，而非密码学真实性。
+ * Bounded ZIP32 shell input. CRC detects corruption, not cryptographic authenticity.
+ */
 import { createDeflateBoundary } from "./deflate-boundary.mjs";
 import { MAX_READ_BYTES, readRange, safeRelativePath } from "./preflight.mjs";
 
@@ -44,6 +52,7 @@ function extra(bytes) {
     const id = u16(bytes, p),
       length = u16(bytes, p + 2);
     if (length > bytes.length - p - 4) fail("Truncated ZIP extra field");
+    // 拒绝替代路径解释、ZIP64 和加密扩展。
     // Reject alternate path interpretations, ZIP64 and encryption extensions.
     if ([1, 0x7075, 0x6375, 0x9901, 0x0017].includes(id)) fail("Unsupported ZIP extra field");
     p += 4 + length;
@@ -79,7 +88,10 @@ function crcStep(crc, bytes) {
   return crc;
 }
 
-/** source is preflight's { size, read(offset, length): Promise<Uint8Array> }. */
+/**
+ * source 是 preflight 的 { size, read(offset, length): Promise<Uint8Array> }。
+ * source is preflight's { size, read(offset, length): Promise<Uint8Array> }.
+ */
 export async function openShellZip(source, { signal } = {}) {
   check(signal);
   if (
@@ -202,6 +214,7 @@ export async function openShellZip(source, { signal } = {}) {
     position += 46 + nameLength + extraLength + commentLength;
   }
   if (position !== centralStart + centralSize) fail("ZIP central directory size mismatch");
+  // 在允许分配任何条目输出前验证每个本地记录。
   // Validate every local record before permitting any entry-output allocation.
   const physical = [...internal].sort((a, b) => a.offset - b.offset);
   let expectedOffset = 0;
@@ -242,6 +255,7 @@ export async function openShellZip(source, { signal } = {}) {
     if (descriptor) {
       if (centralStart - dataEnd < 12) fail("Truncated ZIP data descriptor");
       const first = await range(source, dataEnd, 12, signal);
+      // 使用中央 CRC 及其后的值解决签名冲突。
       // Signature collision is resolved using the central CRC and following values.
       if (
         u32(first, 0) === entry.crc32 &&
@@ -344,6 +358,8 @@ async function decodeEntry(source, entry, signal) {
             signal,
           );
           active();
+          // Chromium 会在 JS 能检查输出前展开整个输入块。
+          // 保持输入微小，等待背压，同时读取有上限的输出。
           // Chromium expands an entire input chunk before JS can inspect output.
           // Keep input tiny, await backpressure and drain capped output concurrently.
           boundary.push(bytes);

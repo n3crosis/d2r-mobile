@@ -1,3 +1,5 @@
+// 依据仓库中的外壳发布证据、资源来源记录及着色器目录加载可信生产配置。
+// Load trusted production profiles from repository shell-release evidence, asset provenance and shader catalogs.
 import { SHELL_DERIVED_CAPACITIES } from "./toolchain/shell-release-evidence/v1.0.18-derived-capacities.mjs";
 import { loadShaderCatalog } from "./shader-catalog-adapter.mjs";
 import { createShellLoader } from "./shell-loader.mjs";

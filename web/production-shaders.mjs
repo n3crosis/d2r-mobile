@@ -1,4 +1,9 @@
-/** Full-catalog noMetal source assembly. Never invokes Apple Metal or relabels before digest proof. */
+// 依据受信任着色器目录及原生摘要规则组装生产着色器源码。
+// Assemble production shader sources from the trusted shader catalog and native digest rules.
+/**
+ * 全目录 noMetal 源码组装。绝不调用 Apple Metal，也不在摘要证明之前重标记。
+ * Full-catalog noMetal source assembly. Never invokes Apple Metal or relabels before digest proof.
+ */
 import { assertShaderCatalog } from "./shader-catalog-adapter.mjs";
 import { createShaderPipeline } from "./shader-pipeline.mjs";
 import {
@@ -96,6 +101,8 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
           workerFactory: runtime.createShaderWorkerFactory(),
         });
         let packName = null;
+        // 按物理源分组，避免反复解码同一个包；
+        // 完成、摘要及 c1 输出采用原生排序后的文件名顺序。
         // Group by physical source to avoid repeatedly decoding the same pack;
         // completion/digest and c1 output use native sorted filename order.
         const keys = [...expected].sort((a, b) => {
@@ -179,6 +186,7 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
           retained.push(base);
           if (fetch) retained.push(fetch);
           pending.push({ key, replay, base, fetch });
+          // 不联网地让出执行，允许在目录记录之间取消。
           // Yield without networking; permit cancellation between catalog records.
           await new Promise((resolve) => setTimeout(resolve, 0));
         }
@@ -190,6 +198,8 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
         )
           fail("Full shader digest/completion proof failed");
         check();
+        // 只有此处会应用外壳链标签。
+        // 原生本地源码或头文件标签无需与外壳标签一致。
         // This is the only point at which shell chain labels are applied.
         // Native local source/header labels need not equal the shell label.
         const chain = trustedShell.trustedRecipe.chain,

@@ -1,6 +1,16 @@
+// 独立验证暂存 STORE ZIP32/ZIP64 的完整性和布局。
+// 依据本应用的规范 STORE ZIP 布局及已验证的清单。
+// Independently validates staged STORE ZIP32/ZIP64 integrity and layout.
+// Based on this application’s canonical STORE ZIP layout and validated manifests.
+
 import { indexFiles, readRange } from "./preflight.mjs";
 
-/** Strict validator for this application's canonical STORE ZIP32/ZIP64 dialect.
+/**
+ * 严格验证本应用的规范 STORE ZIP32/ZIP64 方言。
+ * 不导入写入器，也不接受其偏移、大小、CRC 或有效标志。
+ * 每个归档字节都属于已检查的头、流式载荷或已检查的尾部。
+ * 这是完整性/布局验证，而非真实性或可执行文件验证。
+ * Strict validator for this application's canonical STORE ZIP32/ZIP64 dialect.
  * Does not import the writers or accept their offsets, sizes, CRCs or valid flags.
  * Every archive byte belongs to a checked header, streamed payload or checked trailer.
  * This is integrity/layout validation, not authenticity or executable validation.
@@ -35,7 +45,10 @@ function byteOrder(a, b) {
   return a.name.length - b.name.length;
 }
 
-/** Exact byte budget derived solely from a validated manifest, before disk writes. */
+/**
+ * 在磁盘写入前，仅从已验证的清单推导精确字节预算。
+ * Exact byte budget derived solely from a validated manifest, before disk writes.
+ */
 export function planStagedZip(manifest, { archiveFormat, maxOutputBytes } = {}) {
   requireValue(["zip32", "zip64"].includes(archiveFormat));
   requireValue(Number.isSafeInteger(maxOutputBytes) && maxOutputBytes > 0);
@@ -72,7 +85,10 @@ export function planStagedZip(manifest, { archiveFormat, maxOutputBytes } = {}) 
   return { entries, archiveFormat, centralOffset, centralSize, totalBytes, metadataBytes };
 }
 
-/** Read-only bounded random access source: { size, read(offset,length) }. */
+/**
+ * 只读有界随机访问源：{ size, read(offset,length) }。
+ * Read-only bounded random access source: { size, read(offset,length) }.
+ */
 export async function validateStagedZip(source, manifest, options) {
   const plan = planStagedZip(manifest, options);
   const { signal } = options;

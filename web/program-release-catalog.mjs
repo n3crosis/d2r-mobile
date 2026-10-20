@@ -1,4 +1,9 @@
-/** Repository-backed inputs, NOT evidence that browser output ran on a device. */
+// 依据仓库发布记录和完整文件摘要描述受信任程序输入。
+// Describe trusted program inputs using repository release records and full-file digests.
+/**
+ * 以仓库为依据的输入，不是浏览器输出已在设备运行的证据。
+ * Repository-backed inputs, NOT evidence that browser output ran on a device.
+ */
 export const PROGRAM_REWRITER_SOURCE =
   "d0bee134202bcc7c976c2713ffec2881f77b43bbfc24f4ebde17f0886c3dc22e";
 export const REGISTERED_PROGRAM_RELEASE = Object.freeze({
@@ -19,6 +24,7 @@ export const REGISTERED_PROGRAM_RELEASE = Object.freeze({
       buildId: "db0507f36b84200ac05f75d76ed5026f",
       inputSha256: "55fd909bb7230b002357e5b0d8499c11f06888f345c49e69eb4734df44a27d0e",
     }),
+    // 不虚构 SDK 构建 ID：仓库提供其完整文件哈希。
     // No SDK build ID is invented: the repository supplies its complete file hash.
     Object.freeze({
       name: "sdk",

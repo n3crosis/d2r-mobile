@@ -1,4 +1,5 @@
-// 保留现有资产 worker 的操作限制与传输协议；来源为 pyodide-worker.mjs。 | Preserve existing asset worker operation limits and transfer protocol from pyodide-worker.mjs.
+// 保留现有资产 worker 的操作限制与传输协议；来源为 pyodide-worker.mjs。
+// Preserve existing asset worker operation limits and transfer protocol from pyodide-worker.mjs.
 export const OPERATION_LIMITS = Object.freeze({
   "image-default-frame": [20, 4096],
   "experience-table": [20, 4096],

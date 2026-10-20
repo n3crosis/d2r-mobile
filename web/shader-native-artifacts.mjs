@@ -1,4 +1,9 @@
-/** Source port of dmsh_fetch.variant and c1_guard; no shader compilation. */
+// 依据 dmsh_fetch.variant 和 c1_guard 生成原生着色器配套数据。
+// Generate native shader companion data based on dmsh_fetch.variant and c1_guard.
+/**
+ * 移植 dmsh_fetch.variant 和 c1_guard 源码；不编译着色器。
+ * Source port of dmsh_fetch.variant and c1_guard; no shader compilation.
+ */
 export function c1NeedsFullBuffer(source) {
   const definitions = new Map(
     [...source.matchAll(/\b(?:u?int|long|short)\s+(_\d+)\s*=\s*([^;]+);/g)].map((m) => [

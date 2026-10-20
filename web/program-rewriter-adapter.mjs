@@ -1,3 +1,5 @@
+// 依据受信任发布目录、提取来源证明和原始工作线程检查连接程序重写。
+// Wire program rewriting from trusted release catalogs, extraction provenance and original worker checks.
 import { buildGuestFramework, guestInfoPlist, planGuestFramework } from "./guest-framework.mjs";
 
 import {
@@ -148,6 +150,7 @@ function layout(bytes, imageSize) {
   return { textEnd: values.TEXT_END, patchOff: values.PATCH_OFF };
 }
 /**
+ * 受信任的应用接线。已注册路线要求提取颁发的 verifyProvenance(extracted,selection,{signal}) 返回借用的 {main,sdk}。不接受调用方的认证声明或替代发布目录。合成目录必须来自独立受信任的 CI/发布注册表，绝不能来自提取内容或 UI。resolveInput(extracted, selection) 返回 {versionId, bytes}。createWorker() 必须返回 {run({bytes,caseName}): Promise<worker response>, close()}。原始工作线程的精确合成夹具检查仍为必需。
  * Trusted application wiring. The registered route requires extraction-issued
  * verifyProvenance(extracted,selection,{signal}) -> borrowed {main,sdk}.
  * No caller claims of authentication or alternate release catalogs are accepted.
@@ -208,7 +211,7 @@ export function createProgramRewriterAdapter({
         try {
           close();
         } catch {
-          /* Cancellation still rejects without exposing worker details. */
+          /* 取消仍会拒绝，且不暴露工作线程细节。 | Cancellation still rejects without exposing worker details. */
         }
         reject(new ProgramAdapterError("PROGRAM_CANCELLED"));
       };
@@ -239,6 +242,8 @@ export function createProgramRewriterAdapter({
       let inputTotal = 0,
         outputTotal = 0;
       const staged = [];
+      // 同步快照两个借用数组。工作线程或异步
+      // 哈希都不能观察到提取所拥有输入缓冲区的后续变更。
       // Snapshot both borrowed arrays synchronously. No worker or asynchronous
       // hashing can observe a later mutation of extraction-owned input buffers.
       for (const module of version.modules) {
@@ -324,6 +329,8 @@ export function createProgramRewriterAdapter({
           const name = `${module.name}.${suffix}`;
           sidecars[name] = files[name];
         }
+        // 已注册输出没有虚构的基准哈希。断言原始
+        // 规则清单仍标识固定的构建及输出镜像。
         // Registered outputs have no invented oracle hashes. Assert the original
         // rules manifest still identifies the pinned build and the emitted image.
         if (registered && module.name === "main") {

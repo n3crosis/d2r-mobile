@@ -1,4 +1,9 @@
-/* Bounded pull API. No upstream CLI main, auto key search, extraction paths,
+/* 有界拉取 API，依据固定版本 hactool 的 NCA、PFS0 与 IVFC 接口。
+ * 上游 CLI 主入口、自动密钥搜索、提取路径、标准输出或错误、网络调用及持久密钥文件均不可达。
+ * 返回码：0 成功；-1 状态或输入；-2 格式或范围；-3 加密或完整性；
+ * -4 不支持；-5 I/O；-6 所需标题密钥不可用。负数错误绝不包含用户输入。
+ * Bounded pull API based on pinned hactool NCA, PFS0 and IVFC interfaces.
+ * No upstream CLI main, auto key search, extraction paths,
  * stdout/stderr, network calls or persistent key files are reachable here.
  * Return codes: 0 OK; -1 state/input; -2 format/bounds; -3 crypto/integrity;
  * -4 unsupported; -5 I/O; -6 required title key is unavailable. Negative
@@ -13,7 +18,8 @@
 #include <stdint.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
-/* Fixed numeric progress only. The worker supplies the trusted callback. */
+/* 仅报告固定数字进度；由 Worker 提供受信回调。
+ * Fixed numeric progress only. The worker supplies the trusted callback. */
 // clang-format off
 EM_JS(void, nsp_ivfc_report, (int phase, double verified, double total), {
     Module["onVerificationProgress"]?.(phase, verified, total);
@@ -101,7 +107,8 @@ int nsp_load_keys(void) {
             fclose(title);
         return -5;
     }
-    /* Avoid retaining additional key-file copies in libc read buffers. */
+    /* 避免在 libc 读取缓冲区中保留额外的密钥文件副本。
+     * Avoid retaining additional key-file copies in libc read buffers. */
     setvbuf(prod, NULL, _IONBF, 0);
     setvbuf(title, NULL, _IONBF, 0);
     tool.settings.skip_key_warnings = 1;
@@ -129,7 +136,9 @@ static int read_at(uint64_t offset, void *out, size_t size) {
         return -5;
     return fread(out, 1, size, raw) == size ? 0 : -5;
 }
-/* The same bounded reader serves authenticated hash hierarchies and public
+/* 同一个有界读取器用于已认证散列层级及公开输入或条目摘要。
+ * 不分配完整的可执行文件或分区。
+ * The same bounded reader serves authenticated hash hierarchies and public
  * input/entry digests. No complete executable or section is allocated. */
 static int hash_range(uint64_t offset, uint64_t size, unsigned char digest[32]) {
     if (!within(offset, size, extent))
@@ -277,7 +286,9 @@ static int open_header(const char *path) {
             nca.has_rights_id = 1;
     return 0;
 }
-/* Public fields only, 24 bytes: u64 title ID, u64 size, u32 content type,
+/* 仅公开字段，共 24 字节：u64 标题 ID、u64 大小、u32 内容类型、
+ * u32 固定签名有效标记。头部检查并不等于内容认证。
+ * Public fields only, 24 bytes: u64 title ID, u64 size, u32 content type,
  * u32 fixed-signature-valid. Header inspection is NOT content authentication.
  */
 int nsp_inspect_nca(const char *path, unsigned char *out) {
@@ -297,7 +308,9 @@ int nsp_inspect_nca(const char *path, unsigned char *out) {
     memcpy(out + 20, &valid, 4);
     return 0;
 }
-/* Shared signed section opener: 0 Meta, 1 Program ExeFS, 2 base RomFS,
+/* 共用的签名分区打开接口：0 Meta、1 Program ExeFS、2 基础 RomFS、
+ * 3 旧版 BKTR RomFS。这里只读取选定分区的内容。
+ * Shared signed section opener: 0 Meta, 1 Program ExeFS, 2 base RomFS,
  * 3 legacy BKTR RomFS. Only selected section content is read here. */
 static int open_authenticated_section(const char *path, int mode) {
     int program = mode != 0;
@@ -339,7 +352,9 @@ static int open_authenticated_section(const char *path, int mode) {
             candidate->crypt_type != CRYPT_XTS &&
             !((mode == 3 || mode == 1) && candidate->crypt_type == CRYPT_BKTR))
             return -4;
-        /* These legacy crypto paths do not implement sparse/compressed
+        /* 这些旧版加密路径不实现稀疏或压缩分区，
+         * 也不实现较新的元数据散列或跳层散列扩展。
+         * These legacy crypto paths do not implement sparse/compressed
          * sections or the newer metadata-hash/skip-layer-hash extensions. */
         for (size_t j = 0; j < sizeof candidate->_0x5; j++)
             if (candidate->_0x5[j])
@@ -418,7 +433,8 @@ static int open_authenticated_pfs0(const char *path, int program) {
     uint64_t blocks = sb->pfs0_size / sb->block_size + (sb->pfs0_size % sb->block_size != 0);
     if (!blocks || blocks > sb->hash_table_size / 32)
         return -2;
-    /* Reject a hash table overlapping the data it authenticates. */
+    /* 拒绝与其认证数据重叠的散列表。
+     * Reject a hash table overlapping the data it authenticates. */
     if (sb->hash_table_offset < sb->pfs0_offset + sb->pfs0_size &&
         sb->pfs0_offset < sb->hash_table_offset + sb->hash_table_size)
         return -2;
@@ -442,7 +458,8 @@ static int open_authenticated_pfs0(const char *path, int program) {
     free(hashes);
     if (rc)
         return rc;
-    /* Restrict directory reads and members to the verified PFS0 region. */
+    /* 将目录读取与成员限制在已验证的 PFS0 区域内。
+     * Restrict directory reads and members to the verified PFS0 region. */
     pfs_offset = sb->pfs0_offset;
     extent = pfs_offset + sb->pfs0_size;
     rc = load_directory();
@@ -475,7 +492,9 @@ static int open_authenticated_pfs0(const char *path, int program) {
         nsp_close();
     return rc;
 }
-/* IVFC reader contract: section-relative exact reads. The root is trusted
+/* IVFC 读取器约定：相对于分区的精确读取。只有在 NCA 与分区认证之后
+ * 从 nsp_open_romfs 调用时，根才可信。
+ * IVFC reader contract: section-relative exact reads. The root is trusted
  * only when called from nsp_open_romfs AFTER NCA/section authentication. */
 typedef int (*ivfc_reader_t)(void *, uint64_t, void *, size_t);
 static int ivfc_validate(const ivfc_hdr_t *ivfc, uint64_t size, uint64_t *out_total) {
@@ -651,7 +670,8 @@ static int open_romfs(const char *path, unsigned char *out_size, int verify) {
         return rc;
     }
     ivfc_hdr_t *ivfc = &section->header->romfs_superblock.ivfc_header;
-    /* Legacy non-BKTR RomFS leaves the patch-info remainder unused. */
+    /* 旧版非 BKTR RomFS 不使用补丁信息的剩余部分。
+     * Legacy non-BKTR RomFS leaves the patch-info remainder unused. */
     for (size_t i = 0; i < sizeof section->header->romfs_superblock._0xE0; i++)
         if (section->header->romfs_superblock._0xE0[i]) {
             nsp_close();
@@ -682,13 +702,17 @@ static int open_romfs(const char *path, unsigned char *out_size, int verify) {
 int nsp_open_romfs(const char *path, unsigned char *out_size) {
     return open_romfs(path, out_size, 1);
 }
-/* Fast path is only for a caller that has already checked the full NCA digest
+/* 快速路径仅适用于已将完整 NCA 摘要与已认证 CNMT 元数据进行比对的调用方。
+ * 原生边界自身无法证明该前提；为独立调用方保留 nsp_open_romfs。
+ * Fast path is only for a caller that has already checked the full NCA digest
  * against authenticated CNMT metadata. The native boundary cannot prove that
  * precondition itself; retain nsp_open_romfs for independent callers. */
 int nsp_open_romfs_hash_verified(const char *path, unsigned char *out_size) {
     return open_romfs(path, out_size, 0);
 }
-/* The strict entrypoint authenticates base and merged IVFC independently. The
+/* 严格入口分别认证基础与合并后的 IVFC。
+ * 快速入口依赖先前针对已签名 CNMT 完成的完整 NCA 摘要检查。
+ * The strict entrypoint authenticates base and merged IVFC independently. The
  * fast entrypoint relies on prior whole-NCA digest checks against signed CNMT.
  */
 static int open_patched_romfs(const char *base_path, const char *patch_path,
@@ -705,7 +729,8 @@ static int open_patched_romfs(const char *base_path, const char *patch_path,
     unsigned index = (unsigned)(section - nca.section_contexts);
     memcpy(saved, &nca, sizeof nca);
     saved->section_contexts[index].header = &saved->header.fs_headers[index];
-    /* Transfer ownership before opening another NCA (which closes active state).
+    /* 在打开另一个 NCA（这会关闭当前活动状态）之前转移所有权。
+     * Transfer ownership before opening another NCA (which closes active state).
      */
     nsp_zero(&nca, sizeof nca);
     section = NULL;
@@ -792,7 +817,9 @@ int nsp_read_romfs(uint32_t lo, uint32_t hi, unsigned char *out, uint32_t count)
     int rc = read_at(romfs_offset + offset, out, count);
     return rc ? rc : (int)count;
 }
-/* Closed synthetic fixture: no caller-controlled root, no persistent reader
+/* 封闭的合成夹具：无调用方可控的根、无持久读取器状态，
+ * 也不存在绕过生产 RSA/IVFC 入口的路径。
+ * Closed synthetic fixture: no caller-controlled root, no persistent reader
  * state and no path around the production RSA/IVFC entrypoint. */
 static int ivfc_fixture_read(void *context, uint64_t offset, void *out, size_t size) {
     if (!within(offset, size, 384))
@@ -815,7 +842,9 @@ int nsp_ivfc_fixture(void) {
         header.level_headers[i].hash_data_size = i == 5 ? 3 : 32;
         header.level_headers[i].block_size = 6;
     }
-    /* Independently generated with Python hashlib: repeatedly SHA256-pad-to64
+    /* 使用 Python hashlib 独立生成：从公开 ASCII 字符串 abc 开始，
+     * 重复执行 SHA256 并填充到 64 字节，共六次。
+     * Independently generated with Python hashlib: repeatedly SHA256-pad-to64
      * six times starting from the public ASCII string abc. */
     const unsigned char root[32] = {0xa4, 0xed, 0xb8, 0x73, 0x6e, 0xb0, 0xc7, 0x4c,
                                     0x95, 0x13, 0xda, 0xfc, 0x57, 0x55, 0xd7, 0xc0,
@@ -837,7 +866,9 @@ int nsp_ivfc_fixture(void) {
         return 4;
     return 0;
 }
-/* Closed public synthetic fixture. Never accepts a path, key, root or callback,
+/* 封闭的公开合成夹具。不接受路径、密钥、根或回调，
+ * 总在返回前销毁临时上下文，且不能打开内容。
+ * Closed public synthetic fixture. Never accepts a path, key, root or callback,
  * and always destroys temporary contexts before returning. Cannot open content.
  */
 int nsp_bktr_fixture(void) {
@@ -867,7 +898,8 @@ int nsp_bktr_fixture(void) {
         aes_encrypt(aes, cipher + i * 64, plain + i * 64, 64);
     }
     free_aes_ctx(aes);
-    /* Independent OpenSSL AES-128-CTR ciphertext digest, not same-path roundtrip.
+    /* 独立的 OpenSSL AES-128-CTR 密文摘要，而非同一路径的往返校验。
+     * Independent OpenSSL AES-128-CTR ciphertext digest, not same-path roundtrip.
      */
     sha256_hash_buffer(digest, cipher, sizeof cipher);
     if (memcmp(digest, expected_cipher_hash, 32))

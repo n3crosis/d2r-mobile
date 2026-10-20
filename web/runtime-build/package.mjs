@@ -1,3 +1,5 @@
+// 根据固定构建凭据、封装清单及资产策略，组装并校验浏览器运行时发布包。
+// Assemble and validate browser runtime bundles based on pinned build receipts, sealed manifests, and asset policies.
 import {
   ASSET_RUNTIME_DIRECTORY,
   assertNoPythonRuntimeAsset,
@@ -116,6 +118,8 @@ export async function assembleRuntime({ build } = {}) {
       validate: validateAssetRuntimeInventory,
     });
     await sealed(`${offline}/dotnet-dist`);
+    // 保留生产 worker 入口原有的相对 URL 布局。
+    // 不复制合成测试数据、验证 HTML、浏览器测试工具、原生二进制、构建缓存、密钥文件或用户选择的资源。
     // Include production worker entry points with their original relative URL
     // layout. Do not copy synthetic fixtures, proof HTML, browser harnesses,
     // native binaries, build caches, key files or user-selected resources.
@@ -127,6 +131,8 @@ export async function assembleRuntime({ build } = {}) {
       "native-art-texture.mjs",
       "nsp-input.mjs",
       "extraction-errors.mjs",
+      "i18n.mjs",
+      "i18n-catalog.mjs",
       "preflight.mjs",
       "content-selection.mjs",
       "d2r-expansion-policy.mjs",
@@ -312,6 +318,8 @@ export async function assembleRuntime({ build } = {}) {
       `export const runtimeManifestSha256 = ${JSON.stringify(hash(json))};\nexport const productionEnabled = false;\n`,
     );
     const out = resolve(web, "runtime-build/out");
+    // 完成有界打包后，只替换固定的生成输出目录。
+    // 缺失任何组件都不能视为部分成功。
     // Only the generated, fixed output directory is replaced, after complete
     // bounded packaging. A missing component never yields a partial success.
     await rm(out, { recursive: true, force: true });

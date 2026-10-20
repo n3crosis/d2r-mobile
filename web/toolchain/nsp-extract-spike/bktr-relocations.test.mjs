@@ -1,3 +1,5 @@
+// 依据合成 BKTR 表验证重定位解析器的边界与读取规划。
+// Verify relocation parser bounds and read planning using synthetic BKTR tables.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parseRelocations, planRelocationRead } from "./bktr-relocations.mjs";

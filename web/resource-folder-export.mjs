@@ -1,7 +1,11 @@
+// 依据 dm/host/romfs_validate.c 验收表及 File System Access 句柄语义导出独立资源。
+// Export separate resources using the dm/host/romfs_validate.c acceptance table and File System Access handle semantics.
 import { indexFiles, safeRelativePath } from "./preflight.mjs";
 import { ROMFS_LIMITS } from "./romfs-tree.mjs";
 
-/** Raw authenticated RomFS export, separate from the unsigned IPA. No ZIP, upload,
+/**
+ * 原始已认证 RomFS 导出，与未签名 IPA 分离。不使用 ZIP、上传、整游戏缓冲区、原生资源更改或调用方提供的有效标志。romfs 必须来自 readAuthenticatedAssets(extracted, selection).romfs，且该提取会话仍有效。本模块不会认证调用方虚构的读取器；编排适配器负责强制验证来源。
+ * Raw authenticated RomFS export, separate from the unsigned IPA. No ZIP, upload,
  * whole-game buffer, native resource changes or caller-provided validity flags.
  * romfs MUST come from readAuthenticatedAssets(extracted, selection).romfs while
  * that extraction session is still live. This module does not authenticate a
@@ -16,6 +20,8 @@ export const RESOURCE_EXPORT_LIMITS = Object.freeze({
   maxTotalBytes: BigInt(Number.MAX_SAFE_INTEGER),
 });
 export const RESOURCE_EXPORT_MARKER = ".d2rm-resource-export.json";
+// 原生独立资源验收表：dm/host/romfs_validate.c 的 need[]/size[]。
+// 这些是完整原始归档大小，而非稀疏或去零的 .holes 变体。
 // Native separate-resource acceptance table, dm/host/romfs_validate.c need[]/size[].
 // These are full raw archive sizes, not sparse/zero-stripped .holes variants.
 const REQUIRED_NATIVE_ARCHIVES = Object.freeze(
@@ -105,6 +111,7 @@ function inventory(romfs) {
     );
     return Object.freeze({ path, parts, size: file.size });
   });
+  // 共享的重复项、大小写折叠别名及文件/目录冲突策略。
   // Shared duplicate, case-folded alias and file/directory conflict policy.
   indexFiles(entries.map(({ path, size }) => ({ path, size: Number(size) })));
   const sizes = new Map(entries.map(({ path, size }) => [path, size]));
@@ -117,6 +124,7 @@ function inventory(romfs) {
 }
 
 /**
+ * 目录选择器及权限属于此前明确的用户手势。仅触及全新且不可预测的子目录。失败时只逐项删除已跟踪且句柄仍匹配的条目，绝不递归删除。不支持并发外部写入者（File System Access 没有独占创建原语）。保留未知新增项及替换项。onProgress 仅供参考，接收 BigInt 计数器，最多每 100ms 通知一次，另加文件/阶段切换通知。未编码 BigInt 前不要对其调用 JSON.stringify。
  * The directory picker/permission belongs to a prior explicit user gesture.
  * Only a fresh unpredictable child is touched. On failure, removal is limited
  * to individually tracked entries whose handles still match, never recursive.
@@ -161,10 +169,11 @@ export async function exportRomfsResources({
           totalBytes,
         }),
       );
+      // 进度观察者不得阻塞导出或泄漏异步拒绝。
       // Progress observers must not block export or leak async rejections.
       Promise.resolve(result).catch(() => {});
     } catch {
-      /* Observers never alter an authenticated export. */
+      /* 观察者绝不会更改已认证导出。 | Observers never alter an authenticated export. */
     }
   };
   async function absent(parent, name, kind) {
@@ -174,7 +183,7 @@ export async function exportRomfsResources({
       else await parent.getFileHandle(name);
     } catch (cause) {
       if (cause?.name === "NotFoundError") return;
-      throw cause; // Includes a same-name entry of the wrong kind.
+      throw cause; // 包括同名但类型错误的条目。 | Includes a same-name entry of the wrong kind.
     }
     fail("RESOURCE_DESTINATION_COLLISION");
   }
@@ -186,7 +195,7 @@ export async function exportRomfsResources({
         ? await parent.getDirectoryHandle(name, { create: true })
         : await parent.getFileHandle(name, { create: true });
     const item = { parent, name, kind, handle, removed: false };
-    owned.push(item); // Record ownership before observing cancellation.
+    owned.push(item); // 在观察取消之前记录所有权。 | Record ownership before observing cancellation.
     requireValue(typeof handle.isSameEntry === "function", "RESOURCE_OWNERSHIP_UNAVAILABLE");
     check();
     return item;
@@ -207,6 +216,7 @@ export async function exportRomfsResources({
       throw cause;
     }
     requireValue(await item.handle.isSameEntry(current), "RESOURCE_ENTRY_REPLACED");
+    // 特意不递归：即使在我们的文件夹内，也保留用户新增项。
     // Deliberately nonrecursive: preserve user additions, even inside our folder.
     await item.parent.removeEntry(item.name);
     item.removed = true;
@@ -234,6 +244,7 @@ export async function exportRomfsResources({
     await activeWriter.close();
     activeWriter = undefined;
     markerPresent = true;
+    // 尤其不能将已完成的最终标记关闭重新归类为失败。
     // In particular, do not reclassify a completed final marker close as failure.
   }
   try {
@@ -305,6 +316,7 @@ export async function exportRomfsResources({
           check();
           emit("resources");
         } finally {
+          // 已认证 RomFS 读取器返回独立拥有的副本，而非共享缓存视图。
           // Authenticated RomFS readers return owned copies, not shared cache views.
           if (bytes instanceof Uint8Array) bytes.fill(0);
         }
@@ -346,6 +358,8 @@ export async function exportRomfsResources({
       }
       activeWriter = undefined;
     }
+    // 保留未完成标记，直到所有负载文件及子目录
+    // 均被删除。如果清理失败，它仍是明确警告。
     // Keep the incomplete marker until all payload files and child directories
     // have been removed. If cleanup fails it remains an explicit warning.
     for (const item of [...owned].reverse()) {

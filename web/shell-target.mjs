@@ -1,4 +1,12 @@
-/** Observe iOS deployment target from verified thin arm64 executable bytes. */
+// 从已验证的单架构 arm64 可执行字节读取 iOS 部署目标。
+// 依据 Mach-O 部署版本加载命令。
+// Reads the iOS deployment target from verified thin arm64 executable bytes.
+// Based on Mach-O deployment-version load commands.
+
+/**
+ * 从已验证的单架构 arm64 可执行字节读取 iOS 部署目标。
+ * Observe iOS deployment target from verified thin arm64 executable bytes.
+ */
 export function inspectMachOTarget(bytes) {
   const fail = () => {
     throw new Error("SHELL_MACHO_TARGET_UNSUPPORTED");
@@ -19,6 +27,7 @@ export function inspectMachOTarget(bytes) {
     const command = u32(offset),
       length = u32(offset + 4);
     if (length < 8 || length % 8 || offset + length > end) fail();
+    // 旧版本命令与现代命令同时存在时，此处视为有歧义。
     // Legacy version commands alongside a modern command are ambiguous here.
     if ([0x24, 0x25, 0x2f, 0x30].includes(command)) fail();
     if (command === 0x32) {
@@ -37,7 +46,10 @@ export function inspectMachOTarget(bytes) {
   return target;
 }
 
-/** executablePath is supplied by the trusted release registry, not unverified ZIP text. */
+/**
+ * executablePath 由可信发布注册表提供，而非未经验证的 ZIP 文本。
+ * executablePath is supplied by the trusted release registry, not unverified ZIP text.
+ */
 export function createShellTargetInspector({ executablePath } = {}) {
   if (
     typeof executablePath !== "string" ||

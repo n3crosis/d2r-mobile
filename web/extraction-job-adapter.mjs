@@ -1,3 +1,5 @@
+// 依据提取工作线程协议与已认证结果，将提取能力接入打包任务。
+// Connect extraction capabilities to packaging jobs using the extraction worker protocol and authenticated results.
 import { isExtractionDiagnosticCode } from "./extraction-errors.mjs";
 import {
   createExtractionWorkerClient,
@@ -31,10 +33,14 @@ const canonical = (value) =>
       );
     return child;
   });
+// 注册仅属于已完成的认证提取。复制的结果、
+// 调用方布尔值或调用方提供的元数据都不能建立来源证明。
 // Registration is private to completed authenticated extraction. A copied result,
 // a caller boolean, or caller-supplied metadata can never create provenance.
 const authenticatedPrograms = new WeakMap();
-/** Trusted generator wiring injects this verifier; no extraction imports are
+/**
+ * 受信任的生成器接线注入此验证器；独立密封的程序运行时无需导入提取模块。重写前必须复制借用字节，并按精确且受信任的整文件摘要进行验证。
+ * Trusted generator wiring injects this verifier; no extraction imports are
  * required in a separately sealed program runtime. Borrowed bytes MUST be copied
  * and verified against an exact trusted full-file digest before rewriting.
  */
@@ -50,7 +56,9 @@ export function readAuthenticatedProgramModules(extracted, selection, { signal }
   }
 }
 
-/** Authenticated, live asset capabilities. No caller-owned copy or trust flag can
+/**
+ * 已认证且仍有效的资源能力。调用方持有的副本或信任标志都不能注册来源；选择绑定到同一个已验证提取结果。
+ * Authenticated, live asset capabilities. No caller-owned copy or trust flag can
  * register provenance; selection is bound to the same verified extraction result.
  */
 export function readAuthenticatedAssets(extracted, selection, { signal } = {}) {
@@ -65,7 +73,9 @@ export function readAuthenticatedAssets(extracted, selection, { signal } = {}) {
   }
 }
 
-/** Only trusted application code supplies createWorker. Combine these three job
+/**
+ * 只有受信任的应用代码提供 createWorker。将这三个任务方法与独立受信任的生成器和输出适配器组合，组合清理逻辑，并显式运行 runPackagingJob({secretLifetime:"archive", ...})。不提供工作线程 URL、真实构建允许列表、UI 启用或网络回退。
+ * Only trusted application code supplies createWorker. Combine these three job
  * methods with independently trusted generators/output adapters, compose cleanup,
  * and explicitly runPackagingJob({secretLifetime:"archive", ...}).
  * No worker URL, real build allowlist, UI enablement or network fallback is provided.
@@ -132,6 +142,7 @@ export function createExtractionJobAdapter({
           try {
             await client.dispose();
           } finally {
+            // 强制终止也会撤销超过时限仍卡住的工作线程。
             // Hard termination also revokes a worker stuck beyond its timeout.
             client.close();
           }
@@ -148,6 +159,7 @@ export function createExtractionJobAdapter({
         try {
           await session.dispose();
         } catch {
+          // 即使拆卸也失败，仍保留安全的主要诊断。
           // Preserve the safe primary diagnosis even if teardown also fails.
         }
         fail(
@@ -162,6 +174,7 @@ export function createExtractionJobAdapter({
     async inspectContents({ session, signal } = {}) {
       signal?.throwIfAborted();
       const state = lookup(session);
+      // 跨公共协调器边界传递快照，而非可变的缓存记录。
       // Snapshot across the public coordinator boundary, not mutable cached records.
       return structuredClone(state.inspected);
     },
@@ -185,6 +198,8 @@ export function createExtractionJobAdapter({
             selection.dlc.map((row) => [row.titleId.toString(16).padStart(16, "0"), row.version]),
           ),
         };
+        // 只有保留的边界证据才能满足此本地包检查条件。
+        // 调用方提供的选择布尔值、清单或 DLC 对象都不是证明。
         // Only retained boundary evidence may satisfy this local package gate.
         // Caller-supplied selection booleans, inventory or DLC objects are not proof.
         const authenticated = resolveD2rExpansionSelection(
@@ -243,6 +258,7 @@ export function createExtractionJobAdapter({
           }
           programModules[name] = bytes;
         }
+        // 这会撤销 ExeFS 生成；先暂存所有必需模块。
         // This revokes the ExeFS generation; all required modules are staged first.
         const opened = await state.client.openRomfs(selected.token, {
           signal,
@@ -282,9 +298,13 @@ export function createExtractionJobAdapter({
         });
         const indexed = await indexRomfs(source, { signal });
 
+        // 暴露有界只读能力，而非元数据行、令牌、密钥文件、
+        // 原始源句柄、会话或传输客户端。
         // Expose bounded read-only capabilities, not metadata rows, tokens, key files,
         // raw source handles, sessions or the transport client.
         const romfs = Object.freeze({
+          // 索引阶段已强制执行 ROMFS_LIMITS.files/path/depth。只暴露
+          // 不可变清单，绝不暴露原始镜像偏移或源句柄。
           // Indexing already enforces ROMFS_LIMITS.files/path/depth. Expose only
           // immutable inventory, never raw image offsets or source handles.
           files: Object.freeze(
@@ -379,7 +399,7 @@ export function createExtractionJobAdapter({
         try {
           await session.dispose();
         } catch {
-          /* Preserve sanitized extraction failure. */
+          /* 保留已净化的提取失败信息。 | Preserve sanitized extraction failure. */
         }
         for (const bytes of owned.splice(0)) bytes.fill(0);
         fail(

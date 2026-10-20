@@ -1,4 +1,9 @@
-/** Original table generation from authenticated local assets. Receipts are not parity evidence. */
+// 依据资源工作线程的原始表生成操作生成派生表，并按外壳容量校验。
+// Generate derived tables using the asset worker's original table-generation operations and check shell capacities.
+/**
+ * 从已认证本地资源生成原始表。回执并非等价性证据。
+ * Original table generation from authenticated local assets. Receipts are not parity evidence.
+ */
 const VAULT_PATHS = Object.freeze([
   ...["ItemTypes", "armor", "weapons", "misc", "UniqueItems", "Sets", "SetItems"].map(
     (name) => `data/global/excel/${name}.txt`,
@@ -25,7 +30,10 @@ const bytesOf = (value) =>
       ? new Uint8Array(value)
       : fail("DERIVED_OUTPUT_TYPE");
 
-/** Caller must separately compare returned counts to the independently trusted shell capacities. */
+/**
+ * 调用方必须另行将返回计数与独立受信任的外壳容量比较。
+ * Caller must separately compare returned counts to the independently trusted shell capacities.
+ */
 export async function generateProductionDerived({
   logicalAssets,
   assetWorker,
@@ -92,6 +100,7 @@ export async function generateProductionDerived({
     });
     const data = bytesOf(result.files?.["derived.tsv"]);
     if (!data.length || data.length > 8 * 1024 * 1024) fail("DERIVED_OUTPUT_LIMIT");
+    // 非文件回执特意与可打包文件分离。
     // Non-file receipt is intentionally separate from the packageable files.
     return {
       files: { "dm/derived.tsv": data },

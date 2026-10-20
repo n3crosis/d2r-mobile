@@ -1,4 +1,12 @@
-/** Bounded legacy NSO segment validation. Never authenticates a game build. */
+// 对旧式 NSO 段进行有界验证，不认证游戏构建。
+// 依据 NSO 段头及原始 LZ4 块布局。
+// Performs bounded legacy NSO segment validation without authenticating a game build.
+// Based on NSO segment headers and raw LZ4 block layout.
+
+/**
+ * 有界的旧式 NSO 段验证。绝不认证游戏构建。
+ * Bounded legacy NSO segment validation. Never authenticates a game build.
+ */
 import { inspectNso, readRange, MAX_READ_BYTES, NSO_HEADER_BYTES } from "./preflight.mjs";
 
 export const NSO_VALIDATION_LIMITS = Object.freeze({
@@ -31,7 +39,10 @@ async function checkpoint(signal) {
   signal?.throwIfAborted();
 }
 
-/** Raw independent LZ4 block, not a frame or size-prefixed Python block. */
+/**
+ * 原始独立 LZ4 块，不是帧或带大小前缀的 Python 块。
+ * Raw independent LZ4 block, not a frame or size-prefixed Python block.
+ */
 export async function decodeLz4Block(input, decodedSize, { signal, limits: options } = {}) {
   const limits = limitsFor(options);
   signal?.throwIfAborted();
@@ -87,7 +98,7 @@ export async function decodeLz4Block(input, decodedSize, { signal, limits: optio
       ip += count;
       op += count;
       n += count;
-      workSinceYield += count * 2; // Literal input consumed and output written.
+      workSinceYield += count * 2; // 消耗的字面量输入与写出的输出。 | Literal input consumed and output written.
       const pause = pauseIfNeeded();
       if (pause) await pause;
     }
@@ -105,6 +116,7 @@ export async function decodeLz4Block(input, decodedSize, { signal, limits: optio
     lastMatchStart = op;
     for (let n = 0; n < matchLength;) {
       const count = Math.min(limits.chunkBytes, matchLength - n);
+      // 必须逐字节向前复制：匹配段可能与其源重叠。
       // Forward byte copying is essential: matches may overlap their source.
       for (let j = 0; j < count; j++) {
         output[op] = output[op - offset];
@@ -122,6 +134,7 @@ export async function decodeLz4Block(input, decodedSize, { signal, limits: optio
 async function digest(bytes, signal) {
   signal?.throwIfAborted();
   if (!globalThis.crypto?.subtle) throw new Error("WebCrypto SHA-256 is unavailable");
+  // WebCrypto 无法取消内部摘要。及时拒绝并丢弃结果。
   // WebCrypto cannot cancel its internal digest. Reject promptly and discard it.
   let onAbort;
   const aborted = new Promise((_, reject) => {
@@ -137,7 +150,10 @@ async function digest(bytes, signal) {
   }
 }
 
-/** Returns separate decoded segments, not an executable image or supported build. */
+/**
+ * 返回独立的已解码段，而非可执行映像或受支持的构建。
+ * Returns separate decoded segments, not an executable image or supported build.
+ */
 export async function validateNsoSegments(source, { signal, limits: options } = {}) {
   const limits = limitsFor(options);
   const header = (await readRange(source, 0, NSO_HEADER_BYTES, signal)).slice();

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# 依据固定 hactool 提交与本地边界源码构建受限 WASM 模块，并保留许可证。
+# Build a restricted WASM module from the pinned hactool commit and local boundary sources, preserving licenses.
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 BUILD=${NSP_BUILD_DIR:-"$HERE/.build"}
@@ -6,6 +8,7 @@ OUT=${NSP_OUTPUT_DIR:-"$HERE/dist"}
 PIN=1d64a83450e025622f3468c28fc4164dad2c5ef6
 command -v emcc >/dev/null || { echo 'Emscripten must be installed by the CI build environment.' >&2; exit 1; }
 mkdir -p "$BUILD" "$OUT"
+# 全新源码树可防止误用原生目标文件或重复打补丁。
 # Fresh source tree prevents accidental reuse of native objects or double patching.
 SRC=$(mktemp -d "$BUILD/hactool.XXXXXX")
 git -C "$SRC" init -q
@@ -21,6 +24,7 @@ CFLAGS = -O2 -D_FILE_OFFSET_BITS=64
 LDFLAGS =
 CFG
 emmake make -C "$SRC/mbedtls" lib -j2 CC=emcc AR=emar
+# 保持上游文件独立，仅应用已审查的解析器生命周期补丁。
 # Keep upstream files distinct and apply only the reviewed parser-lifetime patch.
 sources=()
 for name in save sha aes extkeys rsa npdm bktr kip packages pki pfs0 hfs0 nca0_romfs romfs utils nax0 nso lz4 nca xci filepath ConvertUTF cJSON; do
@@ -41,6 +45,7 @@ mkdir -p "$OUT/licenses"
 cp "$SRC/LICENSE" "$OUT/licenses/hactool-ISC.txt"
 cp "$SRC/mbedtls/LICENSE" "$OUT/licenses/mbedtls-LICENSE.txt"
 cp "$SRC/mbedtls/apache-2.0.txt" "$OUT/licenses/mbedtls-Apache-2.0.txt"
+# 保留嵌入源码的完整声明，而不只是仓库根目录许可证。
 # Preserve full source-embedded notices, not just the root repository license.
 for f in ConvertUTF.c ConvertUTF.h lz4.c lz4.h cJSON.c cJSON.h; do cp "$SRC/$f" "$OUT/licenses/$f.txt"; done
 printf '%s\n' "$PIN" > "$OUT/UPSTREAM_COMMIT"

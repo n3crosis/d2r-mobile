@@ -1,4 +1,9 @@
-/** Browser compute/vertex/fragment translator -> SPIRV-Cross adapter. No package writer. */
+// 依据 SPIRV-Cross 契约、反射回放及外壳配方连接浏览器着色器翻译。
+// Wire browser shader translation using SPIRV-Cross contracts, reflection replay and shell recipes.
+/**
+ * 浏览器计算、顶点及片段翻译器到 SPIRV-Cross 的适配器。不包含包写入器。
+ * Browser compute/vertex/fragment translator -> SPIRV-Cross adapter. No package writer.
+ */
 import { validateShellContract } from "./shell-contract.mjs";
 import {
   CROSS_COMMIT,
@@ -124,7 +129,9 @@ function rpc({ workerFactory, url, request, transfer, signal, timeoutMs, decode 
     }
   });
 }
-/** trustedShell must come from the application's authenticated release catalog,
+/**
+ * trustedShell 必须来自应用已认证的发布目录，而非仅来自用户编辑的 shell_info。它以完整 shaderKeys 列表扩展 trustedRecipe。现有验证仅针对元数据，不是文件认证。
+ * trustedShell must come from the application's authenticated release catalog,
  * not from user-edited shell_info alone. It extends trustedRecipe with the full
  * shaderKeys list. Existing validation is metadata-only, not file authentication.
  */
@@ -363,6 +370,8 @@ export function createShaderPipeline({
       const missing = contract.keys.filter((k) => !completed.has(k));
       if (missing.length)
         throw error(`Incomplete shader source set: ${missing.length} expected shaders missing`);
+      // 精确的 d2rm_pack.py src_digest：排序后文件名的 UTF-8 加上原始 SHA256(source)，
+      // 然后取该拼接结果 SHA256 的前 16 个十六进制字符。
       // Exact d2rm_pack.py src_digest: sorted filename UTF-8 + raw SHA256(source),
       // then first 16 hex digits of SHA256 over that concatenation.
       const chunks = contract.keys.map((k) => {

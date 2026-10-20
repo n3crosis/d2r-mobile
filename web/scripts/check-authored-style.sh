@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
+# 根据仓库的 Ruff 和 clang-format 配置及 Bash 语法规则，检查列出的自有源码。
+# Check the listed authored sources against repository Ruff and clang-format configurations and Bash syntax rules.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 python_sources=(
+  web/scripts/generate-i18n.py
   web/toolchain/nsp-extract-spike/prepare-source.py
   web/toolchain/synthetic-signed-nca/inject-test-root.py
   web/toolchain/synthetic-signed-nca/verify-build-isolation.py

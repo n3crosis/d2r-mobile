@@ -1,4 +1,5 @@
-// 同一 CI 作业内组装已构建的精确后端；不安装工具、不下载运行时、不启动浏览器。 | Assemble already-built exact backends in the same CI job; no tool installation, runtime downloads or browser launch.
+// 同一 CI 作业内组装已构建的精确后端；不安装工具、不下载运行时、不启动浏览器。 依据各后端构建报告、来源固定记录与资产清单约定。
+// Assemble already-built exact backends in the same CI job; no tool installation, runtime downloads or browser launch. Based on backend build reports, source provenance pins and the asset inventory contract.
 import process from "node:process";
 import { readFile, writeFile, mkdir, mkdtemp, rename, rm } from "node:fs/promises";
 import { createHash } from "node:crypto";

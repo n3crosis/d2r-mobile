@@ -1,3 +1,5 @@
+// 依据 NSP 输入校验、CNMT 选择与受信原生边界协调已认证内容读取。
+// Coordinate authenticated content reads based on NSP input validation, CNMT selection and a trusted native boundary.
 import {
   inspectNsp,
   inspectKeyBytes,
@@ -35,6 +37,7 @@ function hexId(bytes) {
   for (const byte of bytes) id += HEX[byte >>> 4] + HEX[byte & 15];
   return id;
 }
+// 文本已通过 inspectKeyBytes；只索引标识符，绝不索引密钥值。
 // The text has already passed inspectKeyBytes. Index IDs, never key values.
 function indexTitleIds(bytes) {
   const ids = new Set();
@@ -158,7 +161,9 @@ function fields(value, allowed) {
   )
     fail();
 }
-/** Dedicated-Worker engine. Native boundary is a trusted capability, never RPC input.
+/** 专用 Worker 引擎。原生边界是受信能力，绝不是 RPC 输入。
+ * 此对象仅向外提供读取能力；真实内容的覆盖情况仍未证实。
+ * Dedicated-Worker engine. Native boundary is a trusted capability, never RPC input.
  * Only read capabilities leave this object. Real-content coverage remains unproven. */
 export function createExtractionEngine(
   boundary,
@@ -168,6 +173,7 @@ export function createExtractionEngine(
     try {
       onProgress(Object.freeze({ stage, completed, total, bytes }));
     } catch {
+      // 诊断不能改变提取结果。
       // Diagnostics cannot change the extraction result.
     }
   };
@@ -360,6 +366,9 @@ export function createExtractionEngine(
           "contentMode",
         ]);
         selection = resolveD2rExpansionSelection(records, inventory, payload.options);
+        // 要求已知附加内容的完整实测 NCA 证据与已签名 Data 头部。
+        // 这是包输入校验，并非授权或所有权检查。
+        // 仅用于解锁的内容绝不会替代 Program RomFS。
         // Require the known add-on's full measured NCA evidence and signed Data
         // header. This is package-input validation, not entitlement/ownership.
         // Its unlock-only content is never substituted for Program RomFS.
@@ -398,6 +407,8 @@ export function createExtractionEngine(
         checkToken(payload.token);
         if (typeof payload.verifyRomfs !== "boolean") fail();
         if (!payload.verifyRomfs) {
+          // 只有所有选定 Program NCA 的实测全文件摘要均匹配
+          // 各自已认证的 CNMT 条目后，快速路径才有效。
           // The fast path is valid only after every selected Program NCA's
           // measured full-file digest matched its authenticated CNMT entry.
           for (const row of [selection.base, selection.patch].filter(Boolean)) {

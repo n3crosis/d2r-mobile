@@ -1,3 +1,5 @@
+// 依据模拟边界与合成内容元数据验证提取引擎的选择和校验约束。
+// Verify extraction-engine selection and validation constraints using a mocked boundary and synthetic content metadata.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createExtractionEngine } from "./extraction-engine.mjs";
@@ -372,6 +374,7 @@ test("explicit keys do not suppress malformed or mismatched tickets", async () =
 test("duplicate ticket keys are reused and conflicting ticket keys fail before native loading", async () => {
   const events = [];
   const env = setup({ onProgress: (event) => events.push(event) });
+  // 合成边界要求六个 NCA；这里只检查早期密钥加载阶段。
   // The synthetic boundary expects six NCAs; inspect the early key-load stage only.
   await assert.rejects(
     ticketInitialize(env.engine, [fixture({ ticket: true }), fixture({ ticket: true })]),

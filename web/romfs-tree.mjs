@@ -1,4 +1,12 @@
-/** Bounded RomFS indexing. The caller must supply an immutable, authenticated IVFC data level. */
+// 对调用方提供的不可变、已认证 IVFC 数据层建立有界 RomFS 索引。
+// 依据 RomFS 元数据布局与调用方认证的 IVFC 数据边界。
+// Builds bounded RomFS indexes over caller-supplied immutable, authenticated IVFC data.
+// Based on RomFS metadata layout and the caller-authenticated IVFC data boundary.
+
+/**
+ * 有界 RomFS 索引。调用方必须提供不可变且已认证的 IVFC 数据层。
+ * Bounded RomFS indexing. The caller must supply an immutable, authenticated IVFC data level.
+ */
 export const ROMFS_LIMITS = Object.freeze({
   readBytes: 64 * 1024,
   metadataBytes: 16 * 1024 * 1024,
@@ -59,6 +67,9 @@ function component(bytes) {
 }
 
 /**
+ * source：{ size: bigint, readAt(offset: bigint, count: number): Uint8Array | Promise<Uint8Array> }。
+ * readAt 在此索引的整个生命周期内必须引用同一已认证的不可变映像。
+ * 此解析器不认证或解密字节，也不信任调用方提供的“verified”标志。
  * source: { size: bigint, readAt(offset: bigint, count: number): Uint8Array | Promise<Uint8Array> }.
  * readAt must refer to the SAME authenticated immutable image for this index's lifetime.
  * This parser does not authenticate/decrypt bytes, nor trust a caller-supplied "verified" flag.
@@ -91,6 +102,7 @@ export async function indexRomfs(source, { signal } = {}) {
     const bytes = await readAt(offset, count);
     check(extraSignal);
     if (!(bytes instanceof Uint8Array) || bytes.byteLength !== count) fail("short read");
+    // 将元数据和返回的载荷与读取器可复用的暂存缓冲区隔离。
     // Isolate metadata and returned payload from a reader's reusable scratch buffer.
     return bytes.slice();
   }
@@ -134,6 +146,7 @@ export async function indexRomfs(source, { signal } = {}) {
     if (++members > ROMFS_LIMITS.members) fail("member count");
     if (bytes > ROMFS_LIMITS.pathBytes || (pathBytes += bytes) > ROMFS_LIMITS.totalPathBytes)
       fail("path budget");
+    // 为下游不区分大小写的文件系统拒绝大小写折叠后的冲突。
     // Case-folded collisions are rejected for downstream case-insensitive filesystems.
     const key = path.toLowerCase();
     if (paths.has(key)) fail("duplicate path");
@@ -157,6 +170,7 @@ export async function indexRomfs(source, { signal } = {}) {
       : "";
     return { view, name, nameSize };
   }
+  // 显式栈避免递归，并跟踪预期父节点和深度。
   // Explicit stack avoids recursion and tracks both expected parent and depth.
   const stack = [{ offset: 0, parent: 0, path: "", bytes: 0, depth: 0 }];
   while (stack.length) {

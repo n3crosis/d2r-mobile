@@ -1,4 +1,5 @@
-// 与三个固定包装器一致的必需导出；在首次私有输入前拒绝错误产物。 | Required exports matching the three pinned wrappers; reject wrong artifacts before private input.
+// 与三个固定包装器一致的必需导出；在首次私有输入前拒绝错误产物。
+// Required exports matching the three pinned wrappers; reject wrong artifacts before private input.
 const EXPORTS = Object.freeze({
   "image-kernels.wasm": [
     "image_input",

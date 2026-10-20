@@ -1,4 +1,9 @@
-/** Lazy logical assets over one authenticated, immutable RomFS index. */
+// 依据 dm/tools/dmx.py 清单语义和已认证 RomFS 索引读取逻辑资源。
+// Read logical assets using dm/tools/dmx.py manifest semantics and an authenticated RomFS index.
+/**
+ * 单个已认证且不可变的 RomFS 索引上的惰性逻辑资源。
+ * Lazy logical assets over one authenticated, immutable RomFS index.
+ */
 import { archiveLocator, ARCHIVE_LIMITS, decodeArchiveRecord } from "./archive-reader.mjs";
 import { verifyMd5 } from "./checksum-verifier.mjs";
 import { ROMFS_LIMITS } from "./romfs-tree.mjs";
@@ -55,6 +60,7 @@ async function exactRead(file, offset, count, signal) {
 }
 
 /**
+ * romfs 是所选已认证镜像上 indexRomfs 的 { getFile(path) }。认证及版本选择属于提取阶段，绝非调用方布尔值。仅清单会立即建立索引；不缓存归档或解码内容。重复逻辑路径采用最后一行，与 dm/tools/dmx.py 完全一致。
  * romfs is indexRomfs's { getFile(path) } over the selected authenticated image.
  * Authentication/version selection belongs to extraction, never a caller boolean.
  * Only the manifest is indexed eagerly. No archive or decoded content is cached.
@@ -78,15 +84,19 @@ export async function createCascLogicalAssets(romfs, { signal } = {}) {
       fail("manifest line budget");
     if (first) {
       first = false;
+      // dmx 无条件跳过首行；不要虚构头部版本。
       // dmx skips the first line unconditionally; do not invent a header version.
       return;
     }
     if (text.startsWith("#")) return;
     const fields = text.split("|");
+    // 原生 dmx 跳过短行及空行。保留此行为。
     // Native dmx skips short/blank rows. Preserve that behavior.
     if (fields.length < 11) return;
     if (++rowCount > CASC_LIMITS.rows) fail("manifest row budget");
     const key = checkPath(fields[9]);
+    // 仅保留定位及解码请求资源所需字段；数字验证
+    // 惰性执行，避免无关的不支持记录阻碍有效资源读取。
     // Keep only fields needed to locate/decode a requested asset; numeric validation
     // is lazy so unrelated unsupported records do not prevent valid asset reads.
     if (index.has(key)) duplicatePaths.add(key);
@@ -123,6 +133,7 @@ export async function createCascLogicalAssets(romfs, { signal } = {}) {
     count: index.size,
     lookup,
     hasDuplicatePath: (path) => duplicatePaths.has(checkPath(path, true)),
+    // 迭代器避免复制庞大路径列表；行本身不可变。
     // Iterator avoids duplicating a large path list; rows themselves are immutable.
     entries: () => index.values(),
     async read(path, { maxBytes = ARCHIVE_LIMITS.decodedRecord, signal: readSignal } = {}) {
@@ -147,6 +158,8 @@ export async function createCascLogicalAssets(romfs, { signal } = {}) {
       const file = reader(getFile(`data/${locator.filename}`), "archive");
       const start = BigInt(`0x${row[6].slice(22)}`);
       if (start > file.size || BigInt(encodedSize) > file.size - start) fail("record extent");
+      // 现有解码器使用 Number 偏移。仅向其提供记录内局部窗口；
+      // 所有绝对 RomFS 偏移及范围均保持 BigInt，包括超大镜像。
       // Existing decoder uses Number offsets. Give it only a record-local window;
       // every absolute RomFS offset and extent stays BigInt, including huge images.
       const source = {

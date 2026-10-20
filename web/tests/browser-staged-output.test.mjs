@@ -1,3 +1,5 @@
+// 根据 STAGED_OUTPUT_SCOPE.md，使用内存文件系统替身验证暂存输出的提交、取消和清理契约。
+// Verify staged-output commit, cancellation, and cleanup contracts using an in-memory filesystem double, based on STAGED_OUTPUT_SCOPE.md.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createBrowserStagedOutputAdapters } from "../browser-staged-output.mjs";
@@ -55,6 +57,9 @@ function environment(faults = {}) {
         },
         async abort() {
           events.push(destination ? "destination-abort" : "stage-abort");
+          await faults[destination ? "onDestinationAbort" : "onStageAbort"]?.();
+          if (faults[destination ? "destinationAbort" : "stageAbort"])
+            throw new Error("abort failed");
         },
       };
     },
@@ -253,4 +258,48 @@ test("oversized source chunks are rejected before staging write", async () => {
   await assert.rejects(output.write(new Uint8Array(4 * 1024 * 1024 + 1)), /OUTPUT_INVALID_CHUNK/);
   assert.ok(!env.events.includes("stage-write"));
   await output.abort();
+});
+
+test("failed writer aborts retain the stream for a later cleanup retry", async () => {
+  for (const destination of [false, true]) {
+    const kind = destination ? "destination" : "stage",
+      faults = { [`${kind}Abort`]: true },
+      env = environment(faults),
+      adapter = adapters(env);
+    const output = destination
+      ? await writeStage(adapter)
+      : await adapter.createOutput({ manifest });
+    if (destination) {
+      await adapter.validateArchive({ output, manifest });
+      faults.destinationWrite = true;
+      await assert.rejects(output.close(), /disk full/);
+    }
+    await assert.rejects(output.abort(), /OUTPUT_CLEANUP_FAILED/);
+    const attempts = env.events.filter((event) => event === `${kind}-abort`).length;
+    faults[`${kind}Abort`] = false;
+    await output.abort();
+    assert.equal(env.events.filter((event) => event === `${kind}-abort`).length, attempts + 1);
+    await output.abort();
+    assert.equal(env.events.filter((event) => event === `${kind}-abort`).length, attempts + 1);
+    assert.deepEqual(env.committed, Uint8Array.of(7));
+    assert.deepEqual([...env.files.keys()], ["unrelated"]);
+  }
+});
+
+test("concurrent abort calls share cleanup instead of disposing a writer twice", async () => {
+  let resume;
+  const gate = new Promise((resolve) => {
+    resume = resolve;
+  });
+  const env = environment({ onStageAbort: () => gate }),
+    adapter = adapters(env),
+    output = await adapter.createOutput({ manifest });
+  const first = output.abort(),
+    second = output.abort();
+  resume();
+  await Promise.all([first, second]);
+  assert.equal(env.events.filter((event) => event === "stage-abort").length, 1);
+  assert.equal(env.events.filter((event) => event === `remove:${name}`).length, 1);
+  assert.deepEqual(env.committed, Uint8Array.of(7));
+  assert.deepEqual([...env.files.keys()], ["unrelated"]);
 });

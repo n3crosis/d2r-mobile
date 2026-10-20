@@ -1,4 +1,9 @@
-/** Complete native-art inventory, not a generic crop recipe or complete IPA pipeline. */
+// 依据已验证原生图像元数据及资源工作线程契约生成图像清单。
+// Generate the art inventory from verified native-art metadata and the asset worker contract.
+/**
+ * 完整原生图像清单，不是通用裁剪配方或完整 IPA 流水线。
+ * Complete native-art inventory, not a generic crop recipe or complete IPA pipeline.
+ */
 const MAX_INPUT = 8 * 1024 * 1024;
 const MAX_PAYLOAD = 20 * 1024 * 1024;
 const fail = (code) => {
@@ -15,7 +20,10 @@ async function digest(bytes) {
     b.toString(16).padStart(2, "0"),
   ).join("");
 }
-/** metadata and metadataSha256 must come from verified application release resources. */
+/**
+ * metadata 和 metadataSha256 必须来自已验证的应用发布资源。
+ * metadata and metadataSha256 must come from verified application release resources.
+ */
 export async function generateNativeArt({
   logicalAssets,
   assetWorker,

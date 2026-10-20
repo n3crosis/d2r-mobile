@@ -1,3 +1,6 @@
+// 浏览器本地打包界面：依据打包进度协议与共享多语文字表。
+// Local browser packaging UI based on the packaging progress protocol and shared multilingual table.
+import { t, browserLanguage } from "../i18n.mjs";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,9 +36,20 @@ type FolderProgress = {
 };
 type RomfsProgress = { phase: "base" | "merged"; percent: number };
 const folderSummary = (progress: FolderProgress) =>
-  `${progress.nspCount} NSP file(s); prod.keys ${progress.prodKeysFound ? "found" : "missing"}; title.keys ${progress.titleKeysFound ? "found (optional)" : "not provided (optional)"}.`;
-const megabytes = (bytes: number) => `${(bytes / 1_000_000).toFixed(1)} MB`;
+  t(
+    "dmWebFolderSummary",
+    progress.nspCount,
+    t(progress.prodKeysFound ? "dmWebFound" : "dmWebMissing"),
+    t(progress.titleKeysFound ? "dmWebFoundOptional" : "dmWebNotProvided"),
+  );
+const megabytes = (bytes: number) => t("dmWebMegabytes", (bytes / 1_000_000).toFixed(1));
+const loadingLabel = (phase: string) =>
+  t(phase === "download" ? "dmWebDownloading" : "dmWebPreparing");
 export default function App() {
+  useEffect(() => {
+    document.documentElement.lang = browserLanguage();
+    document.title = t("dmWebTitle");
+  }, []);
   const [activity, setActivity] = useState<string[]>([]);
   const [copyStatus, setCopyStatus] = useState("");
   const lastActivity = useRef("");
@@ -49,7 +63,7 @@ export default function App() {
   const pendingRomfsProgress = useRef<RomfsProgress | null | undefined>(undefined);
   const [loading, setLoading] = useState<LoadingProgress | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [status, setStatus] = useState("Loading application files…");
+  const [status, setStatus] = useState(t("dmWebLoading"));
   const [ready, setReady] = useState(false),
     [busy, setBusy] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -94,6 +108,8 @@ export default function App() {
         if (activityBuffer.current.length > 200) activityBuffer.current.shift();
         activityRevision.current += 1;
       }
+      // 保留有界日志中的每条记录，但合并短暂的界面更新。
+      // 终止事件立即刷新此前的记录。
       // Preserve every bounded log entry, but coalesce transient UI updates.
       // Terminal events flush the preceding entries immediately.
       if (force) flushActivity();
@@ -123,13 +139,11 @@ export default function App() {
       'meta[name="runtime-manifest-sha256"]',
     )?.content;
     if (!browser.showDirectoryPicker || !digest || !/^[a-f0-9]{64}$/.test(digest)) {
-      setStatus(
-        "This build is not ready, or this browser is unsupported. Use desktop Chrome or Edge.",
-      );
+      setStatus(t("dmWebUnsupported"));
       return;
     }
-    appendActivity("Loading verified application files", true);
-    appendActivity(`Runtime manifest: ${digest}`, true);
+    appendActivity(t("dmWebLoadingVerified"), true);
+    appendActivity(t("dmWebManifest", digest), true);
     let previousPhase = "";
     void prepareBrowserPackager({
       manifestSha256: digest,
@@ -137,13 +151,11 @@ export default function App() {
       onProgress: (event: LoadingProgress) => {
         if (!controller.signal.aborted) {
           setLoading(event);
-          setStatus(event.label);
+          setStatus(loadingLabel(event.phase));
           if (event.phase !== previousPhase) {
             previousPhase = event.phase;
             appendActivity(
-              event.phase === "download"
-                ? "Downloading application files"
-                : "Preparing isolated application runtimes",
+              event.phase === "download" ? t("dmWebDownloading") : t("dmWebPreparing"),
               true,
             );
           }
@@ -158,15 +170,18 @@ export default function App() {
         packager.current = value;
         setLoading(null);
         setReady(true);
-        setStatus("Ready. Files stay on this device.");
-        appendActivity("Application ready", true);
+        setStatus(t("dmWebReady"));
+        appendActivity(t("dmWebApplicationReady"), true);
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
           setLoadFailed(true);
-          appendActivity("Application setup failed before local inputs were opened", true);
+          appendActivity(t("dmWebSetupFailed"), true);
           setStatus(
-            `Application setup failed: ${String(error instanceof Error ? error.message : error).slice(0, 1400)}. Reload to retry. No game files have been opened.`,
+            t(
+              "dmWebSetupError",
+              String(error instanceof Error ? error.message : error).slice(0, 1400),
+            ),
           );
         }
       });
@@ -191,7 +206,7 @@ export default function App() {
     };
     setBusy(true);
     setCancelling(false);
-    setStatus("Waiting for folder selection…");
+    setStatus(t("dmWebWaitingFolder"));
     try {
       const selected = await browser.showDirectoryPicker({ mode: "readwrite" });
       controller.signal.throwIfAborted();
@@ -199,13 +214,13 @@ export default function App() {
       setFolder(null);
       setNspNames([]);
       setSelectedNsps(new Set());
-      setStatus(`Checking ${selected.name}…`);
+      setStatus(t("dmWebChecking", selected.name));
       const files = await discoverNspFolder(selected, {
         signal: controller.signal,
         onProgress: (event: FolderProgress) => {
           if (controller.signal.aborted || !mounted.current) return;
           progress = event;
-          setStatus(`Checking ${selected.name}… ${folderSummary(event)}`);
+          setStatus(t("dmWebCheckingProgress", selected.name, folderSummary(event)));
         },
       });
       const names = files.nsps.map((file) => file.name);
@@ -216,32 +231,32 @@ export default function App() {
       setSelectedNsps(new Set(selectedNames));
       setFolder(selected);
       appendActivity(
-        `Folder checked: ${progress.nspCount} NSP files; prod.keys found; title.keys ${progress.titleKeysFound ? "provided" : "not provided (optional)"}`,
+        t(
+          "dmWebFolderChecked",
+          progress.nspCount,
+          t(progress.titleKeysFound ? "dmWebProvided" : "dmWebNotProvided"),
+        ),
         true,
       );
-      setStatus(
-        `${selected.name}: ${folderSummary(progress)} Review the package selection before generating.`,
-      );
+      setStatus(t("dmWebReviewSelection", selected.name, folderSummary(progress)));
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
-        setStatus(controller.signal.aborted ? "Cancelled. Reload to start again." : previousStatus);
+        setStatus(controller.signal.aborted ? t("dmWebCancelledReload") : previousStatus);
       } else {
         setFolder(null);
         setNspNames([]);
         setSelectedNsps(new Set());
-        appendActivity("Folder check failed; check the status message", true);
+        appendActivity(t("dmWebFolderFailed"), true);
         const code = (error as { code?: string })?.code;
         const permissionError =
           error instanceof DOMException &&
           ["NotAllowedError", "SecurityError"].includes(error.name);
         const reason =
           code === "MISSING_INPUT"
-            ? "Put the missing files directly inside this folder, not in a subfolder."
+            ? t("dmWebMissingInput")
             : permissionError
-              ? "Choose the folder again and allow access to read inputs and save the resource subfolder."
-              : code && error instanceof Error
-                ? error.message
-                : "The folder could not be read. Check access and choose it again.";
+              ? t("dmWebFolderPermission")
+              : t("dmWebFolderUnreadable");
         setStatus(`${selectedName ? `${selectedName}: ${folderSummary(progress)} ` : ""}${reason}`);
       }
     } finally {
@@ -258,9 +273,9 @@ export default function App() {
     pendingRomfsProgress.current = undefined;
     setRomfsProgress(null);
     setReady(false);
-    setStatus("Starting IPA generation…");
-    appendActivity("Generation started; private inputs remain local", true);
-    appendActivity("Fast mode: full RomFS scan will be skipped after package hashes match", true);
+    setStatus(t("dmWebStarting"));
+    appendActivity(t("dmWebGenerationStarted"), true);
+    appendActivity(t("dmWebFastMode"), true);
     let acceptingProgress = true;
     try {
       const controller = new AbortController();
@@ -276,7 +291,7 @@ export default function App() {
           diagnostic?: { stage?: string; completed?: number };
         }) => {
           if (!acceptingProgress || controller.signal.aborted || !mounted.current) return;
-          pendingGenerationStatus.current = event.label;
+          pendingGenerationStatus.current = packagingActivity(event) ?? t("dmWebInProgress");
           const phase = event.diagnostic?.stage;
           const percent = event.diagnostic?.completed;
           pendingRomfsProgress.current =
@@ -300,10 +315,10 @@ export default function App() {
       if (downloadUrl.current) URL.revokeObjectURL(downloadUrl.current);
       downloadUrl.current = url;
       setDownload({ url, fileName: result.download.fileName });
-      appendActivity("Unsigned IPA ready; resources saved locally", true);
-      setStatus(
-        `IPA ready to download. Resources saved in ${folder.name}/${result.resources.directoryName}. Copy that resource folder into the app’s Files folder after signing and installing the IPA. Game compatibility is not yet verified.`,
-      );
+      appendActivity(t("dmWebUnsignedReady"), true);
+      setStatus(t("dmWebDownloadReady", folder.name, result.resources.directoryName));
+      // 某些浏览器会阻止长时间异步操作后发起的下载。
+      // 在可见的下载 IPA 链接中保留相同 URL 以供重试。
       // Some browsers suppress downloads initiated after lengthy async work.
       // Keep the same URL available in the visible Download IPA link for retry.
       const link = document.createElement("a");
@@ -313,6 +328,7 @@ export default function App() {
         document.body.append(link);
         link.click();
       } catch {
+        // 即使自动启动失败，可见链接仍然可用。
         // The visible link remains usable even if automatic initiation fails.
       } finally {
         link.remove();
@@ -340,16 +356,13 @@ export default function App() {
     <main className="mx-auto flex min-h-screen max-w-xl items-center px-6 py-12">
       <Card className="w-full">
         <CardHeader>
-          <CardTitle>D2R Mobile</CardTitle>
-          <CardDescription>
-            Put the base NSP, update NSP(s), and prod.keys in one folder. DLC and title.keys are
-            optional; some rights-managed packages need matching title keys.
-          </CardDescription>
+          <CardTitle>{t("dmWebTitle")}</CardTitle>
+          <CardDescription>{t("dmWebInstructions")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-3">
             <Button variant="outline" onClick={() => void choose()} disabled={!ready || busy}>
-              Choose folder
+              {t("dmWebChoose")}
             </Button>
             <Button
               onClick={() => void generate()}
@@ -362,7 +375,7 @@ export default function App() {
                   aria-hidden="true"
                 />
               )}
-              {generating ? "Generating IPA…" : "Generate unsigned IPA"}
+              {generating ? t("dmWebGenerating") : t("dmWebGenerate")}
             </Button>
             {busy && (
               <Button
@@ -375,21 +388,19 @@ export default function App() {
                   pendingGenerationStatus.current = null;
                   pendingRomfsProgress.current = undefined;
                   setRomfsProgress(null);
-                  setStatus("Cancelling… Waiting for the current operation to stop.");
-                  appendActivity("Cancellation requested", true);
+                  setStatus(t("dmWebCancellingWait"));
+                  appendActivity(t("dmWebCancellationRequested"), true);
                 }}
               >
-                {cancelling ? "Cancelling…" : "Cancel"}
+                {cancelling ? t("dmWebCancelling") : t("dmWebCancel")}
               </Button>
             )}
           </div>
           {nspNames.length > 0 && (
             <fieldset className="space-y-2 rounded-md border p-3" disabled={!ready || busy}>
-              <legend className="px-1 text-sm font-medium">Packages to use</legend>
+              <legend className="px-1 text-sm font-medium">{t("dmWebPackages")}</legend>
               <p id="package-selection-help" className="text-xs text-muted-foreground">
-                Base and updates are preselected when filenames identify one base and its updates;
-                otherwise all packages are selected. Review your selection. Include DLC for Warlock
-                content; excluded files stay untouched.
+                {t("dmWebSelectionHelp")}
               </p>
               {nspNames.map((name) => (
                 <label key={name} className="flex items-start gap-2 text-sm break-all">
@@ -416,8 +427,8 @@ export default function App() {
                 className="text-xs text-muted-foreground"
                 role="status"
               >
-                {selectedNsps.size} of {nspNames.length} package(s) selected.
-                {selectedNsps.size === 0 ? " Select at least one package to generate an IPA." : ""}
+                {t("dmWebSelectedCount", selectedNsps.size, nspNames.length)}
+                {selectedNsps.size === 0 ? t("dmWebSelectOne") : ""}
               </p>
             </fieldset>
           )}
@@ -425,13 +436,10 @@ export default function App() {
             <div className="space-y-2">
               <Button asChild>
                 <a href={download.url} download={download.fileName}>
-                  Download IPA
+                  {t("dmWebDownload")}
                 </a>
               </Button>
-              <p className="text-xs text-muted-foreground">
-                Your browser controls where the IPA is saved. If the download did not start, use
-                this button.
-              </p>
+              <p className="text-xs text-muted-foreground">{t("dmWebDownloadHelp")}</p>
             </div>
           )}
           <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
@@ -440,36 +448,40 @@ export default function App() {
           {generating && (
             <div className="space-y-2 rounded-md border bg-muted/50 p-3 text-sm">
               <p className="font-medium">
-                {cancelling ? "Stopping generation" : "Generation in progress"}
+                {cancelling ? t("dmWebStopping") : t("dmWebInProgress")}
               </p>
               <progress
                 className="h-2 w-full accent-primary"
                 aria-label={
                   cancelling
-                    ? "Stopping IPA generation"
+                    ? t("dmWebStoppingAria")
                     : romfsProgress
-                      ? `${romfsProgress.phase === "base" ? "Base" : "Merged update"} RomFS verification`
-                      : "IPA generation in progress"
+                      ? t(
+                          "dmWebVerification",
+                          t(romfsProgress.phase === "base" ? "dmWebBase" : "dmWebMerged"),
+                        )
+                      : t("dmWebProgressAria")
                 }
                 value={cancelling ? undefined : romfsProgress?.percent}
                 max={100}
               />
               <p className="text-xs text-muted-foreground">
                 {cancelling
-                  ? "Waiting for cancellation and cleanup to finish."
+                  ? t("dmWebWaitCleanup")
                   : romfsProgress
-                    ? `${romfsProgress.phase === "base" ? "Base" : "Merged update"} RomFS: ${romfsProgress.percent}% verified.`
-                    : "Large packages can take several minutes to verify, even when the activity log is quiet."}
+                    ? t(
+                        "dmWebVerificationPercent",
+                        t(romfsProgress.phase === "base" ? "dmWebBase" : "dmWebMerged"),
+                        romfsProgress.percent,
+                      )
+                    : t("dmWebLargePackages")}
               </p>
             </div>
           )}
           <details className="space-y-2 text-xs text-muted-foreground">
-            <summary className="cursor-pointer">Activity log ({activity.length})</summary>
-            <p>
-              Only stages, counts and safe error codes. No key contents or selected filenames. Kept
-              in this tab, not uploaded. Times use your browser's local time.
-            </p>
-            <ol className="max-h-64 overflow-auto break-words space-y-1" aria-label="Activity log">
+            <summary className="cursor-pointer">{t("dmWebLogCount", activity.length)}</summary>
+            <p>{t("dmWebLogHelp")}</p>
+            <ol className="max-h-64 overflow-auto break-words space-y-1" aria-label={t("dmWebLog")}>
               {activity.map((line, index) => (
                 <li key={`${index}-${line}`}>{line}</li>
               ))}
@@ -486,18 +498,16 @@ export default function App() {
                   await navigator.clipboard.writeText(activityBuffer.current.join("\n"));
                   if (!mounted.current || request !== copyRequest.current) return;
                   setCopyStatus(
-                    revision === activityRevision.current
-                      ? "Log copied."
-                      : "Log copied. New entries have arrived; copy again for the latest log.",
+                    revision === activityRevision.current ? t("dmWebCopied") : t("dmWebCopiedNew"),
                   );
                 } catch {
                   if (mounted.current && request === copyRequest.current) {
-                    setCopyStatus("Copy failed. Select the log text and copy it manually.");
+                    setCopyStatus(t("dmWebCopyFailed"));
                   }
                 }
               }}
             >
-              Copy log
+              {t("dmWebCopy")}
             </Button>
             {copyStatus && <p role="status">{copyStatus}</p>}
           </details>
@@ -507,35 +517,40 @@ export default function App() {
                 <>
                   <progress
                     className="h-2 w-full accent-primary"
-                    aria-label="Application files loaded"
+                    aria-label={t("dmWebFilesLoaded")}
                     value={loading.loadedBytes}
                     max={loading.totalBytes}
                   />
                   <p>
-                    {megabytes(loading.loadedBytes)} / {megabytes(loading.totalBytes)} ·{" "}
-                    {loading.completedFiles} / {loading.totalFiles} files ready
+                    {t(
+                      "dmWebFilesReady",
+                      megabytes(loading.loadedBytes),
+                      megabytes(loading.totalBytes),
+                      loading.completedFiles,
+                      loading.totalFiles,
+                    )}
                   </p>
                   <p>
-                    {megabytes(loading.downloadedBytes)} downloaded
+                    {t("dmWebDownloaded", megabytes(loading.downloadedBytes))}
                     {loading.cachedBytes > 0
-                      ? ` · ${megabytes(loading.cachedBytes)} from cache`
+                      ? t("dmWebCached", megabytes(loading.cachedBytes))
                       : ""}
                   </p>
                 </>
               ) : (
-                <progress className="h-2 w-full accent-primary" aria-label={loading.label} />
+                <progress
+                  className="h-2 w-full accent-primary"
+                  aria-label={loadingLabel(loading.phase)}
+                />
               )}
             </div>
           )}
           {(loadFailed || finished) && (
             <Button variant="outline" onClick={() => window.location.reload()}>
-              {loadFailed ? "Reload and retry" : "Reload to start again"}
+              {loadFailed ? t("dmWebReloadRetry") : t("dmWebReload")}
             </Button>
           )}
-          <p className="text-xs text-muted-foreground">
-            The IPA downloads normally. Large game resources stream to a new subfolder inside your
-            selected folder. Existing NSPs and keys are not changed. Files never leave this device.
-          </p>
+          <p className="text-xs text-muted-foreground">{t("dmWebPrivacy")}</p>
         </CardContent>
       </Card>
     </main>

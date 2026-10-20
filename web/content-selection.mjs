@@ -1,4 +1,12 @@
-/** Metadata-only selection. No keys, NCA decryption, patch application, or game support claim. */
+// 根据元数据选择内容，不解密或应用补丁。
+// 依据已解密 CNMT 记录及独立测量的 NCA 清单。
+// Selects content from metadata without decryption or patch application.
+// Based on decrypted CNMT records and independently measured NCA inventory.
+
+/**
+ * 仅按元数据选择。不处理密钥、NCA 解密或补丁应用，也不声称支持游戏。
+ * Metadata-only selection. No keys, NCA decryption, patch application, or game support claim.
+ */
 export class ContentSelectionError extends Error {
   constructor(code, message) {
     super(message);
@@ -90,7 +98,10 @@ function record(r) {
   return out;
 }
 
-/** Parse decrypted, packaged CNMT bytes, not a Meta NCA or installed database record. */
+/**
+ * 解析已解密、已封装的 CNMT 字节，而非 Meta NCA 或已安装数据库记录。
+ * Parse decrypted, packaged CNMT bytes, not a Meta NCA or installed database record.
+ */
 export function parseCnmt(bytes) {
   if (!(bytes instanceof Uint8Array) || bytes.byteLength < 32 || bytes.byteLength > MAX_BYTES)
     fail("INVALID_CNMT_SIZE", "CNMT must be 32 bytes to 16 MiB.");
@@ -129,6 +140,8 @@ export function parseCnmt(bytes) {
     if (contentIds.has(entry.contentId)) fail("DUPLICATE_CONTENT", "Duplicate content ID in CNMT.");
     contentIds.add(entry.contentId);
     if (entry.type === 6) {
+      // 完整补丁内容存在时无需增量片段。
+      // 它们可能共用 ID 偏移，因此排除在可选内容之外。
       // Delta fragments are not needed when the full patch content is present.
       // They may share an ID offset, so keep them out of selectable contents.
       if (type !== "Patch" || entry.attributes !== 0 || entry.idOffset !== 0)
@@ -181,7 +194,10 @@ function choose(candidates, requested, label) {
   return sorted[0];
 }
 
-/** inventory entries must carry independently computed full-NCA SHA-256 and size.
+/**
+ * inventory 条目必须包含独立计算的完整 NCA SHA-256 和大小。
+ * 返回的 DLC 保持独立；此函数绝不叠加 DLC 或应用补丁。
+ * inventory entries must carry independently computed full-NCA SHA-256 and size.
  * Returned DLC stays separate; this function never overlays DLC or applies patches.
  */
 export function resolveContentSelection(records, inventory, options = {}) {

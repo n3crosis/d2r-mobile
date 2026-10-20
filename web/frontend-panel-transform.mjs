@@ -1,4 +1,9 @@
-/** Source-equivalent pixel transform; BC3 encoding remains the encoder client's job. */
+// 依据 dm/ios/tools/gen_fe_rightpanel.py 变换前端面板像素。
+// Transform frontend panel pixels based on dm/ios/tools/gen_fe_rightpanel.py.
+/**
+ * 与源码等价的像素变换；BC3 编码仍由编码器客户端负责。
+ * Source-equivalent pixel transform; BC3 encoding remains the encoder client's job.
+ */
 export const FRONTEND_PANEL_SOURCE = Object.freeze({
   path: "dm/ios/tools/gen_fe_rightpanel.py",
   sha256: "c68ea1e6d5c720eca576b298708cd637d8d2d898d192e34a92c41121a52db424",
@@ -15,7 +20,9 @@ const copies = Object.freeze([
   Object.freeze([232, 52, 58]),
 ]);
 
-/** Copies always read the original pixels, never the already modified output.
+/**
+ * 复制始终读取原始像素，绝不读取已修改输出。整图集解码可能包含最多三列填充。原生 sprite() 在严格断言 401x1080 之前将其裁剪到帧宽。
+ * Copies always read the original pixels, never the already modified output.
  * Whole-atlas decode can include up to three padding columns. Native sprite()
  * crops those to the frame width before its strict 401x1080 assertion.
  */
@@ -66,7 +73,9 @@ export function transformFrontendPanel({
   }
 }
 
-/** Source bytes must be pinned by the trusted release recipe, not by user input.
+/**
+ * 源字节必须由受信任发布配方固定，而非由用户输入固定。原生生成器中没有真实精灵摘要，因此不虚构摘要。
+ * Source bytes must be pinned by the trusted release recipe, not by user input.
  * No real sprite digest is present in the native generator, so none is invented.
  */
 export function createFrontendPanelRecipe({ sha256 } = {}) {

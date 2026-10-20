@@ -1,4 +1,9 @@
-/** Bounded adapter for the CI-proven image subset, NOT a complete asset pipeline. */
+// 依据 CI 已证明的图像操作及 AssetWorker 契约适配有界资源生成。
+// Adapt bounded asset generation using CI-proven image operations and the AssetWorker contract.
+/**
+ * CI 已证明图像子集的有界适配器，并非完整资源流水线。
+ * Bounded adapter for the CI-proven image subset, NOT a complete asset pipeline.
+ */
 export const ASSET_ADAPTER_CAPABILITIES = Object.freeze({
   completeAssetPipeline: false,
   imageDefaultFrameV31: true,
@@ -16,7 +21,7 @@ export const ASSET_ADAPTER_LIMITS = Object.freeze({
 });
 export class AssetAdapterError extends Error {
   constructor(code) {
-    super(code); // Never include local paths, user data or worker exception text.
+    super(code); // 绝不包含本地路径、用户数据或工作线程异常文本。 | Never include local paths, user data or worker exception text.
     this.name = "AssetAdapterError";
     this.code = code;
   }
@@ -52,6 +57,7 @@ function checkedRecipes(recipes) {
     if (!recipe.outputs || typeof recipe.outputs !== "object" || Array.isArray(recipe.outputs))
       fail("ASSET_INVALID_OUTPUTS");
     const outputs = Object.entries(recipe.outputs).map(([name, path]) => {
+      // 原始 RGBA、生成的 C 和覆盖计划都不是打包后的应用资源。
       // Raw RGBA, generated C and overlay plans are not packaged application assets.
       if (!["frame.png", "frame.sprite"].includes(name)) fail("ASSET_UNSUPPORTED_OUTPUT");
       path = safePath(path);
@@ -77,6 +83,7 @@ async function abortable(action, signal) {
     signal.addEventListener("abort", abort, { once: true });
   });
   try {
+    // 在调用可能同步取消的读取器或工作线程之前安装监听器。
     // Listener is installed before invoking a reader/worker which could abort synchronously.
     return await Promise.race([Promise.resolve().then(action), interrupted]);
   } finally {
@@ -84,10 +91,11 @@ async function abortable(action, signal) {
   }
 }
 /**
- * @param {object} options Trusted build configuration, never read from game content.
+ * @param {object} options 受信任的构建配置，绝不从游戏内容读取。 | Trusted build configuration, never read from game content.
  * @param {Array<{operation:'image-default-frame',input:string,frame?:number,outputs:object}>} options.recipes
- * @param {()=>{run:Function,close:Function}} options.createWorker Existing AssetWorker factory.
+ * @param {()=>{run:Function,close:Function}} options.createWorker 现有 AssetWorker 工厂。 | Existing AssetWorker factory.
  * @param {(extracted:unknown)=>{read:Function}} [options.resolveReader]
+ *   Reader.read(logicalPath,{maxBytes,signal})->Promise<Uint8Array> 自行解析 CASC。
  *   Reader.read(logicalPath,{maxBytes,signal})->Promise<Uint8Array>, resolves CASC itself.
  * @returns {{capabilities:object,generateAssets:Function,dispose:Function}}
  */
@@ -98,7 +106,7 @@ export function createAssetGeneratorAdapter({
   enableV61Png = false,
 } = {}) {
   if (typeof enableV61Png !== "boolean") fail("ASSET_INVALID_V61_OPTION");
-  const jobs = checkedRecipes(recipes); // Validate whole plan before reading any user data.
+  const jobs = checkedRecipes(recipes); // 读取任何用户数据之前验证整个计划。 | Validate whole plan before reading any user data.
   if (typeof createWorker !== "function") fail("ASSET_WORKER_UNAVAILABLE");
   if (resolveReader !== undefined && typeof resolveReader !== "function")
     fail("ASSET_READER_UNAVAILABLE");
@@ -147,6 +155,7 @@ export function createAssetGeneratorAdapter({
       try {
         closeWorker();
       } catch {
+        // 取消竞速仍会及时拒绝；清理绝不透露工作线程细节。
         // The abort race still rejects promptly; cleanup never reveals worker details.
       }
     };
@@ -171,6 +180,7 @@ export function createAssetGeneratorAdapter({
           fail("ASSET_INPUT_LIMIT");
         inputTotal += bytes.byteLength;
         if (inputTotal > ASSET_ADAPTER_LIMITS.totalInputBytes) fail("ASSET_TOTAL_INPUT_LIMIT");
+        // v61 要求显式的仅 PNG 合成，绝不能以原始精灵替代。
         // v61 requires the explicit PNG-only composition, never a raw sprite substitute.
         if (bytes.length >= 6 && bytes[4] === 61 && bytes[5] === 0) {
           if (!enableV61Png || activeWorker.capabilities?.v61Png !== true)

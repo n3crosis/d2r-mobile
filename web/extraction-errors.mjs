@@ -1,4 +1,6 @@
-/** Fixed public diagnostics only. Never expose native exceptions or key/file contents. */
+// 提取诊断依据固定公开代码与共享文字表，绝不暴露原生异常或密钥及文件内容。
+// Extraction diagnostics use fixed public codes and the shared UI table, never native exceptions or key/file contents.
+import { t } from "./i18n.mjs";
 const workerCodes = new Set([
   "EXTRACTION_FAILED",
   "PROD_KEYS_MISSING",
@@ -42,19 +44,19 @@ export function extractionDiagnosticError(code) {
 }
 
 const progressLabels = Object.freeze({
-  "prod-keys-read": "Reading prod.keys locally",
-  "title-keys-read": "Reading title.keys locally",
-  "keys-load": "Loading keys into the isolated reader",
-  "package-index": "Reading NSP indexes",
-  "ticket-found": "Embedded tickets found",
-  "ticket-key-added": "Title keys added from tickets",
-  "ticket-key-reused": "Existing title keys reused",
-  "content-hash": "Hashing package content",
-  "content-header": "Verifying encrypted content headers",
-  "content-metadata": "Verifying package metadata",
-  "romfs-read": "Reading RomFS for verification",
-  "romfs-base": "Verifying base RomFS",
-  "romfs-merged": "Verifying merged update RomFS",
+  "prod-keys-read": "dmWebProgresslabelsProdKeysRead",
+  "title-keys-read": "dmWebProgresslabelsTitleKeysRead",
+  "keys-load": "dmWebProgresslabelsKeysLoad",
+  "package-index": "dmWebProgresslabelsPackageIndex",
+  "ticket-found": "dmWebProgresslabelsTicketFound",
+  "ticket-key-added": "dmWebProgresslabelsTicketKeyAdded",
+  "ticket-key-reused": "dmWebProgresslabelsTicketKeyReused",
+  "content-hash": "dmWebProgresslabelsContentHash",
+  "content-header": "dmWebProgresslabelsContentHeader",
+  "content-metadata": "dmWebProgresslabelsContentMetadata",
+  "romfs-read": "dmWebProgresslabelsRomfsRead",
+  "romfs-base": "dmWebProgresslabelsRomfsBase",
+  "romfs-merged": "dmWebProgresslabelsRomfsMerged",
 });
 export function isExtractionProgress(value) {
   return Boolean(
@@ -74,12 +76,17 @@ export function isExtractionProgress(value) {
 export function extractionProgressLabel(value) {
   if (!isExtractionProgress(value)) return null;
   if (value.stage === "romfs-base" || value.stage === "romfs-merged")
-    return `${progressLabels[value.stage]}: ${value.completed}% (${(value.bytes / 1_000_000).toFixed(1)} MB verified)`;
+    return t(
+      "dmWebRomfsVerified",
+      t(progressLabels[value.stage]),
+      value.completed,
+      (value.bytes / 1_000_000).toFixed(1),
+    );
   const count = value.stage.startsWith("ticket-")
-    ? `: ${value.completed}`
+    ? t("dmWebProgressCount", value.completed)
     : value.total > 0
-      ? ` (${value.completed}/${value.total})`
+      ? t("dmWebProgressFraction", value.completed, value.total)
       : "";
-  const size = value.bytes > 0 ? `; ${(value.bytes / 1_000_000).toFixed(1)} MB` : "";
-  return `${progressLabels[value.stage]}${count}${size}`;
+  const size = value.bytes > 0 ? t("dmWebProgressSize", (value.bytes / 1_000_000).toFixed(1)) : "";
+  return `${t(progressLabels[value.stage])}${count}${size}`;
 }

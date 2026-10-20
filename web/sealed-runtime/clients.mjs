@@ -1,3 +1,5 @@
+// 依据已验证公开清单、完整性摘要及各工作线程协议管理密封运行时。
+// Manage sealed runtimes using verified public inventories, integrity digests and worker protocols.
 import { nativeArtAtlasDescriptor } from "../native-art-texture.mjs";
 import { validateEncodeRequest } from "../toolchain/texture-spike/browser-texture-encoder.mjs";
 import {
@@ -14,7 +16,10 @@ const LIMIT = Object.freeze({
 });
 let attempted = false;
 const sealedRuntimes = new WeakSet();
-/** Accept only live sessions created by this module after verified preload and initialization. */
+/**
+ * 仅接受本模块在已验证预加载及初始化后创建的仍有效会话。
+ * Accept only live sessions created by this module after verified preload and initialization.
+ */
 export function assertSealedRuntime(value) {
   if (!sealedRuntimes.has(value)) fail("A live verified sealed runtime is required");
   return value;
@@ -34,7 +39,10 @@ function safePath(path) {
     path.split("/").every((p) => p && p !== "." && p !== "..")
   );
 }
-/** Pure inventory validation; the caller separately verifies the trusted top digest. */
+/**
+ * 纯清单验证；调用方另行验证受信任的顶层摘要。
+ * Pure inventory validation; the caller separately verifies the trusted top digest.
+ */
 export function validateRuntimeInventory(manifest) {
   if (
     manifest?.version !== 1 ||
@@ -61,7 +69,10 @@ export function validateRuntimeInventory(manifest) {
   if (total > LIMIT.total || manifest.totalBytes !== total) fail("Runtime byte budget mismatch");
   return manifest.assets;
 }
-/** Transport is optional: old manifests continue to fetch their logical paths. */
+/**
+ * 传输可选：旧清单继续通过逻辑路径获取内容。
+ * Transport is optional: old manifests continue to fetch their logical paths.
+ */
 function runtimeTransport(manifest, inventory) {
   if (manifest.transport === undefined)
     return { files: inventory, totalBytes: manifest.totalBytes, entries: undefined };
@@ -123,6 +134,7 @@ function runtimeTransport(manifest, inventory) {
   }
   return { files, totalBytes: transport.totalBytes, entries };
 }
+// 私有输入打开之前，只有已验证的公开清单资源能进入此缓存。
 // Only verified public inventory assets enter this cache, before private inputs are opened.
 const PUBLIC_CACHE = "d2r-public-runtime-sha256-v1";
 const DOWNLOAD_CONCURRENCY = 4;
@@ -165,6 +177,7 @@ async function read(url, cap, signal, onChunk) {
   );
   try {
     const response = await fetch(url, {
+      // 为所有者私有 Sites 保留托管会话；URL 均同源。
       // Preserve the hosting session for owner-private Sites; URLs are same-origin.
       credentials: "same-origin",
       redirect: "error",
@@ -177,6 +190,7 @@ async function read(url, cap, signal, onChunk) {
     signal?.removeEventListener("abort", abort);
   }
 }
+// 浏览器存储失败不得阻碍不使用缓存的公开下载路径。
 // A browser storage failure must not prevent the uncached public-download path.
 async function optionalStorage(operation) {
   let timer;
@@ -237,6 +251,8 @@ function channel(worker, onFatal, onStage) {
   const stop = (reason = new Error("Sealed runtime closed")) => {
     if (closed) return;
     closed = true;
+    // 原生终止不发出事件。先通知已获取的提取
+    // 传输，使其拒绝队列请求并清除请求截止计时器。
     // Native termination emits no event. Notify the acquired extraction
     // transport first so it can reject its queue and clear request deadlines.
     if (taken) worker.dispatchEvent(new Event("error", { cancelable: true }));
@@ -321,7 +337,9 @@ function channel(worker, onFatal, onStage) {
     },
   };
 }
-/** Trusted application bootstrap only. Call before asking for private files/keys.
+/**
+ * 仅用于受信任的应用引导。在请求私有文件或密钥之前调用。manifestSha256 必须来自构建生成的 runtime-integrity.mjs，绝不能来自用户输入。只有所有请求的实际运行时都使用已验证公开字节初始化后才兑现。
+ * Trusted application bootstrap only. Call before asking for private files/keys.
  * manifestSha256 MUST come from the built runtime-integrity.mjs, never user input.
  * Resolves only after every requested actual runtime has initialized with verified public bytes.
  */
@@ -420,6 +438,7 @@ export async function prepareSealedRuntime({
             if (value.length === record.bytes && (await hash(value)) === record.sha256)
               return { value };
           } catch {
+            // 截断或超大的缓存记录绝不会被信任或保留。
             // A truncated or oversized cache record is never trusted or retained.
           }
           await publicCache.delete(key);
@@ -459,6 +478,7 @@ export async function prepareSealedRuntime({
     );
     if (downloads.signal.aborted) throw downloads.signal.reason;
     if (cache) {
+      // 仅逐出我们公开缓存中的过期条目，绝不处理任何私有浏览器存储。
       // Evict only obsolete entries from our public cache, never any private browser storage.
       const activeKeys = new Set(downloadFiles.map(cacheKey));
       await optionalStorage(async () => {
@@ -512,6 +532,7 @@ export async function prepareSealedRuntime({
   }
   downloadedAssets.clear();
   verifiedContents.clear();
+  // 允许私有输入前，先验证可执行代码的完整依赖闭包。
   // Validate executable closure before allowing private inputs.
   function bytes(path) {
     const value = assets.get(path);
@@ -582,6 +603,7 @@ export async function prepareSealedRuntime({
     };
   for (const plan of Object.values(plans)) bytes(plan.entry);
   if (signal?.aborted) throw new DOMException("Runtime cancelled", "AbortError");
+  // 原型：没有页面级 CSP 锁定。输入处理保持在本地。
   // Prototype: no page-level CSP lockdown. Input handling remains local.
   const channels = {},
     urls = [];
@@ -646,6 +668,8 @@ export async function prepareSealedRuntime({
         fail("Actual runtime initialization/transfer failed");
       initialized[name] = result;
     }
+    // 公开清单字节仍可通过副本访问，绝不通过加载器或 fetch 回调提供。
+    // 它们不包含私有任务输入，并在此会话关闭时丢弃。
     // Public inventory bytes remain available by copy, never via a loader/fetch callback.
     // They contain no private job inputs and are discarded when this session closes.
     function readPublicAsset(path) {

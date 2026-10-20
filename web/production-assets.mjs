@@ -1,4 +1,9 @@
-/** Native asset ordering; all readers come from authenticated extraction. */
+// 依据原生资源生成器及提取能力契约组合生产资源阶段。
+// Compose production asset stages from native asset generators and extraction capability contracts.
+/**
+ * 原生资源顺序；所有读取器均来自已认证提取。
+ * Native asset ordering; all readers come from authenticated extraction.
+ */
 import { readAuthenticatedAssets } from "./extraction-job-adapter.mjs";
 import { generateNativeArt } from "./native-art-generator.mjs";
 import { generateHud } from "./hud-generator.mjs";

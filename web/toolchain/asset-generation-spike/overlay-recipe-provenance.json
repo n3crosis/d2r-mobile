@@ -3,7 +3,7 @@
   "dm/ios/tools/touch_layout.py": "f24d5e2460fdb9642e75c965eed214a4b277516557e7a6897d193dcfe75015a7",
   "dm/ios/tools/merc_slots.py": "79f5d786bdf36e30c0b115a4e2caab4ac460c817afdd27ca2fab4c7d34553e6b",
   "dm/ios/tools/touch_strings.py": "bf8b853cdbefe8adfd0c15d91df8d9c5402879eaad453c4d8d8e7c422b384648",
-  "dm/ios/tools/dm_i18n.py": "bee753ff1e5cf897f417bcd308679d3fb840870e8bd97bb6c1c835f1da7c3412",
+  "dm/ios/tools/dm_i18n.py": "e0a9c1ee8285e798cb3cf588c04c6e7275a9d053c91fee558d3126faf029f274",
   "dm/ios/tools/drop_light.py": "98b6d465c5b3835c99e0a10da46a5421f176f2cefdaff23a636e12b2923a782d",
   "dm/ios/tools/pouch_layout.py": "56429f4f578954a693a080c10887408339a1d73f2f59a3f76078c9bb5c4f32cf",
   "dm/ios/tools/wide_stash.py": "80e9250950926d36ea3928ed64ca3f1f616cc9109051f1c6af4a9f737796bdf3",
@@ -13,7 +13,7 @@
   "dm/ios/tools/annot_drop.py": "c30b12df91cd9b7186481366c2012ece9098b344e8aad524d67ae7a8d0715368",
   "dm/ios/tools/gen_paths.py": "37bd6bdca36cbd9015ccc370e0492da26885c69c73dbfe21969f02efc59f1430",
   "dm/ios/tools/gen_trove_art.py": "d7c57fa5854fd845776b4a294d1198be3b902dc262c9dd35167589e42127f6c2",
-  "dm/i18n/ui_text.tsv": "8e23cd353ef51ea8a6a5e60baa553e88c3799d43d7571d17ae51b7395a7573d0",
+  "dm/i18n/ui_text.tsv": "902d872731b9357104478e66e5c98195e886e573fbb0abbd2a4177b43a4848c7",
   "dm/host/dm_kills.c": "8a0de7a29ce473621dc94eee60fc397f14058309eb1e96ba394a54835d1bb436",
   "dm/ios/NativeHUD/touch/close.png": "52f0af458afde67fa4d1e46069e24f38a96aaa83cbbb880501cc778ff909545f"
 }

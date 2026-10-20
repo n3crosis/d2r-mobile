@@ -1,4 +1,5 @@
-// 完整 JS/WASM 资产闭包：仅接受固定清单的字节，不下载依赖、不回退 Python。 | Complete JS/WASM asset closure: accepts pinned inventory bytes only, without dependency downloads or Python fallback.
+// 完整 JS/WASM 资产闭包：仅接受固定清单的字节，不下载依赖、不回退 Python。 依据资产清单、固定模块工厂与各转换器的操作约定。
+// Complete JS/WASM asset closure: accepts pinned inventory bytes only, without dependency downloads or Python fallback. Based on the asset inventory, pinned module factories and transformer operation contracts.
 import { verifyWasmModule } from "./wasm-contract.mjs";
 import { OPERATION_LIMITS } from "./contract.mjs";
 import { hasAssetTransform, executeAssetTransform } from "../asset-transforms-js/transforms.mjs";

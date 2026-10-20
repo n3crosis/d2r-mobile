@@ -1,7 +1,10 @@
+// 依据固定 WASM 模块与提取引擎实现串行、受限的 Worker 消息入口。
+// Implement a serialized, restricted Worker message entrypoint based on the fixed WASM module and extraction engine.
 import { extractionWorkerErrorCode } from "../../extraction-errors.mjs";
 import factory from "./dist/hactool-boundary.mjs";
 import { createBoundary } from "./browser-boundary.mjs";
 import { createExtractionEngine } from "./extraction-engine.mjs";
+// 不接受调用方提供的模块 URL、源代码、原生名称或文件系统路径。
 // No caller-supplied module URLs, source code, native names or filesystem paths.
 const ready = createBoundary(factory).then((boundary) =>
   createExtractionEngine(boundary, {
@@ -39,11 +42,13 @@ self.onmessage = async ({ data }) => {
       self.close();
     }
   } catch (error) {
+    // 错误意味着终止；绝不序列化解析器或原生文本，也不序列化含密钥的状态。
     // An error is terminal. Never serialize parser/native text or key-bearing state.
     try {
       await (await ready).execute("dispose");
     } catch {
-      /* terminate regardless */
+      /* 无论如何都终止
+       * terminate regardless */
     }
     reject(id, error);
     closed = true;

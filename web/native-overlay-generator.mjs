@@ -1,4 +1,8 @@
-/** Original native layout/table/string recipe plus real CASC delta serialization.
+// 依据原生覆盖配方及 CASC 增量写入契约生成覆盖资源。
+// Generate overlay assets from native overlay recipes and the CASC delta-writing contract.
+/**
+ * 原始原生布局、表及字符串配方，加上真实 CASC 增量序列化。受信任的生成图像按精确原生路径进入；游戏字节只能经提取适配器的私有已认证能力进入。不复制整个 RomFS。
+ * Original native layout/table/string recipe plus real CASC delta serialization.
  * Trusted generated art enters by exact native path; game bytes only through the
  * extraction adapter's private authenticated capability. No whole RomFS copy.
  */
@@ -91,6 +95,8 @@ async function manifestInputs(romfs, logicalAssets, signal) {
     projected.push(row);
     if (!needed(key) || selected.has(key)) return;
     const actual = logicalAssets.lookup(key);
+    // 原生变换选择清单中第一个匹配行，而通用
+    // CASC 读取器索引最后一行。不要悄悄改变重复项语义。
     // Native transforms choose the first matching manifest row, while the generic
     // CASC reader indexes the last. Do not silently change duplicate semantics.
     if (actual[4] !== f[4] || actual[6] !== f[6] || actual[5] !== f[5])

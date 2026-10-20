@@ -1,3 +1,5 @@
+// 依据显式适配器契约及 ZIP 写入器提交边界协调本地打包事务。
+// Coordinate local packaging transactions from explicit adapter contracts and ZIP writer commit boundaries.
 import { isExtractionDiagnosticCode, extractionProgressLabel } from "./extraction-errors.mjs";
 import { discoverNspFiles, discoverNspFolder } from "./nsp-input.mjs";
 import { resolveContentSelection } from "./content-selection.mjs";
@@ -5,7 +7,10 @@ import { validateShellContract, validateAssemblyInventory } from "./shell-contra
 import { writeZip } from "./zip-writer.mjs";
 import { writeZip64, planZip64 } from "./zip64-writer.mjs";
 
-/** Explicit capabilities, not implementations or evidence of real conversion support. */
+/**
+ * 显式能力声明，不是实现，也不是支持真实转换的证据。
+ * Explicit capabilities, not implementations or evidence of real conversion support.
+ */
 export const REQUIRED_PACKAGING_ADAPTERS = Object.freeze([
   "openSecretSession",
   "inspectContents",
@@ -39,10 +44,23 @@ const labels = Object.freeze({
   commit: "Finalizing the unsigned archive",
 });
 
-/** @typedef {{path:string,size:number,mode:number,signature?:{kind:string,offset:number,size:number},chunks:()=>AsyncIterable<Uint8Array>}} OutputEntry */
-/** @typedef {{write:(bytes:Uint8Array)=>Promise<void>,close:()=>Promise<void>,abort:(error:Error)=>Promise<void>}} OutputSink */
-/** @typedef {{signal:AbortSignal, inputs?:object, session?:object, selection?:object, extracted?:unknown}} AdapterContext */
 /**
+ * 输出条目类型。
+ * Output entry type.
+ * @typedef {{path:string,size:number,mode:number,signature?:{kind:string,offset:number,size:number},chunks:()=>AsyncIterable<Uint8Array>}} OutputEntry
+ */
+/**
+ * 输出接收端类型。
+ * Output sink type.
+ * @typedef {{write:(bytes:Uint8Array)=>Promise<void>,close:()=>Promise<void>,abort:(error:Error)=>Promise<void>}} OutputSink
+ */
+/**
+ * 适配器上下文类型。
+ * Adapter context type.
+ * @typedef {{signal:AbortSignal, inputs?:object, session?:object, selection?:object, extracted?:unknown}} AdapterContext
+ */
+/**
+ * 适配器是受信任的本地能力，必须遵守 signal，避免记录或缓存秘密，且只能通过返回的 sink.close() 提交输出。openSecretSession 失败时，必须先清理自身部分创建的工作线程再拒绝。
  * Adapters are trusted local capabilities. They must honor signal, avoid logging/caching
  * secrets, and never commit output except through the returned sink.close(). A failed
  * openSecretSession must clean up its own partially-created worker before rejecting.
@@ -59,19 +77,23 @@ const labels = Object.freeze({
  * @property {(context:object)=>Promise<{valid:boolean}>} validateArchive
  * @property {(context:{signal:AbortSignal})=>Promise<void>} cleanup
  */
-/** @typedef {{stage:string,state:string,label:string}} PackagingProgress */
+/**
+ * 打包进度类型。
+ * Packaging progress type.
+ * @typedef {{stage:string,state:string,label:string}} PackagingProgress
+ */
 /**
  * @typedef {object} PackagingJobOptions
  * @property {File[]|FileList|FileSystemDirectoryHandle} input
  * @property {PackagingAdapters} adapters
  * @property {AbortSignal} [signal]
  * @property {object} [selectionOptions]
- * @property {string[]} [selectedNspNames] Package filenames to use from the selected folder.
- * @property {"extraction"|"archive"} [secretLifetime] Default extraction; explicit archive mode permits isolated lazy plaintext readers until writing finishes.
- * @property {"zip32"|"zip64"} [archiveFormat] ZIP64 is explicit opt-in, not an iOS compatibility claim.
- * @property {number} [maxOutputBytes] Required positive safe-integer archive budget for ZIP64.
- * @property {number} [concurrency] Maximum concurrent generators (1–3; default 2).
- * @property {(progress:PackagingProgress)=>void} [onProgress] Observer only; exceptions ignored.
+ * @property {string[]} [selectedNspNames] 所选文件夹中要使用的包文件名。 | Package filenames to use from the selected folder.
+ * @property {"extraction"|"archive"} [secretLifetime] 默认为 extraction；显式 archive 模式允许隔离的惰性明文读取器存活至写入结束。 | Default extraction; explicit archive mode permits isolated lazy plaintext readers until writing finishes.
+ * @property {"zip32"|"zip64"} [archiveFormat] ZIP64 需显式选择，不代表 iOS 兼容性。 | ZIP64 is explicit opt-in, not an iOS compatibility claim.
+ * @property {number} [maxOutputBytes] ZIP64 必需的正安全整数归档预算。 | Required positive safe-integer archive budget for ZIP64.
+ * @property {number} [concurrency] 最大并发生成器数（1–3，默认 2）。 | Maximum concurrent generators (1–3; default 2).
+ * @property {(progress:PackagingProgress)=>void} [onProgress] 仅作观察，忽略异常。 | Observer only; exceptions ignored.
  */
 export class PackagingJobError extends Error {
   constructor(cause, report) {
@@ -86,6 +108,7 @@ const assertion = (condition) => {
 const comparePaths = (a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
 
 /**
+ * 不集成 UI，也不提供转换回退。仅在完整验证、临时资源清理和 sink.close 完成后兑现。原始错误作为 cause 供受信任调用方使用，绝不可用于 UI 或日志；只有 report 可安全展示给用户。
  * No UI integration or conversion fallback. Resolves only after full validation,
  * temporary-resource cleanup and sink.close. Original errors are available as cause
  * for trusted callers, NEVER suitable for UI/logging; only report is user-safe.
@@ -94,7 +117,7 @@ const comparePaths = (a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
 export async function runPackagingJob(options) {
   const controller = new AbortController();
   const signal = controller.signal;
-  const abort = () => controller.abort(); // Never copy caller-supplied abort reasons.
+  const abort = () => controller.abort(); // 绝不复制调用方提供的取消原因。 | Never copy caller-supplied abort reasons.
   options.signal?.addEventListener("abort", abort, { once: true });
   if (options.signal?.aborted) abort();
   let stage = "capabilities",
@@ -111,6 +134,7 @@ export async function runPackagingJob(options) {
     try {
       options.onProgress?.(Object.freeze({ stage: name, state, label: labels[name] }));
     } catch {
+      // 观察者不能改变执行、取消任务或暴露回调错误。
       // Observers cannot change execution, cancel the job or expose callback errors.
     }
   };
@@ -121,6 +145,7 @@ export async function runPackagingJob(options) {
     try {
       options.onProgress?.(Object.freeze({ stage: name, state: "running", label, diagnostic }));
     } catch {
+      // 只读进度观察者不能影响任务。
       // Read-only progress observers cannot affect the job.
     }
   };
@@ -141,7 +166,7 @@ export async function runPackagingJob(options) {
   const dispose = async () => {
     if (!session) return;
     const current = session;
-    session = undefined; // Disposal is attempted exactly once, including on failure.
+    session = undefined; // 即使失败，也只尝试释放一次。 | Disposal is attempted exactly once, including on failure.
     try {
       await current.dispose();
     } catch (error) {
@@ -170,6 +195,7 @@ export async function runPackagingJob(options) {
   };
   let capabilitiesReady = false;
   try {
+    // 在发现文件、打开密钥或创建输出之前就以关闭方式拒绝不满足条件的操作。
     // Fail closed BEFORE even discovering files, opening keys or creating output.
     assertion(
       adapters && REQUIRED_PACKAGING_ADAPTERS.every((key) => typeof adapters[key] === "function"),
@@ -234,6 +260,9 @@ export async function runPackagingJob(options) {
       }),
     );
     if (options.secretLifetime !== "archive") await step("disposal", dispose);
+    // 生成器不会收到输入或密钥文件句柄，也不会收到秘密会话引用。
+    // 显式 archive 模式仅保留隔离会话，并通过受信任提取提供的有界、
+    // 已认证明文读取能力访问它。
     // Generators receive no input/key-file handles or secret-session reference.
     // Explicit archive mode retains only the isolated session behind bounded,
     // authenticated plaintext read capabilities supplied by trusted extraction.
@@ -259,6 +288,7 @@ export async function runPackagingJob(options) {
         }
       }
     };
+    // 只有这个有界池会并发运行。清理前先等待所有已启动工作结束。
     // Only this bounded pool runs concurrently. Drain all started work before cleanup.
     await Promise.all(Array.from({ length: options.concurrency ?? 2 }, worker));
     if (firstFailure) {
@@ -293,6 +323,7 @@ export async function runPackagingJob(options) {
       ...shell.entries,
       ...generatedEntries.map((entry) => ({ ...entry, path: assembly.base + entry.path })),
     ].sort(comparePaths);
+    // 将实际流式条目绑定到已验证元数据，不允许未经检查的额外外壳文件。
     // Bind actual streamed entries to validated metadata; no unchecked shell extras.
     const metadata = (list) =>
       list.map(({ path, size, mode }) => ({ path, size, mode })).sort(comparePaths);
@@ -300,6 +331,7 @@ export async function runPackagingJob(options) {
     const manifest = Object.freeze(metadata(entries).map(Object.freeze));
     const archiveEntries = entries.map((entry) => ({ ...entry, mode: entry.mode & 0o777 }));
     const zip64 = options.archiveFormat === "zip64";
+    // 打开任何暂存目标之前，拒绝超出预算的 ZIP64 元数据。
     // Reject over-budget ZIP64 metadata before opening any staged destination.
     if (zip64) planZip64(archiveEntries, { maxTotalBytes: options.maxOutputBytes });
     const result = await step("output", async () => {
@@ -314,6 +346,8 @@ export async function runPackagingJob(options) {
           write: (bytes) => output.write(bytes),
           abort: abortOutput,
           close: async () => {
+            // 所有输出条目生产器都已结束，因而不再需要
+            // 惰性提取；在验证或提交之前释放秘密。
             // All output entry producers have drained. Lazy extraction can no
             // longer be needed; dispose secrets before validating or committing.
             if (session) await step("disposal", dispose);
@@ -326,6 +360,7 @@ export async function runPackagingJob(options) {
             stage = "commit";
             emit("commit", "running");
             commitStarted = true;
+            // 特意不在 close 之后检查取消：close 就是提交边界。
             // Deliberately no post-close cancellation check: close is the commit boundary.
             await output.close();
             committed = true;
@@ -350,13 +385,13 @@ export async function runPackagingJob(options) {
     try {
       await dispose();
     } catch {
-      /* Collected above; preserve primary cause. */
+      /* 已在上方收集，保留主要原因。 | Collected above; preserve primary cause. */
     }
     if (capabilitiesReady) {
       try {
         await cleanup();
       } catch {
-        /* Collected above; preserve primary cause. */
+        /* 已在上方收集，保留主要原因。 | Collected above; preserve primary cause. */
       }
     }
     await abortOutput();

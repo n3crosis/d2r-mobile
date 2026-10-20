@@ -1,4 +1,12 @@
-/** Metadata-only shell/assembly contract. No ZIP reads, writes, content verification or signing. */
+// 验证仅元数据的外壳与组装约定。
+// 依据可信发布配方及独立观察的包元数据。
+// Validates the metadata-only shell and assembly contract.
+// Based on trusted release recipes and independently observed bundle metadata.
+
+/**
+ * 仅元数据的外壳/组装约定。不读取或写入 ZIP，不验证内容或签名。
+ * Metadata-only shell/assembly contract. No ZIP reads, writes, content verification or signing.
+ */
 export const SHELL_LIMITS = Object.freeze({
   entries: 20000,
   requiredPaths: 1024,
@@ -14,6 +22,8 @@ function path(value) {
     typeof value !== "string" ||
     !value.length ||
     value.length > SHELL_LIMITS.path ||
+    // Apple 包资源使用 @2x~ipad 等密度/设备后缀。
+    // 这些是字面文件名字符，不作路径或 URL 解释。
     // Apple bundle resources use density/device suffixes such as @2x~ipad.
     // These are literal filename characters, not path or URL interpretation.
     !/^[A-Za-z0-9_./ @~-]+$/.test(value) ||
@@ -139,6 +149,7 @@ function inventory(entries) {
       }
       nodes.set(key, { original, directory: dir });
     }
+    // 返回相关元数据的独立快照，绝不移除签名。
     // Return a detached snapshot of the relevant metadata, never strip signatures.
     const copy = { path: name, size: entry.size, mode: entry.mode };
     if (entry.signature !== undefined) {
@@ -175,7 +186,11 @@ function requiredFile(inv, name) {
   if (inv.nodes.get(name.toLowerCase())?.directory !== false)
     fail(`Missing required file: ${name}`);
 }
-/** Recipe must come from a separately trusted release registry, NOT shell contents.
+/**
+ * 配方必须来自独立可信的发布注册表，而非外壳内容。
+ * observedTargetOS 必须来自独立的 Mach-O/plist 解析，而非 shell_info。
+ * ZIP 元数据条目：{path,size,mode,signature?:{kind:'ad-hoc',offset,size}}。
+ * Recipe must come from a separately trusted release registry, NOT shell contents.
  * observedTargetOS must come from independent Mach-O/plist parsing, not shell_info.
  * ZIP metadata entries: {path,size,mode,signature?:{kind:'ad-hoc',offset,size}}.
  */
@@ -231,7 +246,10 @@ export function validateShellContract({
     requiredPaths: required,
   };
 }
-/** Revalidates shell rather than accepting a forged validation result. Generated
+/**
+ * 重新验证外壳，不接受伪造的验证结果。生成的条目使用相对于 app 的路径；
+ * observedOutputTargetOS 由独立解析获得。
+ * Revalidates shell rather than accepting a forged validation result. Generated
  * entries use app-relative paths; observedOutputTargetOS is independently parsed.
  */
 export function validateAssemblyInventory({ shell, generatedEntries, observedOutputTargetOS }) {
@@ -243,6 +261,7 @@ export function validateAssemblyInventory({ shell, generatedEntries, observedOut
     const allowed = [...r.requiredPaths, ...r.extraFiles].some((p) =>
       p.endsWith("/") ? entry.path.startsWith(p) : entry.path === p,
     );
+    // 仅允许显式目录条目作为获准输出的祖先。
     // Explicit directory entries are allowed only as ancestors of approved outputs.
     const ancestor =
       entry.path.endsWith("/") &&
