@@ -111,9 +111,11 @@ async function initialize(data) {
     stdout() {},
     stderr() {},
   });
+  phase = "register-art-kernels";
+  py.registerJsModule("art_kernel_bridge", await import(moduleUrl("art-kernels.mjs")));
   phase = "load-packages";
   const packageErrors = [];
-  await py.loadPackage(["pillow", "numpy"], {
+  await py.loadPackage(["pillow"], {
     checkIntegrity: true,
     messageCallback() {},
     errorCallback(message) {
@@ -121,15 +123,15 @@ async function initialize(data) {
     },
   });
   const packages = {
-    numpy: Object.hasOwn(py.loadedPackages, "numpy"),
     // Pyodide records lock metadata name (Pillow), not normalized lookup key.
     pillow: Object.hasOwn(py.loadedPackages, "Pillow"),
   };
-  if (py.version !== "0.27.7" || !packages.numpy || !packages.pillow)
+  if (py.version !== "0.27.7" || !packages.pillow)
     throw new Error(
       `Runtime package initialization incomplete ${JSON.stringify(packages)}: ${packageErrors.join("; ")}`,
     );
   for (const name of [
+    "art_pixels.py",
     "native_functions.py",
     "core.py",
     "derived.py",
@@ -158,7 +160,6 @@ async function initialize(data) {
     py.FS.writeFile(`/home/pyodide/${name}`, bytes);
   }
   for (const [stage, code] of [
-    ["import-numpy", "import numpy"],
     ["import-pillow", "from PIL import Image"],
     ["import-native-functions", "import native_functions"],
     ["import-derived", "import derived"],

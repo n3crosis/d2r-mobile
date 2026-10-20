@@ -21,7 +21,7 @@ const substitutions = {
 };
 await mkdir(out, { recursive: true });
 const vendor = JSON.parse(await readFile(new URL("vendor/pyodide/vendor-manifest.json", source)));
-if (vendor.version !== "0.27.7" || Object.keys(vendor.packages).sort().join(",") !== "numpy,pillow")
+if (vendor.version !== "0.27.7" || Object.keys(vendor.packages).sort().join(",") !== "pillow")
   throw new Error("Unexpected Pyodide dependency closure; review required");
 const assets = [];
 for (const name of Object.keys(vendor.sha256).sort()) {
@@ -42,6 +42,7 @@ for (const name of Object.keys(vendor.sha256).sort()) {
   await add(name, bytes);
 }
 for (const name of [
+  "art_pixels.py",
   "native_functions.py",
   "core.py",
   "derived.py",
@@ -64,8 +65,13 @@ for (const name of [
   "remaining_art_original.py",
   "trove_original.py",
   "remaining_art.py",
-])
-  await add(name, await readFile(new URL(`generated/${name}`, source)));
+]) {
+  const bytes = await readFile(new URL(`generated/${name}`, source));
+  if (/\b(?:import\s+numpy|from\s+numpy\b)/.test(bytes.toString("utf8")))
+    throw new Error(`Unmigrated NumPy dependency: ${name}`);
+  await add(name, bytes);
+}
+await add("art-kernels.mjs", await readFile(new URL("../art-kernels/kernels.mjs", here)));
 await add("worker.mjs", await readFile(new URL("pyodide-worker.mjs", here)));
 async function add(path, bytes) {
   if (!bytes.length || bytes.length > 32 * 1024 * 1024)
@@ -116,5 +122,9 @@ await copyFile(
 await cp(
   new URL("generated/provenance.json", source),
   new URL("licenses/native-source-provenance.json", out),
+);
+await copyFile(
+  new URL("../art-kernels/provenance.json", here),
+  new URL("licenses/art-kernel-source-provenance.json", out),
 );
 console.log(JSON.stringify({ assets, manifestSha256: hash(manifest) }));

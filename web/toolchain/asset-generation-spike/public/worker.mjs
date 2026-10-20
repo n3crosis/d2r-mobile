@@ -1,9 +1,12 @@
 import { loadPyodide } from "./vendor/pyodide/pyodide.mjs";
+import * as kernels from "./generated/art-kernels.mjs";
 let runtime;
 async function initialize() {
   const py = await loadPyodide({ indexURL: new URL("./vendor/pyodide/", import.meta.url).href });
-  await py.loadPackage(["pillow", "numpy"], { checkIntegrity: true });
+  await py.loadPackage(["pillow"], { checkIntegrity: true });
+  py.registerJsModule("art_kernel_bridge", kernels);
   for (const name of [
+    "art_pixels.py",
     "native_functions.py",
     "core.py",
     "derived.py",
@@ -26,8 +29,6 @@ async function initialize() {
     "remaining_art_original.py",
     "trove_original.py",
     "remaining_art.py",
-    "original_bc3.py",
-    "bounded_encoder.py",
   ]) {
     const response = await fetch(new URL(`./generated/${name}`, import.meta.url));
     if (!response.ok) throw new Error(`Missing packaged core: ${name}`);

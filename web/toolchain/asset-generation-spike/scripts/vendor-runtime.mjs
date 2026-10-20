@@ -37,18 +37,26 @@ async function vendor(name) {
   if (!info || !/^[a-zA-Z0-9_.+-]+$/.test(info.file_name))
     throw new Error(`Invalid package ${name}`);
   for (const dep of info.depends ?? []) await vendor(dep);
-  const response = await fetch(
-    `https://cdn.jsdelivr.net/pyodide/v${version}/full/${info.file_name}`,
-  );
-  if (!response.ok) throw new Error(`Package fetch failed: ${name} ${response.status}`);
-  const bytes = Buffer.from(await response.arrayBuffer());
+  let bytes;
+  try {
+    const cached = await readFile(`${dest}/${info.file_name}`);
+    if (createHash("sha256").update(cached).digest("hex") === info.sha256) bytes = cached;
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  if (!bytes) {
+    const response = await fetch(
+      `https://cdn.jsdelivr.net/pyodide/v${version}/full/${info.file_name}`,
+    );
+    if (!response.ok) throw new Error(`Package fetch failed: ${name} ${response.status}`);
+    bytes = Buffer.from(await response.arrayBuffer());
+  }
   const hash = createHash("sha256").update(bytes).digest("hex");
   if (hash !== info.sha256) throw new Error(`Integrity mismatch: ${name}`);
   await writeFile(`${dest}/${info.file_name}`, bytes);
   hashes[info.file_name] = hash;
 }
 await vendor("pillow");
-await vendor("numpy");
 await writeFile(
   `${dest}/vendor-manifest.json`,
   JSON.stringify(
