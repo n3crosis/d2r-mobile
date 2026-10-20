@@ -57,5 +57,9 @@ set-ID/sticky modes, known signing/provisioning paths, credentials, Switch
 containers, RomFS/ExeFS trees and native bulk archive filename patterns fail.
 This conservative subset is not a complete ZIP/Apple filename implementation.
 Name checks cannot detect renamed secrets, archives or embedded game content.
+The ASCII filename subset includes `@` and `~` for Apple resource suffixes such
+as `AppIcon60x60@2x.png` and `AppIcon76x76@2x~ipad.png`; traversal, absolute
+paths, ambiguous separators, control characters and trailing dots/spaces remain
+rejected.
 External `_CodeSignature` resources are forbidden; embedded Mach-O ad-hoc
 signature metadata is preserved, not confused with these external resources.

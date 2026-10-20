@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import releaseEvidence from "../toolchain/shell-release-evidence/v1.0.18.json" with { type: "json" };
 import {
   validateShellContract,
   validateAssemblyInventory,
@@ -106,6 +107,38 @@ test("one app and required shell files", () => {
   f.shell.entries.shift();
   assert.throws(() => validateShellContract(f.shell), /Missing required file/);
 });
+test("pinned production shell accepts Apple icon density and device suffixes", () => {
+  const targetOS = {
+    platform: "ios",
+    minimumVersion: releaseEvidence.machOBuildVersions[0].minimumVersion,
+  };
+  const shell = {
+    entries: releaseEvidence.entries,
+    shellInfoText: Object.entries(releaseEvidence.shellInfo)
+      .map(([key, value]) => `${key}=${value}`)
+      .join("\n"),
+    shellManifestText: releaseEvidence.requiredPaths.join("\n"),
+    trustedRecipe: {
+      schemaVersion: 1,
+      product: releaseEvidence.shellInfo.PRODUCT,
+      chain: releaseEvidence.shellInfo.CHAIN,
+      kind: "ios",
+      shaderDigest: releaseEvidence.shellInfo.SHADER_SRC,
+      targetOS,
+      requiredPaths: releaseEvidence.requiredPaths,
+      extraFiles: ["dm/pack_info.txt", "dm/content_mode.json"],
+    },
+    observedTargetOS: targetOS,
+  };
+  const result = validateShellContract(shell);
+  assert.equal(result.status, "shell-inventory-valid");
+  for (const icon of ["AppIcon60x60@2x.png", "AppIcon76x76@2x~ipad.png"])
+    assert.ok(result.entries.some((entry) => entry.path === base + icon));
+  assert.deepEqual(
+    result.entries.map((entry) => entry.path),
+    shell.entries.map((entry) => entry.path),
+  );
+});
 test("unsafe paths, duplicate entries, case collisions and ancestor conflicts", () => {
   for (const p of [
     "../escape",
@@ -118,6 +151,16 @@ test("unsafe paths, duplicate entries, case collisions and ancestor conflicts", 
     "a:b",
     "a./b",
     "a /b",
+    "@2x/../escape.png",
+    "~ipad/./escape.png",
+    "AppIcon@2x~ipad.png/../../escape.png",
+    "AppIcon@2x~ipad.png\\escape",
+    "AppIcon@2x~ipad.png:stream",
+    "AppIcon@2x~ipad.png%2fescape",
+    "AppIcon@2x~ipad.png?query",
+    "AppIcon@2x~ipad.png#fragment",
+    "AppIcon@2x~ipad.png.",
+    "AppIcon@2x~ipad.png ",
     "dm/shell_info.txt",
     "DM/extra",
     "Info.plist/child",

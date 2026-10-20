@@ -14,7 +14,9 @@ function path(value) {
     typeof value !== "string" ||
     !value.length ||
     value.length > SHELL_LIMITS.path ||
-    !/^[A-Za-z0-9_./ -]+$/.test(value) ||
+    // Apple bundle resources use density/device suffixes such as @2x~ipad.
+    // These are literal filename characters, not path or URL interpretation.
+    !/^[A-Za-z0-9_./ @~-]+$/.test(value) ||
     value.startsWith("/") ||
     value
       .replace(/\/$/, "")

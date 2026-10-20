@@ -19,6 +19,8 @@ contents = {
  base + 'Demo': b'synthetic-executable:ios:16.0',
  base + 'dm/shell_info.txt': b'PRODUCT=synthetic\nCHAIN=test\nKIND=ios\nSHADER_SRC=0123456789abcdef\n',
  base + 'dm/shell_manifest.txt': '\n'.join(required).encode(),
+ base + 'AppIcon60x60@2x.png': b'synthetic-icon',
+ base + 'AppIcon76x76@2x~ipad.png': b'synthetic-ipad-icon',
  base + 'public.bin': bytes(range(256)) * 512,
 }
 def mode(path): return 0o40755 if path.endswith('/') else (0o100755 if path.endswith('/Demo') else 0o100644)
