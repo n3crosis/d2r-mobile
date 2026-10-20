@@ -25,20 +25,20 @@ AnyPS5 was examined only as an architectural reference for local conversion into
 
 The principal reference is `dm/tools/d2rm_pack.py`, with release instructions in `docs/NO_XCODE.md`. Existing scripts are reference implementations, not browser-ready modules.
 
-| Stage | Existing code and contract | Browser treatment |
-|---|---|---|
-| Shell validation | `read_shell()` requires exactly one Payload/*.app, `dm/shell_manifest.txt`, and `dm/shell_info.txt`; `main()` checks PRODUCT and CHAIN | Independent strict ZIP/manifest parser; pin supported shell hashes and matching recipe versions |
-| Input discovery | `check_env()` requires ExeFS/main, ExeFS/sdk, RomFS/data/build_manifest.psv | Directory picker, required-file report, safe relative paths; no upload |
-| Program rewrite | `patch_nso.py` reads NSO, LZ4-decompresses segments, rewrites ARM64 sites using Capstone, validates build-specific original bytes | Worker-based Python/WASM or isolated JS/WASM implementation; preserve exact instructions and validation |
-| Archive extraction | `dmx.py`: `index`, `lookup`, `read_row`; `casc_overlay.py` reads archives by EKey offset | Local random-access File slices; bounded decode; never ingest all RomFS into a memory filesystem |
-| UI and data | `ios/tools/gen_assets.py` invokes eight generation steps; `gen_vault_table.py`, `gen_hud_exp.py`, `shell_stubs.data()` generate runtime data | Port pure transforms; ship image/font/texture dependencies as browser-ready modules |
-| Overlay | `gen_romfs_overlay.py` and `casc_overlay.py` | Deterministic archive/manifest writer over local storage; preserve format/checksums |
-| Shader extraction | `d2rm_pack.py:get_packs()` enumerates shader resources via dmx; reference expects 162 packs | Incremental extraction, progress and bounded worker queue |
-| Shader translation | `gfx/tools/dmsh_xlate` maps Maxwell machine code to SPIR-V; `dmsh_build.py` uses SPIRV-Cross and postprocessing | Most important feasibility spike; prebuilt browser-compatible translator and pinned SPIRV-Cross, no user toolchain |
-| No-Metal packaging | `nometal_run.py` substitutes source bytes for Metal compilation output; shell recognizes source and compiles on device | Produce the same supported source format directly; do not emulate subprocess monkey-patching |
-| Guest framework | `guest_dylib.py:build`, `write`, `segment`, `adhoc_sig` | Deterministic JS/DataView or portable Python implementation; no Apple linker required |
-| Completion checks | `shaders_done()`, source digest, chain metadata, c1 list and shell manifest | Fail closed on any missing output or mismatch |
-| IPA assembly | Python ZIP writer copies shell and inserts manifest outputs | Streaming ZIP export to a user-selected writable file, atomic completion semantics where available |
+| Stage              | Existing code and contract                                                                                                                   | Browser treatment                                                                                                  |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Shell validation   | `read_shell()` requires exactly one Payload/\*.app, `dm/shell_manifest.txt`, and `dm/shell_info.txt`; `main()` checks PRODUCT and CHAIN      | Independent strict ZIP/manifest parser; pin supported shell hashes and matching recipe versions                    |
+| Input discovery    | `check_env()` requires ExeFS/main, ExeFS/sdk, RomFS/data/build_manifest.psv                                                                  | Directory picker, required-file report, safe relative paths; no upload                                             |
+| Program rewrite    | `patch_nso.py` reads NSO, LZ4-decompresses segments, rewrites ARM64 sites using Capstone, validates build-specific original bytes            | Worker-based Python/WASM or isolated JS/WASM implementation; preserve exact instructions and validation            |
+| Archive extraction | `dmx.py`: `index`, `lookup`, `read_row`; `casc_overlay.py` reads archives by EKey offset                                                     | Local random-access File slices; bounded decode; never ingest all RomFS into a memory filesystem                   |
+| UI and data        | `ios/tools/gen_assets.py` invokes eight generation steps; `gen_vault_table.py`, `gen_hud_exp.py`, `shell_stubs.data()` generate runtime data | Port pure transforms; ship image/font/texture dependencies as browser-ready modules                                |
+| Overlay            | `gen_romfs_overlay.py` and `casc_overlay.py`                                                                                                 | Deterministic archive/manifest writer over local storage; preserve format/checksums                                |
+| Shader extraction  | `d2rm_pack.py:get_packs()` enumerates shader resources via dmx; reference expects 162 packs                                                  | Incremental extraction, progress and bounded worker queue                                                          |
+| Shader translation | `gfx/tools/dmsh_xlate` maps Maxwell machine code to SPIR-V; `dmsh_build.py` uses SPIRV-Cross and postprocessing                              | Most important feasibility spike; prebuilt browser-compatible translator and pinned SPIRV-Cross, no user toolchain |
+| No-Metal packaging | `nometal_run.py` substitutes source bytes for Metal compilation output; shell recognizes source and compiles on device                       | Produce the same supported source format directly; do not emulate subprocess monkey-patching                       |
+| Guest framework    | `guest_dylib.py:build`, `write`, `segment`, `adhoc_sig`                                                                                      | Deterministic JS/DataView or portable Python implementation; no Apple linker required                              |
+| Completion checks  | `shaders_done()`, source digest, chain metadata, c1 list and shell manifest                                                                  | Fail closed on any missing output or mismatch                                                                      |
+| IPA assembly       | Python ZIP writer copies shell and inserts manifest outputs                                                                                  | Streaming ZIP export to a user-selected writable file, atomic completion semantics where available                 |
 
 ### Input and output are different sizes
 
@@ -171,10 +171,28 @@ Acceptance: actual signed-device smoke results are recorded. Until then the accu
 
 ## Implemented checkpoint
 
-The current checkpoint contains `web/preflight.mjs`, `web/guest-framework.mjs`, eleven passing Node synthetic tests, and `web/README.md`. The guest-framework writer matches the stdlib Python reference byte-for-byte on synthetic inputs, including 16 KiB layout, UUID and structural ad-hoc signature page hashes; this is not proof of device acceptance or a completed IPA pipeline. Implemented primitives cover local path validation/conflict detection, bounded random reads (4 MiB per request), cancellation, a Blob input adapter, and a 256-byte NSO header reader. This header reader does **not** verify the supported game build/version. The frontend uses React + TypeScript, Vite, Tailwind CSS 4 and genuine shadcn/ui Button, Card and Alert registry components, with Tailwind utility composition rather than bespoke component CSS. It offers a synthetic demo and an optional read-only ExeFS header check. Component provenance is recorded in `web/SHADCN_PROVENANCE.md`; React dependency installation, lockfile generation, typechecking, production build and actual browser interaction remain unverified because of the current storage/sandbox launch blocker. Real conversion, browser-compiled dependency stacks, shell ZIP validation and IPA generation are not implemented at this checkpoint. M0 above describes the fuller intended milestone, not a claim that it is already finished.
+The current checkpoint has 29 passing Node tests across preflight, deterministic Guest framework generation, streaming ZIP32 output, and synthetic archive export. The Guest writer matches the stdlib Python reference byte-for-byte on synthetic inputs, including 16 KiB layout, UUID and structural ad-hoc signature page hashes. Python zipfile verifies ZIP contents, CRCs, UTF-8 names, timestamps and Unix modes. These checks do not prove device acceptance or a completed IPA pipeline.
+
+The React + TypeScript frontend uses Vite, Tailwind CSS 4 and official shadcn/ui Button, Card and Alert components. It offers a synthetic large-file header demo, optional read-only checks of ExeFS/main and ExeFS/sdk (the two modules required by the native IPA packager), and export of an unmistakably non-installable synthetic ZIP. The export generates tiny fixture inputs, contains no game data or Payload/app layout, streams bounded chunks to a selected local file, and reports generation, saving and commit status. Cancellation discards staged writes where possible; a save picker may leave an empty placeholder, and a committed save cannot be undone by late cancellation.
+
+The ZIP core supports STORE only, not compression or ZIP64. Its initial policy caps the complete archive at 512 MiB, each file at 256 MiB, chunks at 4 MiB, entries at 20,000 and metadata at 8 MiB. The Guest writer separately limits aggregate input/padded image bytes to 128 MiB. These are explicit prototype limits, not measured requirements for the real game. Framework and ZIP processing are not yet worker-integrated.
+
+The initial React/shadcn preview successfully completed a private Sites remote build and deployment on 2026-10-20 without deleting old project artifacts. Subsequent changes must pass the new lint/format/build gates before publication. Independent browser interaction remains unverified because the supported browser runtime was unavailable; no Windows/macOS/device acceptance claim is made. Component provenance is recorded in `web/SHADCN_PROVENANCE.md`.
+
+Real game conversion, shell ZIP reading/validation, browser-compiled conversion dependencies and playable IPA generation remain unimplemented or unverified. The shader toolchain spike, when present, is exploratory and must not be treated as a successful browser translator until its build and differential gates pass. M0–M5 above describe intended acceptance milestones, not claims that all their gates are complete.
 
 ## Evidence and current limits
 
 This plan is based on reading the actual packager, framework writer, shell builder, shader wrapper/project, archive reader and asset-generation code. No game data was read, uploaded or downloaded for this investigation, and no dependency installation or real IPA build is implied. Upstream documentation's device verification describes upstream's native pipeline, not this browser implementation.
 
 The immediate deliverable is the plan plus an honest synthetic preflight foundation. The largest unknown is the practical browser deployment of the shader translation and asset-generation dependencies. Resolve that early, preserve the local-only/no-toolchain user experience, and refuse a completed-package claim until all relevant validation gates pass.
+
+## Browser code quality gates
+
+The browser workspace pins ESLint and Prettier. From `web/`, use `npm run lint`,
+`npm run format:check`, and `npm run format`. Production builds fail on lint
+warnings/errors or formatting drift before TypeScript checking and Vite bundling.
+The scope is new browser JavaScript/TypeScript, JSX, CSS, HTML, JSON and Markdown;
+legacy native C/Python and unrelated documentation are not reformatted. The
+experimental C# shader spike has its own .NET formatting/analyzer checks when the
+SDK is available and is not yet part of browser build acceptance.

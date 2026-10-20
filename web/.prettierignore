@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+**/bin/
+**/obj/
+**/_framework/
+package-lock.json
+# License and upstream provenance remain verbatim.
+SHADCN_LICENSE.md
