@@ -32,7 +32,7 @@ Format evidence: pinned [hactool ivfc.h](https://github.com/SciresM/hactool/blob
 
 ## Pending strict extraction Worker integration
 
-`extraction-worker.mjs` and `extraction-engine.mjs` connect production NSP cataloging, full-NCA SHA256 measurement, authenticated CNMT parsing and internal base/patch selection to token-bound ExeFS and RomFS reads. Selected DLC and multi-program layouts explicitly reject. See [EXTRACTION_ENGINE_SCOPE.md](EXTRACTION_ENGINE_SCOPE.md) for the narrow protocol and streaming-lifetime requirements. Synthetic engine tests and real Worker protocol smoke passed [run 39399152791](https://github.com/n3crosis/d2r-mobile/actions/runs/39399152791); additional main-thread client integration smoke awaits CI; no UI generation is enabled.
+`extraction-worker.mjs` and `extraction-engine.mjs` connect production NSP cataloging, full-NCA SHA256 measurement, authenticated CNMT parsing and internal base/patch selection to token-bound ExeFS and RomFS reads. Selection now requires the exact known D2R base/update/Warlock package evidence through the expansion policy, retaining full DLC hash/signature and signed Data-header checks. Unknown DLC and multi-program layouts reject. Known unlock-only DLC is not a Program RomFS overlay or an ownership claim. See [EXTRACTION_ENGINE_SCOPE.md](EXTRACTION_ENGINE_SCOPE.md) for the narrow protocol and streaming-lifetime requirements. Synthetic engine tests and real Worker protocol smoke passed [run 39399152791](https://github.com/n3crosis/d2r-mobile/actions/runs/39399152791); additional main-thread client integration smoke awaits CI; no UI generation is enabled.
 
 ## Implemented batch and public interface
 

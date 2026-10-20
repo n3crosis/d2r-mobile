@@ -67,6 +67,7 @@ jobs:
             web/toolchain/asset-generation-spike/scripts/package-hud.py
             web/toolchain/asset-generation-spike/src/hud.py
             web/toolchain/asset-generation-spike/test/hud-reference.py
+            web/toolchain/asset-generation-spike/test/build-hud-reference.py
             web/toolchain/asset-generation-spike/src/native_art.py
             web/toolchain/asset-generation-spike/test/native-art-reference.py
             web/toolchain/asset-generation-spike/src/derived.py

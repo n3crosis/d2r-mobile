@@ -8,6 +8,8 @@ on:
       - "web/extraction-job-adapter.mjs"
       - "web/nsp-input.mjs"
       - "web/content-selection.mjs"
+      - "web/d2r-expansion-policy.mjs"
+      - "web/tests/d2r-expansion-policy.test.mjs"
       - "web/romfs-tree.mjs"
       - "web/casc-logical-reader.mjs"
       - "web/tests/*extraction*"
@@ -19,6 +21,8 @@ on:
       - "web/extraction-job-adapter.mjs"
       - "web/nsp-input.mjs"
       - "web/content-selection.mjs"
+      - "web/d2r-expansion-policy.mjs"
+      - "web/tests/d2r-expansion-policy.test.mjs"
       - "web/romfs-tree.mjs"
       - "web/casc-logical-reader.mjs"
       - "web/tests/*extraction*"
@@ -52,7 +56,7 @@ jobs:
           source "$RUNNER_TEMP/nsp-emsdk/emsdk_env.sh"
           bash web/toolchain/nsp-extract-spike/build-wasm.sh
       - name: Run synthetic container tests
-        run: node --test web/toolchain/nsp-extract-spike/*.test.mjs web/tests/extraction-worker-client.test.mjs web/tests/extraction-job-adapter.test.mjs
+        run: node --test web/toolchain/nsp-extract-spike/*.test.mjs web/tests/extraction-worker-client.test.mjs web/tests/extraction-job-adapter.test.mjs web/tests/d2r-expansion-policy.test.mjs
       - name: Install browser test tools from official npm package
         shell: bash
         run: |

@@ -1,5 +1,6 @@
 import { inspectNsp, NSP_INPUT_LIMITS } from "../../nsp-input.mjs";
-import { parseCnmt, resolveContentSelection } from "../../content-selection.mjs";
+import { parseCnmt } from "../../content-selection.mjs";
+import { resolveD2rExpansionSelection } from "../../d2r-expansion-policy.mjs";
 const CHUNK = 65536,
   META_LIMIT = 16 * 1024 * 1024,
   MAX_CONTENTS = 4096;
@@ -131,7 +132,7 @@ export function createExtractionEngine(boundary, { newToken = () => crypto.rando
           const old = contents.get(ids[i]);
           if (old && (old.sha256 !== sha256 || old.size !== record.size)) fail();
           if (old) continue;
-          contents.set(ids[i], { ...record, index: i });
+          contents.set(ids[i], { ...record, index: i, ncaType: header.contentType });
           inventory.push(record);
           if (header.contentType === 1) {
             const count = boundary.open(i, "meta");
@@ -149,9 +150,13 @@ export function createExtractionEngine(boundary, { newToken = () => crypto.rando
       if (operation === "select") {
         requireState("inspected");
         fields(payload.options ?? {}, ["baseVersion", "patchVersion", "dlcVersions"]);
-        selection = resolveContentSelection(records, inventory, payload.options);
-        // DLC Data NCAs and multi-program title layouts need separate explicit adapters.
-        if (selection.dlc.length) fail();
+        selection = resolveD2rExpansionSelection(records, inventory, payload.options);
+        // Require the known add-on's full measured NCA evidence and signed Data
+        // header. This is package-input validation, not entitlement/ownership.
+        // Its unlock-only content is never substituted for Program RomFS.
+        for (const addOn of selection.dlc)
+          for (const content of addOn.contents)
+            if (contents.get(content.contentId)?.ncaType !== 2) fail();
         const program = (row) => {
           const found = row.contents.filter((c) => c.type === 1);
           if (found.length !== 1 || found[0].idOffset !== 0) fail();

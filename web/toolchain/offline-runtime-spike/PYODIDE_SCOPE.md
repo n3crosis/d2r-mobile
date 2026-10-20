@@ -1,4 +1,4 @@
-# Sealed Pyodide asset-worker proof (CI pending)
+# Sealed Pyodide asset-worker proof (Linux CI verified)
 
 This isolated prototype keeps the production UI, production CSP and original
 asset worker unchanged. It uses the actual generated Python core, Pillow and
@@ -81,8 +81,8 @@ WebRTC or top-level navigations.
   execution. This is an environment limitation, not a passing browser result.
 - `.github/workflows/offline-pyodide-checks.yml` rebuilds pinned public dependencies
   and native references, prepares this bundle, and runs the browser proof on CI.
-  Browser execution, including any lazy shared-library load under strict CSP,
-  remains pending. Do not claim Pillow/NumPy isolation verified before it passes.
+  The scoped Linux browser proof passed as recorded below. Other operations,
+  Windows/macOS and production integration remain unverified by this workflow.
 - No private files, key material, user inputs, generated game data, production
   deployment or production enablement are part of this work.
 
@@ -94,7 +94,7 @@ source-lock verification, then failed before runtime initialization because the
 test server's filename regex rejected underscores in the official wheel names.
 The server now admits only the exact generated manifest paths plus the three
 entry files, rather than a narrower inconsistent filename regex. CSP and receipt
-assertions are unchanged. A successful corrected browser run is still required.
+assertions are unchanged. The later successful run below supersedes this harness failure.
 
 ### Package readiness diagnostic correction
 
@@ -106,9 +106,32 @@ under the exact lock metadata name (`Pillow`), not the normalized lookup key
 before importing Python modules, retaining bounded initialization-only error
 callbacks and separate import diagnostics. A resolved loadPackage Promise alone
 is not accepted as success. This failed run does not establish conversion parity
-or completed network-isolation proof; the corrected CI result is pending.
+or completed network-isolation proof; the corrected CI result is recorded below.
 
 HUD metadata and archive font bytes are not public preload assets. The HUD
 modules are imported to verify code closure only; the sealed worker does not
 accept HUD jobs, increase its 20 MiB operation input cap, or claim HUD rendering
 parity. The existing native parity corpus is unchanged.
+
+### Successful sealed runtime proof
+
+[Run 39401602080](https://github.com/n3crosis/d2r-mobile/actions/runs/39401602080),
+job 118557385440, passed on commit
+`ad20d131d4558c155e0929681959040cb38ae9e3` with Linux Chromium
+`156.0.8078.4`. Its generated manifest SHA-256 was
+`c4631ebf955c831e054dca01a6bfe47d49e79b64885e04ace8b3ad93cd392df5`.
+
+The five bad-preload scenarios created zero workers. The valid scenario created
+one fresh sealed worker, initialized Pyodide 0.27.7 and both package statuses,
+imported all nine modules, and matched native bytes for frame.rgba, frame.sprite,
+dm_hud_exp.h and overlay-paths.json. It rejected malformed input and unsupported
+operations, then recovered on a valid image operation. Five internal resource
+reads were supplied entirely from preloaded bytes. All twelve document/worker
+network probes were blocked, the server recorded zero HTTP receipts after the
+seal through initialization and conversion, and the public preload request set
+exactly matched the manifest plus entry assets. No general unsafe-eval permission
+was necessary for this corpus.
+
+This verifies only the listed synthetic operations and imported code closure,
+not sealed HUD/native-art rendering, Windows/macOS, real game archives, the
+program rewriter, or production integration. Production UI and CSP are unchanged.

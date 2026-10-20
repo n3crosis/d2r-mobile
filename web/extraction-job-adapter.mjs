@@ -5,6 +5,7 @@ import {
 import { indexRomfs } from "./romfs-tree.mjs";
 import { createCascLogicalAssets } from "./casc-logical-reader.mjs";
 import { REQUIRED_NSO_MODULES } from "./preflight.mjs";
+import { resolveD2rExpansionSelection } from "./d2r-expansion-policy.mjs";
 
 export const EXTRACTION_ADAPTER_CAPABILITIES = Object.freeze({
   authenticatedSelection: true,
@@ -12,6 +13,7 @@ export const EXTRACTION_ADAPTER_CAPABILITIES = Object.freeze({
   requiresArchiveSecretLifetime: true,
   productionConversion: false,
   dlcExtraction: false,
+  knownExpansionPackageRequired: true,
   offlineRuntimeProven: false,
 });
 const fail = (code) => {
@@ -131,17 +133,32 @@ export function createExtractionJobAdapter({
       const state = lookup(session);
       try {
         signal?.throwIfAborted();
-        if (state.extracted || !selection || !Array.isArray(selection.dlc) || selection.dlc.length)
+        if (
+          state.extracted ||
+          !selection ||
+          !Array.isArray(selection.dlc) ||
+          selection.dlc.length !== 1
+        )
           fail("EXTRACTION_SELECTION_REJECTED");
         state.extracted = true;
-        const selected = await state.client.select(
-          {
-            baseVersion: selection.base.version,
-            ...(selection.patch ? { patchVersion: selection.patch.version } : {}),
-          },
-          { signal },
+        const options = {
+          baseVersion: selection.base.version,
+          patchVersion: selection.patch?.version,
+          dlcVersions: Object.fromEntries(
+            selection.dlc.map((row) => [row.titleId.toString(16).padStart(16, "0"), row.version]),
+          ),
+        };
+        // Only retained boundary evidence may satisfy this local package gate.
+        // Caller-supplied selection booleans, inventory or DLC objects are not proof.
+        const authenticated = resolveD2rExpansionSelection(
+          state.inspected.records,
+          state.inspected.inventory,
+          options,
         );
-        if (canonical(selected.selection) !== canonical(selection))
+        const expectedSelection = canonical(authenticated);
+        if (expectedSelection !== canonical(selection)) fail("EXTRACTION_SELECTION_MISMATCH");
+        const selected = await state.client.select(options, { signal });
+        if (canonical(selected.selection) !== expectedSelection)
           fail("EXTRACTION_SELECTION_MISMATCH");
         const names = new Set();
         const modules = new Map();

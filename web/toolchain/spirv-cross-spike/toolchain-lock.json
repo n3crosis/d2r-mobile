@@ -1,8 +1,8 @@
 {
   "spirvCross": {
     "repository": "https://github.com/KhronosGroup/SPIRV-Cross.git",
-    "tag": "vulkan-sdk-1.4.357.0",
-    "commit": "6c09849fe88c48eaed08413aa022aaa136a3a057"
+    "tag": "vulkan-sdk-1.4.363.0",
+    "commit": "f11ba9f0b21ba8fc15153d50a2a1ae31ab1cf8f7"
   },
   "emsdk": {
     "repository": "https://github.com/emscripten-core/emsdk.git",

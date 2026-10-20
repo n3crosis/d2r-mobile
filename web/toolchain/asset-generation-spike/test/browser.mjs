@@ -92,6 +92,17 @@ try {
     const [operation, , , names] = cases[i];
     const actual = results[i];
     assert.equal(actual.ok, true, actual.error);
+    if (operation === "hud-v4") {
+      const nativeBackend = JSON.parse(await readFile("test-results/hud/backend.json", "utf8"));
+      assert.equal(nativeBackend.contract, "pyodide-matched-BASIC");
+      delete nativeBackend.contract;
+      assert.deepEqual(actual.result.backend, nativeBackend, "HUD matching backend is mandatory");
+      assert.deepEqual(
+        Object.keys(actual.result.files).sort(),
+        [...names].sort(),
+        "Complete HUD inventory",
+      );
+    }
     for (const [name, bytes] of Object.entries(actual.result.files)) {
       await mkdir(dirname(`${output}/${name}`), { recursive: true });
       await writeFile(`${output}/${name}`, Buffer.from(bytes));
@@ -110,7 +121,12 @@ try {
         ),
         `${operation}: exact byte parity ${name}`,
       );
-    report.cases.push({ operation, exactParity: names, versions: actual.result.versions });
+    report.cases.push({
+      operation,
+      exactParity: names,
+      versions: actual.result.versions,
+      backend: actual.result.backend,
+    });
   }
   const v61 = Buffer.from(sprite);
   v61.writeUInt16LE(61, 4);

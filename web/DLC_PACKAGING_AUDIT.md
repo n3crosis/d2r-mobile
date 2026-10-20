@@ -91,7 +91,30 @@ folder, these particular rejection gates do not ensure expansion ownership.
 - End-to-end parity using an owner's legitimate local inputs. None was performed
   in this audit.
 
-Until those decisions/evidence exist, retain the selected-DLC rejection and keep
-UI generation disabled. The actionable next step is classification and ownership
-contract review, not a generic DLC content merger. No engine, client, adapter, or
-native entitlement behavior was changed by this audit.
+## Implemented local input policy
+
+Following review, `d2r-expansion-policy.mjs` now provides the pure
+`resolveD2rExpansionSelection(records, inventory, options)` gate. It reruns the
+generic resolver and requires application `0100726014352000`, patch
+`0100726014352800`, and exactly the known add-on `0100726014353001`. Missing or
+unknown DLC rejects. Its conservative accepted add-on shape is exactly one
+nonempty Data content at slot zero with default attributes. This shape is an
+explicit implementation limit, **not measured evidence of a real package**.
+
+The caller must provide its retained authenticated metadata and independently
+measured complete content inventory. There is no new `authenticated` or `owned`
+Boolean accepted as proof. The returned selection retains DLC in requiredContents
+and keeps it separate from Program assets. The function establishes local package
+input eligibility only, not legal ownership, ticket validity, actual executable
+compatibility, or authority to enable native ownership.
+
+Six synthetic tests cover the accepted shape, missing update/expansion, unknown
+expansion/application, associations, version requirements, incomplete/unverified/
+conflicting inventory, unsupported layout, and explicit DLC version choices.
+They pass locally; file-scoped ESLint and Prettier also pass.
+
+Engine and adapter owners have been given the API and caller trust contract.
+They must integrate it together before removing their blanket DLC rejections.
+The native default is unchanged. UI generation must remain disabled until its
+broader release gates are satisfied. No engine, client, adapter, or native
+entitlement behavior was changed by this audit or pure policy module.

@@ -1,9 +1,11 @@
 # v1.0.18 source/toolchain compatibility decision
 
 This is a diagnostic plan, not an enabled release registry or permission to
-relabel chain IDs. No runtime pins, native headers, locks, or acceptance gates
-were changed. No game inputs are required for the comparisons below, and none
-were used. Production equivalence cannot be established from these comparisons.
+relabel chain IDs. This diagnostic work does not change runtime pins, native
+headers, locks, or acceptance gates. A separate candidate migration now aligns
+the browser/native Cross build to official 1.4.363.0; full CI evidence is pending.
+No game inputs are required for the comparisons below, and none were used.
+Production equivalence cannot be established from these comparisons.
 
 ## Verified observations
 
@@ -28,8 +30,11 @@ were used. Production equivalence cannot be established from these comparisons.
   <https://api.github.com/repos/KhronosGroup/SPIRV-Cross/git/ref/tags/vulkan-sdk-1.4.363.0>.
   This is an exact candidate build pin. The shell's version string alone does
   not establish the source commit/build options of its publisher's Homebrew
-  executable. Existing browser `1.4.357.0` is incompatible with the advertised
-  version and must continue to be rejected for this shell.
+  executable. The initial browser `1.4.357.0` build was incompatible with the
+  advertised version and remains historical evidence, not a usable build for
+  this shell. The browser/native candidate now pins the verified `1.4.363.0`
+  commit above; full CI validation is pending. Matching the advertised compiler
+  version does not satisfy the full catalog digest or trusted-recipe gates.
 - `dm/gfx/`, `dm/tools/d2rm_pack.py`, `dm/ios/tools/shell_build.sh`,
   `dm/ios/tools/shell_stubs.py`, and vendored Ryujinx have no release-to-main
   differences. There are 71 changed paths under `dm/`, enumerated in the JSON.
@@ -57,9 +62,11 @@ The committed lock values and full input hashes are in the comparison JSON.
 
 The existing browser compiler uses official Emscripten 4.0.20, CMake Release,
 SPIRV_CROSS_CLI=ON, ENABLE_TESTS=OFF, ENABLE_C_API=OFF, C++ exceptions and
-exception-enabled modular ES6 WASM. Retain those settings for an isolated
-1.4.363.0 candidate and rebuild the native oracle from the identical source.
-Do not replace production pins until the candidate evidence has been reviewed.
+exception-enabled modular ES6 WASM. The candidate migration retains those
+settings while aligning the browser build and native oracle to the identical
+1.4.363.0 source commit. This pin alignment is not production promotion: review
+the pending CI evidence and satisfy the private-input boundary before accepting
+a shell recipe. Historical 1.4.357.0 artifacts are not 1.4.363.0 evidence.
 
 Native offline iOS compilation uses `xcrun -sdk iphoneos metal -c
 -mios-version-min=18.0`, then `xcrun -sdk iphoneos metallib`. No-Metal mode
@@ -74,11 +81,14 @@ compilation. Synthetic MSL generation cannot prove that.
 1. Record official refs, public source closure, compiler settings and exact
    artifact hashes. This report and `compare-source.py` do the source/archive
    diagnostic part, never production acceptance.
-2. Build an isolated Cross 1.4.363.0 WASM/native pair in CI, with verified commit,
+2. Validate the aligned Cross 1.4.363.0 WASM/native candidate in CI (pending),
+   with verified commit,
    pinned Emsdk, license notices and immutable artifact checksums. Run all
    synthetic native/browser differential tests, including linked vertex,
-   fragment, compute, readable-tile and reflection cases. Keep the current
-   incompatible-shell rejection until promotion is explicitly evidence-based.
+   fragment, compute, readable-tile and reflection cases. Matching the compiler
+   version removes only that specific mismatch; retain full SHADER_SRC, catalog,
+   trusted-recipe and native compatibility gates until promotion is explicitly
+   evidence-based. Never relabel the chain or header to make a candidate pass.
 3. Package the exact release generator dependency closure in a separate
    candidate build; test its outputs against original release functions using
    authored fixtures. Record original and browser-stage hashes separately.

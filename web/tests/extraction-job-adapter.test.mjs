@@ -5,6 +5,12 @@ import {
   readAuthenticatedProgramModules,
 } from "../extraction-job-adapter.mjs";
 import { MockWorker } from "./helpers/extraction-worker.mjs";
+import {
+  D2R_APPLICATION_ID as app,
+  D2R_PATCH_ID as patchId,
+  D2R_WARLOCK_ID as warlock,
+  resolveD2rExpansionSelection,
+} from "../d2r-expansion-policy.mjs";
 // One root directory and a data directory containing only a synthetic CASC manifest.
 function romfsFixture() {
   const name = new TextEncoder().encode("build_manifest.psv");
@@ -36,19 +42,58 @@ function romfsFixture() {
   bytes.set(manifest, 256);
   return bytes;
 }
-const selection = {
-  base: { version: 1 },
-  patch: null,
-  dlc: [],
-  effectiveVersion: 1,
-  applicationId: 1n,
-};
-function fixture({ entries, selected = selection, maxProgramBytes, failRead = false } = {}) {
+function inspectedFixture() {
+  const content = (n, type = 1) => ({
+    contentId: n.toString(16).padStart(32, "0"),
+    sha256: n.toString(16).padStart(64, "0"),
+    size: 100n,
+    type,
+    idOffset: 0,
+  });
+  const records = [
+    {
+      type: "Application",
+      titleId: app,
+      applicationId: app,
+      patchId,
+      version: 0n,
+      contents: [content(1)],
+    },
+    {
+      type: "Patch",
+      titleId: patchId,
+      applicationId: app,
+      version: 65536n,
+      contents: [content(2)],
+    },
+    {
+      type: "AddOnContent",
+      titleId: warlock,
+      applicationId: app,
+      version: 0n,
+      requiredApplicationVersion: 65536n,
+      contents: [content(3, 2)],
+    },
+  ];
+  return {
+    records,
+    inventory: records.flatMap((r) => r.contents.map((c) => ({ ...c, hashVerified: true }))),
+  };
+}
+const initial = inspectedFixture();
+const selection = resolveD2rExpansionSelection(initial.records, initial.inventory);
+function fixture({
+  entries,
+  selected = selection,
+  maxProgramBytes,
+  failRead = false,
+  inspected = inspectedFixture(),
+} = {}) {
   const romfs = romfsFixture();
   let generation = "exefs",
     disposed = false;
   const worker = new MockWorker(({ operation, payload }) => {
-    if (operation === "initialize") return { records: [{ version: 1 }], inventory: [] };
+    if (operation === "initialize") return inspected;
     if (operation === "select")
       return {
         selection: selected,
@@ -100,7 +145,7 @@ test("stages main and sdk before token transition and returns only plaintext cap
   const session = await open(f);
   const first = await f.adapter.inspectContents({ session });
   first.records[0].version = 99;
-  assert.equal((await f.adapter.inspectContents({ session })).records[0].version, 1);
+  assert.equal((await f.adapter.inspectContents({ session })).records[0].version, 0n);
   const extracted = await f.adapter.extractSelected({ session, selection });
   assert.deepEqual(Object.keys(extracted).sort(), ["logicalAssets", "programModules", "romfs"]);
   assert.deepEqual(Object.keys(extracted.programModules), ["main", "sdk"]);
@@ -137,7 +182,7 @@ test("stages main and sdk before token transition and returns only plaintext cap
   assert.ok(extracted.programModules.main.every((x) => x === 0));
   assert.ok(extracted.programModules.sdk.every((x) => x === 0));
 });
-test("rejects mismatched selection, DLC, missing sdk, aggregate budgets before RomFS", async () => {
+test("rejects mismatched selection, forged DLC, missing sdk, aggregate budgets before RomFS", async () => {
   for (const config of [
     { selected: { ...selection, effectiveVersion: 2 } },
     { entries: [{ index: 0, name: "main", size: 1n }] },
@@ -231,5 +276,70 @@ test("program provenance binds exact extracted identity, selection and live sess
     () => readAuthenticatedProgramModules(extracted, selection),
     /EXTRACTION_PROVENANCE_REJECTED/,
   );
+  await f.adapter.cleanup();
+});
+
+test("requires retained known expansion evidence, not caller supplied DLC claims", async () => {
+  for (const mutate of [
+    (x) => x.records.pop(),
+    (x) => x.records.splice(1, 1),
+    (x) => {
+      x.records[2].titleId++;
+    },
+    (x) => {
+      x.inventory[2].hashVerified = false;
+    },
+    (x) => {
+      x.inventory[2].size++;
+    },
+    (x) => {
+      x.records[2].contents[0].type = 1;
+    },
+    (x) => {
+      x.records[2].contents[0].idOffset = 1;
+    },
+  ]) {
+    const inspected = inspectedFixture();
+    mutate(inspected);
+    const f = fixture({ inspected }),
+      session = await open(f);
+    await assert.rejects(
+      f.adapter.extractSelected({ session, selection }),
+      /^ExtractionClientError: EXTRACTION_FAILED$/,
+    );
+    assert.ok(!f.worker.requests.some((r) => r.operation === "select"));
+    assert.equal(f.worker.terminated, true);
+  }
+  const f = fixture(),
+    session = await open(f);
+  await assert.rejects(
+    f.adapter.extractSelected({ session, selection: { ...selection, dlc: [] } }),
+    /EXTRACTION_FAILED/,
+  );
+  assert.ok(!f.worker.requests.some((r) => r.operation === "select"));
+});
+
+test("forwards explicit DLC version and retains exact evidence in provenance", async () => {
+  const inspected = inspectedFixture();
+  inspected.records.push({ ...inspected.records[2], version: 1n });
+  const dlcVersions = { [warlock.toString(16).padStart(16, "0")]: 1n };
+  const chosen = resolveD2rExpansionSelection(inspected.records, inspected.inventory, {
+    dlcVersions,
+  });
+  const f = fixture({ inspected, selected: chosen }),
+    session = await open(f);
+  const extracted = await f.adapter.extractSelected({ session, selection: chosen });
+  assert.deepEqual(f.worker.requests.find((r) => r.operation === "select").payload.options, {
+    baseVersion: 0n,
+    patchVersion: 65536n,
+    dlcVersions,
+  });
+  assert.equal(readAuthenticatedProgramModules(extracted, chosen), extracted.programModules);
+  assert.throws(
+    () => readAuthenticatedProgramModules(extracted, { ...chosen, dlc: [] }),
+    /EXTRACTION_PROVENANCE_REJECTED/,
+  );
+  assert.equal(chosen.requiredContents.length, 3);
+  assert.equal("owned" in chosen, false);
   await f.adapter.cleanup();
 });

@@ -81,7 +81,7 @@ if (command === "prepare") {
       size: 10,
       mode: 0o100644,
     })),
-    shellInfoText: `PRODUCT=synthetic\nCHAIN=${chain}\nKIND=ios\nSHADER_SRC=${sourceDigest}\nSPIRV_CROSS=1.4.357.0\n`,
+    shellInfoText: `PRODUCT=synthetic\nCHAIN=${chain}\nKIND=ios\nSHADER_SRC=${sourceDigest}\nSPIRV_CROSS=1.4.363.0\n`,
     shellManifestText: requiredPaths.join("\n"),
     observedTargetOS: targetOS,
     trustedRecipe: {
@@ -93,7 +93,7 @@ if (command === "prepare") {
       targetOS,
       requiredPaths,
       shaderKeys: fixtures.map((f) => f.job.key),
-      spirvCrossVersion: "1.4.357.0",
+      spirvCrossVersion: "1.4.363.0",
     },
   };
   const mime = {

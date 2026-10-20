@@ -11,14 +11,30 @@ import types
 
 from fontTools.fontBuilder import FontBuilder
 from fontTools.pens.ttGlyphPen import TTGlyphPen
-from PIL import Image
+from PIL import Image, features
 
 HERE = Path(__file__).resolve().parents[1]
 ROOT = HERE.parents[2]
-OUT = HERE / "test-results/hud"
+RAQM_REFERENCE = "--raqm" in sys.argv
+OUT = HERE / ("test-results/hud-raqm" if RAQM_REFERENCE else "test-results/hud")
 IOS = OUT / "native/ios"
 TOOLS = IOS / "tools"
 ART = IOS / "Sources/TouchArt"
+backend = {
+    "pillow": Image.__version__,
+    "freetype": features.version("freetype2"),
+    "raqm": features.check("raqm"),
+    "contract": "original-default-RAQM" if RAQM_REFERENCE else "pyodide-matched-BASIC",
+}
+if RAQM_REFERENCE:
+    assert backend["raqm"] is True, backend
+if not RAQM_REFERENCE:
+    assert backend == {
+        "pillow": "10.2.0",
+        "freetype": "2.6.0",
+        "raqm": False,
+        "contract": "pyodide-matched-BASIC",
+    }, backend
 for p in (TOOLS, ART, OUT / "native/i18n", OUT / "expected"):
     p.mkdir(parents=True, exist_ok=True)
 for name in (
@@ -61,6 +77,7 @@ font.setupMaxp()
 font_path = OUT / "authored-fixture.ttf"
 font.save(font_path)
 font_bytes = font_path.read_bytes()
+(OUT / "backend.json").write_text(json.dumps(backend, indent=2))
 # Construct only the structural fields requested by the original patch. Values are synthetic.
 patch = json.loads((TOOLS / "touchrectv1_patch.json").read_text())
 

@@ -20,7 +20,7 @@ process is used. Dependency-injected `workerFactory` exists for protocol tests.
 application-trusted release recipe, plus `trustedRecipe.shaderKeys`: the full,
 unique list of 16-lowercase-hex control keys for the matched shell, and
 `trustedRecipe.spirvCrossVersion`. Both that version and shell_info SPIRV_CROSS
-must be exactly `1.4.357.0`, the compiler actually built here. `chain` must
+must be exactly `1.4.363.0`, the compiler pinned for both builds here. `chain` must
 be 12 lowercase hex digits. This catalog is not derived from whatever inputs a
 user happened to select. The recipe must be authenticated by the host application;
 metadata consistency is not proof of release authenticity or shell file contents.
@@ -102,11 +102,16 @@ The independently inspected official v1.0.18 shell ZIP (SHA-256
 `a383552871851ddb5923033639358e2a3c205ae411676e6538cd098743bbe37b`)
 contains PRODUCT `3.3.94012-r44`, CHAIN `f2bc055e8f1e`, KIND `ios`,
 SHADER_SRC `be59c864f087b377` and SPIRV_CROSS `1.4.363.0`.
-That release does not match this repository-backed `1.4.357.0` spike. The adapter
-rejects its toolchain declaration before starting workers; a regression test
-covers this condition. No compiler pin, native chain/header or shell metadata
-was changed to make it pass. Compatibility requires a coherently matched
-release/source/toolchain and source-digest proof, not a label substitution.
+The browser/native compiler is now pinned to that official 1.4.363.0 source,
+commit `f11ba9f0b21ba8fc15153d50a2a1ae31ab1cf8f7`, independently reverified
+against the official tag and fetched source. Obsolete or unknown compiler
+versions and disagreement between shell and trusted recipe still fail before
+worker startup. Full catalog equality with SHADER_SRC `be59c864f087b377` and
+all trusted release recipe gates remain mandatory. No native chain/header or
+shell metadata is rewritten. The observed source chain `c675d3fa7c90` and
+header `15cf7ca29eaf` still differ from the release chain; matching the compiler
+alone does not resolve this condition. New-compiler native/WASM CI parity is
+pending; the runs documented below used 1.4.357.0 and are historical evidence.
 The mismatch alone is not evidence that any particular game shader renders
 incorrectly; real-game compatibility remains unestablished.
 

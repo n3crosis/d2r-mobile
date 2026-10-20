@@ -20,9 +20,14 @@ code, read a target version from a recipe, or support fat binaries/legacy versio
 commands. Executable identity must come from an authenticated release registry.
 
 This release requires product `3.3.94012-r44`, chain `f2bc055e8f1e`, shader-source
-digest `be59c864f087b377`, and SPIRV-Cross `1.4.363.0`. The current browser spike
-pins `1.4.357.0`; that mismatch is not silently relabeled or accepted. This JSON
-is evidence only, **not an enabled trusted release catalog**. A matching source,
+digest `be59c864f087b377`, and SPIRV-Cross `1.4.363.0`. The initial browser
+inspection used `1.4.357.0` and correctly rejected that version mismatch. The
+browser/native candidate has now been aligned to official `1.4.363.0`, commit
+`f11ba9f0b21ba8fc15153d50a2a1ae31ab1cf8f7`; full CI evidence is pending. This
+compiler alignment does not establish shell equivalence or authorize chain
+relabeling. The complete shader-source digest and trusted-recipe gates remain
+required. This JSON is evidence only, **not an enabled trusted release catalog**.
+A matching source,
 compiler, complete shader catalog, generated assets and actual runtime proof are
 still needed before production use. The iOS 18 variant has not been inspected.
 

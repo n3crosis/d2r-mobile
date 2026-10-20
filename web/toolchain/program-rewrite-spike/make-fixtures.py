@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import shutil
 from pathlib import Path
 import struct
 import subprocess
@@ -152,7 +153,6 @@ for name, words, compressed, registered, ruleset, success in cases:
     )
 # A separate SDK fixture is rewritten with NAME=sdk, then native Guest combines
 # both modules in the exact native packager order. No source transformation.
-import shutil
 
 sdk_data = nso([0xD53BD040, 0x91000652, 0xD4000561, 0xD65F03C0], compressed=True)
 sdk_path = OUT / "sdk-gates.nso"

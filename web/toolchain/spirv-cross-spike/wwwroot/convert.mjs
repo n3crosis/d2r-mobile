@@ -8,7 +8,7 @@ export const MSL_ARGUMENTS = Object.freeze([
   "--msl-texture-buffer-native",
   "--msl-pad-fragment-output",
 ]);
-export const CROSS_COMMIT = "6c09849fe88c48eaed08413aa022aaa136a3a057";
+export const CROSS_COMMIT = "f11ba9f0b21ba8fc15153d50a2a1ae31ab1cf8f7";
 export function validateSpirv(input) {
   if (!(input instanceof Uint8Array)) throw new TypeError("SPIR-V must be Uint8Array");
   if (input.byteLength < 20 || input.byteLength % 4 || input.byteLength > 64 * 1024 * 1024)

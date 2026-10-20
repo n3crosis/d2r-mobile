@@ -21,6 +21,7 @@ const server = http.createServer(async (req, res) => {
   const shared = [
     "/nsp-input.mjs",
     "/content-selection.mjs",
+    "/d2r-expansion-policy.mjs",
     "/extraction-worker-client.mjs",
   ].includes(pathname);
   const target = shared

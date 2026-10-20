@@ -8,7 +8,7 @@ from pathlib import Path
 import tempfile
 import types
 
-from PIL import Image, ImageFont
+from PIL import Image, ImageFont, features
 import hud_design_original as design
 import hud_original as original
 import hud_support_original as support
@@ -127,7 +127,15 @@ def generate(payload, options):
                     "hud_v4_ui/" + g["file"] for g in ui[key]["glyphs"].values() if g["file"]
                 )
             require(set(files) == expected, "HUD_OUTPUT_SET")
-            return {"files": files, "mode": "switch-upscaled"}
+            return {
+                "files": files,
+                "mode": "switch-upscaled",
+                "backend": {
+                    "pillow": Image.__version__,
+                    "freetype": features.version("freetype2"),
+                    "raqm": features.check("raqm"),
+                },
+            }
         except SystemExit as error:
             raise ValueError(str(error)) from error
         finally:

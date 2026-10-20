@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { validateSpirv, convertSpirv, MSL_ARGUMENTS } from "./wwwroot/convert.mjs";
+import { validateSpirv, convertSpirv, MSL_ARGUMENTS, CROSS_COMMIT } from "./wwwroot/convert.mjs";
 import { replayFields } from "./wwwroot/replay-reflection.mjs";
 import { cases } from "./reflection-cases.mjs";
 const valid = new Uint8Array(new Uint32Array([0x07230203, 0x10000, 0, 1, 0]).buffer);
@@ -63,4 +64,21 @@ test("replay parser equals unchanged native Python functions on authored branch 
     cases.map((x) => replayFields(x.stage, x.msl, x.resources)),
     JSON.parse(native.stdout),
   );
+});
+
+test("native, WASM and linked CI use the same verified release compiler pin", () => {
+  const lock = JSON.parse(readFileSync(new URL("./toolchain-lock.json", import.meta.url), "utf8"));
+  assert.equal(lock.spirvCross.tag, "vulkan-sdk-1.4.363.0");
+  assert.equal(lock.spirvCross.commit, "f11ba9f0b21ba8fc15153d50a2a1ae31ab1cf8f7");
+  assert.equal(CROSS_COMMIT, lock.spirvCross.commit);
+  for (const file of [
+    "./build.sh",
+    "../../../.github/workflows/spirv-cross-browser-checks.yml",
+    "../../../.github/workflows/shader-pipeline-browser-checks.yml",
+  ]) {
+    const source = readFileSync(new URL(file, import.meta.url), "utf8");
+    assert.ok(source.includes(lock.spirvCross.commit), `${file}: commit drift`);
+    if (file.endsWith(".yml"))
+      assert.ok(source.includes(lock.spirvCross.tag), `${file}: tag drift`);
+  }
 });

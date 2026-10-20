@@ -1,0 +1,111 @@
+name: Offline .NET sealed-worker parity
+
+on:
+  push:
+    branches: [feature/web-ipa-packager]
+    paths:
+      - "web/toolchain/shader-spike/**"
+      - "dm/gfx/tools/dmsh_xlate/**"
+      - "dm/third_party/ryujinx/**"
+      - ".github/workflows/offline-dotnet-checks.yml"
+      - "web/toolchain/offline-runtime-spike/dotnet-*"
+  pull_request:
+    paths:
+      - "web/toolchain/shader-spike/**"
+      - "dm/gfx/tools/dmsh_xlate/**"
+      - "dm/third_party/ryujinx/**"
+      - ".github/workflows/offline-dotnet-checks.yml"
+      - "web/toolchain/offline-runtime-spike/dotnet-*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: offline-dotnet-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  synthetic-runtime:
+    name: Sealed Chromium .NET vs original native CLI (synthetic EXIT only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+        working-directory: web/toolchain/shader-spike
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+      DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE: "true"
+      SDK_VERSION: "10.0.402"
+      WORKLOAD_VERSION: "10.0.402"
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "22"
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: "10.0.402"
+      - name: Pin SDK and workload (also applies to native commands from this cwd)
+        run: |
+          printf '{"sdk":{"version":"%s","rollForward":"disable","allowPrerelease":false,"workloadVersion":"%s"}}\n' "$SDK_VERSION" "$WORKLOAD_VERSION" > global.json
+          test "$(dotnet --version)" = "$SDK_VERSION"
+          dotnet --info
+          git rev-parse HEAD
+          mkdir -p "$RUNNER_TEMP/shader-parity"
+      - name: Install official developer prerequisites on CI only
+        run: |
+          dotnet workload install wasm-tools
+          dotnet workload --version
+          dotnet workload list
+          npm ci --ignore-scripts
+          npm audit --audit-level=high
+          npx --no-install playwright install --with-deps chromium
+          sudo apt-get update
+          apt-cache policy spirv-tools
+          sudo apt-get install --no-install-recommends -y spirv-tools
+          spirv-val --version
+          npx --no-install playwright --version
+          df -h .
+      - name: Publish actual browser WASM bundle
+        id: publish
+        run: |
+          dotnet restore ShaderSpike.csproj
+          dotnet build ShaderSpike.csproj -c Release --no-restore -p:EnableNETAnalyzers=true -p:AnalysisLevel=latest -p:TreatWarningsAsErrors=true
+          dotnet publish ShaderSpike.csproj -c Release --no-restore -p:EnableNETAnalyzers=true -p:AnalysisLevel=latest -p:TreatWarningsAsErrors=true
+      - name: Prepare tiny authored fixture and build independent original native oracle
+        id: native
+        run: |
+          node verify-parity.mjs prepare "$RUNNER_TEMP/shader-parity/fixture"
+          native_project="$GITHUB_WORKSPACE/dm/gfx/tools/dmsh_xlate/dmsh_xlate.csproj"
+          dotnet restore "$native_project"
+          dotnet build "$native_project" -c Release --no-restore
+          native_dll="$GITHUB_WORKSPACE/dm/gfx/tools/dmsh_xlate/bin/Release/net10.0/dmsh_xlate.dll"
+          test -f "$native_dll"
+          actual=$(dotnet "$native_dll" --source-sha)
+          expected=$(cat "$GITHUB_WORKSPACE/dm/gfx/tools/dmsh_xlate/Program.cs" "$native_project" | sha256sum | cut -c1-16)
+          test "$actual" = "$expected"
+          echo "Verified original native embedded source: $actual"
+          sha256sum "$GITHUB_WORKSPACE/dm/gfx/tools/dmsh_xlate/Program.cs" "$native_project" ShaderBridge.cs ShaderSpike.csproj EmbeddedResources.cs synthetic-fixture.mjs wwwroot/synthetic-fixture.mjs "$RUNNER_TEMP/shader-parity/fixture/synthetic-exit.bin" "$RUNNER_TEMP/shader-parity/fixture/jobs.json"
+          git rev-parse HEAD:dm/third_party/ryujinx
+          timeout --kill-after=5s 60s dotnet "$native_dll" "$RUNNER_TEMP/shader-parity/fixture/jobs.json" "$RUNNER_TEMP/shader-parity/native"
+          test -s "$RUNNER_TEMP/shader-parity/native/synthetic-exit.spv"
+          test -s "$RUNNER_TEMP/shader-parity/native/synthetic-exit.res.json"
+      - name: Hash complete published public runtime closure
+        run: node ../offline-runtime-spike/dotnet-prepare.mjs bin/Release/net10.0/publish
+      - name: Execute fresh sealed blob worker and demand zero HTTP receipts
+        id: browser
+        run: |
+          PLAYWRIGHT_ENTRY="$PWD/node_modules/playwright/index.mjs" timeout --kill-after=5s 180s node ../offline-runtime-spike/dotnet-browser.mjs "$RUNNER_TEMP/shader-parity/browser"
+      - name: Require exact binary and complete sidecar parity
+        id: parity
+        run: |
+          node verify-parity.mjs compare "$RUNNER_TEMP/shader-parity/native" "$RUNNER_TEMP/shader-parity/browser/browser-result.json" | tee "$RUNNER_TEMP/shader-parity/parity.json"
+      - name: Validate both emitted SPIR-V files without target relaxation
+        id: validation
+        run: |
+          timeout --kill-after=5s 30s spirv-val --target-env vulkan1.1 "$RUNNER_TEMP/shader-parity/native/synthetic-exit.spv"
+          timeout --kill-after=5s 30s spirv-val --target-env vulkan1.1 "$RUNNER_TEMP/shader-parity/native/browser-synthetic-exit.spv"

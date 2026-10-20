@@ -29,7 +29,7 @@ function shell(keys = [key], source = sourceDigest([[key, msl]])) {
       size: 10,
       mode: 0o100644,
     })),
-    shellInfoText: `PRODUCT=synthetic\nCHAIN=${chain}\nKIND=ios\nSHADER_SRC=${source}\nSPIRV_CROSS=1.4.357.0\n`,
+    shellInfoText: `PRODUCT=synthetic\nCHAIN=${chain}\nKIND=ios\nSHADER_SRC=${source}\nSPIRV_CROSS=1.4.363.0\n`,
     shellManifestText: requiredPaths.join("\n"),
     observedTargetOS: targetOS,
     trustedRecipe: {
@@ -41,7 +41,7 @@ function shell(keys = [key], source = sourceDigest([[key, msl]])) {
       targetOS,
       requiredPaths,
       shaderKeys: keys,
-      spirvCrossVersion: "1.4.357.0",
+      spirvCrossVersion: "1.4.363.0",
     },
   };
 }
@@ -201,14 +201,24 @@ test("trusted shell mismatch, missing catalog and off-origin assets fail before 
     () => createShaderPipeline({ ...options, trustedShell: invalid }),
     /CHAIN mismatch/,
   );
-  const newer = shell();
-  newer.shellInfoText = newer.shellInfoText.replace(
-    "SPIRV_CROSS=1.4.357.0",
-    "SPIRV_CROSS=1.4.363.0",
-  );
-  newer.trustedRecipe.spirvCrossVersion = "1.4.363.0";
+  // Both an obsolete compiler and an unverified future compiler fail closed,
+  // even when the shell and application recipe agree with one another.
+  for (const version of ["1.4.357.0", "1.4.999.0"]) {
+    const incompatible = shell();
+    incompatible.shellInfoText = incompatible.shellInfoText.replace(
+      "SPIRV_CROSS=1.4.363.0",
+      `SPIRV_CROSS=${version}`,
+    );
+    incompatible.trustedRecipe.spirvCrossVersion = version;
+    assert.throws(
+      () => createShaderPipeline({ ...options, trustedShell: incompatible }),
+      /Unsupported shell SPIRV_CROSS/,
+    );
+  }
+  const disagree = shell();
+  disagree.trustedRecipe.spirvCrossVersion = "1.4.357.0";
   assert.throws(
-    () => createShaderPipeline({ ...options, trustedShell: newer }),
+    () => createShaderPipeline({ ...options, trustedShell: disagree }),
     /Unsupported shell SPIRV_CROSS/,
   );
   const missing = shell();

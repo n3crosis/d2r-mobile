@@ -15,8 +15,8 @@
     "lint:fix": "eslint . --fix --max-warnings 0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "format:docs": "prettier --write ../docs/WEB_IPA_PACKAGER.md",
-    "format:docs:check": "prettier --check ../docs/WEB_IPA_PACKAGER.md"
+    "format:docs": "prettier --write ../docs/WEB_IPA_PACKAGER.md ../docs/WEB_DELIVERY_PROGRESS.md",
+    "format:docs:check": "prettier --check ../docs/WEB_IPA_PACKAGER.md ../docs/WEB_DELIVERY_PROGRESS.md"
   },
   "dependencies": {
     "react": "19.1.1",

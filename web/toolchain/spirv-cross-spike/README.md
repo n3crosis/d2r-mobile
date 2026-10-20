@@ -7,8 +7,10 @@ keys, generated proprietary shaders, or vendor source copies are checked in.
 
 ## Verified source and build contract
 
-- Khronos `vulkan-sdk-1.4.357.0`, commit
-  `6c09849fe88c48eaed08413aa022aaa136a3a057`, as required by `docs/NO_XCODE.md`.
+- Khronos `vulkan-sdk-1.4.363.0`, commit
+  `f11ba9f0b21ba8fc15153d50a2a1ae31ab1cf8f7`, matching the official
+  v1.0.18 shell compiler requirement. The older `docs/NO_XCODE.md` pin is not
+  the release requirement. Native repository source/header labels remain untouched.
 - Official Emscripten SDK `4.0.20`, commit
   `e4fe26ef59168ff44f4c23c466e497bf60b3411e`.
 - Both tag refs were verified against official Git repositories. CI checks the
@@ -84,7 +86,7 @@ from the sibling shader-spike's committed exact dependency lockfile. Upstream
 SPIRV-Cross is Apache-2.0; its LICENSE (and NOTICE if present) is copied beside
 redistributed compiler output. Preserve those notices when hosting the bundle.
 
-## Verified run
+## Historical verified run (1.4.357.0)
 
 [CI run 39394114125](https://github.com/n3crosis/d2r-mobile/actions/runs/39394114125)
 passed on commit `212ce3aa756f963e5c3221ba0d2cc250329f178a` (2026-10-20).
@@ -99,3 +101,12 @@ The first run caught upstream CLI parsing behavior: `--reflect` consumes an
 optional format argument. Both paths now explicitly use `--reflect json` with a
 regression assertion. This successful synthetic check does not resolve the full
 production shell/source-chain conditions above or prove real-game compatibility.
+
+## Release compiler migration
+
+The 1.4.363.0 official tag and fetched source were independently reverified on
+2026-10-20. Both native and WASM builds now use that same commit. The existing
+exact source/reflection differential checks remain mandatory; CI regression
+results for the new compiler are pending. Historical runs above do not certify
+the migrated compiler. Matching this version alone does not establish full
+production SHADER_SRC `be59c864f087b377` or resolve native chain/header differences.

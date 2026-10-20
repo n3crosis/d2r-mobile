@@ -41,7 +41,7 @@ both actual browser workers connected through the adapter, original native
 oracles and every comparison above. Synthetic evidence artifact `12251768859`
 is retained for seven days. This establishes the authored compute EXIT case,
 not real-game compatibility or compatibility with the newer v1.0.18 shell.
-The explicit SPIRV-Cross 1.4.363.0 release mismatch gate remains unchanged.
+This historical run used SPIRV-Cross 1.4.357.0, not the new release-aligned pin.
 
 CLI: `node capture-browser.mjs prepare <fixture-directory>` or
 `node capture-browser.mjs capture <published-translator-directory>
@@ -58,7 +58,10 @@ Vulkan validation and direct negative C# bridge cases all passed. Artifact
 replay has `pos_attr=0`, `pos_w=attr`. Fragment output is exactly RGBA
 `(1.0, 0.5, 0.0, 1.0)` at color0 with no discard or sample mask.
 
-The earlier run above remains compute-only evidence. Compiler pins remain
-unchanged and the newer release-shell mismatch is still blocked. Geometry,
+The earlier run above remains compute-only evidence. Both historical runs used
+1.4.357.0. The native and browser builds now pin official 1.4.363.0 at
+`f11ba9f0b21ba8fc15153d50a2a1ae31ab1cf8f7`; new-compiler CI parity is pending.
+The full release catalog digest and trusted recipe gates remain mandatory, and
+native chain/header differences remain unresolved. Geometry,
 tessellation, broader graphics instructions/resources, both precision modes,
 GPU execution and game compatibility need their own evidence.

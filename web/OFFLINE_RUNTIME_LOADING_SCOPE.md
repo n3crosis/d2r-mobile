@@ -242,3 +242,13 @@ passed on commit `fe5abb21b5527c6d230f86c94a4a7a42c6982036` with Linux Chromium
 This is browser verification only of that narrow texture path. Production CSP/UI and all broader runtime
 release gates above remain unchanged; this prototype is not the missing
 Pyodide/.NET integration or Windows/macOS proof.
+
+A subsequent isolated Pyodide proof also passed [CI run 39401602080](https://github.com/n3crosis/d2r-mobile/actions/runs/39401602080)
+on `ad20d131d4558c155e0929681959040cb38ae9e3` with Linux Chromium `156.0.8078.4`.
+It uses three exact source-hash-locked internal reader substitutions, not a global
+fetch patch, and retains the sealed CSP without general unsafe-eval. It imports
+the nine-module asset closure and verifies the three existing synthetic asset
+operations with exact native bytes and zero post-seal server receipts. See
+[the bounded proof and limitations](toolchain/offline-runtime-spike/PYODIDE_SCOPE.md).
+This does not enable production processing or establish all asset operations,
+.NET, program rewriting or desktop-platform parity.

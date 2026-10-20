@@ -58,3 +58,35 @@ through logical reads/decoder; the owner must terminate the Python worker when
 cancelling long synchronous rendering. Font parsing stays in that dedicated worker.
 Temporary files are removed; JS-owned input byte arrays are wiped. Secure erasure of
 Python/string/WASM heap copies is not claimed.
+
+## Explicit backend incompatibility and separate reference contract
+
+The first strict full-inventory run at `ad20d131d4558c155e0929681959040cb38ae9e3`
+[failed](https://github.com/n3crosis/d2r-mobile/actions/runs/39401602167).
+Artifact12254664382 retains all89 native/browser files, the authored font and source
+inputs. `HUD_BACKEND_EVIDENCE.json` records the inspected discrepancy: actual glyph
+pixels differ, not just PNG encoding, and whitespace advances differ. That failure
+remains evidence that the original default native environment is NOT equivalent.
+No tolerance, skipped image, substitution or changed source math is introduced.
+
+Upstream HUD code uses `ImageFont.truetype` without an explicit layout engine and
+has no HUD-specific frozen output hashes or explicit RAQM requirement. Consequently
+the default depends on the installed Pillow backend. CI keeps producing an original
+Pillow11.1/RAQM reference under `test-results/hud-raqm`, with actual versions recorded.
+A separate exact comparison targets a clearly labeled native BASIC configuration:
+
+- [Pyodide0.27.7 Pillow recipe](https://github.com/pyodide/pyodide/blob/0.27.7/packages/Pillow/meta.yaml): Pillow10.2.0 source SHA256 pinned;
+- [Pyodide build versions](https://github.com/pyodide/pyodide/blob/0.27.7/Makefile.envs): Emscripten3.1.58;
+- [that Emscripten FreeType port](https://github.com/emscripten-core/emscripten/blob/3.1.58/tools/ports/freetype.py): FreeType2.6.0 `version_1` source SHA512 pinned.
+
+`test/build-hud-reference.py` builds the same FreeType source list/configuration
+natively, then Pillow10.2 with RAQM disabled. Native and browser backend versions
+must match exactly before ALL89 generated files are compared byte for byte. This
+is a new matching-backend contract, not proof of the previously failed RAQM output
+or of production font fidelity. Its first run is pending.
+
+FreeType2.6.0 is a legacy dependency inherited from this pinned runtime. Matching it
+is reproducibility evidence, NOT a statement that it is current or generally safe.
+A release dependency/security review and a supported runtime upgrade plan are
+mandatory before shipping real-user font parsing. Rendering remains isolated in a
+bounded dedicated worker; isolation is not a substitute for that release gate.

@@ -139,9 +139,9 @@ export function createShaderPipeline({
   validateShellContract(trustedShell);
   const recipe = trustedShell.trustedRecipe;
   const shellCross = /^SPIRV_CROSS=([^\r\n]+)$/m.exec(trustedShell.shellInfoText)?.[1];
-  if (recipe.spirvCrossVersion !== "1.4.357.0" || shellCross !== recipe.spirvCrossVersion)
+  if (recipe.spirvCrossVersion !== "1.4.363.0" || shellCross !== recipe.spirvCrossVersion)
     throw error(
-      "Unsupported shell SPIRV_CROSS: this compiler is pinned to 1.4.357.0; a matched source/toolchain is required",
+      "Unsupported shell SPIRV_CROSS: this compiler is pinned to 1.4.363.0; a matched source/toolchain is required",
     );
   const keys = recipe.shaderKeys;
   if (

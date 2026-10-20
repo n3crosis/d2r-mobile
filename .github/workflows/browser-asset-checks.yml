@@ -66,7 +66,16 @@ jobs:
           "$RUNNER_TEMP/asset-reference/bin/python" test/native-reference.py
           python3 test/native-derived.py
           "$RUNNER_TEMP/asset-reference/bin/python" test/native-art-reference.py
-          "$RUNNER_TEMP/asset-reference/bin/python" test/hud-reference.py
+          "$RUNNER_TEMP/asset-reference/bin/python" test/hud-reference.py --raqm
+      - name: Build separately scoped native Pillow BASIC reference
+        run: |
+          python3 test/build-hud-reference.py "$RUNNER_TEMP/hud-backend"
+          python3 -m venv "$RUNNER_TEMP/hud-reference"
+          "$RUNNER_TEMP/hud-reference/bin/pip" install 'setuptools==75.8.0' 'wheel==0.45.1' 'numpy==2.0.2' 'fonttools==4.55.3'
+          export PKG_CONFIG_PATH="$RUNNER_TEMP/hud-backend/lib/pkgconfig"
+          export LD_LIBRARY_PATH="$RUNNER_TEMP/hud-backend/lib:${LD_LIBRARY_PATH:-}"
+          "$RUNNER_TEMP/hud-reference/bin/pip" install --no-build-isolation --no-deps "$RUNNER_TEMP/hud-backend/pillow-10.2.0" -C raqm=disable -C freetype=True
+          "$RUNNER_TEMP/hud-reference/bin/python" test/hud-reference.py
       - name: Execute real Chromium worker and demand exact parity
         run: |
           timeout --kill-after=5s 180s npm run test:browser

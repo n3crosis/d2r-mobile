@@ -1,0 +1,22 @@
+{
+  "commit": "ad20d131d4558c155e0929681959040cb38ae9e3",
+  "run": "https://github.com/n3crosis/d2r-mobile/actions/runs/39401602167",
+  "artifactId": 12254664382,
+  "result": "FAIL: strict original-default reference differs; never superseded by BASIC proof",
+  "nativePillow": "11.1.0",
+  "browserPillow": "10.2.0",
+  "completeFilesEach": 89,
+  "encodedFilesDifferent": 72,
+  "pngFilesWithActualPixelDifferences": 71,
+  "maximumChannelDelta": 2,
+  "spaceAdvanceNative": [
+    6.5,
+    7.5
+  ],
+  "spaceAdvanceBrowser": [
+    7.0,
+    8.0
+  ],
+  "nativeDefaultBackend": "New explicit backend diagnostic will verify RAQM; failed artifact did not record its FreeType/RAQM versions",
+  "productionParity": false
+}
