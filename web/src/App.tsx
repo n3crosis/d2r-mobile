@@ -82,7 +82,7 @@ export default function App() {
       if (!mounted.current) return;
       if (text && (force || text !== lastActivity.current)) {
         lastActivity.current = text;
-        activityBuffer.current.push(`${new Date().toISOString()} ${text}`);
+        activityBuffer.current.push(`${new Date().toLocaleString()} ${text}`);
         if (activityBuffer.current.length > 200) activityBuffer.current.shift();
         activityRevision.current += 1;
       }
@@ -449,7 +449,7 @@ export default function App() {
             <summary className="cursor-pointer">Activity log ({activity.length})</summary>
             <p>
               Only stages, counts and safe error codes. No key contents or selected filenames. Kept
-              in this tab, not uploaded.
+              in this tab, not uploaded. Times use your browser's local time.
             </p>
             <ol className="max-h-64 overflow-auto break-words space-y-1" aria-label="Activity log">
               {activity.map((line, index) => (
