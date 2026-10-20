@@ -18,7 +18,7 @@ keys, generated proprietary shaders, or vendor source copies are checked in.
 - `build.sh` builds either the original native executable or ES-module WASM.
   SDK installation and compiler builds happen on CI, not the user's machine.
 - `dmsh_build.py`'s exact flags: `--msl --msl-version 20300
---msl-argument-buffers --msl-texture-buffer-native --msl-pad-fragment-output`.
+  --msl-argument-buffers --msl-texture-buffer-native --msl-pad-fragment-output`.
 - Generated source uses LF, matching `nometal_run.py`'s source-copy convention.
   This does **not** imply Apple's Metal compiler accepted the source.
 

@@ -107,3 +107,60 @@ verified against https://raw.githubusercontent.com/devkitPro/deko3d/master/LICEN
 The native layout file is an altered port, not original deko3d source. Native
 sources and their notices are not edited by this spike. SHA256SUMS identifies the
 built JS/WASM pair. Release integration must keep `dist/licenses` with that pair.
+
+## Original BC3 encoder and v61 packing (separate API)
+
+`texture-encode-client.mjs` adds `TextureEncodeClient`, separate from the decoder
+and its unchanged v61 crop guards. `encodeAndPack({templateHeader, rgba, width,
+height}, {signal})` returns `{linearBC3, sprite, width, height}` as owned Uint8Arrays.
+`packLinearBC3({templateHeader, linearBC3, width, height}, {signal})` packs an
+already encoded tight row-major BC3 image without initializing Python. The
+complete `sprite` is the header plus zero-padded native block-linear storage.
+Input arrays remain owned by the caller. Only one request may be in flight;
+`AbortSignal` or `close()` terminates the worker and both runtimes, rejects with
+`AbortError`, and a subsequent request creates a fresh worker. No partially
+encoded output is returned. Synchronous codec work cannot process an in-worker
+cancellation message, so worker termination is intentional.
+
+The codec is **not a new approximate JavaScript/C BC3 implementation**.
+`package-encoder.py` verifies SHA-256
+`5c3a4b1985625ba5ba7f727e0fd77afc1b835b1f9b3ca6337dbdc36626bea073` of
+`dm/ios/tools/gen_widestash_art.py`, extracts only the unmodified original `bc3`
+function and records provenance in `dist/encoder-provenance.json`. It runs under
+the existing self-hosted asset-generation Pyodide 0.27.7 NumPy/Pillow runtime.
+No native module imports, filesystem entrypoints, subprocesses or compilers from
+the source script are shipped. `bounded_encoder.py` invokes that exact function
+on independent four-row bands, bounding NumPy's temporary tensors while retaining
+original block ordering, edge replication, endpoint selection and tie behavior.
+Native full-image versus banded output is compared byte for byte.
+
+`texture_pack_bc3` revalidates geometry and exact buffer lengths, zeros unused GOB
+bytes, and calls unchanged `nvn_swizzle`. The JS header update matches original
+`pack`: fields at 6, 8, 12, 20 and 32 change; all other original bytes are retained.
+Templates must be exactly 40 bytes, SpA1 v61, one frame, valid bounded original
+dimensions, and display width within the original one-frame four-pixel-padded
+extent. Output is a single frame with display width equal to output width.
+Maximum 8192 per dimension and 4 Mi pixels; maximum input RGBA is 16 MiB.
+No array/mip-chain encoding, multi-frame template extraction, ASTC encoding or
+other BC encoding is implemented. This primitive alone does not reproduce the
+wide-stash image composition or authorize replacing arbitrary atlas layouts.
+
+CI additionally generates 24 original full-image NumPy BC3 + original native
+`pack` reference cases (solid/gradient/alpha/noise; 1×1 through edge-aligned and
+nonaligned 68×65). It compares every linear BC3 byte and full packed sprite byte
+against Node/WASM and actual Chromium/Pyodide output, exercises malformed lengths,
+geometry/format/frames, and tests cancellation plus clean worker restart. This
+new encoder proof is pending CI; previous decoder green runs do not establish
+encoder parity. To prepare locally or in CI after installing the pinned runtime:
+
+```sh
+python3 web/toolchain/texture-spike/package-encoder.py
+python3 web/toolchain/texture-spike/native-encoder-fixtures.py
+node --test web/toolchain/texture-spike/encoder.test.mjs
+PLAYWRIGHT_ENTRY=/absolute/path/to/playwright/index.mjs \
+  node web/toolchain/texture-spike/encoder-browser-smoke.mjs
+```
+
+Deployment must include `dist/original_bc3.py`, `bounded_encoder.py`, the encoder
+worker/modules, the existing same-origin asset runtime and its license notices,
+and the texture WASM/license bundle. No browser CDN fallback is used.

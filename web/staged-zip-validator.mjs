@@ -114,7 +114,7 @@ export async function validateStagedZip(source, manifest, options) {
       );
     }
     let crc = 0xffffffff;
-    for (let consumed = 0; consumed < entry.size; ) {
+    for (let consumed = 0; consumed < entry.size;) {
       const length = Math.min(STAGED_ZIP_LIMITS.maxChunkBytes, entry.size - consumed);
       const bytes = await readRange(source, entry.offset + localSize + consumed, length, signal);
       for (let i = 0; i < bytes.length; i++) crc = (crc >>> 8) ^ crcTable[(crc ^ bytes[i]) & 255];

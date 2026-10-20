@@ -14,5 +14,5 @@
     "baseUrl": ".",
     "paths": { "@/*": ["./src/*"] }
   },
-  "include": ["src", "vite.config.ts", "preflight.mjs"]
+  "include": ["src", "preflight.mjs"]
 }

@@ -1,0 +1,6 @@
+[install]
+# The Bun executable is pinned by packageManager/CI, not installed as an npm peer.
+# Required React peers are explicit dependencies in package.json.
+peer = false
+# Runtime imports must use the frozen installation, never fetch missing packages.
+auto = "disable"

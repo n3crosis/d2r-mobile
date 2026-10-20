@@ -91,8 +91,8 @@ CNMT version, or “newest available” check.
 From `web/`:
 
 - `node --test tests/content-selection.test.mjs`
-- `npx eslint content-selection.mjs tests/content-selection.test.mjs --max-warnings 0`
-- `npx prettier --check content-selection.mjs tests/content-selection.test.mjs CONTENT_SELECTION_SCOPE.md`
+- `bun run lint`
+- `bun run format:check`
 
 No real NSP/key data, native parity, browser decryption, supported game build,
 patch application, or device IPA installation has been tested by this module.

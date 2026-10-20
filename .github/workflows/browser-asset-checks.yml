@@ -1,37 +1,8 @@
 name: Synthetic browser asset generation
+# Expensive proof: run locally first, or dispatch only the relevant subsystem.
 on:
-  push:
-    branches: [feature/web-ipa-packager]
-    paths:
-      [
-        "web/toolchain/asset-generation-spike/**",
-        "web/toolchain/texture-spike/**",
-        "web/asset-generator-adapter.mjs",
-        "web/v61-asset-worker.mjs",
-        "web/native-art-generator.mjs",
-        "web/native-art-texture.mjs",
-        "web/hud-generator.mjs",
-        "dm/gfx/nvn/nvn_tex.*",
-        "dm/gfx/tex/nvn_*",
-        "dm/ios/tools/**",
-        ".github/workflows/browser-asset-checks.yml",
-      ]
-  pull_request:
-    paths:
-      [
-        "web/toolchain/asset-generation-spike/**",
-        "web/toolchain/texture-spike/**",
-        "web/asset-generator-adapter.mjs",
-        "web/v61-asset-worker.mjs",
-        "web/native-art-generator.mjs",
-        "web/native-art-texture.mjs",
-        "web/hud-generator.mjs",
-        "dm/gfx/nvn/nvn_tex.*",
-        "dm/gfx/tex/nvn_*",
-        "dm/ios/tools/**",
-        ".github/workflows/browser-asset-checks.yml",
-      ]
   workflow_dispatch:
+
 permissions:
   contents: read
 concurrency:
@@ -69,6 +40,8 @@ jobs:
           "$RUNNER_TEMP/asset-reference/bin/python" test/hud-reference.py --raqm
       - name: Build separately scoped native Pillow BASIC reference
         run: |
+          sudo apt-get update
+          sudo apt-get install -y libjpeg-dev zlib1g-dev
           python3 test/build-hud-reference.py "$RUNNER_TEMP/hud-backend"
           python3 -m venv "$RUNNER_TEMP/hud-reference"
           "$RUNNER_TEMP/hud-reference/bin/pip" install 'setuptools==75.8.0' 'wheel==0.45.1' 'numpy==2.0.2' 'fonttools==4.55.3'
@@ -76,10 +49,12 @@ jobs:
           export LD_LIBRARY_PATH="$RUNNER_TEMP/hud-backend/lib:${LD_LIBRARY_PATH:-}"
           "$RUNNER_TEMP/hud-reference/bin/pip" install --no-build-isolation --no-deps "$RUNNER_TEMP/hud-backend/pillow-10.2.0" -C raqm=disable -C freetype=True
           "$RUNNER_TEMP/hud-reference/bin/python" test/hud-reference.py
+          "$RUNNER_TEMP/hud-reference/bin/python" test/map-goal-reference.py
       - name: Execute real Chromium worker and demand exact parity
         run: |
           timeout --kill-after=5s 180s npm run test:browser
           "$RUNNER_TEMP/asset-reference/bin/python" test/verify-png.py
+          timeout --kill-after=5s 180s node test/casc-overlay-browser.mjs
       - name: Build pinned texture bridge for cross-adapter parity
         run: |
           git clone --depth 1 --branch 4.0.20 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/asset-texture-emsdk"
@@ -107,6 +82,8 @@ jobs:
             web/native-art-generator.mjs
             web/native-art-texture.mjs
             web/hud-generator.mjs
+            web/casc-overlay-writer.mjs
+            web/toolchain/asset-generation-spike/casc-overlay-provenance.json
             web/toolchain/texture-spike/texture-worker.mjs
             web/toolchain/texture-spike/browser-texture.mjs
             web/toolchain/texture-spike/dist/

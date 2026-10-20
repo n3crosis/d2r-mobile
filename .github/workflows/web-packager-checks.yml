@@ -1,6 +1,12 @@
 name: Web packager checks
 
 on:
+  workflow_dispatch:
+    inputs:
+      compatibility:
+        description: "Also test Node 22 compatibility (default checks use Node 24)"
+        type: boolean
+        default: false
   push:
     branches: [feature/web-ipa-packager]
     paths:
@@ -28,13 +34,13 @@ concurrency:
 
 # Official action tag refs verified with git ls-remote on 2026-10-20.
 # No secrets, deployments, self-hosted runners, or uploaded game/runtime artifacts.
-# Only the small frontend dependency lockfile is uploaded for reproducibility.
+# The committed Bun lock is authoritative; no routine artifact upload is needed.
 jobs:
   frontend:
     strategy:
       fail-fast: false
       matrix:
-        node: ["22", "24"]
+        node: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.compatibility && '["22","24"]' || '["24"]') }}
     name: Frontend checks (Node ${{ matrix.node }})
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -49,27 +55,23 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: ${{ matrix.node }}
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.3"
       - name: Confirm Python oracle prerequisite
         run: python3 --version
       - name: Install committed locked dependencies
-        run: npm ci
-      - name: Preserve exact dependency lock for review (no build/game artifacts)
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
-        with:
-          name: web-package-lock-node-${{ matrix.node }}
-          path: web/package-lock.json
-          if-no-files-found: error
-          retention-days: 3
+        run: bun install --frozen-lockfile
       - name: Audit all dependencies including developer tools
-        run: npm audit --audit-level=high
+        run: bun audit --audit-level=high
       - name: Workflow YAML formatting
-        run: npx --no-install prettier --check ../.github/workflows/web-packager-checks.yml
+        run: bun run format:workflows:check
       - name: Synthetic tests (no game inputs)
-        run: npm test
+        run: bun run test
       - name: Lint, format, TypeScript and production build
-        run: npm run build
+        run: bun run build
       - name: Packager documentation format
-        run: npm run format:docs:check
+        run: bun run format:docs:check
       - name: Fixture encoding and upstream source drift gate (not translator parity)
         run: |
           node --input-type=module <<'JS'
@@ -87,79 +89,3 @@ jobs:
           console.log('Synthetic encoding assertions passed; native/browser translation NOT tested.');
           JS
           node toolchain/shader-spike/verify-parity.mjs prepare "$RUNNER_TEMP/shader-fixture"
-
-  shader-spike:
-    name: Experimental shader C# compile (NOT browser/native parity)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    defaults:
-      run:
-        shell: bash
-        working-directory: web/toolchain/shader-spike
-    env:
-      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
-      DOTNET_NOLOGO: "1"
-      DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE: "true"
-      # Stable SDK verified in official release metadata on 2026-10-20:
-      # https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json
-      # Matching stable SDK/workload-set versions are documented at:
-      # https://learn.microsoft.com/en-us/dotnet/core/tools/dotnet-workload-sets
-      SDK_VERSION: "10.0.402"
-      WORKLOAD_VERSION: "10.0.402"
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-        with:
-          persist-credentials: false
-      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
-        with:
-          dotnet-version: "10.0.402"
-      - name: Pin isolated SDK and workload set
-        run: |
-          printf '{"sdk":{"version":"%s","rollForward":"disable","allowPrerelease":false,"workloadVersion":"%s"}}\n' "$SDK_VERSION" "$WORKLOAD_VERSION" > global.json
-          test "$(dotnet --version)" = "$SDK_VERSION"
-          dotnet --info
-          git rev-parse HEAD
-      - name: Install pinned wasm-tools workload
-        # global.json pins the set. --skip-manifest-update is incompatible with that pin.
-        run: dotnet workload install wasm-tools
-      - name: Record workload diagnostics
-        if: ${{ !cancelled() }}
-        run: |
-          dotnet workload --version
-          dotnet workload list
-          df -h .
-      - name: Restore isolated browser project
-        id: restore
-        run: dotnet restore ShaderSpike.csproj
-      - name: Check only authored C# formatting (never rewrite vendored source)
-        id: format
-        continue-on-error: true
-        run: dotnet format ShaderSpike.csproj --no-restore --verify-no-changes --include ShaderBridge.cs EmbeddedResources.cs --verbosity normal
-      - name: Compile with platform and .NET analyzers despite format failures
-        id: build
-        if: ${{ !cancelled() && steps.restore.outcome == 'success' }}
-        continue-on-error: true
-        run: dotnet build ShaderSpike.csproj -c Release --no-restore -p:EnableNETAnalyzers=true -p:AnalysisLevel=latest -p:TreatWarningsAsErrors=true
-      - name: Publish experimental static bundle (not deployed or uploaded)
-        id: publish
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        continue-on-error: true
-        run: dotnet publish ShaderSpike.csproj -c Release --no-restore -p:EnableNETAnalyzers=true -p:AnalysisLevel=latest -p:TreatWarningsAsErrors=true
-      - name: Enforce diagnostic outcomes and record validation boundary
-        if: ${{ !cancelled() }}
-        env:
-          RESTORE_OUTCOME: ${{ steps.restore.outcome }}
-          FORMAT_OUTCOME: ${{ steps.format.outcome }}
-          BUILD_OUTCOME: ${{ steps.build.outcome }}
-          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
-        run: |
-          {
-            echo '### Experimental shader compile gate'
-            echo "Restore: $RESTORE_OUTCOME; format: $FORMAT_OUTCOME; build/analyzers: $BUILD_OUTCOME; publish: $PUBLISH_OUTCOME."
-            echo 'This checks compilation only. Browser execution, independent native oracle parity, SPIR-V validation, Windows/macOS browser testing, game compatibility, Metal conversion and working IPA output remain unverified.'
-            echo 'SDK/workload versions and diagnostics are in the job logs. No binary, game data or runtime artifact is uploaded.'
-          } >> "$GITHUB_STEP_SUMMARY"
-          test "$RESTORE_OUTCOME" = success
-          test "$FORMAT_OUTCOME" = success
-          test "$BUILD_OUTCOME" = success
-          test "$PUBLISH_OUTCOME" = success

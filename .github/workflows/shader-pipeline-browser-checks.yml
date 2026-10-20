@@ -1,31 +1,8 @@
 name: Linked browser shader pipeline parity
+# Expensive proof: run locally first, or dispatch only the relevant subsystem.
 on:
-  push:
-    branches: [feature/web-ipa-packager]
-    paths:
-      - "web/shader-pipeline.mjs"
-      - "web/shell-contract.mjs"
-      - "web/tests/shader-pipeline.test.mjs"
-      - "web/toolchain/shader-pipeline-spike/**"
-      - "web/toolchain/shader-spike/**"
-      - "web/toolchain/spirv-cross-spike/**"
-      - "dm/gfx/tools/dmsh_xlate/**"
-      - "dm/gfx/tools/dmsh_build.py"
-      - "dm/third_party/ryujinx/**"
-      - ".github/workflows/shader-pipeline-browser-checks.yml"
-  pull_request:
-    paths:
-      - "web/shader-pipeline.mjs"
-      - "web/shell-contract.mjs"
-      - "web/tests/shader-pipeline.test.mjs"
-      - "web/toolchain/shader-pipeline-spike/**"
-      - "web/toolchain/shader-spike/**"
-      - "web/toolchain/spirv-cross-spike/**"
-      - "dm/gfx/tools/dmsh_xlate/**"
-      - "dm/gfx/tools/dmsh_build.py"
-      - "dm/third_party/ryujinx/**"
-      - ".github/workflows/shader-pipeline-browser-checks.yml"
   workflow_dispatch:
+
 permissions:
   contents: read
 concurrency:

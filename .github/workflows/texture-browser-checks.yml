@@ -1,20 +1,8 @@
 name: NVN texture WASM boundary
+# Expensive proof: run locally first, or dispatch only the relevant subsystem.
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - "web/toolchain/texture-spike/**"
-      - "dm/gfx/nvn/nvn_tex.*"
-      - "dm/gfx/tex/nvn_*"
-      - "dm/third_party/bcdec/**"
-      - ".github/workflows/texture-browser-checks.yml"
-  pull_request:
-    paths:
-      - "web/toolchain/texture-spike/**"
-      - "dm/gfx/nvn/nvn_tex.*"
-      - "dm/gfx/tex/nvn_*"
-      - "dm/third_party/bcdec/**"
-      - ".github/workflows/texture-browser-checks.yml"
+
 permissions:
   contents: read
 concurrency:
@@ -47,6 +35,13 @@ jobs:
         run: python3 web/toolchain/texture-spike/native-fixtures.py
       - name: Compare native and WASM layout, mip decoding and malformed inputs
         run: node --test web/toolchain/texture-spike/texture.test.mjs
+      - name: Generate original BC3 encoding and packing oracle
+        shell: bash
+        run: |
+          python3 -m venv "$RUNNER_TEMP/texture-reference"
+          "$RUNNER_TEMP/texture-reference/bin/pip" install 'numpy==2.0.2' 'Pillow==11.1.0'
+          "$RUNNER_TEMP/texture-reference/bin/python" web/toolchain/texture-spike/native-encoder-fixtures.py
+          node --test web/toolchain/texture-spike/encoder.test.mjs
       - name: Install browser test tools from official npm package
         shell: bash
         run: |
@@ -57,6 +52,17 @@ jobs:
         run: |
           PLAYWRIGHT_ENTRY="$RUNNER_TEMP/texture-playwright/node_modules/playwright/index.mjs" \
             node web/toolchain/texture-spike/browser-smoke.mjs
+      - name: Prepare pinned self-hosted original Python codec runtime
+        shell: bash
+        working-directory: web/toolchain/asset-generation-spike
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run prepare:runtime
+      - name: Verify original BC3 encoding, packing and cancellation in Chromium
+        shell: bash
+        run: |
+          PLAYWRIGHT_ENTRY="$RUNNER_TEMP/texture-playwright/node_modules/playwright/index.mjs" \
+            timeout --kill-after=5s 240s node web/toolchain/texture-spike/encoder-browser-smoke.mjs
       - name: Retain public WASM and required notices only
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:

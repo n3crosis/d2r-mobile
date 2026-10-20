@@ -1,5 +1,12 @@
 # Dependency security scope
 
+> Historical remediation record: the review and CI result below describe the
+> previous npm/Vite/ESLint stack. The current frontend uses the pinned Bun/Oxc
+> toolchain and `bun.lock`; see [TOOLING.md](TOOLING.md). Audit the current lock
+> with `bun audit --audit-level=high`. Historical zero-vulnerability results do
+> not certify the new dependency graph. The ESLint lifecycle migration described
+> below is now resolved by removing ESLint, not by upgrading it to version 10.
+
 Reviewed 2026-10-20 against the committed dependency lockfile and upstream
 advisories. The pre-remediation lock-only npm audit reported 10 high-severity
 package entries, all marked development-only, with no production dependency

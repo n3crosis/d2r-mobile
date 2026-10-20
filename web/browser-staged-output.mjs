@@ -174,7 +174,7 @@ export function createBrowserStagedOutputAdapters({
               // Revalidate the snapshot actually being copied. It cannot be
               // silently replaced between initial validation and final transfer.
               await validateStagedZip(source, captured, { archiveFormat, maxOutputBytes, signal });
-              for (let offset = 0; offset < source.size; ) {
+              for (let offset = 0; offset < source.size;) {
                 const length = Math.min(STAGED_ZIP_LIMITS.maxChunkBytes, source.size - offset);
                 const bytes = await readRange(source, offset, length, signal);
                 await destinationWriter.write(bytes);

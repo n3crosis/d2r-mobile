@@ -10,7 +10,7 @@ Both callbacks are mandatory; neither has a fallback:
 
 1. `resolveTrustedRelease(releaseId, { signal })` independently authenticates a
    release registry and returns `{ verified: true, releaseId, trustedRecipe,
-files }`. Every file/directory has exact `path`, `size`, `mode` and lowercase
+   files }`. Every file/directory has exact `path`, `size`, `mode` and lowercase
    decoded-content `sha256`. This is a trusted-host assertion, not a signature
    verifier. Never construct it from ZIP contents or treat untrusted JSON's
    `verified` boolean as evidence. No real registry, keys, release records,

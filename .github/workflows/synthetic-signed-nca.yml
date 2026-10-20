@@ -1,20 +1,8 @@
 name: Isolated synthetic signed NCA proof
+# Expensive proof: run locally first, or dispatch only the relevant subsystem.
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - "web/toolchain/synthetic-signed-nca/**"
-      - "web/toolchain/nsp-extract-spike/**"
-      - "web/content-selection.mjs"
-      - "web/romfs-tree.mjs"
-      - ".github/workflows/synthetic-signed-nca.yml"
-  pull_request:
-    paths:
-      - "web/toolchain/synthetic-signed-nca/**"
-      - "web/toolchain/nsp-extract-spike/**"
-      - "web/content-selection.mjs"
-      - "web/romfs-tree.mjs"
-      - ".github/workflows/synthetic-signed-nca.yml"
+
 permissions:
   contents: read
 concurrency:

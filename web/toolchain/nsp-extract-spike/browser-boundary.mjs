@@ -255,7 +255,7 @@ export async function createBoundary(factory) {
     },
     async streamEntry(index, sink, signal) {
       const { size } = this.entry(index);
-      for (let offset = 0n; offset < size; ) {
+      for (let offset = 0n; offset < size;) {
         if (signal?.aborted) throw new Error("Extraction cancelled");
         const count = Number(size - offset > BigInt(CHUNK) ? BigInt(CHUNK) : size - offset);
         const bytes = this.read(index, offset, count);

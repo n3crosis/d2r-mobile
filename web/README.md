@@ -5,49 +5,57 @@ Target: desktop Chromium on Windows/macOS. End users should not install Python,
 separate signing/install workflow. Bulk game resources stay separate.
 
 **This directory does not build an IPA yet.** The preview is React + TypeScript,
-Vite, Tailwind CSS 4, and genuine shadcn/ui Button, Card and Alert source components.
+Bun’s browser bundler, Tailwind CSS 4, and genuine shadcn/ui Button, Card and Alert source components.
 See [component provenance and registry hashes](SHADCN_PROVENANCE.md).
 Layout is Tailwind utility composition, not bespoke component CSS. No Vue is used.
 
 ## Developer commands
 
-Node 22.12+ is for development only, not an end-user requirement:
+Bun 1.4.3 and Node 22.12+ are development tools, not end-user requirements:
 
 ```sh
 cd web
-npm ci
-npm run dev
-npm test
-npm run build
-npm run preview
+bun install --frozen-lockfile
+bun run dev
+bun run test
+bun run build
+bun run preview
 ```
 
 ## Linting and formatting
 
-Run `npm run lint` for ESLint (JavaScript, TypeScript, and React Hooks),
-`npm run lint:fix` for automatic lint fixes, `npm run format:check` for Prettier
-verification, and `npm run format` to apply formatting. The production build
+Run `bun run lint` for Oxlint (JavaScript, TypeScript, and React Hooks),
+`bun run lint:fix` for automatic lint fixes, `bun run format:check` for Oxfmt
+verification, and `bun run format` to apply formatting. The production build
 runs the lint and formatting gates before typechecking and bundling.
 
 Coverage includes the new browser source, pure JavaScript modules and tests,
-configuration, CSS, HTML, JSON, and browser documentation. ESLint separates browser
-code from Node tests/build configuration. Prettier skips generated output,
+configuration, CSS, HTML, JSON, and browser documentation. Oxlint separates browser
+code from Node tests/build configuration. Oxfmt skips generated output,
 dependencies, lockfiles, and the verbatim shadcn license. These checks do not
 blanket-reformat unrelated upstream native C, Python, or historical documentation.
-C# shader-spike formatting is a separate .NET SDK check, not a Prettier capability.
+C# shader-spike formatting is a separate .NET SDK check, not an Oxfmt capability.
 Tool versions are pinned in package.json and verified against the official npm registry.
-Use `npm run format:docs` or `npm run format:docs:check` separately for the sibling
+Use `bun run format:docs` or `bun run format:docs:check` separately for the sibling
 implementation-plan document in a full repository checkout. Hosted builds contain
 only this workspace, so that document and the native Python oracle tests are not
-required by `npm run build`; run `npm test` in the full checkout.
+required by `bun run build`; run `bun run test` in the full checkout.
 
-The dependency lockfile is committed from a checksum-verified CI artifact. Use
-`npm ci` for reproducible installs; dependency security review remains a separate gate.
+The frontend `bun.lock` is committed. Use `bun install --frozen-lockfile` for
+reproducible installs; dependency security review remains a separate gate. See
+[tooling versions, rule compatibility and exclusions](TOOLING.md).
+Workflow YAML is checked with `bun run format:workflows:check`.
 
-Open the localhost URL printed by Vite. For deployment, serve the built `dist/`
+`bun run build:bundle` uses Bun’s HTML bundler and the official Tailwind plugin,
+not Vite running under Bun. It emits browser-only JavaScript, compiled CSS and HTML
+to `dist/`; Bun is never required on the end user’s machine. The build disables
+environment-variable inlining and validates the emitted asset/CSP contract.
+
+Open the localhost URL printed by Bun. For deployment, serve the built `dist/`
 assets over HTTPS, not the source directory. Production CSP blocks fetch/WebSocket
 connections and permits only same-origin assets; no CDN or remote fonts are used.
-The development-only CSP permits local Vite HMR and injected styles/React Refresh.
+Development rebuilds on source edits; refresh the page after each rebuild.
+It uses the same strict CSP as production, without HMR or injected scripts/styles.
 Never deploy the development server. Folder selection needs a secure context and
 File System Access support; unsupported browsers can still run the synthetic demo.
 

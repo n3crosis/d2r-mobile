@@ -90,7 +90,7 @@ export async function createCascLogicalAssets(romfs, { signal } = {}) {
     // is lazy so unrelated unsupported records do not prevent valid asset reads.
     index.set(key, Object.freeze(fields.slice(0, 11)));
   }
-  for (let offset = 0n; offset < manifest.size; ) {
+  for (let offset = 0n; offset < manifest.size;) {
     signal?.throwIfAborted();
     const count = Number(
       manifest.size - offset > BigInt(ROMFS_LIMITS.readBytes)

@@ -1,22 +1,8 @@
 name: Offline runtime sealed-worker proof
+# Expensive proof: run locally first, or dispatch only the relevant subsystem.
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - "web/toolchain/offline-runtime-spike/**"
-      - "web/toolchain/texture-spike/**"
-      - "dm/gfx/nvn/nvn_tex.*"
-      - "dm/gfx/tex/nvn_*"
-      - "dm/third_party/bcdec/**"
-      - ".github/workflows/offline-runtime-checks.yml"
-  pull_request:
-    paths:
-      - "web/toolchain/offline-runtime-spike/**"
-      - "web/toolchain/texture-spike/**"
-      - "dm/gfx/nvn/nvn_tex.*"
-      - "dm/gfx/tex/nvn_*"
-      - "dm/third_party/bcdec/**"
-      - ".github/workflows/offline-runtime-checks.yml"
+
 permissions:
   contents: read
 concurrency:

@@ -1,21 +1,7 @@
 name: Synthetic browser SPIRV-Cross parity
 
+# Expensive proof: run locally first, or dispatch only the relevant subsystem.
 on:
-  push:
-    branches: [feature/web-ipa-packager]
-    paths:
-      - "web/toolchain/spirv-cross-spike/**"
-      - "dm/gfx/tools/dmsh_build.py"
-      - "dm/gfx/tools/dmsh_chain.py"
-      - "dm/gfx/tools/nometal_run.py"
-      - ".github/workflows/spirv-cross-browser-checks.yml"
-  pull_request:
-    paths:
-      - "web/toolchain/spirv-cross-spike/**"
-      - "dm/gfx/tools/dmsh_build.py"
-      - "dm/gfx/tools/dmsh_chain.py"
-      - "dm/gfx/tools/nometal_run.py"
-      - ".github/workflows/spirv-cross-browser-checks.yml"
   workflow_dispatch:
 
 permissions:

@@ -4,6 +4,23 @@ let phase = "new";
 let exports;
 let queue = Promise.resolve();
 const urls = [];
+function setPhase(next) {
+  phase = next;
+  if (!initialized) self.postMessage({ type: "initialization-stage", stage: next });
+}
+function reportInitializationFailure(error) {
+  if (!started || initialized) return;
+  self.postMessage({
+    id: 0,
+    ok: false,
+    error: `Offline .NET initialization failed (${phase}): ${String(error?.message ?? error).slice(0, 4000)}`,
+  });
+}
+self.addEventListener("unhandledrejection", (event) => reportInitializationFailure(event.reason));
+self.addEventListener("error", (event) =>
+  reportInitializationFailure(event.error ?? event.message),
+);
+
 async function probe(destinations) {
   let blocked = 0;
   for (const url of destinations) {
@@ -41,9 +58,9 @@ async function initialize(data) {
     urls.push(url);
     return url;
   }
-  phase = "probe-before";
+  setPhase("probe-before");
   const before = await probe(data.probes);
-  phase = "config-module";
+  setPhase("config-module");
   const { config } = await import(moduleUrl("dotnet.boot.js"));
   if (
     !config?.resources ||
@@ -104,7 +121,7 @@ async function initialize(data) {
       }
     }
   }
-  phase = "loader-module";
+  setPhase("loader-module");
   const { dotnet } = await import(moduleUrl("dotnet.js"));
   function resourceLoader(type, name, _uri, integrity) {
     if (!declared.has(name) || !assets.has(name))
@@ -125,16 +142,16 @@ async function initialize(data) {
       });
     })();
   }
-  phase = "runtime-create";
+  setPhase("runtime-create");
   const runtime = await dotnet.withConfig(config).withResourceLoader(resourceLoader).create();
-  phase = "assembly-exports";
+  setPhase("assembly-exports");
   exports = await runtime.getAssemblyExports(runtime.getConfig().mainAssemblyName);
   if (typeof exports?.ShaderBridge?.Translate !== "function")
     throw new Error("Missing real translator export");
-  phase = "probe-after";
+  setPhase("probe-after");
   const after = await probe(data.probes);
   initialized = true;
-  phase = "ready";
+  setPhase("ready");
   return {
     initialized: true,
     blocked: before + after,

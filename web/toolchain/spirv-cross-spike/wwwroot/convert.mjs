@@ -17,7 +17,7 @@ export function validateSpirv(input) {
   if (data.getUint32(0, true) !== 0x07230203) throw new Error("Invalid little-endian SPIR-V magic");
   if (!data.getUint32(12, true) || data.getUint32(16, true))
     throw new Error("Invalid SPIR-V header");
-  for (let offset = 20; offset < input.byteLength; ) {
+  for (let offset = 20; offset < input.byteLength;) {
     const words = data.getUint32(offset, true) >>> 16;
     if (!words || offset + words * 4 > input.byteLength)
       throw new Error("Invalid SPIR-V instruction size");

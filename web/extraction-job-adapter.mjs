@@ -58,6 +58,7 @@ export function createExtractionJobAdapter({
   createWorker,
   maxProgramBytes = 32 * 1024 * 1024,
   timeoutMs,
+  operationTimeoutMs,
   maxQueue,
 } = {}) {
   if (
@@ -90,7 +91,12 @@ export function createExtractionJobAdapter({
       if (used || cleaned) fail("EXTRACTION_SINGLE_USE");
       used = true;
       signal?.throwIfAborted();
-      const client = createExtractionWorkerClient({ createWorker, timeoutMs, maxQueue });
+      const client = createExtractionWorkerClient({
+        createWorker,
+        timeoutMs,
+        operationTimeoutMs,
+        maxQueue,
+      });
       const state = { client, inspected: null, closed: false, extracted: false };
       const abort = () => {
         state.closed = true;

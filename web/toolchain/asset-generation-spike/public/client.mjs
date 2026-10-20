@@ -17,7 +17,7 @@ export class AssetWorker {
     this.#worker.onerror = (event) => this.close(new Error(event.message));
   }
   run(operation, bytes, options = {}) {
-    const limit = (operation === "hud-v4" ? 64 : 20) * 1024 * 1024;
+    const limit = (["hud-v4", "casc-overlay"].includes(operation) ? 64 : 20) * 1024 * 1024;
     if (!(bytes instanceof Uint8Array) || bytes.byteLength > limit)
       return Promise.reject(new Error("Input exceeds operation byte limit"));
     if (!this.#worker) return Promise.reject(new Error("Worker closed"));

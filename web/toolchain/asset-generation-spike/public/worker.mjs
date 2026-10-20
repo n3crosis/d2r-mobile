@@ -13,6 +13,10 @@ async function initialize() {
     "hud_design_original.py",
     "hud_support_original.py",
     "hud.py",
+    "map_goal_original.py",
+    "map_goal.py",
+    "casc_overlay_original.py",
+    "casc_overlay.py",
   ]) {
     const response = await fetch(new URL(`./generated/${name}`, import.meta.url));
     if (!response.ok) throw new Error(`Missing packaged core: ${name}`);
@@ -33,7 +37,10 @@ self.onmessage = ({ data }) => {
         !(payload instanceof ArrayBuffer)
       )
         throw new Error("Invalid worker request");
-      if (payload.byteLength > (operation === "hud-v4" ? 64 : 20) * 1024 * 1024)
+      if (
+        payload.byteLength >
+        (["hud-v4", "casc-overlay"].includes(operation) ? 64 : 20) * 1024 * 1024
+      )
         throw new Error("Input exceeds operation byte limit");
       const py = await (runtime ??= initialize());
       py.globals.set("_op", operation);

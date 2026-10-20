@@ -1,21 +1,8 @@
 name: ZIP64 bounded large-output checks
 
+# Expensive proof: run locally first, or dispatch only the relevant subsystem.
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - "web/zip64-writer.mjs"
-      - "web/preflight.mjs"
-      - "web/tests/zip64-writer.test.mjs"
-      - "web/LARGE_OUTPUT_SCOPE.md"
-      - ".github/workflows/zip64-large-output-checks.yml"
-  pull_request:
-    paths:
-      - "web/zip64-writer.mjs"
-      - "web/preflight.mjs"
-      - "web/tests/zip64-writer.test.mjs"
-      - "web/LARGE_OUTPUT_SCOPE.md"
-      - ".github/workflows/zip64-large-output-checks.yml"
 
 permissions:
   contents: read

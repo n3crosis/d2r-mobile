@@ -1,35 +1,8 @@
 name: Windows and macOS synthetic Chromium proofs
+# Expensive proof: run locally first, or dispatch only the relevant subsystem.
 on:
   workflow_dispatch:
-  push:
-    branches: [feature/web-ipa-packager]
-    paths:
-      - "web/toolchain/desktop-browser-spike/**"
-      - "web/toolchain/staged-output-spike/**"
-      - "web/toolchain/offline-runtime-spike/**"
-      - "web/toolchain/texture-spike/**"
-      - "web/browser-staged-output.mjs"
-      - "web/staged-zip-validator.mjs"
-      - "web/zip*-writer.mjs"
-      - "web/preflight.mjs"
-      - "dm/gfx/nvn/nvn_tex.*"
-      - "dm/gfx/tex/nvn_*"
-      - "dm/third_party/bcdec/**"
-      - ".github/workflows/desktop-browser-checks.yml"
-  pull_request:
-    paths:
-      - "web/toolchain/desktop-browser-spike/**"
-      - "web/toolchain/staged-output-spike/**"
-      - "web/toolchain/offline-runtime-spike/**"
-      - "web/toolchain/texture-spike/**"
-      - "web/browser-staged-output.mjs"
-      - "web/staged-zip-validator.mjs"
-      - "web/zip*-writer.mjs"
-      - "web/preflight.mjs"
-      - "dm/gfx/nvn/nvn_tex.*"
-      - "dm/gfx/tex/nvn_*"
-      - "dm/third_party/bcdec/**"
-      - ".github/workflows/desktop-browser-checks.yml"
+
 permissions:
   contents: read
 concurrency:

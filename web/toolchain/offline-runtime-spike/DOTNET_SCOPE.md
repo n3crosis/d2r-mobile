@@ -78,3 +78,14 @@ a bounded public filename inventory for further diagnosis. Corrected browser
 evidence remains pending.
 
 Official property implementation: [WebAssembly Browser build targets](https://github.com/dotnet/runtime/blob/v10.0.13/src/mono/nuget/Microsoft.NET.Sdk.WebAssembly.Pack/build/Microsoft.NET.Sdk.WebAssembly.Browser.targets).
+
+### Second CI outcome: initialization timeout, cause unresolved
+
+[Run 39404536379](https://github.com/n3crosis/d2r-mobile/actions/runs/39404536379)
+on `d6d934aa77bb378775463daa2f60a5dec988e7fa` passed publish, original native
+translation and full runtime packaging. The valid browser scenario then timed
+out after 60 seconds during initialization; native/browser parity and validators
+were not reached. This does not establish a CSP/eval incompatibility or prove
+network isolation. The next focused proof adds bounded public initialization
+phase, uncaught-error and console diagnostics, without changing the timeout,
+CSP or success assertions. Diagnostics stop before any operation payload is sent.

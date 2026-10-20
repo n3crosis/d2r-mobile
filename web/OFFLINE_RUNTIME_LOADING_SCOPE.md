@@ -100,7 +100,7 @@ this boundary, so no boolean “offline ready” shim is supplied.
    This is a candidate, not a tested policy or replacement for the current CSP.
    `connect-src blob:` permits runtime loaders to read in-memory object URLs, not
    HTTP(S) URLs. If all loaders can consume bytes directly, prefer `connect-src
-'none'` instead. Neither policy permits same-origin HTTP after sealing. The
+   'none'` instead. Neither policy permits same-origin HTTP after sealing. The
    preceding bootstrap policy must explicitly permit only the capabilities
    required by both phases, including blob execution and WASM. Do not add general
    `'unsafe-eval'` merely to satisfy a runtime. Existing loaded CSS behavior,

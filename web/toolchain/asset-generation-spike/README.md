@@ -113,3 +113,9 @@ at `b90743b5b70fdf9ffa895dfd1d54a0201ad270c7`; this is not real-game or full-IPA
 The complete [Switch-upscaled HUD stage](HUD.md) now preserves original layout,
 glyph rendering and every required image. Both fonts are read from the archive;
 CI uses newly authored synthetic outlines only. Full differential proof is pending.
+
+The separate [complete current-name map-goal generator](MAP_GOAL.md) adds the
+original 31-label/five-language render, seven symbols, cross and exact164-file
+inventory. Its native/browser proof uses the explicitly scoped matching BASIC
+backend, not the preserved RAQM output or proprietary fonts. Production atlas
+mapping and legacy-font dependency review remain release gates.

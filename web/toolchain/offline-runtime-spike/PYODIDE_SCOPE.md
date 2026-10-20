@@ -5,9 +5,10 @@ asset worker unchanged. It uses the actual generated Python core, Pillow and
 NumPy from the asset-generation spike, including the current complete packaged
 Python module set (`native_functions.py`, `core.py`, `derived.py`, `native_art_original.py`,
 `native_art.py`, `hud_original.py`, `hud_design_original.py`,
-`hud_support_original.py`, `hud.py`). The tested
+`hud_support_original.py`, `hud.py`, `map_goal_original.py`, `map_goal.py`,
+`casc_overlay_original.py`, `casc_overlay.py`). The tested
 operations are image-default-frame, experience-table and overlay-paths. Derived-table, native-art, HUD and v61 operation parity remain separate proofs.
-The sealed initialization explicitly imports all nine modules, including derived, native_art and hud, so their
+The sealed initialization explicitly imports all thirteen modules, including derived, native_art and hud, so their
 Python import closure must be present before any operation is accepted. This
 does not claim their output operations passed here. Native-art JSON metadata is
 consumed from explicit operation payloads, not fetched at import time, and is not
@@ -57,7 +58,7 @@ not excused or weakened; any required path that violates CSP must fail the proof
 
 The Worker imports the verified adapted runtime from blob URLs, initializes
 Python, loads both packages through the bounded reader with package integrity
-checks, installs the nine Python files from bytes, and imports the real core.
+checks, installs the thirteen Python files from bytes, and imports the real core.
 Only then does it report initialized and accept bounded operation messages.
 Normal global fetch and imports attempt both local and second-origin sentinels
 before and after runtime initialization. These are actual browser requests, not
@@ -135,3 +136,12 @@ was necessary for this corpus.
 This verifies only the listed synthetic operations and imported code closure,
 not sealed HUD/native-art rendering, Windows/macOS, real game archives, the
 program rewriter, or production integration. Production UI and CSP are unchanged.
+
+### Later import-only closure extension (browser proof pending)
+
+The exact preload manifest now includes map_goal_original.py, map_goal.py,
+casc_overlay_original.py and casc_overlay.py. These thirteen Python modules are
+installed from verified bytes and imported before jobs are accepted. The operation
+allowlist remains image-default-frame, experience-table and overlay-paths; no
+map-goal/CASC/HUD job or key-handling capability is enabled. The earlier green
+run verifies its nine-module snapshot, not this subsequent thirteen-module edit.

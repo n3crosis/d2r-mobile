@@ -1,21 +1,8 @@
 name: Offline .NET sealed-worker parity
 
+# Expensive proof: run locally first, or dispatch only the relevant subsystem.
 on:
-  push:
-    branches: [feature/web-ipa-packager]
-    paths:
-      - "web/toolchain/shader-spike/**"
-      - "dm/gfx/tools/dmsh_xlate/**"
-      - "dm/third_party/ryujinx/**"
-      - ".github/workflows/offline-dotnet-checks.yml"
-      - "web/toolchain/offline-runtime-spike/dotnet-*"
-  pull_request:
-    paths:
-      - "web/toolchain/shader-spike/**"
-      - "dm/gfx/tools/dmsh_xlate/**"
-      - "dm/third_party/ryujinx/**"
-      - ".github/workflows/offline-dotnet-checks.yml"
-      - "web/toolchain/offline-runtime-spike/dotnet-*"
+  workflow_dispatch:
 
 permissions:
   contents: read

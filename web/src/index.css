@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import "tailwindcss" source("./");
 
 /* Standard shadcn neutral design tokens; all component/layout styling is utilities. */
 @theme inline {

@@ -45,8 +45,16 @@ def encode_v31(im):
 
 
 def execute(operation, payload, options):
-    if len(payload) > (64 * 1024 * 1024 if operation == "hud-v4" else MAX_BYTES):
+    if len(payload) > (64 * 1024 * 1024 if operation in {"hud-v4", "casc-overlay"} else MAX_BYTES):
         raise ValueError("Input exceeds operation byte limit")
+    if operation == "casc-overlay":
+        from casc_overlay import generate
+
+        return generate(payload, options)
+    if operation == "map-goal":
+        from map_goal import generate
+
+        return generate(payload, options)
     if operation == "hud-v4":
         from hud import generate
 

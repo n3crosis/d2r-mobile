@@ -1,19 +1,8 @@
 name: Synthetic browser shader runtime parity
 
+# Expensive proof: run locally first, or dispatch only the relevant subsystem.
 on:
-  push:
-    branches: [feature/web-ipa-packager]
-    paths:
-      - "web/toolchain/shader-spike/**"
-      - "dm/gfx/tools/dmsh_xlate/**"
-      - "dm/third_party/ryujinx/**"
-      - ".github/workflows/shader-runtime-parity.yml"
-  pull_request:
-    paths:
-      - "web/toolchain/shader-spike/**"
-      - "dm/gfx/tools/dmsh_xlate/**"
-      - "dm/third_party/ryujinx/**"
-      - ".github/workflows/shader-runtime-parity.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -72,6 +61,7 @@ jobs:
         id: publish
         run: |
           dotnet restore ShaderSpike.csproj
+          dotnet format ShaderSpike.csproj --no-restore --verify-no-changes --include ShaderBridge.cs EmbeddedResources.cs --verbosity normal
           dotnet build ShaderSpike.csproj -c Release --no-restore -p:EnableNETAnalyzers=true -p:AnalysisLevel=latest -p:TreatWarningsAsErrors=true
           dotnet publish ShaderSpike.csproj -c Release --no-restore -p:EnableNETAnalyzers=true -p:AnalysisLevel=latest -p:TreatWarningsAsErrors=true
       - name: Prepare tiny authored fixture and build independent original native oracle

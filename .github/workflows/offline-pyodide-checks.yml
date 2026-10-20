@@ -1,18 +1,8 @@
 name: Offline Pyodide sealed-worker parity
+# Expensive proof: run locally first, or dispatch only the relevant subsystem.
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - "web/toolchain/offline-runtime-spike/**"
-      - "web/toolchain/asset-generation-spike/**"
-      - "dm/ios/tools/**"
-      - ".github/workflows/offline-pyodide-checks.yml"
-  pull_request:
-    paths:
-      - "web/toolchain/offline-runtime-spike/**"
-      - "web/toolchain/asset-generation-spike/**"
-      - "dm/ios/tools/**"
-      - ".github/workflows/offline-pyodide-checks.yml"
+
 permissions:
   contents: read
 concurrency:

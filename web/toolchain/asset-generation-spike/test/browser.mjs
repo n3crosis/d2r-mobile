@@ -78,7 +78,10 @@ try {
   const hudBundle = await readFile("test-results/hud/bundle.json");
   const hudOptions = JSON.parse(await readFile("test-results/hud/options.json", "utf8"));
   const hudFiles = JSON.parse(await readFile("test-results/hud/files.json", "utf8"));
+  const mapBundle = await readFile("test-results/map-goal/bundle.json");
+  const mapFiles = JSON.parse(await readFile("test-results/map-goal/files.json", "utf8"));
   const cases = [
+    ["map-goal", mapBundle, { names: "current" }, mapFiles],
     ["hud-v4", hudBundle, hudOptions, hudFiles],
     ["native-art", artBundle, artOptions, artFiles],
     ["image-default-frame", sprite, { frame: 1 }, ["frame.rgba", "frame.sprite"]],
@@ -92,15 +95,22 @@ try {
     const [operation, , , names] = cases[i];
     const actual = results[i];
     assert.equal(actual.ok, true, actual.error);
-    if (operation === "hud-v4") {
-      const nativeBackend = JSON.parse(await readFile("test-results/hud/backend.json", "utf8"));
+    if (operation === "hud-v4" || operation === "map-goal") {
+      const directory = operation === "map-goal" ? "map-goal" : "hud";
+      const nativeBackend = JSON.parse(
+        await readFile(`test-results/${directory}/backend.json`, "utf8"),
+      );
       assert.equal(nativeBackend.contract, "pyodide-matched-BASIC");
       delete nativeBackend.contract;
-      assert.deepEqual(actual.result.backend, nativeBackend, "HUD matching backend is mandatory");
+      assert.deepEqual(
+        actual.result.backend,
+        nativeBackend,
+        `${operation}: matching backend is mandatory`,
+      );
       assert.deepEqual(
         Object.keys(actual.result.files).sort(),
         [...names].sort(),
-        "Complete HUD inventory",
+        `${operation}: complete inventory`,
       );
     }
     for (const [name, bytes] of Object.entries(actual.result.files)) {
@@ -111,13 +121,15 @@ try {
       assert.deepEqual(
         Buffer.from(actual.result.files[name]),
         await readFile(
-          operation === "hud-v4"
-            ? `test-results/hud/expected/${name}`
-            : operation === "native-art"
-              ? `test-results/native-art/native-ios/Sources/${name.endsWith(".png") ? "TouchArt/" : ""}${name}`
-              : name === "derived.tsv"
-                ? "test-results/derived/expected.tsv"
-                : `${reference}/${name}`,
+          operation === "map-goal"
+            ? `test-results/map-goal/expected/${name}`
+            : operation === "hud-v4"
+              ? `test-results/hud/expected/${name}`
+              : operation === "native-art"
+                ? `test-results/native-art/native-ios/Sources/${name.endsWith(".png") ? "TouchArt/" : ""}${name}`
+                : name === "derived.tsv"
+                  ? "test-results/derived/expected.tsv"
+                  : `${reference}/${name}`,
         ),
         `${operation}: exact byte parity ${name}`,
       );
@@ -142,6 +154,13 @@ try {
   const missingFont = JSON.parse(hudBundle);
   delete missingFont.fonts["exocetblizzardot-medium.otf"];
   const negatives = [
+    ["map-goal", mapBundle, {}, "MAP_GOAL_CURRENT_NAMES_REQUIRED"],
+    [
+      "map-goal",
+      Buffer.from(JSON.stringify({ ...JSON.parse(mapBundle), strings: {} })),
+      { names: "current" },
+      "MAP_GOAL_STRING_SET",
+    ],
     ["hud-v4", hudBundle, {}, "HUD_MODE_REQUIRED"],
     ["hud-v4", Buffer.from(JSON.stringify(missingFont)), hudOptions, "HUD_FONT_SET"],
     ["native-art", Buffer.from(JSON.stringify(badPixels)), artOptions, "native_art"],

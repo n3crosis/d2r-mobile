@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/../.."
+
+python_sources=(
+  web/toolchain/nsp-extract-spike/prepare-source.py
+  web/toolchain/synthetic-signed-nca/inject-test-root.py
+  web/toolchain/synthetic-signed-nca/verify-build-isolation.py
+  web/toolchain/spirv-cross-spike/native-oracle.py
+  web/toolchain/spirv-cross-spike/provenance.py
+  web/toolchain/shell-release-evidence/compare-source.py
+  web/toolchain/shell-release-evidence/test-source-comparison.py
+  web/toolchain/asset-generation-spike/scripts/package-core.py
+  web/toolchain/asset-generation-spike/src/core.py
+  web/toolchain/asset-generation-spike/scripts/package-native-art.py
+  web/toolchain/asset-generation-spike/scripts/package-hud.py
+  web/toolchain/asset-generation-spike/src/hud.py
+  web/toolchain/asset-generation-spike/test/hud-reference.py
+  web/toolchain/asset-generation-spike/test/build-hud-reference.py
+  web/toolchain/asset-generation-spike/scripts/package-casc-overlay.py
+  web/toolchain/asset-generation-spike/src/casc_overlay.py
+  web/toolchain/asset-generation-spike/test/casc-overlay-oracle.py
+  web/toolchain/asset-generation-spike/scripts/package-map-goal.py
+  web/toolchain/asset-generation-spike/src/map_goal.py
+  web/toolchain/asset-generation-spike/test/map-goal-reference.py
+  web/toolchain/asset-generation-spike/src/native_art.py
+  web/toolchain/asset-generation-spike/test/native-art-reference.py
+  web/toolchain/asset-generation-spike/src/derived.py
+  web/toolchain/asset-generation-spike/test/native-reference.py
+  web/toolchain/asset-generation-spike/test/native-derived.py
+  web/toolchain/asset-generation-spike/test/native-v61.py
+  web/toolchain/asset-generation-spike/test/verify-png.py
+  web/toolchain/program-rewrite-spike/audit-source.py
+  web/toolchain/program-rewrite-spike/make-fixtures.py
+  web/toolchain/program-rewrite-spike/python-adapters.py
+  web/toolchain/texture-spike/bounded_encoder.py
+  web/toolchain/texture-spike/native-encoder-fixtures.py
+  web/toolchain/texture-spike/package-encoder.py
+  web/toolchain/texture-spike/native-fixtures.py
+)
+ruff check --no-cache --config web/toolchain/style/ruff.toml "${python_sources[@]}"
+ruff format --check --no-cache --config web/toolchain/style/ruff.toml "${python_sources[@]}"
+
+clang-format --dry-run --Werror --style=file:web/toolchain/style/clang-format.yaml \
+  web/toolchain/nsp-extract-spike/boundary.c \
+  web/toolchain/nsp-extract-spike/bktr-reader.h \
+  web/toolchain/nsp-extract-spike/crypto-fixture.c \
+  web/toolchain/nsp-extract-spike/quiet.h \
+  web/toolchain/program-rewrite-spike/bridge.c \
+  web/toolchain/texture-spike/boundary.c
+
+bash -n web/toolchain/nsp-extract-spike/build-wasm.sh
+bash -n web/toolchain/synthetic-signed-nca/run-ci.sh
+bash -n web/toolchain/spirv-cross-spike/build.sh
+bash -n web/toolchain/program-rewrite-spike/build-wasm.sh
+bash -n web/toolchain/texture-spike/build-wasm.sh
+bash -n web/scripts/check-authored-style.sh

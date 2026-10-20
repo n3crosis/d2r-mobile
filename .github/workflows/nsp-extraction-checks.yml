@@ -1,32 +1,8 @@
 name: NSP extraction WASM boundary
+# Expensive proof: run locally first, or dispatch only the relevant subsystem.
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - "web/toolchain/nsp-extract-spike/**"
-      - "web/extraction-worker-client.mjs"
-      - "web/extraction-job-adapter.mjs"
-      - "web/nsp-input.mjs"
-      - "web/content-selection.mjs"
-      - "web/d2r-expansion-policy.mjs"
-      - "web/tests/d2r-expansion-policy.test.mjs"
-      - "web/romfs-tree.mjs"
-      - "web/casc-logical-reader.mjs"
-      - "web/tests/*extraction*"
-      - ".github/workflows/nsp-extraction-checks.yml"
-  pull_request:
-    paths:
-      - "web/toolchain/nsp-extract-spike/**"
-      - "web/extraction-worker-client.mjs"
-      - "web/extraction-job-adapter.mjs"
-      - "web/nsp-input.mjs"
-      - "web/content-selection.mjs"
-      - "web/d2r-expansion-policy.mjs"
-      - "web/tests/d2r-expansion-policy.test.mjs"
-      - "web/romfs-tree.mjs"
-      - "web/casc-logical-reader.mjs"
-      - "web/tests/*extraction*"
-      - ".github/workflows/nsp-extraction-checks.yml"
+
 permissions:
   contents: read
 concurrency:

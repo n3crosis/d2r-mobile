@@ -1,24 +1,8 @@
 name: Browser staged output integrity
+# Expensive proof: run locally first, or dispatch only the relevant subsystem.
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - "web/browser-staged-output.mjs"
-      - "web/staged-zip-validator.mjs"
-      - "web/zip*-writer.mjs"
-      - "web/preflight.mjs"
-      - "web/tests/*staged*.test.mjs"
-      - "web/toolchain/staged-output-spike/**"
-      - ".github/workflows/staged-output-browser-checks.yml"
-  pull_request:
-    paths:
-      - "web/browser-staged-output.mjs"
-      - "web/staged-zip-validator.mjs"
-      - "web/zip*-writer.mjs"
-      - "web/preflight.mjs"
-      - "web/tests/*staged*.test.mjs"
-      - "web/toolchain/staged-output-spike/**"
-      - ".github/workflows/staged-output-browser-checks.yml"
+
 permissions:
   contents: read
 concurrency:

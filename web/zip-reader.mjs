@@ -39,7 +39,7 @@ async function range(source, offset, length, signal) {
   return bytes;
 }
 function extra(bytes) {
-  for (let p = 0; p < bytes.length; ) {
+  for (let p = 0; p < bytes.length;) {
     if (bytes.length - p < 4) fail("Truncated ZIP extra field");
     const id = u16(bytes, p),
       length = u16(bytes, p + 2);

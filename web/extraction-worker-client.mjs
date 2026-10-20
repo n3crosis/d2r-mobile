@@ -13,21 +13,52 @@ const keys = (value, expected) =>
   value &&
   typeof value === "object" &&
   Object.keys(value).sort().join(",") === [...expected].sort().join(",");
+/** Total queue-plus-execution deadlines. Long verification never gets an
+ * unbounded lease or heartbeat-based renewal; real-title throughput is unmeasured.
+ */
+export const EXTRACTION_OPERATION_TIMEOUTS = Object.freeze({
+  initialize: Object.freeze({ defaultMs: 2 * 60 * 60 * 1000, maxMs: 6 * 60 * 60 * 1000 }),
+  select: Object.freeze({ defaultMs: 120000, maxMs: 600000 }),
+  readExefs: Object.freeze({ defaultMs: 30000, maxMs: 120000 }),
+  openRomfs: Object.freeze({ defaultMs: 2 * 60 * 60 * 1000, maxMs: 6 * 60 * 60 * 1000 }),
+  readRomfs: Object.freeze({ defaultMs: 30000, maxMs: 120000 }),
+  dispose: Object.freeze({ defaultMs: 30000, maxMs: 120000 }),
+});
 export function createExtractionWorkerClient({
   createWorker,
-  timeoutMs = 120000,
+  timeoutMs,
+  operationTimeoutMs = {},
   maxQueue = 8,
 } = {}) {
   if (
     typeof createWorker !== "function" ||
-    !Number.isSafeInteger(timeoutMs) ||
-    timeoutMs < 1 ||
-    timeoutMs > 600000 ||
+    (timeoutMs !== undefined &&
+      (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 600000)) ||
+    !operationTimeoutMs ||
+    typeof operationTimeoutMs !== "object" ||
+    Array.isArray(operationTimeoutMs) ||
+    Object.keys(operationTimeoutMs).some(
+      (operation) => !Object.hasOwn(EXTRACTION_OPERATION_TIMEOUTS, operation),
+    ) ||
     !Number.isInteger(maxQueue) ||
     maxQueue < 1 ||
     maxQueue > 32
   )
     throw error("EXTRACTION_CLIENT_OPTIONS");
+  const deadlines = Object.create(null);
+  for (const [operation, limits] of Object.entries(EXTRACTION_OPERATION_TIMEOUTS)) {
+    const override = Object.hasOwn(operationTimeoutMs, operation);
+    // The legacy global option can shorten long operations but never expands the
+    // new short-operation ceilings. Explicit per-operation overrides are preferred.
+    const value = override
+      ? operationTimeoutMs[operation]
+      : timeoutMs === undefined
+        ? limits.defaultMs
+        : Math.min(timeoutMs, limits.maxMs);
+    if (!Number.isSafeInteger(value) || value < 1 || value > limits.maxMs)
+      throw error("EXTRACTION_CLIENT_OPTIONS");
+    deadlines[operation] = value;
+  }
   let worker;
   try {
     worker = createWorker();
@@ -136,7 +167,7 @@ export function createExtractionWorkerClient({
       const task = { id: ++nextId, operation, payload, validate, resolve, reject, signal };
       task.abort = () => close("EXTRACTION_CANCELLED");
       // Includes time spent queued, bounding total request lifetime.
-      task.timer = setTimeout(() => close("EXTRACTION_TIMEOUT"), timeoutMs);
+      task.timer = setTimeout(() => close("EXTRACTION_TIMEOUT"), deadlines[operation]);
       signal?.addEventListener("abort", task.abort, { once: true });
       queue.push(task);
       pump();

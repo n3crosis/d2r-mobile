@@ -11,8 +11,8 @@ DLC overlay, signing, upload or network fallback is added.
   It supports only initialize, select, readExefs, openRomfs, readRomfs and dispose.
 - Requests use strictly increasing IDs and one active request. At most eight are
   queued by default (configurable 1–32). Queue overflow rejects the new request.
-  Every request has a total queue-plus-execution deadline (120 seconds by default,
-  configurable up to ten minutes). A timeout, cancellation, malformed response,
+  Every request has an operation-specific total queue-plus-execution deadline
+  (see below). A timeout, cancellation, malformed response,
   stale response ID, runtime error or worker failure terminates the entire session,
   rejects all pending requests, clears listeners and exposes only fixed error codes.
 - Reads are bounded to 64 KiB, require a generation token and accept only an exact
@@ -43,6 +43,46 @@ DLC overlay, signing, upload or network fallback is added.
   `read(path,{maxBytes,signal})`. No keys, input files, session, token, Worker,
   arbitrary request method, metadata row enumeration or native boundary is exposed.
   Reader closures are revoked on disposal, including zero-byte/cached operations.
+
+## Bounded large-input deadlines
+
+The Worker performs complete NCA hashing during initialize and full IVFC/BKTR
+verification during openRomfs. Memory-bounded verification is not time-bounded by
+64 KiB chunk size: legitimate multi-GB inputs can take substantially longer than
+the old uniform two-minute limit. Default deadlines are now:
+
+| Operation           | Default total deadline | Hard maximum |
+| ------------------- | ---------------------- | ------------ |
+| initialize          | 2 hours                | 6 hours      |
+| openRomfs           | 2 hours                | 6 hours      |
+| select              | 2 minutes              | 10 minutes   |
+| readExefs/readRomfs | 30 seconds             | 2 minutes    |
+| dispose             | 30 seconds             | 2 minutes    |
+
+Trusted wiring may pass `operationTimeoutMs: {initialize: ..., openRomfs: ...}`
+to either client or adapter. Only these six fixed operation names and positive
+safe-integer millisecond values within their respective caps are accepted. Values
+are snapshotted before Worker creation. Neither zero, infinity nor disabling the
+timer is supported. The legacy explicit `timeoutMs` option remains accepted up to
+ten minutes, applies across operations but is clamped to shorter operation caps;
+it can intentionally shorten the new long-operation defaults. Explicit operation
+values take precedence over that legacy option.
+
+Every deadline starts at enqueue, not dispatch, and is never renewed by Worker
+activity or progress messages. A queued short request may therefore terminate an
+in-flight long operation when its own total deadline expires. Normal adapter
+sequencing awaits initialize/select/openRomfs before issuing dependent reads.
+Queue capacity remains bounded. AbortSignal still terminates the Worker
+immediately, even when synchronous native hashing or validation is busy; no
+cooperative crypto cancellation, new progress channel or cryptographic gate
+changes were added. Success clears the request timer before dispatching the next
+request; timeout, abort and protocol errors revoke the entire queue.
+
+These defaults provide a finite larger verification window, not a real-content
+performance guarantee. Large-title throughput, background-tab timer throttling,
+slow disks and lower-end devices remain unverified. Fake-timer protocol tests cover
+old-limit survival, exact deadline expiry, short-read limits, queue time, immediate
+abort, override bounds and no late-response resurrection without large local runs.
 
 ## Program provenance verification
 

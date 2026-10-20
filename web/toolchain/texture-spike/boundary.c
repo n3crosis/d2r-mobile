@@ -77,3 +77,21 @@ int texture_decode(const nvn_texdesc *d, unsigned level, unsigned layer, const u
     free(linear);
     return status;
 }
+
+/* Encoding boundary intentionally supports only complete single-level BC3 2D. */
+int texture_pack_bc3(const nvn_texdesc *d, const uint8_t *linear, uint32_t linear_size,
+                     uint8_t *dst, uint32_t dst_size) {
+    uint32_t m[8];
+    int status = texture_info(d, 0, 0, m);
+    if (status)
+        return status;
+    if (d->format != 0x44 || d->levels != 1 || d->flags || d->stride || d->samples)
+        return -3;
+    if ((uint64_t)d->width * d->height > 4u * 1024u * 1024u)
+        return -4;
+    if (!linear || !dst || linear_size != m[1] || dst_size != m[0])
+        return -5;
+    /* Native pack uses a fresh zeroed ctypes buffer; unused GOB bytes must match. */
+    memset(dst, 0, dst_size);
+    return nvn_swizzle(d, 0, 0, linear, m[6], dst);
+}

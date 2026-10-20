@@ -127,7 +127,13 @@ globalThis.startOfflineDotnet = async (probes) => {
     worker = new Worker(objectUrl("worker.mjs"), { type: "module" });
     const pending = new Map();
     let id = 0;
+    let initializationStage = "worker-created";
     worker.onmessage = ({ data }) => {
+      if (data?.type === "initialization-stage" && pending.has(0)) {
+        if (typeof data.stage === "string" && /^[a-z-]{1,48}$/.test(data.stage))
+          initializationStage = data.stage;
+        return;
+      }
       const entry = pending.get(data.id);
       if (!entry) return;
       pending.delete(data.id);
@@ -149,7 +155,13 @@ globalThis.startOfflineDotnet = async (probes) => {
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
           pending.delete(data.id);
-          reject(new Error("Proof timeout"));
+          reject(
+            new Error(
+              data.id === 0
+                ? `Proof initialization timeout (${initializationStage})`
+                : "Proof timeout",
+            ),
+          );
           close();
         }, 60000);
         pending.set(data.id, { resolve, reject, timer });

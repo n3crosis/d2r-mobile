@@ -124,6 +124,10 @@ async function initialize(data) {
     "hud_design_original.py",
     "hud_support_original.py",
     "hud.py",
+    "map_goal_original.py",
+    "map_goal.py",
+    "casc_overlay_original.py",
+    "casc_overlay.py",
   ]) {
     const bytes = assets.get(name);
     if (!bytes) throw new Error("Missing packaged Python source");
@@ -136,6 +140,8 @@ async function initialize(data) {
     ["import-derived", "import derived"],
     ["import-native-art", "import native_art_original, native_art"],
     ["import-hud", "import hud_original, hud_design_original, hud_support_original, hud"],
+    ["import-map-goal", "import map_goal_original, map_goal"],
+    ["import-casc-overlay", "import casc_overlay_original, casc_overlay"],
     ["import-core", "from core import execute"],
   ]) {
     phase = stage;

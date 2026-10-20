@@ -91,3 +91,126 @@ test("fixed API strips unknown properties and rejects out of bounds reads before
   await client.dispose();
   assert.equal(worker.requests.length, 1);
 });
+
+test("large verification operations survive the old deadline but expire at their bounded total deadline", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  for (const operation of ["initialize", "openRomfs"]) {
+    const { worker, client } = make();
+    const pending =
+      operation === "initialize"
+        ? client.initialize({ nsps: [], prodKeys: new Blob(), titleKeys: new Blob() })
+        : client.openRomfs("exefs");
+    const checked = assert.rejects(pending, /^ExtractionClientError: EXTRACTION_TIMEOUT$/);
+    t.mock.timers.tick(120000);
+    assert.equal(worker.terminated, false);
+    t.mock.timers.tick(2 * 60 * 60 * 1000 - 120001);
+    assert.equal(worker.terminated, false);
+    t.mock.timers.tick(1);
+    await checked;
+    assert.equal(worker.terminated, true);
+    assert.equal(worker.listeners.size, 0);
+  }
+});
+
+test("short reads and disposal retain short deadlines while select retains two minutes", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  for (const operation of ["readRomfs", "readExefs", "dispose", "select"]) {
+    const { worker, client } = make();
+    const pending =
+      operation === "readRomfs"
+        ? read(client)
+        : operation === "readExefs"
+          ? client.readExefs({ token: "t", index: 0, offset: 0n, count: 1 })
+          : operation === "dispose"
+            ? client.dispose()
+            : client.select({});
+    const checked = assert.rejects(pending, /EXTRACTION_TIMEOUT/);
+    const deadline = operation === "select" ? 120000 : 30000;
+    t.mock.timers.tick(deadline - 1);
+    assert.equal(worker.terminated, false);
+    t.mock.timers.tick(1);
+    await checked;
+    assert.equal(worker.terminated, true);
+  }
+});
+
+test("trusted per-operation overrides are snapshotted and include queued time", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const operationTimeoutMs = { openRomfs: 1000000, readRomfs: 100 };
+  const { worker, client } = make({ operationTimeoutMs });
+  operationTimeoutMs.readRomfs = 1000000; // Cannot prolong already configured leases.
+  const opening = client.openRomfs("exefs"),
+    queued = read(client);
+  const checked = Promise.all([
+    assert.rejects(opening, /EXTRACTION_TIMEOUT/),
+    assert.rejects(queued, /EXTRACTION_TIMEOUT/),
+  ]);
+  t.mock.timers.tick(99);
+  assert.equal(worker.terminated, false);
+  assert.equal(worker.requests.length, 1);
+  t.mock.timers.tick(1);
+  await checked;
+  assert.equal(worker.terminated, true);
+  assert.equal(
+    worker.requests.length,
+    1,
+    "queued read never reaches worker after its total deadline",
+  );
+});
+
+test("long-operation cancellation remains immediate and cannot be renewed by late worker replies", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { worker, client } = make({ operationTimeoutMs: { openRomfs: 6 * 60 * 60 * 1000 } });
+  const controller = new AbortController();
+  const pending = client.openRomfs("exefs", { signal: controller.signal });
+  const checked = assert.rejects(pending, /^ExtractionClientError: EXTRACTION_CANCELLED$/);
+  t.mock.timers.tick(120001);
+  assert.equal(worker.terminated, false);
+  controller.abort("PRIVATE-CANARY");
+  assert.equal(worker.terminated, true);
+  await checked;
+  worker.emit({ id: 1, ok: true, result: { token: "romfs", size: 100n } });
+  t.mock.timers.tick(6 * 60 * 60 * 1000);
+  await assert.rejects(read(client), /EXTRACTION_DISPOSED/);
+});
+
+test("operation deadlines cannot be disabled, unbounded or applied to arbitrary RPC", () => {
+  let created = 0;
+  const createWorker = () => {
+    created++;
+    return new MockWorker();
+  };
+  for (const operationTimeoutMs of [
+    null,
+    [],
+    { execute: 1 },
+    { initialize: 0 },
+    { initialize: Infinity },
+    { openRomfs: 6 * 60 * 60 * 1000 + 1 },
+    { readRomfs: 120001 },
+    { dispose: -1 },
+    { select: undefined },
+    { readExefs: 1.5 },
+  ])
+    assert.throws(
+      () => createExtractionWorkerClient({ createWorker, operationTimeoutMs }),
+      /EXTRACTION_CLIENT_OPTIONS/,
+    );
+  assert.equal(created, 0, "invalid budgets reject before opening isolated runtime");
+});
+
+test("successful slow verification clears its timer before later bounded reads", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { worker, client } = make();
+  const pending = client.openRomfs("exefs");
+  t.mock.timers.tick(600001);
+  worker.emit({ id: 1, ok: true, result: { token: "romfs", size: 100n } });
+  assert.deepEqual(await pending, { token: "romfs", size: 100n });
+  t.mock.timers.tick(2 * 60 * 60 * 1000);
+  assert.equal(worker.terminated, false, "successful request has no residual long timer");
+  const bytes = read(client);
+  t.mock.timers.tick(29999);
+  worker.emit({ id: 2, ok: true, result: new Uint8Array([1, 2]) });
+  assert.deepEqual(await bytes, new Uint8Array([1, 2]));
+  client.close();
+});

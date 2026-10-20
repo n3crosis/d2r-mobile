@@ -81,7 +81,7 @@ export async function decodeLz4Block(input, decodedSize, { signal, limits: optio
     const literals = await length(token >>> 4);
     if (literals > input.length - ip || literals > output.length - op)
       throw new Error("LZ4 literal range exceeded");
-    for (let n = 0; n < literals; ) {
+    for (let n = 0; n < literals;) {
       const count = Math.min(limits.chunkBytes, literals - n);
       output.set(input.subarray(ip, ip + count), op);
       ip += count;
@@ -103,7 +103,7 @@ export async function decodeLz4Block(input, decodedSize, { signal, limits: optio
     const matchLength = (await length(token & 15)) + 4;
     if (matchLength > output.length - op) throw new Error("LZ4 match range exceeded");
     lastMatchStart = op;
-    for (let n = 0; n < matchLength; ) {
+    for (let n = 0; n < matchLength;) {
       const count = Math.min(limits.chunkBytes, matchLength - n);
       // Forward byte copying is essential: matches may overlap their source.
       for (let j = 0; j < count; j++) {

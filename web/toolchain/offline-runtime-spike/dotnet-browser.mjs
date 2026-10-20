@@ -122,6 +122,15 @@ try {
     receipts.length = 0;
     const page = await context.newPage();
     let workers = 0;
+    let initializing = true;
+    const diagnostics = [];
+    const record = (text) => {
+      if (initializing && diagnostics.length < 20) diagnostics.push(String(text).slice(0, 1000));
+    };
+    page.on("console", (message) => {
+      if (message.type() === "error" || message.type() === "warning") record(message.text());
+    });
+    page.on("pageerror", (error) => record(error.message));
     page.on("worker", () => workers++);
     await page.exposeFunction("offlineProofSealed", () => {
       sealed = true;
@@ -136,6 +145,15 @@ try {
         return { error: error.message };
       }
     }, probes);
+    initializing = false;
+    if (scenario === "valid" && outcome.error)
+      console.log(
+        JSON.stringify({
+          initializationFailure: outcome.error,
+          diagnostics,
+          postSealReceipts: receipts.filter((entry) => entry.sealed).slice(0, 30),
+        }),
+      );
     if (scenario !== "valid") {
       assert.ok(outcome.error, `${scenario} must fail closed`);
       assert.equal(sealed, false, `${scenario} must fail before sealing`);

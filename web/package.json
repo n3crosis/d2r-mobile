@@ -4,19 +4,22 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.12.0",
+    "bun": "1.4.3"
   },
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
-    "build": "npm run lint && npm run format:check && tsc --noEmit && vite build",
-    "preview": "vite preview --host 127.0.0.1",
+    "dev": "bun scripts/dev.mjs",
+    "build": "bun run lint && bun run format:check && tsc --noEmit && bun run build:bundle",
+    "preview": "bun scripts/serve.mjs",
     "test": "node --test tests/*.test.mjs",
-    "lint": "eslint . --max-warnings 0",
-    "lint:fix": "eslint . --fix --max-warnings 0",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "format:docs": "prettier --write ../docs/WEB_IPA_PACKAGER.md ../docs/WEB_DELIVERY_PROGRESS.md",
-    "format:docs:check": "prettier --check ../docs/WEB_IPA_PACKAGER.md ../docs/WEB_DELIVERY_PROGRESS.md"
+    "lint": "oxlint . --max-warnings 0",
+    "lint:fix": "oxlint . --fix --max-warnings 0",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "format:docs": "cd .. && web/node_modules/.bin/oxfmt --config web/.oxfmtrc.json --write docs/WEB_IPA_PACKAGER.md docs/WEB_DELIVERY_PROGRESS.md",
+    "format:docs:check": "cd .. && web/node_modules/.bin/oxfmt --config web/.oxfmtrc.json --check docs/WEB_IPA_PACKAGER.md docs/WEB_DELIVERY_PROGRESS.md",
+    "format:workflows:check": "cd .. && web/node_modules/.bin/oxfmt --config web/.oxfmtrc.json --check .github/workflows",
+    "build:bundle": "bun scripts/build.mjs"
   },
   "dependencies": {
     "react": "19.1.1",
@@ -27,19 +30,14 @@
     "tailwind-merge": "3.3.1"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "4.1.13",
     "@types/node": "24.5.2",
     "@types/react": "19.1.16",
     "@types/react-dom": "19.1.9",
-    "@vitejs/plugin-react": "5.0.4",
     "tailwindcss": "4.1.13",
     "typescript": "5.9.2",
-    "vite": "7.3.7",
-    "@eslint/js": "9.36.0",
-    "eslint": "9.36.0",
-    "eslint-plugin-react-hooks": "5.2.0",
-    "globals": "16.4.0",
-    "prettier": "3.6.2",
-    "typescript-eslint": "8.48.0"
-  }
+    "oxlint": "1.89.0",
+    "oxfmt": "0.74.0",
+    "bun-plugin-tailwind": "0.1.2"
+  },
+  "packageManager": "bun@1.4.3"
 }

@@ -175,7 +175,7 @@ Acceptance: actual signed-device smoke results are recorded. Until then the accu
 
 The current checkpoint has 59 passing Node tests across preflight, deterministic Guest framework generation, streaming ZIP32 output, synthetic archive export, bounded native-record/BLTE reading, and legacy NSO segment validation. The Guest writer matches the stdlib Python reference byte-for-byte on synthetic inputs, including 16 KiB layout, UUID and structural ad-hoc signature page hashes. Python zipfile verifies ZIP contents, CRCs, UTF-8 names, timestamps and Unix modes. These checks do not prove device acceptance or a completed IPA pipeline.
 
-The React + TypeScript frontend uses Vite, Tailwind CSS 4 and official shadcn/ui Button, Card and Alert components. It offers a synthetic large-file header demo, optional read-only checks of ExeFS/main and ExeFS/sdk (the two modules required by the native IPA packager), and export of an unmistakably non-installable synthetic ZIP. The export generates tiny fixture inputs, contains no game data or Payload/app layout, streams bounded chunks to a selected local file, and reports generation, saving and commit status. Cancellation discards staged writes where possible; a save picker may leave an empty placeholder, and a committed save cannot be undone by late cancellation.
+The React + TypeScript frontend uses Bun’s browser bundler, Tailwind CSS 4 and official shadcn/ui Button, Card and Alert components. It offers a synthetic large-file header demo, optional read-only checks of ExeFS/main and ExeFS/sdk (the two modules required by the native IPA packager), and export of an unmistakably non-installable synthetic ZIP. The export generates tiny fixture inputs, contains no game data or Payload/app layout, streams bounded chunks to a selected local file, and reports generation, saving and commit status. Cancellation discards staged writes where possible; a save picker may leave an empty placeholder, and a committed save cannot be undone by late cancellation.
 
 The ZIP core supports STORE only, not compression or ZIP64. Its initial policy caps the complete archive at 512 MiB, each file at 256 MiB, chunks at 4 MiB, entries at 20,000 and metadata at 8 MiB. The Guest writer separately limits aggregate input/padded image bytes to 128 MiB. These are explicit prototype limits, not measured requirements for the real game. Framework and ZIP processing are not yet worker-integrated.
 
@@ -195,9 +195,9 @@ The immediate deliverable is the plan plus an honest synthetic preflight foundat
 
 ## Browser code quality gates
 
-The browser workspace pins ESLint and Prettier. From `web/`, use `npm run lint`,
-`npm run format:check`, and `npm run format`. Production builds fail on lint
-warnings/errors or formatting drift before TypeScript checking and Vite bundling.
+The browser workspace pins Oxlint and Oxfmt. From `web/`, use `bun run lint`,
+`bun run format:check`, and `bun run format`. Production builds fail on lint
+warnings/errors or formatting drift before TypeScript checking and bundling.
 The scope is new browser JavaScript/TypeScript, JSX, CSS, HTML, JSON and Markdown;
 legacy native C/Python and unrelated documentation are not reformatted. The
 experimental C# shader spike has its own .NET formatting/analyzer checks when the

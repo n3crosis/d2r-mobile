@@ -14,13 +14,32 @@ Lightweight fixture checks (no SDK/network):
 node --test web/toolchain/synthetic-signed-nca/generate.test.mjs
 ```
 
-Full dual-WASM-build proof belongs in the dedicated
-`.github/workflows/synthetic-signed-nca.yml` CI workflow. With the pinned SDK
-already active, the command is:
+Run the lightweight fixture check locally first. The full dual-WASM proof is an
+explicit, heavier check, not required on every edit. With the pinned SDK already
+active, its command is:
 
 ```sh
 bash web/toolchain/synthetic-signed-nca/run-ci.sh
 ```
+
+The dedicated `.github/workflows/synthetic-signed-nca.yml` workflow is available
+for an explicitly requested CI proof. Do not add automatic runs to obtain another
+copy of an unchanged result.
+
+## Verified receipt
+
+The full dual-WASM proof passed on 2026-10-20 at commit
+`2996fec9f52e998e7b60c037733e31dfbedf8c57`:
+
+- [Run 39405094585, job 118568975471](https://github.com/n3crosis/d2r-mobile/actions/runs/39405094585/job/118568975471)
+  completed successfully at 10:03:39 UTC.
+- The job log at 10:03:35 UTC confirms identical pinned dependency sources except
+  for the single test public root, production rejection of the synthetic signer,
+  successful synthetic NSP/Meta/CNMT/Program ExeFS/IVFC/RomFS authentication and
+  extraction, and rejection of the tampering matrix below.
+- This is a receipt for that exact revision, not proof that subsequent changes
+  have been exercised. The log retains upstream compiler warnings; success does
+  not claim warning-free upstream sources.
 
 ## Isolation and assertions
 
@@ -50,8 +69,9 @@ exit. It neither writes into nor contributes files to production `dist/`.
 
 ## Exact limits
 
-This proves synthetic authenticated container extraction **only if the dual-WASM
-CI run passes**. Local generator/static tests alone do not establish that result.
+The successful dual-WASM run above proves synthetic authenticated container
+extraction at its recorded revision. Local generator/static tests alone do not
+establish that result for a later revision.
 The fixture uses the existing plaintext-header/unencrypted-section format; it does
 not prove AES-encrypted NCA handling, titlekey/key-area handling, or retail key
 availability. ExeFS has deliberately tiny NSO0/META marker files, not complete

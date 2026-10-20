@@ -51,6 +51,10 @@ for (const name of [
   "hud_design_original.py",
   "hud_support_original.py",
   "hud.py",
+  "map_goal_original.py",
+  "map_goal.py",
+  "casc_overlay_original.py",
+  "casc_overlay.py",
 ])
   await add(name, await readFile(new URL(`generated/${name}`, source)));
 await add("worker.mjs", await readFile(new URL("pyodide-worker.mjs", here)));
