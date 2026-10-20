@@ -71,6 +71,9 @@ export async function prepareBrowserPackager({ manifestSha256, signal, onProgres
     const extraction = createExtractionJobAdapter({
       createWorker: runtime.createExtractionWorker,
       contentMode: profile.contentMode,
+      // Full NCA digests were already checked against authenticated CNMT.
+      // Avoid scanning both multi-gigabyte RomFS views a second time.
+      verifyRomfs: false,
     });
     program = createProgramRewriterAdapter({
       verifyProvenance: readAuthenticatedProgramModules,

@@ -59,6 +59,7 @@ test("RomFS progress reports verified native bytes and restores the file reader"
   globalThis.FileReaderSync = class {};
   try {
     const events = [];
+    const operations = [];
     const streamOps = { read: () => 64 * 1024 * 1024 };
     const originalRead = streamOps.read;
     const boundary = await createBoundary(async (options) => ({
@@ -69,17 +70,24 @@ test("RomFS progress reports verified native bytes and restores the file reader"
       _free() {},
       _nsp_zero() {},
       ccall(operation, _returnType, _argumentTypes, args) {
-        assert.equal(operation, "nsp_open_patched_romfs");
-        options.onVerificationProgress(1, 0, 128 * 1024 * 1024);
-        streamOps.read(null, null, 0, 64 * 1024 * 1024, 0);
-        options.onVerificationProgress(1, 64 * 1024 * 1024, 128 * 1024 * 1024);
-        options.onVerificationProgress(2, 0, 256 * 1024 * 1024);
-        options.onVerificationProgress(2, 256 * 1024 * 1024, 256 * 1024 * 1024);
+        operations.push(operation);
+        if (operation === "nsp_open_patched_romfs") {
+          options.onVerificationProgress(1, 0, 128 * 1024 * 1024);
+          streamOps.read(null, null, 0, 64 * 1024 * 1024, 0);
+          options.onVerificationProgress(1, 64 * 1024 * 1024, 128 * 1024 * 1024);
+          options.onVerificationProgress(2, 0, 256 * 1024 * 1024);
+          options.onVerificationProgress(2, 256 * 1024 * 1024, 256 * 1024 * 1024);
+        } else assert.equal(operation, "nsp_open_patched_romfs_hash_verified");
         new DataView(this.HEAPU8.buffer).setBigUint64(args[2], 100n, true);
         return 0;
       },
     }));
     assert.equal(boundary.openPatchedRomfs(0, 1, (event) => events.push(event)).size, 100n);
+    assert.equal(boundary.openPatchedRomfs(0, 1, undefined, false).size, 100n);
+    assert.deepEqual(operations, [
+      "nsp_open_patched_romfs",
+      "nsp_open_patched_romfs_hash_verified",
+    ]);
     assert.deepEqual(events, [
       { phase: "base", completed: 0, total: 128 * 1024 * 1024 },
       { phase: "base", completed: 64 * 1024 * 1024, total: 128 * 1024 * 1024 },

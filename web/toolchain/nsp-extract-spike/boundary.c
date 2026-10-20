@@ -478,8 +478,7 @@ static int open_authenticated_pfs0(const char *path, int program) {
 /* IVFC reader contract: section-relative exact reads. The root is trusted
  * only when called from nsp_open_romfs AFTER NCA/section authentication. */
 typedef int (*ivfc_reader_t)(void *, uint64_t, void *, size_t);
-static int ivfc_verify(ivfc_reader_t reader, void *context, const ivfc_hdr_t *ivfc, uint64_t size,
-                       int progress_phase) {
+static int ivfc_validate(const ivfc_hdr_t *ivfc, uint64_t size, uint64_t *out_total) {
     if (ivfc->magic != MAGIC_IVFC || ivfc->id != 0x20000 ||
         ivfc->num_levels != IVFC_MAX_LEVEL + 1 || ivfc->master_hash_size != 32)
         return -4;
@@ -505,6 +504,15 @@ static int ivfc_verify(ivfc_reader_t reader, void *context, const ivfc_hdr_t *iv
                 return -2;
         }
     }
+    *out_total = total;
+    return 0;
+}
+static int ivfc_verify(ivfc_reader_t reader, void *context, const ivfc_hdr_t *ivfc, uint64_t size,
+                       int progress_phase) {
+    uint64_t total;
+    int validation = ivfc_validate(ivfc, size, &total);
+    if (validation)
+        return validation;
     unsigned char *chunk = malloc(CHUNK_LIMIT);
     if (!chunk)
         return -1;
@@ -636,7 +644,7 @@ static int read_merged(uint64_t offset, void *output, size_t size) {
     return 0;
 }
 
-int nsp_open_romfs(const char *path, unsigned char *out_size) {
+static int open_romfs(const char *path, unsigned char *out_size, int verify) {
     int rc = open_authenticated_section(path, 2);
     if (rc) {
         nsp_close();
@@ -649,7 +657,9 @@ int nsp_open_romfs(const char *path, unsigned char *out_size) {
             nsp_close();
             return -4;
         }
-    rc = ivfc_verify(ivfc_section_read, NULL, ivfc, extent, 1);
+    uint64_t total;
+    rc = verify ? ivfc_verify(ivfc_section_read, NULL, ivfc, extent, 1)
+                : ivfc_validate(ivfc, extent, &total);
     if (!rc) {
         const ivfc_level_hdr_t *last = &ivfc->level_headers[IVFC_MAX_LEVEL - 1];
         romfs_hdr_t header;
@@ -669,12 +679,22 @@ int nsp_open_romfs(const char *path, unsigned char *out_size) {
         nsp_close();
     return rc;
 }
-/* Base is authenticated independently first. Only a complete merged-IVFC pass
- * permits the final RomFS reader to become available. No partial patch output.
+int nsp_open_romfs(const char *path, unsigned char *out_size) {
+    return open_romfs(path, out_size, 1);
+}
+/* Fast path is only for a caller that has already checked the full NCA digest
+ * against authenticated CNMT metadata. The native boundary cannot prove that
+ * precondition itself; retain nsp_open_romfs for independent callers. */
+int nsp_open_romfs_hash_verified(const char *path, unsigned char *out_size) {
+    return open_romfs(path, out_size, 0);
+}
+/* The strict entrypoint authenticates base and merged IVFC independently. The
+ * fast entrypoint relies on prior whole-NCA digest checks against signed CNMT.
  */
-int nsp_open_patched_romfs(const char *base_path, const char *patch_path, unsigned char *out_size) {
+static int open_patched_romfs(const char *base_path, const char *patch_path,
+                              unsigned char *out_size, int verify) {
     unsigned char ignored_size[8];
-    int rc = nsp_open_romfs(base_path, ignored_size);
+    int rc = open_romfs(base_path, ignored_size, verify);
     if (rc)
         return rc;
     nca_ctx_t *saved = malloc(sizeof nca);
@@ -734,7 +754,9 @@ int nsp_open_patched_romfs(const char *base_path, const char *patch_path, unsign
     if (!rc) {
         merged_active = 1;
         extent = merged_size;
-        rc = ivfc_verify(ivfc_section_read, NULL, &sb->ivfc_header, extent, 2);
+        uint64_t total;
+        rc = verify ? ivfc_verify(ivfc_section_read, NULL, &sb->ivfc_header, extent, 2)
+                    : ivfc_validate(&sb->ivfc_header, extent, &total);
     }
     if (!rc) {
         const ivfc_level_hdr_t *last = &sb->ivfc_header.level_headers[IVFC_MAX_LEVEL - 1];
@@ -754,6 +776,13 @@ int nsp_open_patched_romfs(const char *base_path, const char *patch_path, unsign
     if (rc)
         nsp_close();
     return rc;
+}
+int nsp_open_patched_romfs(const char *base_path, const char *patch_path, unsigned char *out_size) {
+    return open_patched_romfs(base_path, patch_path, out_size, 1);
+}
+int nsp_open_patched_romfs_hash_verified(const char *base_path, const char *patch_path,
+                                         unsigned char *out_size) {
+    return open_patched_romfs(base_path, patch_path, out_size, 0);
 }
 
 int nsp_read_romfs(uint32_t lo, uint32_t hi, unsigned char *out, uint32_t count) {

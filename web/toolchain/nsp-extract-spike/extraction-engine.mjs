@@ -218,7 +218,7 @@ export function createExtractionEngine(
           : operation === "select"
             ? ["options"]
             : operation === "openRomfs"
-              ? ["token"]
+              ? ["token", "verifyRomfs"]
               : operation === "readExefs"
                 ? ["token", "index", "offset", "count"]
                 : operation === "readRomfs"
@@ -396,6 +396,21 @@ export function createExtractionEngine(
       if (operation === "openRomfs") {
         requireState("exefs");
         checkToken(payload.token);
+        if (typeof payload.verifyRomfs !== "boolean") fail();
+        if (!payload.verifyRomfs) {
+          // The fast path is valid only after every selected Program NCA's
+          // measured full-file digest matched its authenticated CNMT entry.
+          for (const row of [selection.base, selection.patch].filter(Boolean)) {
+            const program = row.contents.find((content) => content.type === 1);
+            const measured = contents.get(program?.contentId);
+            if (
+              !measured?.hashVerified ||
+              measured.sha256 !== program.sha256 ||
+              measured.size !== program.size
+            )
+              fail();
+          }
+        }
         revoke();
         const reportVerification = ({ phase, completed, total }) => {
           if (phase === "read") {
@@ -411,8 +426,13 @@ export function createExtractionEngine(
             );
         };
         romfs = selection.patch
-          ? boundary.openPatchedRomfs(baseIndex, programIndex, reportVerification)
-          : boundary.openRomfs(baseIndex, undefined, reportVerification);
+          ? boundary.openPatchedRomfs(
+              baseIndex,
+              programIndex,
+              reportVerification,
+              payload.verifyRomfs,
+            )
+          : boundary.openRomfs(baseIndex, undefined, reportVerification, payload.verifyRomfs);
         state = "romfs";
         entries = [];
         return { token, size: romfs.size };

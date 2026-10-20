@@ -73,6 +73,7 @@ export function readAuthenticatedAssets(extracted, selection, { signal } = {}) {
 export function createExtractionJobAdapter({
   createWorker,
   contentMode = "warlock",
+  verifyRomfs = true,
   maxProgramBytes = 32 * 1024 * 1024,
   timeoutMs,
   operationTimeoutMs,
@@ -81,6 +82,7 @@ export function createExtractionJobAdapter({
   if (
     typeof createWorker !== "function" ||
     !D2R_CONTENT_MODES.includes(contentMode) ||
+    typeof verifyRomfs !== "boolean" ||
     !Number.isSafeInteger(maxProgramBytes) ||
     maxProgramBytes < 1 ||
     maxProgramBytes > 64 * 1024 * 1024
@@ -245,6 +247,7 @@ export function createExtractionJobAdapter({
         const opened = await state.client.openRomfs(selected.token, {
           signal,
           onProgress: onDiagnostic,
+          verifyRomfs,
         });
         const check = (readSignal) => {
           lookup(session);

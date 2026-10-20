@@ -129,9 +129,10 @@ function setup({
         ? metadata[active / 2].slice(Number(offset), Number(offset) + count)
         : new Uint8Array(count).fill(7);
     },
-    openPatchedRomfs(baseIndex, patchIndex, onProgress) {
+    openPatchedRomfs(baseIndex, patchIndex, onProgress, verifyRomfs) {
       assert.equal(baseIndex, 1);
       assert.equal(patchIndex, 3);
+      calls.push(["romfs", verifyRomfs]);
       onProgress({ phase: "base", completed: 64 * 1024 * 1024, total: 128 * 1024 * 1024 });
       onProgress({ phase: "merged", completed: 128 * 1024 * 1024, total: 128 * 1024 * 1024 });
       return {
@@ -198,7 +199,7 @@ test("engine uses catalog, independent inventory and internal selection; tokens 
   assert.equal(selected.selection.dlc[0].titleId, dlc);
   assert(selected.selection.requiredContents.some((c) => c.contentId === "77".repeat(16)));
   assert.equal("owned" in selected.selection, false);
-  const romfs = await engine.execute("openRomfs", { token: selected.token });
+  const romfs = await engine.execute("openRomfs", { token: selected.token, verifyRomfs: true });
   assert.deepEqual(
     progress.filter(({ stage }) => stage.startsWith("romfs-")),
     [
@@ -207,6 +208,7 @@ test("engine uses catalog, independent inventory and internal selection; tokens 
     ],
   );
   assert.notEqual(romfs.token, selected.token);
+  assert.deepEqual(env.calls.at(-1), ["romfs", true]);
   await assert.rejects(
     engine.execute("readExefs", { token: selected.token, index: 0, offset: 0n, count: 1 }),
   );
@@ -221,6 +223,21 @@ test("engine uses catalog, independent inventory and internal selection; tokens 
   await engine.execute("dispose");
   assert(env.disposed());
   await assert.rejects(engine.execute("readRomfs", { token: romfs.token, offset: 0n, count: 1 }));
+});
+test("fast RomFS mode requires measured package evidence", async () => {
+  const env = setup();
+  await initialize(env.engine);
+  const selected = await env.engine.execute("select", { options: {} });
+  await assert.rejects(
+    env.engine.execute("openRomfs", { token: selected.token, verifyRomfs: "false" }),
+  );
+  const romfs = await env.engine.execute("openRomfs", {
+    token: selected.token,
+    verifyRomfs: false,
+  });
+  assert.deepEqual(env.calls.at(-1), ["romfs", false]);
+  assert.equal(romfs.size, 10n);
+  await env.engine.execute("dispose");
 });
 test("engine rejects content hash mismatch and arbitrary operation/fields", async () => {
   const { engine } = setup({ wrongHash: true });

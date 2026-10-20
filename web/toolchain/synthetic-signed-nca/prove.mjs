@@ -76,6 +76,12 @@ assert.equal(
   }),
   -3,
 );
+assert.equal(
+  buffer(prod, 8, (p) =>
+    prod.ccall("nsp_open_romfs_hash_verified", "number", ["string", "number"], ["/fixture.nca", p]),
+  ),
+  -3,
+);
 // Start at an outer NSP and read its actual NCA bytes through the same bounded PFS reader.
 assert.equal(open(test, "nsp_open_pfs0", fixture("synthetic.nsp")), 0);
 assert.equal(test._nsp_entry_count(), 2);
@@ -96,15 +102,16 @@ assert.equal(open(test, "nsp_open_exefs", outer[1].bytes), 0);
 assert.equal(test._nsp_entry_count(), 2);
 assert.deepEqual(readEntry(test, 0), { name: "main", bytes: fixture("expected.main") });
 assert.deepEqual(readEntry(test, 1), { name: "main.npdm", bytes: fixture("expected.npdm") });
-function openRomfs(bytes) {
+function openRomfs(bytes, method = "nsp_open_romfs") {
   test.FS.writeFile("/fixture.nca", bytes);
   return buffer(test, 8, (p) => {
-    const rc = test.ccall("nsp_open_romfs", "number", ["string", "number"], ["/fixture.nca", p]);
+    const rc = test.ccall(method, "number", ["string", "number"], ["/fixture.nca", p]);
     return { rc, size: new DataView(test.HEAPU8.buffer).getBigUint64(p, true) };
   });
 }
 const rom = openRomfs(outer[1].bytes);
 assert.equal(rom.rc, 0);
+assert.deepEqual(openRomfs(outer[1].bytes, "nsp_open_romfs_hash_verified"), rom);
 const source = {
   size: rom.size,
   async readAt(offset, count) {

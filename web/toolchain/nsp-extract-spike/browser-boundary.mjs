@@ -165,13 +165,14 @@ export async function createBoundary(factory) {
     },
     // Reader lifetime is bound to this exact authenticated NCA. A later open,
     // inspect, key load, mount or input hash invalidates it even if that fails.
-    openPatchedRomfs(baseIndex, patchIndex, onReadProgress) {
+    openPatchedRomfs(baseIndex, patchIndex, onReadProgress, verifyRomfs = true) {
       if (!Number.isSafeInteger(patchIndex) || patchIndex < 0)
         throw new Error("Invalid patch index");
-      return this.openRomfs(baseIndex, patchIndex, onReadProgress);
+      return this.openRomfs(baseIndex, patchIndex, onReadProgress, verifyRomfs);
     },
-    openRomfs(index, patchIndex, onReadProgress) {
+    openRomfs(index, patchIndex, onReadProgress, verifyRomfs = true) {
       return guard(() => {
+        if (typeof verifyRomfs !== "boolean") throw new Error("Invalid RomFS verification mode");
         const current = ++generation;
         activeVerificationProgress = onReadProgress;
         nativeProgressSeen = false;
@@ -206,9 +207,14 @@ export async function createBoundary(factory) {
           size = withBuffer(8, (ptr) => {
             check(
               patchIndex === undefined
-                ? module.ccall("nsp_open_romfs", "number", ["string", "number"], [path(index), ptr])
+                ? module.ccall(
+                    verifyRomfs ? "nsp_open_romfs" : "nsp_open_romfs_hash_verified",
+                    "number",
+                    ["string", "number"],
+                    [path(index), ptr],
+                  )
                 : module.ccall(
-                    "nsp_open_patched_romfs",
+                    verifyRomfs ? "nsp_open_patched_romfs" : "nsp_open_patched_romfs_hash_verified",
                     "number",
                     ["string", "string", "number"],
                     [path(index), path(patchIndex), ptr],

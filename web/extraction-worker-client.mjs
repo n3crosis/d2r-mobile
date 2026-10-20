@@ -252,10 +252,10 @@ export function createExtractionWorkerClient({
       ),
     readExefs: ({ token, index, offset, count }, options) =>
       read("readExefs", { token, index, offset, count }, options),
-    openRomfs: (token, options) =>
+    openRomfs: (token, { verifyRomfs = true, ...options } = {}) =>
       request(
         "openRomfs",
-        { token },
+        { token, verifyRomfs },
         (result) =>
           keys(result, ["token", "size"]) &&
           typeof result.token === "string" &&

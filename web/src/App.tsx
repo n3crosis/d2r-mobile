@@ -250,6 +250,7 @@ export default function App() {
     setReady(false);
     setStatus("Starting IPA generation…");
     appendActivity("Generation started; private inputs remain local", true);
+    appendActivity("Fast mode: full RomFS scan will be skipped after package hashes match", true);
     let acceptingProgress = true;
     try {
       const controller = new AbortController();
