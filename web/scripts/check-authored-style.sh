@@ -51,17 +51,10 @@ python_sources=(
   web/toolchain/art-kernels/migrate.py
   web/toolchain/asset-transforms-js/test/reference.py
   web/toolchain/casc-overlay-js/test/fixture.py
-  web/toolchain/font-rasterizer-exact/reference/ImageDraw.py
-  web/toolchain/font-rasterizer-exact/reference/ImageFont.py
-  web/toolchain/font-rasterizer-exact/reference/freetype-port.py
   web/toolchain/font-rasterizer-exact/test/native-equivalence.py
-  web/toolchain/image-kernels-rust/reference/Image.py
-  web/toolchain/image-kernels-rust/reference/PngImagePlugin.py
   web/toolchain/image-kernels-rust/test/make-fixtures.py
   web/toolchain/nsp-extract-spike/native-key-parser-test.py
   web/toolchain/overlay-recipe-js/scripts/extract-touch-data.py
-  web/toolchain/png-codec-exact/reference/ImageFile.py
-  web/toolchain/png-codec-exact/reference/PngImagePlugin.py
   web/toolchain/png-codec-exact/test/native-equivalence.py
   web/toolchain/program-rewrite-spike/audit-js-source.py
 )
