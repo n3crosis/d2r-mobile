@@ -1,0 +1,46 @@
+name: Isolated synthetic signed NCA proof
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "web/toolchain/synthetic-signed-nca/**"
+      - "web/toolchain/nsp-extract-spike/**"
+      - "web/content-selection.mjs"
+      - "web/romfs-tree.mjs"
+      - ".github/workflows/synthetic-signed-nca.yml"
+  pull_request:
+    paths:
+      - "web/toolchain/synthetic-signed-nca/**"
+      - "web/toolchain/nsp-extract-spike/**"
+      - "web/content-selection.mjs"
+      - "web/romfs-tree.mjs"
+      - ".github/workflows/synthetic-signed-nca.yml"
+permissions:
+  contents: read
+concurrency:
+  group: synthetic-signed-nca-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  isolated-test-root:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "22"
+      - name: Install pinned official Emscripten SDK
+        shell: bash
+        run: |
+          git clone --depth 1 --branch 4.0.20 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/nsp-emsdk"
+          test "$(git -C "$RUNNER_TEMP/nsp-emsdk" rev-parse HEAD)" = e4fe26ef59168ff44f4c23c466e497bf60b3411e
+          "$RUNNER_TEMP/nsp-emsdk/emsdk" install 4.0.20
+          "$RUNNER_TEMP/nsp-emsdk/emsdk" activate 4.0.20
+      - name: Prove authenticated toy extraction with isolated test root
+        shell: bash
+        run: |
+          source "$RUNNER_TEMP/nsp-emsdk/emsdk_env.sh"
+          bash web/toolchain/synthetic-signed-nca/run-ci.sh
+      # Deliberately no artifact upload. Test-root binaries must never ship.
