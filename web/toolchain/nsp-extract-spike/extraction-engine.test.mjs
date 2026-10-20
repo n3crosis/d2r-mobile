@@ -8,33 +8,47 @@ import {
 } from "../../d2r-expansion-policy.mjs";
 const ids = [0x11, 0x33, 0x44, 0x55, 0x99, 0x77],
   hashes = [0xaa, 0x22, 0xbb, 0x66, 0xcc, 0x88];
-function fixture({ ticket = false, ticketName = "aa".repeat(16) } = {}) {
+function fixture({
+  ticket = false,
+  ticketName = "aa".repeat(16),
+  ticketSize = 0x2c0,
+  ticketType = 0,
+  ticketVersion = 2,
+  signature = 0x10004,
+  ticketKey = 0x11,
+  ticketCount = 1,
+} = {}) {
   const names = ids.map(
     (id, i) => id.toString(16).repeat(16) + (i % 2 ? ".nca" : ".cnmt.nca") + "\0",
   );
-  if (ticket) names.push(`${ticketName}.tik\0`);
+  const rightsIds = Array.from({ length: ticket ? ticketCount : 0 }, (_, i) =>
+    ticketCount === 1 ? "aa".repeat(16) : (i + 1).toString(16).padStart(32, "0"),
+  );
+  for (const id of rightsIds) names.push(`${ticketCount === 1 ? ticketName : id}.tik\0`);
   const nameBytes = new TextEncoder().encode(names.join(""));
   const count = names.length;
   const dataOffset = 16 + 24 * count + nameBytes.length;
-  const bytes = new Uint8Array(dataOffset + 6 + (ticket ? 0x2c0 : 0)),
+  const bytes = new Uint8Array(dataOffset + 6 + rightsIds.length * ticketSize),
     v = new DataView(bytes.buffer);
   bytes.set([80, 70, 83, 48]);
   v.setUint32(4, count, true);
   v.setUint32(8, nameBytes.length, true);
   let nameOffset = 0;
-  for (let i = 0; i < 6; i++) {
-    v.setBigUint64(16 + 24 * i, BigInt(i), true);
-    v.setBigUint64(24 + 24 * i, 1n, true);
+  for (let i = 0; i < count; i++) {
+    v.setBigUint64(16 + 24 * i, BigInt(i < 6 ? i : 6 + (i - 6) * ticketSize), true);
+    v.setBigUint64(24 + 24 * i, BigInt(i < 6 ? 1 : ticketSize), true);
     v.setUint32(32 + 24 * i, nameOffset, true);
     nameOffset += names[i].length;
   }
-  if (ticket) {
-    v.setBigUint64(16 + 24 * 6, 6n, true);
-    v.setBigUint64(24 + 24 * 6, 0x2c0n, true);
-    v.setUint32(32 + 24 * 6, nameOffset, true);
-    v.setUint32(dataOffset + 6, 0x10004, true);
-    bytes.fill(0x11, dataOffset + 6 + 0x180, dataOffset + 6 + 0x190);
-    bytes.fill(0xaa, dataOffset + 6 + 0x2a0, dataOffset + 6 + 0x2b0);
+  for (const [i, id] of rightsIds.entries()) {
+    const ticketBytes = new Uint8Array(0x2c0);
+    new DataView(ticketBytes.buffer).setUint32(0, signature, true);
+    ticketBytes.fill(ticketKey, 0x180, 0x190);
+    ticketBytes[0x280] = ticketVersion;
+    ticketBytes[0x281] = ticketType;
+    for (let j = 0; j < 16; j++)
+      ticketBytes[0x2a0 + j] = Number.parseInt(id.slice(j * 2, j * 2 + 2), 16);
+    bytes.set(ticketBytes.subarray(0, ticketSize), dataOffset + 6 + i * ticketSize);
   }
   bytes.set(nameBytes, 16 + 24 * count);
   return new Blob([bytes]);
@@ -62,6 +76,8 @@ function setup({
   wrongDlcHeader = false,
   missingDlcMeta = false,
   unsignedDlc = false,
+  onProgress = () => {},
+  failLoad = false,
 } = {}) {
   let mode,
     active,
@@ -74,6 +90,7 @@ function setup({
     loadKeys(prod, title) {
       keyArrays = [prod, title];
       loadedTitle = title.slice();
+      if (failLoad) throw new Error("PRIVATE-KEY-CANARY");
     },
     mount(blobs) {
       assert.equal(blobs.length, 6);
@@ -128,7 +145,10 @@ function setup({
     },
   };
   let sequence = 0;
-  const engine = createExtractionEngine(boundary, { newToken: () => `token-${++sequence}` });
+  const engine = createExtractionEngine(boundary, {
+    newToken: () => `token-${++sequence}`,
+    onProgress,
+  });
   return {
     engine,
     calls,
@@ -153,7 +173,7 @@ test("package tickets supply title keys when title.keys has no matching rights I
 test("package ticket filename must match its embedded rights ID", async () => {
   const { engine } = setup();
   await assert.rejects(initialize(engine, { ticket: true, ticketName: "bb".repeat(16) }), {
-    code: "PACKAGE_INDEX_INVALID",
+    code: "TICKET_RIGHTS_ID_MISMATCH",
   });
   await engine.execute("dispose");
 });
@@ -259,4 +279,128 @@ test("absent optional title file becomes an empty in-worker buffer", async () =>
     prodKeys: new Blob([`header_key = ${"12".repeat(32)}\n`]),
   });
   assert.equal(env.keys()[1].length, 0);
+});
+
+const ticketInitialize = (engine, nsps, titleKeys) =>
+  engine.execute("initialize", {
+    nsps,
+    prodKeys: new Blob([`header_key = ${"12".repeat(32)}\n`]),
+    titleKeys,
+  });
+test("explicit title keys take precedence and rescue personalized tickets", async () => {
+  for (const options of [{ ticketType: 0 }, { ticketType: 1 }, { signature: 0x10001 }]) {
+    const events = [];
+    const env = setup({ onProgress: (event) => events.push(event) });
+    const explicit = `  ${"AA".repeat(16)} = ${"22".repeat(16)}`;
+    await ticketInitialize(
+      env.engine,
+      [fixture({ ticket: true, ...options })],
+      new Blob([explicit]),
+    );
+    assert.equal(new TextDecoder().decode(env.title()), explicit);
+    assert.deepEqual(
+      events.filter(({ stage }) => stage.startsWith("ticket-")),
+      [
+        { stage: "ticket-found", completed: 1, total: 1, bytes: 0 },
+        { stage: "ticket-key-reused", completed: 1, total: 1, bytes: 0 },
+      ],
+    );
+    assert(env.keys().every((bytes) => bytes.every((byte) => byte === 0)));
+    await env.engine.execute("dispose");
+  }
+});
+test("ticket diagnostics distinguish unsupported, malformed and mismatched input", async () => {
+  for (const [options, code] of [
+    [{ ticketType: 1 }, "TICKET_UNSUPPORTED"],
+    [{ signature: 0xdeadbeef }, "TICKET_UNSUPPORTED"],
+    [{ signature: 0x10001 }, "TICKET_UNSUPPORTED"],
+    [{ ticketSize: 0x2b0 }, "TICKET_INVALID"],
+    [{ ticketVersion: 0 }, "TICKET_INVALID"],
+    [{ ticketType: 2 }, "TICKET_INVALID"],
+    [{ ticketKey: 0 }, "TICKET_INVALID"],
+    [{ ticketName: "bb".repeat(16) }, "TICKET_RIGHTS_ID_MISMATCH"],
+  ]) {
+    const { engine } = setup();
+    await assert.rejects(
+      ticketInitialize(engine, [fixture({ ticket: true, ...options })]),
+      (error) => error.code === code && error.message === code,
+    );
+    await engine.execute("dispose");
+  }
+});
+test("explicit keys do not suppress malformed or mismatched tickets", async () => {
+  for (const [options, code] of [
+    [{ ticketSize: 0x2b0 }, "TICKET_INVALID"],
+    [{ ticketType: 1, ticketName: "bb".repeat(16) }, "TICKET_RIGHTS_ID_MISMATCH"],
+  ]) {
+    const { engine } = setup();
+    const explicit = new Blob([`${options.ticketName || "aa".repeat(16)} = ${"22".repeat(16)}\n`]);
+    await assert.rejects(
+      ticketInitialize(engine, [fixture({ ticket: true, ...options })], explicit),
+      { code },
+    );
+    await engine.execute("dispose");
+  }
+});
+test("duplicate ticket keys are reused and conflicting ticket keys fail before native loading", async () => {
+  const events = [];
+  const env = setup({ onProgress: (event) => events.push(event) });
+  // The synthetic boundary expects six NCAs; inspect the early key-load stage only.
+  await assert.rejects(
+    ticketInitialize(env.engine, [fixture({ ticket: true }), fixture({ ticket: true })]),
+    { code: "CONTENT_READ_FAILED" },
+  );
+  assert.equal(new TextDecoder().decode(env.title()), `${"aa".repeat(16)} = ${"11".repeat(16)}\n`);
+  assert.equal(events.filter(({ stage }) => stage === "ticket-key-added").length, 1);
+  assert.equal(events.filter(({ stage }) => stage === "ticket-key-reused").length, 1);
+  assert(env.keys().every((bytes) => bytes.every((byte) => byte === 0)));
+  await env.engine.execute("dispose");
+  const conflict = setup();
+  await assert.rejects(
+    ticketInitialize(conflict.engine, [
+      fixture({ ticket: true }),
+      fixture({ ticket: true, ticketKey: 0x22 }),
+    ]),
+    { code: "TICKET_KEY_CONFLICT" },
+  );
+  assert.equal(conflict.keys(), undefined);
+  await conflict.engine.execute("dispose");
+});
+test("ticket count and merged-key budget are enforced before native loading", async () => {
+  const many = setup();
+  await assert.rejects(
+    ticketInitialize(many.engine, [fixture({ ticket: true, ticketCount: 4097 })]),
+    { code: "TICKET_LIMIT_EXCEEDED" },
+  );
+  assert.equal(many.keys(), undefined);
+  await many.engine.execute("dispose");
+  const full = setup();
+  const comments = ("#" + "x".repeat(4094) + "\n").repeat(256);
+  await assert.rejects(
+    ticketInitialize(full.engine, [fixture({ ticket: true })], new Blob([comments])),
+    { code: "TICKET_LIMIT_EXCEEDED" },
+  );
+  assert.equal(full.keys(), undefined);
+  await full.engine.execute("dispose");
+});
+
+test("merged buffers are wiped if the native loader fails", async () => {
+  const env = setup({ failLoad: true });
+  await assert.rejects(ticketInitialize(env.engine, [fixture({ ticket: true })]), {
+    code: "KEYS_RUNTIME_FAILED",
+    message: "KEYS_RUNTIME_FAILED",
+  });
+  assert(env.keys().every((bytes) => bytes.every((byte) => byte === 0)));
+  await env.engine.execute("dispose");
+});
+test("explicit ID indexing handles comments, blank CRLF lines and missing final newline", async () => {
+  const env = setup();
+  const explicit = `# comment\r\n  \r\n\t${"AA".repeat(16)}, ${"22".repeat(16)}`;
+  await ticketInitialize(
+    env.engine,
+    [fixture({ ticket: true, ticketType: 1 })],
+    new Blob([explicit]),
+  );
+  assert.equal(new TextDecoder().decode(env.title()), explicit);
+  await env.engine.execute("dispose");
 });

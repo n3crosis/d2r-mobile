@@ -6,7 +6,7 @@ const reasons = Object.freeze({
   PROD_KEYS_EMPTY: "prod.keys contains no key entries.",
   PROD_KEYS_MALFORMED: "prod.keys has an unsupported or malformed key line.",
   TITLE_KEY_REQUIRED:
-    "This rights-managed package needs a matching local title key. Add your own title.keys to the selected folder. This reader does not import NSP tickets.",
+    "No matching title key was available from supported NSP tickets or title.keys. Add your own matching title.keys to the selected folder.",
   TITLE_KEYS_MISSING:
     "title.keys is missing. An empty file is allowed when no title keys are needed.",
   TITLE_KEYS_UNREADABLE: "title.keys could not be read. Check local file access.",
@@ -14,6 +14,12 @@ const reasons = Object.freeze({
   TITLE_KEYS_MALFORMED: "title.keys has an unsupported or malformed key line.",
   KEYS_RUNTIME_FAILED: "The isolated package reader could not load the key files.",
   PACKAGE_INDEX_INVALID: "An NSP index is unreadable, damaged, or unsupported.",
+  TICKET_UNSUPPORTED:
+    "An embedded ticket format cannot be read. A matching title.keys entry can be used only when the ticket rights ID can be verified.",
+  TICKET_INVALID: "An embedded ticket is malformed, truncated, or unreadable.",
+  TICKET_RIGHTS_ID_MISMATCH: "An embedded ticket name does not match its rights ID.",
+  TICKET_KEY_CONFLICT: "Embedded tickets contain conflicting keys for the same rights ID.",
+  TICKET_LIMIT_EXCEEDED: "The selected packages exceed the embedded-ticket limit.",
   CONTENT_READ_FAILED: "Package content could not be read completely.",
   CONTENT_AUTHENTICATION_FAILED:
     "Content verification failed. The keys may not match the packages, or a package may be damaged or unsupported.",

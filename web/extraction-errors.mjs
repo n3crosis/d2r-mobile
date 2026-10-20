@@ -13,6 +13,11 @@ const workerCodes = new Set([
   "TITLE_KEYS_MALFORMED",
   "KEYS_RUNTIME_FAILED",
   "PACKAGE_INDEX_INVALID",
+  "TICKET_UNSUPPORTED",
+  "TICKET_INVALID",
+  "TICKET_RIGHTS_ID_MISMATCH",
+  "TICKET_KEY_CONFLICT",
+  "TICKET_LIMIT_EXCEEDED",
   "CONTENT_READ_FAILED",
   "CONTENT_AUTHENTICATION_FAILED",
   "CONTENT_METADATA_INVALID",
@@ -41,6 +46,9 @@ const progressLabels = Object.freeze({
   "title-keys-read": "Reading title.keys locally",
   "keys-load": "Loading keys into the isolated reader",
   "package-index": "Reading NSP indexes",
+  "ticket-found": "Embedded tickets found",
+  "ticket-key-added": "Title keys added from tickets",
+  "ticket-key-reused": "Existing title keys reused",
   "content-hash": "Hashing package content",
   "content-header": "Verifying encrypted content headers",
   "content-metadata": "Verifying package metadata",
@@ -58,7 +66,11 @@ export function isExtractionProgress(value) {
 }
 export function extractionProgressLabel(value) {
   if (!isExtractionProgress(value)) return null;
-  const count = value.total > 0 ? ` (${value.completed}/${value.total})` : "";
+  const count = value.stage.startsWith("ticket-")
+    ? `: ${value.completed}`
+    : value.total > 0
+      ? ` (${value.completed}/${value.total})`
+      : "";
   const size = value.bytes > 0 ? `; ${(value.bytes / 1_000_000).toFixed(1)} MB` : "";
   return `${progressLabels[value.stage]}${count}${size}`;
 }

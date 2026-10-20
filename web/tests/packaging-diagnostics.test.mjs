@@ -44,3 +44,37 @@ test("early failure never suggests resource exports; key code is actionable", ()
     /may have been saved/,
   );
 });
+
+test("ticket diagnostics are specific and counters never expose input details", () => {
+  for (const [stage, label] of [
+    ["ticket-found", "Embedded tickets found"],
+    ["ticket-key-added", "Title keys added from tickets"],
+    ["ticket-key-reused", "Existing title keys reused"],
+  ]) {
+    assert.equal(
+      packagingActivity({ diagnostic: { stage, completed: 2, total: 2, bytes: 0 } }),
+      `${label}: 2`,
+    );
+    assert.equal(
+      packagingActivity({
+        diagnostic: { stage, completed: 2, total: 2, bytes: 0, filename: "PRIVATE" },
+      }),
+      null,
+    );
+  }
+  for (const detailCode of [
+    "TICKET_UNSUPPORTED",
+    "TICKET_INVALID",
+    "TICKET_RIGHTS_ID_MISMATCH",
+    "TICKET_KEY_CONFLICT",
+    "TICKET_LIMIT_EXCEEDED",
+  ]) {
+    const message = packagingFailureSummary({ stage: "secrets", detailCode });
+    assert.match(message, new RegExp(`\\[${detailCode}\\]`));
+    assert.doesNotMatch(message, /undefined/);
+  }
+  assert.doesNotMatch(
+    packagingFailureSummary({ stage: "secrets", detailCode: "TITLE_KEY_REQUIRED" }),
+    /does not import NSP tickets/,
+  );
+});
