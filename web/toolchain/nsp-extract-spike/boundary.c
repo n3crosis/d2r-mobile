@@ -14,9 +14,11 @@
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 /* Fixed numeric progress only. The worker supplies the trusted callback. */
+// clang-format off
 EM_JS(void, nsp_ivfc_report, (int phase, double verified, double total), {
     Module["onVerificationProgress"]?.(phase, verified, total);
 });
+// clang-format on
 #else
 static void nsp_ivfc_report(int phase, double verified, double total) {
     (void)phase;
