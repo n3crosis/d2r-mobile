@@ -31,13 +31,16 @@ when extending it. The bridge currently accepts compute only, not all native job
 
 - All `Ryujinx.Graphics.Shader` sources, with GLSL helper resources retained.
 - All `Spv.Generator` sources.
-- Four original Common files: `Memory/IArray.cs`, `Memory/StructArrayHelpers.cs`,
-  `Utilities/BitUtils.cs`, and `Utilities/BitfieldExtensions.cs`.
+- Five original Common files: `Memory/IArray.cs`, `Memory/StructArrayHelpers.cs`,
+  `Utilities/BitUtils.cs`, `Utilities/BitfieldExtensions.cs`, and
+  `Pools/ObjectPool.cs`.
 - A local `EmbeddedResources.ReadAllText` shim that reads the explicitly named
   resources from this combined assembly. The only linked caller is the GLSL
   generator; no other Common resource APIs are promised.
 
-Static inspection found these Common dependencies in the linked shader sources.
+Static inspection found the initial Common dependencies in the linked shader sources.
+The first CI compiler pass identified `ObjectPool<T>` in SPIR-V generation; its
+original Common source is now linked too.
 The original Common resource helper drags in `StreamUtils` and recyclable streams;
 its project also references MsgPack, Humanizer and Gommon and includes unrelated
 platform code. Source-linking avoids those dependencies rather than hoping the

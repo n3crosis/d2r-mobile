@@ -34,6 +34,10 @@ jobs:
     name: Frontend lint, format, synthetic tests and build
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      # TEMPORARY: regenerate once for the reviewed Vite/TS-ESLint security pins.
+      # Remove/reset after adopting the uploaded lock; never repair drift silently.
+      REGENERATE_DEPENDENCY_LOCK: "true"
     defaults:
       run:
         shell: bash
@@ -51,7 +55,7 @@ jobs:
       # Subsequent runs use npm ci against the committed lock without resolving anew.
       - name: Resolve missing lockfile, then install locked dependencies
         run: |
-          if [ ! -f package-lock.json ]; then
+          if [ "$REGENERATE_DEPENDENCY_LOCK" = true ] || [ ! -f package-lock.json ]; then
             npm install --package-lock-only --ignore-scripts
           fi
           npm ci
@@ -62,6 +66,8 @@ jobs:
           path: web/package-lock.json
           if-no-files-found: error
           retention-days: 3
+      - name: Audit all dependencies including developer tools
+        run: npm audit --audit-level=high
       - name: Workflow YAML formatting
         run: npx --no-install prettier --check ../.github/workflows/web-packager-checks.yml
       - name: Synthetic tests (no game inputs)

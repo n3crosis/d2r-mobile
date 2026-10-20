@@ -50,10 +50,16 @@ public static partial class ShaderBridge
             if (t == null) { Notes.Add($"贴图句柄 {handle:X}（常量段 {cbufSlot}，槽 {slot}）无 PC 类型，按 2D"); return SamplerType.Texture2D; }
             return t switch
             {
-                "1d" => SamplerType.Texture1D, "1darray" => SamplerType.Texture1D | SamplerType.Array,
-                "buffer" => SamplerType.TextureBuffer, "2d" => SamplerType.Texture2D, "2darray" => SamplerType.Texture2D | SamplerType.Array,
-                "2dms" => SamplerType.Texture2D | SamplerType.Multisample, "2dmsarray" => SamplerType.Texture2D | SamplerType.Multisample | SamplerType.Array,
-                "3d" => SamplerType.Texture3D, "cube" => SamplerType.TextureCube, "cubearray" => SamplerType.TextureCube | SamplerType.Array,
+                "1d" => SamplerType.Texture1D,
+                "1darray" => SamplerType.Texture1D | SamplerType.Array,
+                "buffer" => SamplerType.TextureBuffer,
+                "2d" => SamplerType.Texture2D,
+                "2darray" => SamplerType.Texture2D | SamplerType.Array,
+                "2dms" => SamplerType.Texture2D | SamplerType.Multisample,
+                "2dmsarray" => SamplerType.Texture2D | SamplerType.Multisample | SamplerType.Array,
+                "3d" => SamplerType.Texture3D,
+                "cube" => SamplerType.TextureCube,
+                "cubearray" => SamplerType.TextureCube | SamplerType.Array,
                 _ => SamplerType.Texture2D,
             };
         }
@@ -97,24 +103,30 @@ public static partial class ShaderBridge
         string stage = (string)job["stage"];
         if (stage != "cs")
             throw new ArgumentException("First spike accepts compute only; graphics SPH validation is not implemented.");
-                var acc = new Accessor(code, job);
-                // 作业 debug = false：关 DebugMode（DebugMode 会跳过 AST 优化器，产物满是临时变量；不改语义）
-                // Job debug = false: turn off DebugMode (DebugMode skips the AST optimizer and the output is full of temporaries; semantics unchanged)
-                var flags = (job["debug"] is JsonNode dbg && !(bool)dbg ? 0 : TranslationFlags.DebugMode) | ((string)job["stage"] == "cs" ? TranslationFlags.Compute : 0);
-                var ctx = Translator.CreateContext(0, acc, new TranslationOptions(TargetLanguage.Spirv, TargetApi.Vulkan, flags));
-                ShaderProgram p = ctx.Translate();
+        var acc = new Accessor(code, job);
+        // 作业 debug = false：关 DebugMode（DebugMode 会跳过 AST 优化器，产物满是临时变量；不改语义）
+        // Job debug = false: turn off DebugMode (DebugMode skips the AST optimizer and the output is full of temporaries; semantics unchanged)
+        var flags = (job["debug"] is JsonNode dbg && !(bool)dbg ? 0 : TranslationFlags.DebugMode) | ((string)job["stage"] == "cs" ? TranslationFlags.Compute : 0);
+        var ctx = Translator.CreateContext(0, acc, new TranslationOptions(TargetLanguage.Spirv, TargetApi.Vulkan, flags));
+        ShaderProgram p = ctx.Translate();
 
-                var res = new JsonObject
-                {
-                    ["key"] = key, ["stage"] = (string)job["stage"], ["notes"] = new JsonArray(acc.Notes.ConvertAll(n => (JsonNode)n).ToArray()),
-                    ["cbufs"] = new JsonArray(), ["sbufs"] = new JsonArray(), ["textures"] = new JsonArray(), ["images"] = new JsonArray(),
-                    ["uses_frag_coord"] = p.Info.UsesFragCoord, ["frag_out_map"] = p.Info.FragmentOutputMap,
-                };
-                foreach (var b in p.Info.CBuffers) res["cbufs"].AsArray().Add(new JsonObject { ["binding"] = b.Binding, ["slot"] = b.Slot });
-                foreach (var b in p.Info.SBuffers) res["sbufs"].AsArray().Add(new JsonObject { ["binding"] = b.Binding, ["slot"] = b.Slot, ["cb_slot"] = b.SbCbSlot, ["cb_offset"] = b.SbCbOffset, ["flags"] = (int)b.Flags });
-                foreach (var (list, name) in new[] { (p.Info.Textures, "textures"), (p.Info.Images, "images") })
-                    foreach (var t in list) res[name].AsArray().Add(new JsonObject { ["binding"] = t.Binding, ["type"] = (int)t.Type, ["format"] = t.Format.ToString(), ["cbuf_slot"] = t.CbufSlot, ["handle"] = t.HandleIndex, ["array"] = t.ArrayLength, ["separate"] = t.Separate, ["flags"] = (int)t.Flags });
-                return new JsonObject { ["spirvBase64"] = Convert.ToBase64String(p.BinaryCode), ["resources"] = res }.ToJsonString();
+        var res = new JsonObject
+        {
+            ["key"] = key,
+            ["stage"] = (string)job["stage"],
+            ["notes"] = new JsonArray(acc.Notes.ConvertAll(n => (JsonNode)n).ToArray()),
+            ["cbufs"] = new JsonArray(),
+            ["sbufs"] = new JsonArray(),
+            ["textures"] = new JsonArray(),
+            ["images"] = new JsonArray(),
+            ["uses_frag_coord"] = p.Info.UsesFragCoord,
+            ["frag_out_map"] = p.Info.FragmentOutputMap,
+        };
+        foreach (var b in p.Info.CBuffers) res["cbufs"].AsArray().Add(new JsonObject { ["binding"] = b.Binding, ["slot"] = b.Slot });
+        foreach (var b in p.Info.SBuffers) res["sbufs"].AsArray().Add(new JsonObject { ["binding"] = b.Binding, ["slot"] = b.Slot, ["cb_slot"] = b.SbCbSlot, ["cb_offset"] = b.SbCbOffset, ["flags"] = (int)b.Flags });
+        foreach (var (list, name) in new[] { (p.Info.Textures, "textures"), (p.Info.Images, "images") })
+            foreach (var t in list) res[name].AsArray().Add(new JsonObject { ["binding"] = t.Binding, ["type"] = (int)t.Type, ["format"] = t.Format.ToString(), ["cbuf_slot"] = t.CbufSlot, ["handle"] = t.HandleIndex, ["array"] = t.ArrayLength, ["separate"] = t.Separate, ["flags"] = (int)t.Flags });
+        return new JsonObject { ["spirvBase64"] = Convert.ToBase64String(p.BinaryCode), ["resources"] = res }.ToJsonString();
     }
 
     public static void Main() { }
