@@ -34,10 +34,10 @@ name included bytes, even if this corpus never uses them.
 
 Source inspection informing these hooks:
 
-- [public Asset and loader-hook types](https://github.com/dotnet/runtime/blob/v10.0.10/src/mono/browser/runtime/types/index.ts)
-- [.NET 10 configuration loader](https://github.com/dotnet/runtime/blob/v10.0.10/src/mono/browser/runtime/loader/config.ts)
-- [resource loader and resolvedUrl](https://github.com/dotnet/runtime/blob/v10.0.10/src/mono/browser/runtime/loader/assets.ts)
-- [builder configuration/resource hooks](https://github.com/dotnet/runtime/blob/v10.0.10/src/mono/browser/runtime/loader/run.ts)
+- [public Asset and loader-hook types](https://github.com/dotnet/runtime/blob/v10.0.13/src/mono/browser/runtime/types/index.ts)
+- [.NET 10 configuration loader](https://github.com/dotnet/runtime/blob/v10.0.13/src/mono/browser/runtime/loader/config.ts)
+- [resource loader and resolvedUrl](https://github.com/dotnet/runtime/blob/v10.0.13/src/mono/browser/runtime/loader/assets.ts)
+- [builder configuration/resource hooks](https://github.com/dotnet/runtime/blob/v10.0.13/src/mono/browser/runtime/loader/run.ts)
 
 These sources describe the intended API path; actual SDK output compatibility,
 including any required dynamic JS evaluation, must be established by the pinned
@@ -63,3 +63,18 @@ hostile JS, browser extensions, WebRTC or navigation.
 Until CI passes, no browser success is claimed. Even green proves only the tiny
 synthetic compute case on that runner, not sealed graphics/Cross/MSL, real game
 shaders, Windows/macOS, GPU execution, production integration or IPA output.
+
+## First CI failure and supported packaging correction
+
+[Run 39403162461](https://github.com/n3crosis/d2r-mobile/actions/runs/39403162461)
+on `664790f0b4d3cbe1082f174f0f1196164828d7f4` passed runtime publishing
+and the independent native oracle, then stopped before browser launch because
+the expected separate dotnet.boot.js was absent. SDK/workload 10.0.402 supplied
+runtime 10.0.13; its default WasmInlineBootConfig=true embeds config in dotnet.js.
+The isolated proof workflow now builds/publishes with the supported
+`-p:WasmInlineBootConfig=false` property, producing external config without
+rewriting generated JavaScript or changing translator source. The packager logs
+a bounded public filename inventory for further diagnosis. Corrected browser
+evidence remains pending.
+
+Official property implementation: [WebAssembly Browser build targets](https://github.com/dotnet/runtime/blob/v10.0.13/src/mono/nuget/Microsoft.NET.Sdk.WebAssembly.Pack/build/Microsoft.NET.Sdk.WebAssembly.Browser.targets).

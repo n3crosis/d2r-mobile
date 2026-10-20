@@ -18,11 +18,13 @@ PREFIX = Path(sys.argv[1]).resolve()
 PREFIX.mkdir(parents=True, exist_ok=True)
 
 
-def fetch(url, name, algorithm, expected):
+def fetch(url, name, algorithm, expected, limit=32 * 1024 * 1024):
     target = PREFIX / name
     with urllib.request.urlopen(url, timeout=60) as response:
-        raw = response.read(32 * 1024 * 1024 + 1)
-    if len(raw) > 32 * 1024 * 1024 or hashlib.new(algorithm, raw).hexdigest() != expected:
+        raw = response.read(limit + 1)
+    if len(raw) > limit:
+        raise SystemExit("Pinned source exceeds build-only download limit: " + name)
+    if hashlib.new(algorithm, raw).hexdigest() != expected:
         raise SystemExit("Pinned backend source mismatch: " + name)
     target.write_bytes(raw)
     return target
@@ -88,6 +90,7 @@ pillow = fetch(
     "pillow.tar.gz",
     "sha256",
     "e87f0b2c78157e12d7686b27d63c070fd65d994e8ddae6f328e0dcf4a0cd007e",
+    limit=46_212_712,  # Exact PyPI 10.2.0 sdist size; test-image corpus exceeds 32 MiB.
 )
 with tarfile.open(pillow) as source:
     source.extractall(PREFIX, filter="data")

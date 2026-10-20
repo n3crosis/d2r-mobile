@@ -107,6 +107,14 @@ production shell/source-chain conditions above or prove real-game compatibility.
 The 1.4.363.0 official tag and fetched source were independently reverified on
 2026-10-20. Both native and WASM builds now use that same commit. The existing
 exact source/reflection differential checks remain mandatory; CI regression
-results for the new compiler are pending. Historical runs above do not certify
-the migrated compiler. Matching this version alone does not establish full
+results for the new compiler are recorded below. Historical runs above do not
+certify the migrated compiler. Matching this version alone does not establish full
 production SHADER_SRC `be59c864f087b377` or resolve native chain/header differences.
+
+[Release-aligned run 39403162096](https://github.com/n3crosis/d2r-mobile/actions/runs/39403162096)
+passed on `664790f0b4d3cbe1082f174f0f1196164828d7f4` (2026-10-20).
+Native/WASM 1.4.363.0 builds and the real Chromium compute/fragment/storage
+MSL/reflection/replay differential all passed without weakening comparisons.
+Artifact `12255957529` retains the synthetic outputs and deployable compiler
+bundle for seven days. This is compiler parity evidence, not production source
+catalog equivalence or Apple Metal validation.

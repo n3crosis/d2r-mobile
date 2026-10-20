@@ -110,8 +110,8 @@ worker startup. Full catalog equality with SHADER_SRC `be59c864f087b377` and
 all trusted release recipe gates remain mandatory. No native chain/header or
 shell metadata is rewritten. The observed source chain `c675d3fa7c90` and
 header `15cf7ca29eaf` still differ from the release chain; matching the compiler
-alone does not resolve this condition. New-compiler native/WASM CI parity is
-pending; the runs documented below used 1.4.357.0 and are historical evidence.
+alone does not resolve this condition. The runs documented below used 1.4.357.0
+and are historical evidence; release-aligned compiler parity is recorded last.
 The mismatch alone is not evidence that any particular game shader renders
 incorrectly; real-game compatibility remains unestablished.
 
@@ -136,3 +136,15 @@ records Chromium `156.0.8078.4` and aggregate synthetic SHADER_SRC
 with no discard/sample mask. Existing compute-only native byte/sidecar parity
 also remained green in run `39398141113`. These synthetic semantics and parity
 results do not establish real-game, GPU-rendering or release-shell compatibility.
+
+## Verified release-aligned compiler regression
+
+[Linked run 39403162064](https://github.com/n3crosis/d2r-mobile/actions/runs/39403162064)
+passed on `664790f0b4d3cbe1082f174f0f1196164828d7f4` (2026-10-20).
+Both native and actual browser compilers used official SPIRV-Cross 1.4.363.0.
+The authored compute/vertex/fragment SPIR-V hashes, unchanged resource sidecars,
+exact MSL, upstream/native replay reflection, negative bridge cases and complete
+synthetic catalog checks all passed. Artifact `12256012556` retains bounded
+synthetic evidence for seven days. The full production digest
+`be59c864f087b377`, authenticated release recipe and remaining native asset/
+metadata requirements are not established by this regression.

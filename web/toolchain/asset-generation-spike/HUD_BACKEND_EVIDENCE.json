@@ -9,14 +9,8 @@
   "encodedFilesDifferent": 72,
   "pngFilesWithActualPixelDifferences": 71,
   "maximumChannelDelta": 2,
-  "spaceAdvanceNative": [
-    6.5,
-    7.5
-  ],
-  "spaceAdvanceBrowser": [
-    7.0,
-    8.0
-  ],
+  "spaceAdvanceNative": [6.5, 7.5],
+  "spaceAdvanceBrowser": [7.0, 8.0],
   "nativeDefaultBackend": "New explicit backend diagnostic will verify RAQM; failed artifact did not record its FreeType/RAQM versions",
   "productionParity": false
 }

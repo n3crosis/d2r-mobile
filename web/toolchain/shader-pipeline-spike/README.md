@@ -60,8 +60,18 @@ replay has `pos_attr=0`, `pos_w=attr`. Fragment output is exactly RGBA
 
 The earlier run above remains compute-only evidence. Both historical runs used
 1.4.357.0. The native and browser builds now pin official 1.4.363.0 at
-`f11ba9f0b21ba8fc15153d50a2a1ae31ab1cf8f7`; new-compiler CI parity is pending.
+`f11ba9f0b21ba8fc15153d50a2a1ae31ab1cf8f7`; new-compiler CI parity passed below.
 The full release catalog digest and trusted recipe gates remain mandatory, and
 native chain/header differences remain unresolved. Geometry,
 tessellation, broader graphics instructions/resources, both precision modes,
 GPU execution and game compatibility need their own evidence.
+
+## Release-aligned compiler regression
+
+[Run 39403162064](https://github.com/n3crosis/d2r-mobile/actions/runs/39403162064)
+passed on `664790f0b4d3cbe1082f174f0f1196164828d7f4` (2026-10-20), using
+1.4.363.0 for both native and browser Cross builds. All three linked authored
+stages, exact independent differential checks, complete synthetic source digest
+and negative bridge cases passed unchanged. Evidence artifact `12256012556`
+has seven-day retention. No real-game catalog, production source equivalence,
+native chain relabeling or installable output is claimed.

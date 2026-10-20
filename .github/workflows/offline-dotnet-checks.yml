@@ -74,8 +74,8 @@ jobs:
         id: publish
         run: |
           dotnet restore ShaderSpike.csproj
-          dotnet build ShaderSpike.csproj -c Release --no-restore -p:EnableNETAnalyzers=true -p:AnalysisLevel=latest -p:TreatWarningsAsErrors=true
-          dotnet publish ShaderSpike.csproj -c Release --no-restore -p:EnableNETAnalyzers=true -p:AnalysisLevel=latest -p:TreatWarningsAsErrors=true
+          dotnet build ShaderSpike.csproj -c Release --no-restore -p:WasmInlineBootConfig=false -p:EnableNETAnalyzers=true -p:AnalysisLevel=latest -p:TreatWarningsAsErrors=true
+          dotnet publish ShaderSpike.csproj -c Release --no-restore -p:WasmInlineBootConfig=false -p:EnableNETAnalyzers=true -p:AnalysisLevel=latest -p:TreatWarningsAsErrors=true
       - name: Prepare tiny authored fixture and build independent original native oracle
         id: native
         run: |

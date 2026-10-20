@@ -20,6 +20,9 @@ async function find(dir) {
 await find(publish);
 if (roots.length !== 1) throw new Error("Expected exactly one published framework directory");
 await mkdir(out, { recursive: true });
+const inventory = (await readdir(roots[0])).sort();
+if (inventory.length > 1024) throw new Error("Runtime file-count cap exceeded");
+console.log(JSON.stringify({ frameworkInventory: inventory }));
 const assets = [];
 for (const entry of (await readdir(roots[0], { withFileTypes: true })).sort((a, b) =>
   a.name.localeCompare(b.name),
