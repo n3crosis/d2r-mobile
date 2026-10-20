@@ -89,3 +89,43 @@ were not reached. This does not establish a CSP/eval incompatibility or prove
 network isolation. The next focused proof adds bounded public initialization
 phase, uncaught-error and console diagnostics, without changing the timeout,
 CSP or success assertions. Diagnostics stop before any operation payload is sent.
+
+### Source-established sidecar classification deadlock and local regression
+
+Inspection of the actual runtime version from the CI publish log, .NET 10.0.13,
+identified a deterministic startup defect in this harness. The original loader
+sets `dotnetSidecar` only when running in a Web Worker with no `globalThis.onmessage`
+handler. Our dynamic bootstrap had already assigned `self.onmessage`. That makes
+`ENVIRONMENT_IS_WORKER` true instead of marking the independent main runtime as a
+sidecar. The asset loader then skips resolving `coreAssetsInMemory`, while
+`onRuntimeInitializedAsync` awaits that promise. This is an initialization
+control-flow deadlock, not evidence that CSP must permit JavaScript eval.
+
+The sealed worker now registers its immediate message handler with
+`addEventListener("message", ...)`, matching the existing shader worker. This
+leaves the loader's detection slot unset without patching runtime globals,
+modifying generated runtime JS, accepting early jobs, or changing any network
+policy. The hook runs immediately, so early messages are still rejected rather
+than lost or deferred until after initialization.
+
+Pinned original implementation:
+
+- [sidecar classification](https://github.com/dotnet/runtime/blob/v10.0.13/src/mono/browser/runtime/loader/globals.ts)
+- [conditional core readiness completion](https://github.com/dotnet/runtime/blob/v10.0.13/src/mono/browser/runtime/loader/assets.ts)
+- [unconditional startup readiness await](https://github.com/dotnet/runtime/blob/v10.0.13/src/mono/browser/runtime/startup.ts)
+
+`node --test toolchain/offline-runtime-spike/test/dotnet-worker-startup.test.mjs`
+passes three deterministic local regressions: original onmessage wiring selects
+the non-completing branch; the actual repaired worker selects sidecar/completion;
+and a pre-initialization operation still rejects immediately. Tests use exact
+source excerpts with full-file SHA-256 provenance and upstream MIT license, and
+execute the actual worker's top-level listener registration in a VM. They do not
+execute the .NET runtime or substitute for the pending real browser/native parity
+and zero-server-receipt proof.
+
+The old CI output contains only a timeout, so it does not prove there are no
+additional startup failures after this defect. Fresh runtime observation is still
+required. Local browser execution remains unavailable under the sandbox, and the
+heavy CI proof is manual-only; no dispatch-capable route was available at the
+time this fix was prepared. The focused workflow must run the corrected revision
+before claiming browser success or enabling production.

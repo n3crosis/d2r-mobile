@@ -176,7 +176,9 @@ function run(data) {
   if (JSON.stringify(result).length > 256 * 1024) throw new Error("Shader result cap");
   return result;
 }
-self.onmessage = ({ data }) => {
+// .NET10 identifies an independent worker runtime by an unset onmessage slot.
+// Register immediately without occupying that slot, like the original shader worker.
+self.addEventListener("message", ({ data }) => {
   if (data?.type !== "initialize" && !initialized) {
     self.postMessage({ id: data?.id, ok: false, error: "Runtime not initialized" });
     return;
@@ -197,4 +199,4 @@ self.onmessage = ({ data }) => {
       });
     }
   });
-};
+});
