@@ -1,18 +1,32 @@
 # Sealed Pyodide asset-worker proof (Linux CI verified)
 
-This isolated prototype keeps the production UI, production CSP and original
-asset worker unchanged. It uses the actual generated Python core, Pillow and
-NumPy from the asset-generation spike, including the current complete packaged
-Python module set (`native_functions.py`, `core.py`, `derived.py`, `native_art_original.py`,
-`native_art.py`, `hud_original.py`, `hud_design_original.py`,
-`hud_support_original.py`, `hud.py`, `map_goal_original.py`, `map_goal.py`,
-`casc_overlay_original.py`, `casc_overlay.py`). The tested
-operations are image-default-frame, experience-table and overlay-paths. Derived-table, native-art, HUD and v61 operation parity remain separate proofs.
-The sealed initialization explicitly imports all thirteen modules, including derived, native_art and hud, so their
-Python import closure must be present before any operation is accepted. This
-does not claim their output operations passed here. Native-art JSON metadata is
-consumed from explicit operation payloads, not fetched at import time, and is not
-part of this proof's supported operation set.
+This isolated runtime leaves the production UI and its CSP unchanged. Earlier
+Linux receipts below verify only the three synthetic operations
+image-default-frame, experience-table and overlay-paths. The current source adds
+explicit generation routing after the same sealed initialization gate; it does
+not claim those additional operations already passed a combined browser proof.
+
+All packaged Python modules are written and imported before any job is accepted.
+The prepare script's hashed inventory is authoritative. Native metadata, decoded
+images and fonts are explicit bounded job payloads, never fetched at import time.
+
+## Current generation routing (combined browser verification pending)
+
+The bootstrap and self-contained worker share an explicit allowlist. BC3 encoding
+accepts at most 16 MiB RGBA (4M pixels, dimensions at most 8192) and returns original
+linear BC3 blocks for the sealed texture runtime to pack. Other input caps
+are 20 MiB for frame, experience, paths, derived tables, native art, map-goal and
+mercenary/remaining art; 64 MiB for HUD and CASC serialization; and 128 MiB for the native
+overlay recipe. JSON options are limited to 4 KiB, except the already bounded
+CASC segment plan (1 MiB for at most 4096 replacements). Unknown names, including
+object-prototype property names, fail before payload copying or Python dispatch.
+Production initialization omits synthetic probes entirely; supplied loopback-only
+proof probes retain their original assertions. The pre-initialization job
+rejection and original CSP/network seal are unchanged.
+Mercenary, remaining-art and native-overlay source modules are now in the preloaded import
+closure. Merely adding this routing does not prove a complete production profile,
+all generated output parity, real-title compatibility, or zero network receipts
+for the new operations; those integrated observations remain pending.
 
 ## Why a pinned loader adaptation is necessary
 
@@ -110,9 +124,9 @@ is not accepted as success. This failed run does not establish conversion parity
 or completed network-isolation proof; the corrected CI result is recorded below.
 
 HUD metadata and archive font bytes are not public preload assets. The HUD
-modules are imported to verify code closure only; the sealed worker does not
-accept HUD jobs, increase its 20 MiB operation input cap, or claim HUD rendering
-parity. The existing native parity corpus is unchanged.
+At that historical revision, modules were imported to verify code closure only;
+HUD jobs were not accepted and the 20 MiB input cap was unchanged. The native
+parity corpus remained unchanged.
 
 ### Successful sealed runtime proof
 
@@ -139,9 +153,9 @@ program rewriter, or production integration. Production UI and CSP are unchanged
 
 ### Later import-only closure extension (browser proof pending)
 
-The exact preload manifest now includes map_goal_original.py, map_goal.py,
+That intermediate preload manifest included map_goal_original.py, map_goal.py,
 casc_overlay_original.py and casc_overlay.py. These thirteen Python modules are
-installed from verified bytes and imported before jobs are accepted. The operation
-allowlist remains image-default-frame, experience-table and overlay-paths; no
-map-goal/CASC/HUD job or key-handling capability is enabled. The earlier green
+installed from verified bytes and imported before jobs were accepted. The operation
+allowlist then remained image-default-frame, experience-table and overlay-paths; no
+map-goal/CASC/HUD job or key-handling capability was enabled. The earlier green
 run verifies its nine-module snapshot, not this subsequent thirteen-module edit.

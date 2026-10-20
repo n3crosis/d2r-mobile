@@ -10,6 +10,12 @@ export function nativeArtAtlasDescriptor(bytes) {
     frameWidth = h.getUint16(6, true),
     frameCount = h.getUint16(20, true);
   const framePitch = Math.ceil(frameWidth / 4) * 4;
+  // Original gen_widestash_art.py main explicitly validates this two-panel
+  // storage geometry. Decode the complete atlas; never trim its inter-panel art.
+  const originalMainPanel =
+    frameWidth === 1440 && width === 2888 && height === 881 && frameCount === 2;
+  const generatedWidePanel =
+    frameWidth === 1636 && width === 1640 && height === 881 && frameCount === 1;
   if (
     !width ||
     !height ||
@@ -17,7 +23,7 @@ export function nativeArtAtlasDescriptor(bytes) {
     !frameWidth ||
     !frameCount ||
     width < (frameCount - 1) * framePitch + frameWidth ||
-    width > frameCount * framePitch
+    (!originalMainPanel && !generatedWidePanel && width > frameCount * framePitch)
   )
     throw new Error("NATIVE_ART_ATLAS_GEOMETRY");
   return {

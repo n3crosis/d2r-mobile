@@ -71,3 +71,21 @@ proof is not replaced by the mock integration.
 No real game inputs, complete production recipe, full end-to-end browser job,
 unsigned production IPA, sealed BC3 encoder runtime, device or UI validation is
 claimed. `completeAssetPipeline` and `productionConversion` remain false.
+
+## Source-derived generation extensions
+
+`mercenaryArt: true` produces the two native mercslots files with the original
+composition and shared BC3 encoder. `remainingArt: true` requires
+`nativeOverlayGenerated` and produces the source-pinned stash/trove/vault/pouch
+prerequisites privately. The optional `nativeOverlayGenerated` object carries
+only named native recipe prerequisites (normally the preceding HUD and panel
+generator outputs). The adapter adds generated mercenary/remaining sprites,
+rejects collisions and calls the original native overlay recipe, then the real
+CASC writer. It emits base and item_notes overlay paths as package entries.
+
+Native overlay mode rejects concurrent ad-hoc texture replacement recipes,
+which could otherwise overwrite its config. Extra intermediate PNG files are
+not passed to the recipe or added blindly to the package. Missing prerequisites
+fail explicitly; the adapter does not fabricate HUD/panel output or source hashes.
+All intermediate arrays are job-owned and cleared after serialization. This
+wiring is not a claim of full real-game or combined browser validation.

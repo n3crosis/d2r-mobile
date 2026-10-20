@@ -55,6 +55,15 @@ for (const name of [
   "map_goal.py",
   "casc_overlay_original.py",
   "casc_overlay.py",
+  "mercenary_original.py",
+  "mercenary.py",
+  "overlay_recipe_sources.py",
+  "overlay_recipe.py",
+  "remaining_art_original.py",
+  "trove_original.py",
+  "remaining_art.py",
+  "original_bc3.py",
+  "bounded_encoder.py",
 ])
   await add(name, await readFile(new URL(`generated/${name}`, source)));
 await add("worker.mjs", await readFile(new URL("pyodide-worker.mjs", here)));

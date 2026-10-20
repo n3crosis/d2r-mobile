@@ -1,4 +1,7 @@
 import { readAuthenticatedAssets } from "./extraction-job-adapter.mjs";
+import { generateNativeOverlay, NATIVE_OVERLAY_GENERATED } from "./native-overlay-generator.mjs";
+import { generateRemainingArt } from "./remaining-art-generator.mjs";
+import { generateMercenaryArt } from "./mercenary-art-generator.mjs";
 import { generateMapGoal } from "./map-goal-generator.mjs";
 import { writeCascOverlay } from "./casc-overlay-writer.mjs";
 import { validateEncodeRequest } from "./toolchain/texture-spike/browser-texture-encoder.mjs";
@@ -37,6 +40,9 @@ const view = (value) =>
  */
 export function createAssetPipelineAdapter({
   mapGoal = false,
+  mercenaryArt = false,
+  remainingArt = false,
+  nativeOverlayGenerated = null,
   textureReplacements = [],
   createAssetWorker,
   createTextureClient,
@@ -44,12 +50,23 @@ export function createAssetPipelineAdapter({
 } = {}) {
   if (
     typeof mapGoal !== "boolean" ||
+    typeof mercenaryArt !== "boolean" ||
+    typeof remainingArt !== "boolean" ||
+    (remainingArt && nativeOverlayGenerated === null) ||
     !Array.isArray(textureReplacements) ||
     textureReplacements.length > ASSET_PIPELINE_LIMITS.textures ||
-    (!mapGoal && !textureReplacements.length) ||
+    (!mapGoal && !mercenaryArt && !textureReplacements.length && nativeOverlayGenerated === null) ||
+    (nativeOverlayGenerated !== null &&
+      (typeof nativeOverlayGenerated !== "object" ||
+        Array.isArray(nativeOverlayGenerated) ||
+        textureReplacements.length ||
+        Object.keys(nativeOverlayGenerated).some(
+          (name) => !NATIVE_OVERLAY_GENERATED.includes(name),
+        ))) ||
     typeof createAssetWorker !== "function" ||
     typeof createTextureClient !== "function" ||
-    (textureReplacements.length && typeof createTextureEncoder !== "function")
+    ((textureReplacements.length || mercenaryArt || remainingArt) &&
+      typeof createTextureEncoder !== "function")
   )
     fail("ASSET_PIPELINE_OPTIONS");
   const destinations = new Set();
@@ -213,8 +230,67 @@ export function createAssetPipelineAdapter({
           release(generatedBytes);
         }
       }
+      const generatedArt = {};
+      if (nativeOverlayGenerated !== null) {
+        let bytes = 0;
+        for (const [name, value] of Object.entries(nativeOverlayGenerated)) {
+          const source = view(value);
+          if (
+            !source?.length ||
+            source.length > 16 * 1024 * 1024 ||
+            (bytes += source.length) > 48 * 1024 * 1024
+          )
+            fail("ASSET_PIPELINE_GENERATED_ART");
+          generatedArt[name] = own(source.slice());
+        }
+      }
+      let encoder;
+      const getEncoder = () => (encoder ??= client(createTextureEncoder, "encodeAndPack"));
+      if (mercenaryArt) {
+        const generated = await run(() =>
+          generateMercenaryArt({
+            logicalAssets: assets.logicalAssets,
+            assetWorker: worker,
+            decodeAtlas,
+            textureEncoder: getEncoder(),
+            signal: combined,
+          }),
+        );
+        check();
+        for (const [name, bytes] of Object.entries(generated.files)) {
+          const generatedBytes = own(bytes);
+          append(`mercslots/${name}`, generatedBytes);
+          if (nativeOverlayGenerated !== null && name === "HirelingInventoryBG.sprite") {
+            if (generatedArt[`NativeHUD/mercslots/${name}`])
+              fail("ASSET_PIPELINE_GENERATED_COLLISION");
+            generatedArt[`NativeHUD/mercslots/${name}`] = generatedBytes;
+          } else release(generatedBytes);
+        }
+      }
+      if (remainingArt) {
+        const generated = await run(() =>
+          generateRemainingArt({
+            logicalAssets: assets.logicalAssets,
+            assetWorker: worker,
+            decodeAtlas,
+            textureEncoder: getEncoder(),
+            signal: combined,
+          }),
+        );
+        check();
+        for (const [name, value] of Object.entries(generated.files)) {
+          const data = own(value);
+          if (name === "NativeHUD/widestash/VaultBottom.png") {
+            release(data);
+            continue;
+          }
+          if (!NATIVE_OVERLAY_GENERATED.includes(name) || generatedArt[name])
+            fail("ASSET_PIPELINE_GENERATED_COLLISION");
+          generatedArt[name] = data;
+        }
+      }
       if (recipes.length) {
-        const encoder = client(createTextureEncoder, "encodeAndPack");
+        const encoder = getEncoder();
         const replacements = [];
         let replacementBytes = 0;
         for (const recipe of recipes) {
@@ -251,6 +327,8 @@ export function createAssetPipelineAdapter({
               pixels,
               width: decoded.width,
               height: decoded.height,
+              frameWidth: decoded.frameWidth,
+              frameCount: decoded.frameCount,
               signal: combined,
             }),
           );
@@ -286,6 +364,19 @@ export function createAssetPipelineAdapter({
         check();
         for (const [name, bytes] of Object.entries(overlay.files))
           append(`romfs_overlay/${name}`, own(bytes));
+      }
+      if (nativeOverlayGenerated !== null) {
+        const overlay = await run(() =>
+          generateNativeOverlay({
+            extracted,
+            selection,
+            generated: generatedArt,
+            worker,
+            signal: combined,
+          }),
+        );
+        check();
+        for (const [name, value] of Object.entries(overlay.files)) append(name, own(value));
       }
       check();
       closeClients();

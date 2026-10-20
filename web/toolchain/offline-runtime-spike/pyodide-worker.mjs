@@ -1,4 +1,18 @@
 // Dedicated synthetic-only worker. Private-input jobs are accepted only after initialization.
+const OPERATION_LIMITS = Object.freeze({
+  "image-default-frame": [20, 4096],
+  "experience-table": [20, 4096],
+  "overlay-paths": [20, 4096],
+  "derived-tables": [20, 4096],
+  "native-art": [20, 4096],
+  "hud-v4": [64, 4096],
+  "map-goal": [20, 4096],
+  "casc-overlay": [64, 1048576],
+  "mercenary-art": [20, 4096],
+  "overlay-recipe": [128, 4096],
+  "remaining-art": [20, 4096],
+  "encode-linear-bc3": [16, 4096],
+});
 const RUNTIME_ORIGIN = "https://offline.invalid";
 let initialized = false;
 let starting = false;
@@ -28,12 +42,13 @@ async function probe(urls) {
 async function initialize(data) {
   if (starting || initialized) throw new Error("Already initialized");
   starting = true;
+  const probes = data.probes ?? [];
   if (
     !Array.isArray(data.assets) ||
     data.assets.length > 32 ||
-    !Array.isArray(data.probes) ||
-    data.probes.length !== 2 ||
-    !data.probes.every((url) => /^http:\/\/127\.0\.0\.1:\d+\/probe\/[a-z]+$/.test(url))
+    !Array.isArray(probes) ||
+    ![0, 2].includes(probes.length) ||
+    !probes.every((url) => /^http:\/\/127\.0\.0\.1:\d+\/probe\/[a-z]+$/.test(url))
   )
     throw new Error("Invalid proof initialization");
   const assets = new Map();
@@ -79,7 +94,7 @@ async function initialize(data) {
       });
     },
   });
-  const before = await probe(data.probes);
+  const before = probes.length ? await probe(probes) : 0;
   function moduleUrl(name) {
     const bytes = assets.get(name);
     if (!bytes) throw new Error("Missing runtime code");
@@ -128,6 +143,15 @@ async function initialize(data) {
     "map_goal.py",
     "casc_overlay_original.py",
     "casc_overlay.py",
+    "mercenary_original.py",
+    "mercenary.py",
+    "overlay_recipe_sources.py",
+    "overlay_recipe.py",
+    "remaining_art_original.py",
+    "trove_original.py",
+    "remaining_art.py",
+    "original_bc3.py",
+    "bounded_encoder.py",
   ]) {
     const bytes = assets.get(name);
     if (!bytes) throw new Error("Missing packaged Python source");
@@ -142,12 +166,16 @@ async function initialize(data) {
     ["import-hud", "import hud_original, hud_design_original, hud_support_original, hud"],
     ["import-map-goal", "import map_goal_original, map_goal"],
     ["import-casc-overlay", "import casc_overlay_original, casc_overlay"],
+    ["import-mercenary", "import mercenary_original, mercenary"],
+    ["import-overlay-recipe", "import overlay_recipe_sources, overlay_recipe"],
+    ["import-remaining-art", "import remaining_art_original, trove_original, remaining_art"],
+    ["import-bc3", "import original_bc3, bounded_encoder"],
     ["import-core", "from core import execute"],
   ]) {
     phase = stage;
     await py.runPythonAsync(code);
   }
-  const after = await probe(data.probes);
+  const after = probes.length ? await probe(probes) : 0;
   // Unknown/missing dependencies never fall back to network.
   let missingRejected = false;
   try {
@@ -161,18 +189,21 @@ async function initialize(data) {
   return { initialized: true, blocked: before + after, reads, version: py.version, packages };
 }
 async function run(data) {
+  const limits = Object.hasOwn(OPERATION_LIMITS, data?.operation)
+    ? OPERATION_LIMITS[data.operation]
+    : null;
   if (
     !initialized ||
     !Number.isSafeInteger(data.id) ||
     data.id < 1 ||
-    !["image-default-frame", "experience-table", "overlay-paths"].includes(data.operation) ||
+    !limits ||
     !(data.payload instanceof ArrayBuffer) ||
-    data.payload.byteLength > 20 * 1024 * 1024 ||
+    data.payload.byteLength > limits[0] * 1024 * 1024 ||
     typeof data.options !== "object" ||
     data.options === null ||
-    JSON.stringify(data.options).length > 4096
+    JSON.stringify(data.options).length > limits[1]
   )
-    throw new Error("Invalid bounded synthetic request");
+    throw new Error("Invalid bounded asset request");
   py.globals.set("_op", data.operation);
   py.globals.set("_payload", new Uint8Array(data.payload));
   py.globals.set("_options_json", JSON.stringify(data.options));

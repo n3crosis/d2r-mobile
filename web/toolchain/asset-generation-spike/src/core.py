@@ -45,8 +45,38 @@ def encode_v31(im):
 
 
 def execute(operation, payload, options):
-    if len(payload) > (64 * 1024 * 1024 if operation in {"hud-v4", "casc-overlay"} else MAX_BYTES):
+    limit = (
+        {"overlay-recipe": 128, "hud-v4": 64, "casc-overlay": 64, "encode-linear-bc3": 16}.get(
+            operation, 20
+        )
+        * 1024
+        * 1024
+    )
+    if len(payload) > limit:
         raise ValueError("Input exceeds operation byte limit")
+    if operation == "encode-linear-bc3":
+        from bounded_encoder import encode_rgba
+
+        if set(options) != {"width", "height"}:
+            raise ValueError("ENCODER_OPTIONS")
+        width, height = options["width"], options["height"]
+        return {
+            "width": width,
+            "height": height,
+            "files": {"linear.bc3": encode_rgba(payload, width, height)},
+        }
+    if operation == "remaining-art":
+        from remaining_art import generate
+
+        return generate(payload, options)
+    if operation == "overlay-recipe":
+        from overlay_recipe import generate
+
+        return generate(payload, options)
+    if operation == "mercenary-art":
+        from mercenary import generate
+
+        return generate(payload, options)
     if operation == "casc-overlay":
         from casc_overlay import generate
 
@@ -117,4 +147,4 @@ def execute(operation, payload, options):
             path = path.lower()
             result.append({"source": path, "target": native.touch_path(path)})
         return {"files": {"overlay-paths.json": json.dumps(result, separators=(",", ":")).encode()}}
-    raise ValueError("Unsupported operation; full asset generation/CASC packing is not implemented")
+    raise ValueError("Unsupported asset operation")

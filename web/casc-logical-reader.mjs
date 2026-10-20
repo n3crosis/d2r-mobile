@@ -68,6 +68,7 @@ export async function createCascLogicalAssets(romfs, { signal } = {}) {
   if (manifest.size > BigInt(CASC_LIMITS.manifestBytes)) fail("manifest byte budget");
   const decoder = new TextDecoder("utf-8", { fatal: true });
   const index = new Map();
+  const duplicatePaths = new Set();
   let pending = "",
     first = true,
     rowCount = 0;
@@ -88,6 +89,7 @@ export async function createCascLogicalAssets(romfs, { signal } = {}) {
     const key = checkPath(fields[9]);
     // Keep only fields needed to locate/decode a requested asset; numeric validation
     // is lazy so unrelated unsupported records do not prevent valid asset reads.
+    if (index.has(key)) duplicatePaths.add(key);
     index.set(key, Object.freeze(fields.slice(0, 11)));
   }
   for (let offset = 0n; offset < manifest.size;) {
@@ -120,6 +122,7 @@ export async function createCascLogicalAssets(romfs, { signal } = {}) {
   return Object.freeze({
     count: index.size,
     lookup,
+    hasDuplicatePath: (path) => duplicatePaths.has(checkPath(path, true)),
     // Iterator avoids duplicating a large path list; rows themselves are immutable.
     entries: () => index.values(),
     async read(path, { maxBytes = ARCHIVE_LIMITS.decodedRecord, signal: readSignal } = {}) {

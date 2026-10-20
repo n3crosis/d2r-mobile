@@ -297,6 +297,30 @@ export function createExtractionJobAdapter({
         });
         const logical = await createCascLogicalAssets(romfs, { signal });
         const logicalAssets = Object.freeze({
+          lookup(path) {
+            check();
+            return logical.lookup(path);
+          },
+          findUniquePathSuffix(suffix) {
+            check();
+            if (
+              typeof suffix !== "string" ||
+              suffix.length > 512 ||
+              !/^\/[a-z0-9_/.-]+$/.test(suffix) ||
+              suffix.split("/").some((part) => part === "." || part === "..")
+            )
+              throw new Error("EXTRACTION_ASSET_SUFFIX");
+            let match;
+            for (const row of logical.entries()) {
+              check();
+              if (!row[9].toLowerCase().endsWith(suffix)) continue;
+              if (match !== undefined || logical.hasDuplicatePath(row[9]))
+                throw new Error("EXTRACTION_ASSET_AMBIGUOUS");
+              match = row[9];
+            }
+            if (match === undefined) throw new Error("EXTRACTION_ASSET_MISSING");
+            return match;
+          },
           async read(path, options) {
             check(options?.signal);
             const bytes = await logical.read(path, options);

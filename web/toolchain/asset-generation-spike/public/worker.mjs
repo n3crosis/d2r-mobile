@@ -17,6 +17,15 @@ async function initialize() {
     "map_goal.py",
     "casc_overlay_original.py",
     "casc_overlay.py",
+    "mercenary_original.py",
+    "mercenary.py",
+    "overlay_recipe_sources.py",
+    "overlay_recipe.py",
+    "remaining_art_original.py",
+    "trove_original.py",
+    "remaining_art.py",
+    "original_bc3.py",
+    "bounded_encoder.py",
   ]) {
     const response = await fetch(new URL(`./generated/${name}`, import.meta.url));
     if (!response.ok) throw new Error(`Missing packaged core: ${name}`);
@@ -39,7 +48,15 @@ self.onmessage = ({ data }) => {
         throw new Error("Invalid worker request");
       if (
         payload.byteLength >
-        (["hud-v4", "casc-overlay"].includes(operation) ? 64 : 20) * 1024 * 1024
+        (operation === "encode-linear-bc3"
+          ? 16
+          : operation === "overlay-recipe"
+            ? 128
+            : ["hud-v4", "casc-overlay"].includes(operation)
+              ? 64
+              : 20) *
+          1024 *
+          1024
       )
         throw new Error("Input exceeds operation byte limit");
       const py = await (runtime ??= initialize());

@@ -21,6 +21,14 @@ python_sources=(
   web/toolchain/asset-generation-spike/src/casc_overlay.py
   web/toolchain/asset-generation-spike/test/casc-overlay-oracle.py
   web/toolchain/asset-generation-spike/scripts/package-map-goal.py
+  web/toolchain/asset-generation-spike/scripts/package-mercenary.py
+  web/toolchain/asset-generation-spike/scripts/package-bc3.py
+  web/toolchain/asset-generation-spike/src/mercenary.py
+  web/toolchain/asset-generation-spike/test/mercenary-reference.py
+  web/toolchain/asset-generation-spike/scripts/package-remaining-art.py
+  web/toolchain/asset-generation-spike/src/remaining_art.py
+  web/toolchain/asset-generation-spike/scripts/package-overlay-recipe.py
+  web/toolchain/asset-generation-spike/src/overlay_recipe.py
   web/toolchain/asset-generation-spike/src/map_goal.py
   web/toolchain/asset-generation-spike/test/map-goal-reference.py
   web/toolchain/asset-generation-spike/src/native_art.py

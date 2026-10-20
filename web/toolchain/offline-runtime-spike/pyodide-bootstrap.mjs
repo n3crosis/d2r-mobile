@@ -1,3 +1,17 @@
+const OPERATION_LIMITS = Object.freeze({
+  "image-default-frame": [20, 4096],
+  "experience-table": [20, 4096],
+  "overlay-paths": [20, 4096],
+  "derived-tables": [20, 4096],
+  "native-art": [20, 4096],
+  "hud-v4": [64, 4096],
+  "map-goal": [20, 4096],
+  "casc-overlay": [64, 1048576],
+  "mercenary-art": [20, 4096],
+  "overlay-recipe": [128, 4096],
+  "remaining-art": [20, 4096],
+  "encode-linear-bc3": [16, 4096],
+});
 /* global document */
 // Build replaces this digest; no user data is accepted by this proof harness.
 const MANIFEST_SHA256 = "__MANIFEST_SHA256__";
@@ -169,8 +183,18 @@ globalThis.startOfflinePyodide = async (probes) => {
     return {
       stats: { ...result, documentBlocked: blocked.length, transferred: true },
       async run(operation, bytes, options = {}) {
-        if (!(bytes instanceof Uint8Array) || bytes.byteLength > 20 * 1024 * 1024)
-          throw new Error("Invalid proof input");
+        const limits = Object.hasOwn(OPERATION_LIMITS, operation)
+          ? OPERATION_LIMITS[operation]
+          : null;
+        if (
+          !limits ||
+          !(bytes instanceof Uint8Array) ||
+          bytes.byteLength > limits[0] * 1024 * 1024 ||
+          !options ||
+          typeof options !== "object" ||
+          JSON.stringify(options).length > limits[1]
+        )
+          throw new Error("Invalid bounded asset input");
         const payload = bytes.slice().buffer;
         return request({ id: ++id, type: "run", operation, payload, options }, [payload]);
       },
