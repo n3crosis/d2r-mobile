@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { resolve, extname, sep } from "node:path";
+import { resolve, extname, sep, dirname } from "node:path";
 import { chromium } from "playwright";
 const publicRoot = resolve("public");
 const reference = resolve("test-results/reference");
@@ -75,7 +75,11 @@ try {
   const artBundle = await readFile("test-results/native-art/bundle.json");
   const artOptions = JSON.parse(await readFile("test-results/native-art/options.json", "utf8"));
   const artFiles = JSON.parse(await readFile("test-results/native-art/files.json", "utf8"));
+  const hudBundle = await readFile("test-results/hud/bundle.json");
+  const hudOptions = JSON.parse(await readFile("test-results/hud/options.json", "utf8"));
+  const hudFiles = JSON.parse(await readFile("test-results/hud/files.json", "utf8"));
   const cases = [
+    ["hud-v4", hudBundle, hudOptions, hudFiles],
     ["native-art", artBundle, artOptions, artFiles],
     ["image-default-frame", sprite, { frame: 1 }, ["frame.rgba", "frame.sprite"]],
     ["experience-table", await readFile(`${reference}/experience.tsv`), {}, ["dm_hud_exp.h"]],
@@ -88,17 +92,21 @@ try {
     const [operation, , , names] = cases[i];
     const actual = results[i];
     assert.equal(actual.ok, true, actual.error);
-    for (const [name, bytes] of Object.entries(actual.result.files))
+    for (const [name, bytes] of Object.entries(actual.result.files)) {
+      await mkdir(dirname(`${output}/${name}`), { recursive: true });
       await writeFile(`${output}/${name}`, Buffer.from(bytes));
+    }
     for (const name of names)
       assert.deepEqual(
         Buffer.from(actual.result.files[name]),
         await readFile(
-          operation === "native-art"
-            ? `test-results/native-art/native-ios/Sources/${name.endsWith(".png") ? "TouchArt/" : ""}${name}`
-            : name === "derived.tsv"
-              ? "test-results/derived/expected.tsv"
-              : `${reference}/${name}`,
+          operation === "hud-v4"
+            ? `test-results/hud/expected/${name}`
+            : operation === "native-art"
+              ? `test-results/native-art/native-ios/Sources/${name.endsWith(".png") ? "TouchArt/" : ""}${name}`
+              : name === "derived.tsv"
+                ? "test-results/derived/expected.tsv"
+                : `${reference}/${name}`,
         ),
         `${operation}: exact byte parity ${name}`,
       );
@@ -115,7 +123,11 @@ try {
   const changedPixels = Buffer.from(badPixels.rgba[pixelName], "base64");
   changedPixels[0] ^= 255;
   badPixels.rgba[pixelName] = changedPixels.toString("base64");
+  const missingFont = JSON.parse(hudBundle);
+  delete missingFont.fonts["exocetblizzardot-medium.otf"];
   const negatives = [
+    ["hud-v4", hudBundle, {}, "HUD_MODE_REQUIRED"],
+    ["hud-v4", Buffer.from(JSON.stringify(missingFont)), hudOptions, "HUD_FONT_SET"],
     ["native-art", Buffer.from(JSON.stringify(badPixels)), artOptions, "native_art"],
     ["native-art", artBundle, {}, "NATIVE_ART_TRUST_REQUIRED"],
     ["native-art", Buffer.from(JSON.stringify(badArt)), artOptions, "native_art"],

@@ -1,22 +1,35 @@
 import { buildGuestFramework, guestInfoPlist, planGuestFramework } from "./guest-framework.mjs";
 
+import {
+  PROGRAM_REWRITER_SOURCE,
+  REGISTERED_PROGRAM_CATALOG,
+  REGISTERED_PROGRAM_RELEASE,
+  PROGRAM_REWRITE_LIMITS,
+} from "./program-release-catalog.mjs";
+export { PROGRAM_REWRITER_SOURCE } from "./program-release-catalog.mjs";
+
 export const PROGRAM_REWRITER_CAPABILITIES = Object.freeze({
   syntheticRewriteToGuest: true,
   productionProgramGeneration: false,
-  realVersionCatalog: false,
+  realVersionCatalog: true,
+  registeredReleaseGeneration: true,
+  multiModuleGuest: true,
+  realGameVerified: false,
 });
-export const PROGRAM_REWRITER_SOURCE =
-  "d0bee134202bcc7c976c2713ffec2881f77b43bbfc24f4ebde17f0886c3dc22e";
-const REQUIRED_FILES = [
-  "build_src.sha256",
-  "main.patched.bin",
-  "main.fixups.tsv",
-  "main.gates.tsv",
-  "main.sites.tsv",
-  "main.cuts.tsv",
-  "main.params.tsv",
-  "main.obs.tsv",
-].sort();
+const filesFor = (name, registered = false) =>
+  [
+    "build_src.sha256",
+    ...[
+      "patched.bin",
+      "fixups.tsv",
+      "gates.tsv",
+      "sites.tsv",
+      "cuts.tsv",
+      "params.tsv",
+      "obs.tsv",
+    ].map((suffix) => `${name}.${suffix}`),
+    ...(registered && name === "main" ? ["main.aim.tsv", "main.rules.tsv"] : []),
+  ].sort();
 const MAX_BYTES = 1024 * 1024;
 const SHA = /^[0-9a-f]{64}$/;
 const encoder = new TextEncoder();
@@ -38,44 +51,68 @@ const sha256 = async (bytes) =>
   Array.from(new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", bytes)), (x) =>
     x.toString(16).padStart(2, "0"),
   ).join("");
-function snapshot(bytes) {
+function snapshot(bytes, maxBytes = MAX_BYTES) {
   if (
     !(bytes instanceof Uint8Array) ||
     !bytes.byteLength ||
-    bytes.byteLength > MAX_BYTES ||
+    bytes.byteLength > maxBytes ||
     (globalThis.SharedArrayBuffer && bytes.buffer instanceof globalThis.SharedArrayBuffer)
   )
     fail("PROGRAM_INVALID_BYTES");
   return bytes.slice();
 }
 function catalogFor(value) {
+  if (value === REGISTERED_PROGRAM_CATALOG)
+    return new Map([
+      [REGISTERED_PROGRAM_RELEASE.id, { ...REGISTERED_PROGRAM_RELEASE, registered: true }],
+    ]);
   if (
     !value ||
-    value.schemaVersion !== 1 ||
+    ![1, 2].includes(value.schemaVersion) ||
     value.scope !== "synthetic-only" ||
     value.sourceSha256 !== PROGRAM_REWRITER_SOURCE ||
     !Array.isArray(value.versions) ||
     !value.versions.length ||
-    value.versions.length > 3
+    value.versions.length > 4
   )
     fail("PROGRAM_TRUSTED_CATALOG_REQUIRED");
   const catalog = new Map();
   for (const entry of value.versions) {
     if (
       !entry ||
-      !["gates", "x18", "compressed"].includes(entry.id) ||
+      typeof entry.id !== "string" ||
       catalog.has(entry.id) ||
-      entry.buildId !== "534e5448455449430000000000000000" ||
-      entry.ruleset !== "native" ||
-      !SHA.test(entry.inputSha256) ||
       !SHA.test(entry.guestSha256) ||
-      !SHA.test(entry.plistSha256) ||
-      !entry.files ||
-      JSON.stringify(Object.keys(entry.files).sort()) !== JSON.stringify(REQUIRED_FILES) ||
-      Object.values(entry.files).some((hash) => !SHA.test(hash))
+      !SHA.test(entry.plistSha256)
     )
       fail("PROGRAM_INVALID_TRUSTED_VERSION");
-    catalog.set(entry.id, Object.freeze({ ...entry, files: Object.freeze({ ...entry.files }) }));
+    const modules =
+      value.schemaVersion === 1 ? [{ ...entry, name: "main", caseName: entry.id }] : entry.modules;
+    if (
+      !Array.isArray(modules) ||
+      (value.schemaVersion === 2 && modules.map((module) => module.name).join(",") !== "main,sdk")
+    )
+      fail("PROGRAM_INVALID_MODULE_SET");
+    const checked = modules.map((module) => {
+      if (
+        !module ||
+        !["main", "sdk"].includes(module.name) ||
+        typeof module.caseName !== "string" ||
+        module.buildId !== "534e5448455449430000000000000000" ||
+        module.ruleset !== "native" ||
+        !SHA.test(module.inputSha256) ||
+        !module.files ||
+        JSON.stringify(Object.keys(module.files).sort()) !==
+          JSON.stringify(filesFor(module.name)) ||
+        Object.values(module.files).some((hash) => !SHA.test(hash))
+      )
+        fail("PROGRAM_INVALID_TRUSTED_VERSION");
+      return Object.freeze({ ...module, files: Object.freeze({ ...module.files }) });
+    });
+    catalog.set(
+      entry.id,
+      Object.freeze({ ...entry, modules: Object.freeze(checked), registered: false }),
+    );
   }
   return catalog;
 }
@@ -111,15 +148,27 @@ function layout(bytes, imageSize) {
   return { textEnd: values.TEXT_END, patchOff: values.PATCH_OFF };
 }
 /**
- * Trusted application wiring, not a real-game implementation. Catalog must come
+ * Trusted application wiring. The registered route requires extraction-issued
+ * verifyProvenance(extracted,selection,{signal}) -> borrowed {main,sdk}.
+ * No caller claims of authentication or alternate release catalogs are accepted.
+ * Synthetic catalogs must come
  * from a separately trusted CI/release registry, NEVER extracted content or UI.
  * resolveInput(extracted, selection) -> {versionId, bytes}. createWorker() must
  * return {run({bytes,caseName}): Promise<worker response>, close()}.
  * The original worker's exact synthetic fixture gate remains mandatory.
  */
-export function createProgramRewriterAdapter({ trustedCatalog, resolveInput, createWorker } = {}) {
+export function createProgramRewriterAdapter({
+  trustedCatalog = REGISTERED_PROGRAM_CATALOG,
+  resolveInput,
+  verifyProvenance,
+  createWorker,
+} = {}) {
   const versions = catalogFor(trustedCatalog);
-  if (typeof resolveInput !== "function" || typeof createWorker !== "function")
+  const registered = trustedCatalog === REGISTERED_PROGRAM_CATALOG;
+  if (
+    (registered ? typeof verifyProvenance !== "function" : typeof resolveInput !== "function") ||
+    typeof createWorker !== "function"
+  )
     fail("PROGRAM_RUNTIME_REQUIRED");
   let used = false,
     disposed = false,
@@ -167,21 +216,54 @@ export function createProgramRewriterAdapter({ trustedCatalog, resolveInput, cre
     });
     const race = (action) => Promise.race([Promise.resolve().then(action), interrupted]);
     try {
-      const input = await race(() =>
-        resolveInput(extracted, selection, { signal, maxBytes: MAX_BYTES }),
-      );
+      const input = registered
+        ? {
+            versionId: REGISTERED_PROGRAM_RELEASE.id,
+            programModules: await race(() => verifyProvenance(extracted, selection, { signal })),
+          }
+        : await race(() => resolveInput(extracted, selection, { signal, maxBytes: MAX_BYTES }));
       check(signal);
       const version = versions.get(input?.versionId);
       if (!version) fail("PROGRAM_UNSUPPORTED_VERSION");
-      const bytes = own(snapshot(input.bytes));
-      if ((await race(() => sha256(bytes))) !== version.inputSha256)
-        fail("PROGRAM_INPUT_DIGEST_MISMATCH");
+      const inputModules =
+        input.programModules ?? (version.modules.length === 1 ? { main: input.bytes } : null);
       if (
-        Array.from(bytes.subarray(0x40, 0x50), (x) => x.toString(16).padStart(2, "0")).join("") !==
-        version.buildId
+        !inputModules ||
+        Object.keys(inputModules).sort().join(",") !==
+          version.modules
+            .map((module) => module.name)
+            .sort()
+            .join(",")
       )
-        fail("PROGRAM_BUILD_ID_MISMATCH");
-      check(signal);
+        fail("PROGRAM_INVALID_MODULE_SET");
+      let inputTotal = 0,
+        outputTotal = 0;
+      const staged = [];
+      // Snapshot both borrowed arrays synchronously. No worker or asynchronous
+      // hashing can observe a later mutation of extraction-owned input buffers.
+      for (const module of version.modules) {
+        const bytes = own(
+          snapshot(
+            inputModules[module.name],
+            registered ? PROGRAM_REWRITE_LIMITS.moduleInputBytes : MAX_BYTES,
+          ),
+        );
+        inputTotal += bytes.length;
+        if (inputTotal > PROGRAM_REWRITE_LIMITS.totalInputBytes) fail("PROGRAM_INPUT_BUDGET");
+        staged.push({ module, bytes });
+      }
+      for (const { module, bytes } of staged) {
+        if ((await race(() => sha256(bytes))) !== module.inputSha256)
+          fail("PROGRAM_INPUT_DIGEST_MISMATCH");
+        if (
+          module.buildId &&
+          Array.from(bytes.subarray(0x40, 0x50), (x) => x.toString(16).padStart(2, "0")).join(
+            "",
+          ) !== module.buildId
+        )
+          fail("PROGRAM_BUILD_ID_MISMATCH");
+        check(signal);
+      }
       activeWorker = createWorker();
       if (
         !activeWorker ||
@@ -189,48 +271,77 @@ export function createProgramRewriterAdapter({ trustedCatalog, resolveInput, cre
         typeof activeWorker.close !== "function"
       )
         fail("PROGRAM_RUNTIME_REQUIRED");
-      const result = await race(() => activeWorker.run({ bytes, caseName: version.id }));
-      check(signal);
-      if (
-        !result?.ok ||
-        result.status !== "synthetic-only" ||
-        !result.files ||
-        JSON.stringify(Object.keys(result.files).sort()) !== JSON.stringify(REQUIRED_FILES)
-      )
-        fail("PROGRAM_REWRITE_REJECTED");
-      const files = Object.create(null);
-      let total = 0;
-      for (const name of REQUIRED_FILES) {
-        const value = result.files[name];
-        // Empty gate/site lists are legitimate, but no other non-byte values are.
-        if (
-          !(value instanceof Uint8Array) ||
-          value.byteLength > MAX_BYTES ||
-          (globalThis.SharedArrayBuffer && value.buffer instanceof globalThis.SharedArrayBuffer)
-        )
-          fail("PROGRAM_INVALID_OUTPUT");
-        total += value.byteLength;
-        if (total > MAX_BYTES) fail("PROGRAM_OUTPUT_BUDGET");
-        files[name] = own(value.slice());
-        if ((await race(() => sha256(files[name]))) !== version.files[name])
-          fail("PROGRAM_OUTPUT_DIGEST_MISMATCH");
+      const modules = [],
+        sidecars = Object.create(null);
+      for (const { module, bytes } of staged) {
+        const result = await race(() =>
+          activeWorker.run({
+            bytes,
+            moduleName: module.name,
+            ...(registered ? { releaseId: version.id } : { caseName: module.caseName }),
+          }),
+        );
         check(signal);
+        const expected = filesFor(module.name, registered);
+        if (
+          !result?.ok ||
+          result.status !== (registered ? "repository-registered-unverified" : "synthetic-only") ||
+          !result.files ||
+          JSON.stringify(Object.keys(result.files).sort()) !== JSON.stringify(expected)
+        )
+          fail("PROGRAM_REWRITE_REJECTED");
+        const files = Object.create(null);
+        for (const name of expected) {
+          const value = result.files[name];
+          if (
+            !(value instanceof Uint8Array) ||
+            value.byteLength > PROGRAM_REWRITE_LIMITS.totalOutputBytes ||
+            (globalThis.SharedArrayBuffer && value.buffer instanceof globalThis.SharedArrayBuffer)
+          )
+            fail("PROGRAM_INVALID_OUTPUT");
+          outputTotal += value.length;
+          if (outputTotal > PROGRAM_REWRITE_LIMITS.totalOutputBytes) fail("PROGRAM_OUTPUT_BUDGET");
+          files[name] = own(value.slice());
+          if (!registered && (await race(() => sha256(files[name]))) !== module.files[name])
+            fail("PROGRAM_OUTPUT_DIGEST_MISMATCH");
+          check(signal);
+        }
+        if (
+          decoder.decode(files["build_src.sha256"]) !== `${PROGRAM_REWRITER_SOURCE}  patch_nso.py\n`
+        )
+          fail("PROGRAM_SOURCE_MISMATCH");
+        const image = files[`${module.name}.patched.bin`];
+        modules.push({
+          name: module.name,
+          image,
+          ...layout(files[`${module.name}.fixups.tsv`], image.length),
+        });
+        for (const suffix of [
+          "fixups.tsv",
+          "gates.tsv",
+          ...(module.name === "main" ? ["cuts.tsv"] : []),
+        ]) {
+          const name = `${module.name}.${suffix}`;
+          sidecars[name] = files[name];
+        }
+        // Registered outputs have no invented oracle hashes. Assert the original
+        // rules manifest still identifies the pinned build and the emitted image.
+        if (registered && module.name === "main") {
+          const rules = decoder.decode(files["main.rules.tsv"]);
+          if (
+            !rules.startsWith(`# RULESET\t${version.ruleset}\n# BUILD_ID\t${module.buildId}\n`) ||
+            !rules.includes(`# IMAGE_SHA256\t${await race(() => sha256(image))}\n`)
+          )
+            fail("PROGRAM_RULESET_MANIFEST_MISMATCH");
+        }
       }
-      if (
-        decoder.decode(files["build_src.sha256"]) !== `${PROGRAM_REWRITER_SOURCE}  patch_nso.py\n`
-      )
-        fail("PROGRAM_SOURCE_MISMATCH");
-      const module = {
-        name: "main",
-        image: files["main.patched.bin"],
-        ...layout(files["main.fixups.tsv"], files["main.patched.bin"].length),
-      };
-      const plan = planGuestFramework([module]);
-      const guest = own(await race(() => buildGuestFramework([module], { signal })));
+      const plan = planGuestFramework(modules);
+      const guest = own(await race(() => buildGuestFramework(modules, { signal })));
       const plist = own(encoder.encode(guestInfoPlist()));
       if (
-        (await race(() => sha256(guest))) !== version.guestSha256 ||
-        (await race(() => sha256(plist))) !== version.plistSha256
+        !registered &&
+        ((await race(() => sha256(guest))) !== version.guestSha256 ||
+          (await race(() => sha256(plist))) !== version.plistSha256)
       )
         fail("PROGRAM_GUEST_DIGEST_MISMATCH");
       check(signal);
@@ -256,9 +367,7 @@ export function createProgramRewriterAdapter({ trustedCatalog, resolveInput, cre
           size: plan.signatureSize,
         }),
         entry("Frameworks/Guest.framework/Info.plist", plist),
-        ...["main.fixups.tsv", "main.gates.tsv", "main.cuts.tsv"].map((name) =>
-          entry(`dm/${name}`, files[name]),
-        ),
+        ...Object.entries(sidecars).map(([name, value]) => entry(`dm/${name}`, value)),
       ];
     } catch (error) {
       wipe();

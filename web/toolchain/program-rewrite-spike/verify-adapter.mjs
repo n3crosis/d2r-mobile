@@ -87,6 +87,58 @@ export async function verifyGuestAdapter(page) {
     await expectCode(() => invalid.generateProgram(), "PROGRAM_INPUT_DIGEST_MISMATCH");
     await invalid.dispose();
     const validBytes = new Uint8Array(await (await fetch("/fixtures/gates.nso")).arrayBuffer());
+    const multiCatalog = await (await fetch("/fixtures/trusted-multi-catalog.json")).json();
+    const sdkBytes = new Uint8Array(await (await fetch("/fixtures/sdk-gates.nso")).arrayBuffer());
+    const multi = createProgramRewriterAdapter({
+      trustedCatalog: multiCatalog,
+      createWorker,
+      resolveInput: () => ({
+        versionId: "main-sdk",
+        programModules: { main: validBytes, sdk: sdkBytes },
+      }),
+    });
+    const multiEntries = await multi.generateProgram({ extracted: {}, selection: {} });
+    const multiOutput = {};
+    for (const entry of multiEntries) {
+      const chunks = [];
+      for await (const chunk of entry.chunks()) chunks.push(...chunk);
+      multiOutput[entry.path] = { bytes: chunks, mode: entry.mode, signature: entry.signature };
+    }
+    await multi.dispose();
+    results.push({ id: "main-sdk", output: multiOutput });
+    for (const [programModules, error] of [
+      [{ main: validBytes }, "PROGRAM_INVALID_MODULE_SET"],
+      [{ main: validBytes, sdk: sdkBytes, extra: sdkBytes }, "PROGRAM_INVALID_MODULE_SET"],
+      [{ main: sdkBytes, sdk: validBytes }, "PROGRAM_INPUT_DIGEST_MISMATCH"],
+    ]) {
+      const rejected = createProgramRewriterAdapter({
+        trustedCatalog: multiCatalog,
+        createWorker,
+        resolveInput: () => ({ versionId: "main-sdk", programModules }),
+      });
+      await expectCode(() => rejected.generateProgram(), error);
+      await rejected.dispose();
+    }
+    // Registered route must use the pinned repository catalog AND an injected
+    // extraction provenance verifier. Even authenticated synthetic bytes fail hashes.
+    await expectCode(
+      () => createProgramRewriterAdapter({ createWorker }),
+      "PROGRAM_RUNTIME_REQUIRED",
+    );
+    const realRejected = createProgramRewriterAdapter({
+      createWorker,
+      verifyProvenance: () => ({ main: validBytes, sdk: sdkBytes }),
+    });
+    await expectCode(() => realRejected.generateProgram(), "PROGRAM_INPUT_DIGEST_MISMATCH");
+    await realRejected.dispose();
+    const provenanceRejected = createProgramRewriterAdapter({
+      createWorker,
+      verifyProvenance: () => {
+        throw new Error("untrusted extraction object");
+      },
+    });
+    await expectCode(() => provenanceRejected.generateProgram(), "PROGRAM_GENERATION_FAILED");
+    await provenanceRejected.dispose();
     const tamperedOutput = createProgramRewriterAdapter({
       trustedCatalog: catalog,
       resolveInput: () => ({ versionId: "gates", bytes: validBytes }),
@@ -114,7 +166,7 @@ export async function verifyGuestAdapter(page) {
     abortController.abort();
     await expectCode(() => cancelledRun, "PROGRAM_CANCELLED");
     await cancelled.dispose();
-    if (created !== catalog.versions.length + 1 || closed !== created)
+    if (created !== catalog.versions.length + 2 || closed !== created)
       throw new Error("Worker lifecycle or early rejection failed");
     return results;
   });
@@ -138,8 +190,18 @@ export async function verifyGuestAdapter(page) {
         await readFile(new URL(`./oracle/${result.id}/main.${suffix}.tsv`, import.meta.url)),
       );
   }
+  const multi = results.find((entry) => entry.id === "main-sdk");
+  for (const suffix of ["fixups", "gates"])
+    assert.deepEqual(
+      Buffer.from(multi.output[`dm/sdk.${suffix}.tsv`].bytes),
+      await readFile(new URL(`./oracle/main-sdk/sdk.${suffix}.tsv`, import.meta.url)),
+    );
   return {
     syntheticOnly: true,
+    multiModuleNativeParity: true,
+    registeredFixtureRejected: true,
+    provenanceRequired: true,
+    missingAndSwappedModulesRejected: true,
     guestNativeParityCases: results.length,
     trustedCatalogRequired: true,
     corruptedWorkerOutputRejected: true,

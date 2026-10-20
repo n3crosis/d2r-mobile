@@ -45,8 +45,12 @@ def encode_v31(im):
 
 
 def execute(operation, payload, options):
-    if len(payload) > MAX_BYTES:
-        raise ValueError("Input exceeds 20 MiB spike limit")
+    if len(payload) > (64 * 1024 * 1024 if operation == "hud-v4" else MAX_BYTES):
+        raise ValueError("Input exceeds operation byte limit")
+    if operation == "hud-v4":
+        from hud import generate
+
+        return generate(payload, options)
     if operation == "native-art":
         from native_art import generate
 

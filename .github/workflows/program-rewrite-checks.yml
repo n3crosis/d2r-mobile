@@ -9,6 +9,9 @@ on:
       - "dm/tools/patch_nso.py"
       - "dm/tools/guest_dylib.py"
       - "web/program-rewriter-adapter.mjs"
+      - "web/program-release-catalog.mjs"
+      - "dm/tools/extract_game.sh"
+      - "dm/tools/d2rm_pack.py"
       - "web/guest-framework.mjs"
       - ".github/workflows/program-rewrite-checks.yml"
   pull_request:
@@ -17,6 +20,9 @@ on:
       - "dm/tools/patch_nso.py"
       - "dm/tools/guest_dylib.py"
       - "web/program-rewriter-adapter.mjs"
+      - "web/program-release-catalog.mjs"
+      - "dm/tools/extract_game.sh"
+      - "dm/tools/d2rm_pack.py"
       - "web/guest-framework.mjs"
       - ".github/workflows/program-rewrite-checks.yml"
 permissions:
@@ -49,6 +55,7 @@ jobs:
         run: bash build-wasm.sh
       - name: Generate synthetic NSOs and original native Python oracle
         run: |
+          .venv/bin/python audit-source.py
           .venv/bin/python make-fixtures.py
           cp -r fixtures dist/
       - name: Compare actual Chromium worker outputs byte for byte with native

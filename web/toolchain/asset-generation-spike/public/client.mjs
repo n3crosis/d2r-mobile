@@ -17,8 +17,9 @@ export class AssetWorker {
     this.#worker.onerror = (event) => this.close(new Error(event.message));
   }
   run(operation, bytes, options = {}) {
-    if (!(bytes instanceof Uint8Array) || bytes.byteLength > 20 * 1024 * 1024)
-      return Promise.reject(new Error("Expected <=20 MiB Uint8Array"));
+    const limit = (operation === "hud-v4" ? 64 : 20) * 1024 * 1024;
+    if (!(bytes instanceof Uint8Array) || bytes.byteLength > limit)
+      return Promise.reject(new Error("Input exceeds operation byte limit"));
     if (!this.#worker) return Promise.reject(new Error("Worker closed"));
     const payload = bytes.slice().buffer; // Never detach caller-owned extraction data.
     const id = this.#next++;

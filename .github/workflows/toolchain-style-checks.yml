@@ -64,6 +64,9 @@ jobs:
             web/toolchain/asset-generation-spike/scripts/package-core.py
             web/toolchain/asset-generation-spike/src/core.py
             web/toolchain/asset-generation-spike/scripts/package-native-art.py
+            web/toolchain/asset-generation-spike/scripts/package-hud.py
+            web/toolchain/asset-generation-spike/src/hud.py
+            web/toolchain/asset-generation-spike/test/hud-reference.py
             web/toolchain/asset-generation-spike/src/native_art.py
             web/toolchain/asset-generation-spike/test/native-art-reference.py
             web/toolchain/asset-generation-spike/src/derived.py
@@ -71,6 +74,7 @@ jobs:
             web/toolchain/asset-generation-spike/test/native-derived.py
             web/toolchain/asset-generation-spike/test/native-v61.py
             web/toolchain/asset-generation-spike/test/verify-png.py
+            web/toolchain/program-rewrite-spike/audit-source.py
             web/toolchain/program-rewrite-spike/make-fixtures.py
             web/toolchain/program-rewrite-spike/python-adapters.py
             web/toolchain/texture-spike/native-fixtures.py

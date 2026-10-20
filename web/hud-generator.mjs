@@ -1,0 +1,148 @@
+/** Complete Switch-upscaled native HUD. Fonts are logical archive reads, never OS files. */
+const IMAGE_PATHS = Object.freeze({
+  front_panel: "hd/global/ui/PANEL/HUD_02/front_panel.sprite",
+  levelupbutton: "hd/global/ui/Controller/HUD/LevelUpButton.sprite",
+  greater_healing_potion: "hd/global/ui/items/misc/potion/greater_healing_potion.sprite",
+});
+const FONT_NAMES = Object.freeze(["blizzardglobal-v5_81.ttf", "exocetblizzardot-medium.otf"]);
+const fail = (code) => {
+  throw new Error(code);
+};
+const encode = (bytes) => {
+  let value = "";
+  for (let i = 0; i < bytes.length; i += 8192)
+    value += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  return btoa(value);
+};
+async function hash(bytes) {
+  return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)), (b) =>
+    b.toString(16).padStart(2, "0"),
+  ).join("");
+}
+export const HUD_LOGICAL_INPUTS = Object.freeze([
+  ...Object.values(IMAGE_PATHS),
+  ...FONT_NAMES.map((n) => `hd/ui/fonts/${n}`),
+  "global/ui/Layouts/Controller/HUDPanelHD.json",
+]);
+/** nativeArtFiles are the preceding verified native-art stage outputs, not user-selected files. */
+export async function generateHud({
+  logicalAssets,
+  assetWorker,
+  decodeAtlas,
+  nativeArtFiles,
+  metadata,
+  metadataSha256,
+  mode,
+  signal,
+}) {
+  const check = () => {
+    if (signal?.aborted) fail("HUD_CANCELLED");
+  };
+  check();
+  if (mode !== "switch-upscaled") fail("HUD_MODE_REQUIRED");
+  if (
+    Object.keys(metadata ?? {})
+      .sort()
+      .join() !== "i18n,manifest,patch"
+  )
+    fail("HUD_METADATA_SET");
+  for (const key of ["i18n", "manifest", "patch"]) {
+    if (typeof metadata[key] !== "string" || metadata[key].length > 2 * 1024 * 1024)
+      fail("HUD_METADATA_LIMIT");
+    if ((await hash(new TextEncoder().encode(metadata[key]))) !== metadataSha256?.[key])
+      fail("HUD_METADATA_HASH");
+  }
+  const manifest = JSON.parse(metadata.manifest),
+    assets = manifest.assets.filter((a) => a.asset.startsWith("dm_native_skill_"));
+  if (
+    assets.length !== 9 ||
+    new Set(assets.map((a) => a.asset)).size !== 9 ||
+    assets.some((a) => !/^dm_native_skill_[0-8]\.png$/.test(a.asset))
+  )
+    fail("HUD_ATLAS_SET");
+  let total = 0,
+    pixels = 0;
+  const owned = [],
+    images = {},
+    fonts = {},
+    atlases = {};
+  const read = async (path) => {
+    check();
+    const bytes = await logicalAssets.read(path, {
+      maxBytes: Math.min(16 * 1024 * 1024, 40 * 1024 * 1024 - total),
+      signal,
+    });
+    if (
+      !(bytes instanceof Uint8Array) ||
+      bytes.length > 16 * 1024 * 1024 ||
+      (total += bytes.length) > 40 * 1024 * 1024
+    )
+      fail("HUD_READ_LIMIT");
+    owned.push(bytes);
+    check();
+    return bytes;
+  };
+  try {
+    for (const [name, path] of Object.entries(IMAGE_PATHS)) {
+      const decoded = await decodeAtlas(await read(path), { signal });
+      check();
+      const { width, height } = decoded;
+      if (
+        !Number.isSafeInteger(width) ||
+        !Number.isSafeInteger(height) ||
+        width < 1 ||
+        height < 1 ||
+        (pixels += width * height) > 4194304 ||
+        decoded.pixelFormat !== 70 ||
+        decoded.bytesPerPixel !== 4 ||
+        !(decoded.pixels instanceof Uint8Array) ||
+        decoded.pixels.length !== width * height * 4
+      )
+        fail("HUD_DECODE_GEOMETRY");
+      owned.push(decoded.pixels);
+      images[name] = { size: [width, height], rgba: encode(decoded.pixels) };
+    }
+    for (const name of FONT_NAMES) fonts[name] = encode(await read(`hd/ui/fonts/${name}`));
+    const layout = new TextDecoder("utf-8", { fatal: true }).decode(
+      await read("global/ui/Layouts/Controller/HUDPanelHD.json"),
+    );
+    if (new TextEncoder().encode(layout).length > 2 * 1024 * 1024) fail("HUD_LAYOUT_LIMIT");
+    for (const asset of assets) {
+      const input = nativeArtFiles?.[asset.asset];
+      const bytes = input instanceof ArrayBuffer ? new Uint8Array(input) : input;
+      if (
+        !(bytes instanceof Uint8Array) ||
+        bytes.length > 16 * 1024 * 1024 ||
+        (await hash(bytes)) !== asset.decoded_png_sha256
+      )
+        fail("HUD_ATLAS_HASH");
+      const [w, h] = asset.atlas_px;
+      if (
+        !Number.isSafeInteger(w) ||
+        !Number.isSafeInteger(h) ||
+        w < 1 ||
+        h < 1 ||
+        (pixels += w * h) > 4194304
+      )
+        fail("HUD_PIXEL_LIMIT");
+      atlases[asset.asset] = encode(bytes); // Borrowed prior-stage outputs are never mutated.
+    }
+    const payload = new TextEncoder().encode(
+      JSON.stringify({ metadata, images, fonts, layout, atlases }),
+    );
+    owned.push(payload);
+    if (payload.length > 64 * 1024 * 1024) fail("HUD_INPUT_LIMIT");
+    check();
+    const result = await assetWorker.run("hud-v4", payload, { mode, metadataSha256 });
+    check();
+    if (
+      !result.files?.["base.png"] ||
+      !result.files?.["hud.json"] ||
+      !result.files?.["hud_v4_ui/ui.json"]
+    )
+      fail("HUD_OUTPUT_SET");
+    return result;
+  } finally {
+    for (const bytes of owned) bytes.fill(0);
+  }
+}

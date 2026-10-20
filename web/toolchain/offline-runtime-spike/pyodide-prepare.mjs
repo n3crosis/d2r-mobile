@@ -47,6 +47,10 @@ for (const name of [
   "derived.py",
   "native_art_original.py",
   "native_art.py",
+  "hud_original.py",
+  "hud_design_original.py",
+  "hud_support_original.py",
+  "hud.py",
 ])
   await add(name, await readFile(new URL(`generated/${name}`, source)));
 await add("worker.mjs", await readFile(new URL("pyodide-worker.mjs", here)));

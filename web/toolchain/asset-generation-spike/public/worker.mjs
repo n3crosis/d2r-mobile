@@ -9,6 +9,10 @@ async function initialize() {
     "derived.py",
     "native_art_original.py",
     "native_art.py",
+    "hud_original.py",
+    "hud_design_original.py",
+    "hud_support_original.py",
+    "hud.py",
   ]) {
     const response = await fetch(new URL(`./generated/${name}`, import.meta.url));
     if (!response.ok) throw new Error(`Missing packaged core: ${name}`);
@@ -29,8 +33,8 @@ self.onmessage = ({ data }) => {
         !(payload instanceof ArrayBuffer)
       )
         throw new Error("Invalid worker request");
-      if (payload.byteLength > 20 * 1024 * 1024)
-        throw new Error("Input exceeds 20 MiB spike limit");
+      if (payload.byteLength > (operation === "hud-v4" ? 64 : 20) * 1024 * 1024)
+        throw new Error("Input exceeds operation byte limit");
       const py = await (runtime ??= initialize());
       py.globals.set("_op", operation);
       py.globals.set("_payload", new Uint8Array(payload));

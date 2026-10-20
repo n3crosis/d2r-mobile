@@ -51,43 +51,55 @@ try {
       : route.abort(),
   );
   await page.goto(origin);
-  const results = await page.evaluate(async (cases) => {
-    const worker = new Worker("/worker.mjs", { type: "module" });
-    const run = (data) =>
-      new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error("Worker timed out")), 120000);
-        worker.onmessage = ({ data: result }) => {
-          clearTimeout(timer);
-          resolve(result);
-        };
-        worker.onerror = (error) => {
-          clearTimeout(timer);
-          reject(new Error(error.message));
-        };
-        worker.postMessage(data);
-      });
-    const results = [];
-    try {
-      for (const entry of cases) {
-        const bytes = new Uint8Array(
-          await (await fetch(`/fixtures/${entry.name}.nso`)).arrayBuffer(),
-        );
-        const result = await run({ id: entry.name, caseName: entry.name, bytes });
-        if (result.files)
-          result.files = Object.fromEntries(
-            Object.entries(result.files).map(([name, bytes]) => [name, Array.from(bytes)]),
+  const results = await page.evaluate(
+    async (cases) => {
+      const worker = new Worker("/worker.mjs", { type: "module" });
+      const run = (data) =>
+        new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error("Worker timed out")), 120000);
+          worker.onmessage = ({ data: result }) => {
+            clearTimeout(timer);
+            resolve(result);
+          };
+          worker.onerror = (error) => {
+            clearTimeout(timer);
+            reject(new Error(error.message));
+          };
+          worker.postMessage(data);
+        });
+      const results = [];
+      try {
+        for (const entry of cases) {
+          const bytes = new Uint8Array(
+            await (await fetch(`/fixtures/${entry.name}.nso`)).arrayBuffer(),
           );
-        results.push(result);
+          const result = await run({ id: entry.name, caseName: entry.name, bytes });
+          if (result.files)
+            result.files = Object.fromEntries(
+              Object.entries(result.files).map(([name, bytes]) => [name, Array.from(bytes)]),
+            );
+          results.push(result);
+        }
+        const bytes = new Uint8Array(await (await fetch("/fixtures/gates.nso")).arrayBuffer());
+        bytes[0x50] ^= 1;
+        results.push(await run({ id: "unsupported", caseName: "gates", bytes }));
+        const { REGISTERED_PROGRAM_RELEASE } = await import("/program-release-catalog.mjs");
+        results.push(
+          await run({
+            id: "registered-rejected",
+            releaseId: REGISTERED_PROGRAM_RELEASE.id,
+            moduleName: "main",
+            bytes,
+          }),
+        );
+        return results;
+      } finally {
+        worker.terminate();
       }
-      const bytes = new Uint8Array(await (await fetch("/fixtures/gates.nso")).arrayBuffer());
-      bytes[0x50] ^= 1;
-      results.push(await run({ id: "unsupported", caseName: "gates", bytes }));
-      return results;
-    } finally {
-      worker.terminate();
-    }
-  }, manifest.cases);
-  for (const entry of manifest.cases) {
+    },
+    manifest.cases.filter((entry) => !entry.multiOnly),
+  );
+  for (const entry of manifest.cases.filter((entry) => !entry.multiOnly)) {
     const result = results.find((r) => r.id === entry.name);
     assert.equal(result.ok, entry.success, `${entry.name}: ${result.error}`);
     if (!entry.success) {
@@ -119,6 +131,10 @@ try {
       );
   }
   assert.match(results.find((r) => r.id === "unsupported").error, /Unsupported input/);
+  assert.match(
+    results.find((r) => r.id === "registered-rejected").error,
+    /Unsupported registered program input/,
+  );
   const adapterProof = await verifyGuestAdapter(page);
   await mkdir(new URL("./browser-results/", import.meta.url), { recursive: true });
   await writeFile(

@@ -1,106 +1,115 @@
-# Browser ARM64 program rewriting: synthetic-only executable proof
+# Browser ARM64 rewriting and multi-module Guest assembly
 
-This is an implementation, not a replacement disassembler or an assertion that a
-real game can already be packaged. `worker.mjs` runs the repository's **unchanged**
-`dm/tools/patch_nso.py` in Pyodide, with its source digest checked at build and run
-time. The script's CUTS, OBS, build-ID, original-byte assertions, trampoline
-encoders, register substitution, and output generation are not patched out.
+The worker executes unchanged `dm/tools/patch_nso.py` in Pyodide with real
+Capstone ARM64 and LZ4 C/WASM bindings. CI proves generated synthetic inputs,
+including main+sdk Guest assembly, against the original native Python tools.
+There are no real game inputs in CI. No iOS execution, successful real-game
+conversion, production memory qualification or playable-build claim is made.
 
-## Actual dependency boundary
+## Repository-registered release route
 
-- Python: official Pyodide **0.27.7**, deployed same-origin from its exact npm
-  package and integrity-locked dependency graph. No Python source translation.
-- Disassembly: official Capstone **5.0.3**, pinned git commit, compiled to WASM
-  with ARM64 and detail/register-access support. `bridge.c` calls `cs_disasm`,
-  `cs_regs_access`, and `cs_reg_name`. The Python adapter supplies only the API
-  surface used by the original rewriter: instruction bytes/address/size,
-  mnemonic/operand text, immediate and register operands, register access/name.
-  Signed immediates cross JSON as decimal strings to avoid JS precision loss.
-- Compression: official LZ4 **1.10.0** `LZ4_decompress_safe`, in the same WASM
-  module. No decompression/disassembly stubs and no downloaded game bytes.
-- Build: official Emscripten **4.0.20**, exact SDK commit. All git commits are in
-  `toolchain-lock.json`; CI verifies them before compiling. Capstone BSD-3-Clause,
-  LZ4 library BSD-2-Clause, Pyodide MPL-2.0 notices ship in `dist/licenses`.
+`web/program-release-catalog.mjs` now records actual repository metadata:
+
+- `dm/tools/extract_game.sh:SUMS` publishes complete SHA-256 hashes for main,
+  sdk and subsdk0 of Switch version 3.3.94012. This adapter uses main and sdk,
+  matching `d2rm_pack.py:MODS`, rather than inventing a missing-hash blocker.
+- Native packaging runs both modules with `DM_RULESET=touch-run-v4`.
+- `patch_nso.py` registers main build ID
+  `db0507f36b84200ac05f75d76ed5026f` in CUTS, OBS, PARAMS and RULE_BUILD.
+- The SDK is matched by its complete file hash. No SDK build ID or real output
+  digest is invented. Synthetic oracle output hashes are not real-build hashes.
+
+The registered route accepts only these exact full-file input hashes, the fixed
+module names/order, pinned original source and original ruleset. All original
+CUTS/OBS/PARAMS preimage checks still execute. Unknown, changed, swapped or
+incomplete module sets fail closed. Original rules manifests are checked against
+the resulting main image. Outputs report `repository-registered-unverified` and
+`realGameVerified:false`; the route is implemented but not real-input tested.
+There is no UI enablement or fallback that trusts a caller's build-ID claim.
+
+## Trusted extraction and coordinator adapter
+
+`web/program-rewriter-adapter.mjs` implements
+`generateProgram({extracted, selection, signal}) -> OutputEntry[]`.
+For the repository route it requires an injected `verifyProvenance` function.
+Trusted application wiring supplies `readAuthenticatedProgramModules` from
+`extraction-job-adapter.mjs`, whose private WeakMap verifies the original result
+object, full selection and live extraction session. A plain object claiming to
+be authenticated is insufficient. Both returned borrowed module buffers are
+snapshotted synchronously, then individually whole-file hashed before any rewrite.
+
+The adapter runs main then sdk, validates source/fixup bounds and required files,
+passes the ordered images to the existing Guest writer, and emits Guest.framework
+plus `dm/main.fixups.tsv`, `dm/main.gates.tsv`, `dm/main.cuts.tsv`,
+`dm/sdk.fixups.tsv`, and `dm/sdk.gates.tsv`, matching native packaging. Structural
+ad-hoc signature metadata is included; distribution signing is not performed.
+The adapter is single-use, cancellable, bounded, and disposable; errors never
+include local file names, secret values or raw worker diagnostics.
+
+Bounds are explicit in PROGRAM_REWRITE_LIMITS: 32 MiB input per module, 64 MiB
+combined input, 64 MiB decoded segment, 96 MiB input image, 128 MiB combined
+rewriter outputs. The existing Guest writer also caps aggregate padded images at
+128 MiB. These are rejection ceilings, not measured device-memory guarantees.
+Pyodide and the JSON/hex binding still require performance/memory qualification
+on real inputs; the worker must be terminated to reclaim its runtime heap.
+
+## Actual engine and provenance
+
+- Python: official Pyodide **0.27.7**, npm integrity-locked and same-origin.
+- Disassembly: official Capstone **5.0.3**, exact git commit, compiled to WASM
+  with ARM64 detail support. The bridge calls `cs_disasm`, `cs_regs_access`, and
+  `cs_reg_name`; it does not implement or stub an instruction decoder.
+- LZ4: official **1.10.0** `LZ4_decompress_safe` in the same WASM module.
+- SDK: official Emscripten **4.0.20**, exact SDK commit, checked at build time.
+- Source hash: unchanged original patch_nso.py checked during build and runtime.
+
+The Python adapter implements every instruction field currently consumed by the
+source: bytes, address, mnemonic, operand string, operands' register/immediate,
+register-name lookup and register access. The bridge also supplies size. Signed
+immediates cross JSON as strings to preserve precision. `audit-source.py` checks
+this surface, original rule-table keys, exact input hashes and native module
+order/ruleset without executing or rewriting the source. It emits a CI audit.
 
 Official provenance: [Capstone](https://github.com/capstone-engine/capstone/tree/5.0.3),
 [LZ4](https://github.com/lz4/lz4/tree/v1.10.0),
-[Pyodide deployment](https://pyodide.org/en/0.27.7/usage/downloading-and-deploying.html),
-[Emscripten SDK](https://github.com/emscripten-core/emsdk/tree/4.0.20).
+[Pyodide](https://pyodide.org/en/0.27.7/usage/downloading-and-deploying.html),
+[Emscripten](https://github.com/emscripten-core/emsdk/tree/4.0.20).
+Capstone BSD-3-Clause, LZ4 library BSD-2-Clause and Pyodide MPL-2.0 notices ship
+under dist/licenses. Pyodide's notice is retained from its official tagged source.
 
-## API and safety gate
+## Worker API and CI proof
 
-Serve the generated `dist/` directory from one origin. Create a module Worker for
-`worker.mjs` and send `{ id, caseName, bytes: Uint8Array }`. Successful replies are
-`{ id, ok: true, status: 'synthetic-only', files: { filename: Uint8Array } }`.
-Failures are `{ id, ok: false, error }`. Calls are serialized; failed runs cannot
-return stale output. Terminate the worker to cancel or release runtime memory.
+Serve generated dist from one origin and create a module Worker for worker.mjs.
+Synthetic requests: `{id, caseName, moduleName, bytes: Uint8Array}`.
+Registered requests: `{id, releaseId, moduleName, bytes: Uint8Array}`.
+Only one route can be selected; a request never supplies rules or patch tables.
+Success returns `{id,ok:true,status,realGameVerified:false,files}` with transferred
+byte arrays. Failure returns `{id,ok:false,error}` for trusted diagnostics only.
+Requests are serialized and prior results are cleared before each original CLI run.
 
-Only exact SHA-256 matches to the generated synthetic manifest are accepted.
-Unknown or modified inputs fail closed, including real modules with otherwise
-recognized build IDs. There is **no** production-enablement flag, network upload,
-UI integration, output-to-IPA connection, or supported real-build claim here.
-The negative registered-build fixture is intentionally too small to satisfy its
-original-byte checks and must fail in the original script.
+`.github/workflows/program-rewrite-checks.yml` builds the actual engines, creates
+synthetic NSOs and invokes unchanged native patch_nso.py and guest_dylib.py in
+independent subprocesses. Real Chromium compares every rewrite file and Guest
+byte. Synthetic coverage includes SVC, TLS registers, counters, x18 arithmetic,
+load/store, conditional branch, ADR and LZ4 segments, plus ordered main+sdk.
+Rejections cover original build/preimage checks, altered inputs/output, incomplete
+or swapped module sets, missing provenance and trying synthetic bytes on the
+registered release route. No real file hash is forged to force a positive test.
+Browser external requests are blocked. Runtime/source audit and parity evidence
+are uploaded together, without game data or keys.
 
-## Independent CI proof
-
-`.github/workflows/program-rewrite-checks.yml` installs exact native Python
-Capstone/LZ4 versions in a venv, creates synthetic NSOs, and invokes the original
-native Python CLI in a separate process. It then builds the WASM dependencies and
-runs a real Chromium module worker. Every generated file is compared byte for
-byte, including patched images, fixups, gates, sites, cuts, params, observations,
-and source hashes. Negative cases must reach the original assertions; changed
-synthetic bytes must be rejected by the outer gate. Browser requests outside the
-local proof server are blocked.
-
-Fixtures cover SVC, TPIDR read/write, TPIDRRO, physical/virtual counter gates,
-x18 arithmetic and load/store, x18 conditional branches and ADR relocation,
-and compressed NSO segments. Wrong rule build IDs and registered CUTS preimage
-mismatch must fail. Inputs are generated from documented instruction encodings
-and synthetic NSO/MOD0/unwind metadata, not extracted from any title.
-
-Run (prefer GitHub CI, no local SDK is required):
+Run on GitHub CI, or explicitly install these pinned dependencies yourself:
 
     npm ci --ignore-scripts
     python3 -m venv .venv
     .venv/bin/pip install capstone==5.0.3 lz4==4.4.4
     bash build-wasm.sh
+    .venv/bin/python audit-source.py
     .venv/bin/python make-fixtures.py
     cp -r fixtures dist/
     npx playwright install --with-deps chromium
     npm run test:browser
 
-The artifact contains runtime, license notices, synthetic native oracle, and
-machine-readable parity result. A green workflow proves only the listed cases.
-
-## Remaining production work
-
-The official engine and original rewriter now have a real browser execution
-boundary, but CI has to run before this is called verified. The per-instruction
-JSON bridge and hex LZ4 handoff favor auditability over throughput; their current
-1 MiB synthetic limit is not a real-title memory/performance design. Broader
-synthetic coverage is still needed for exclusive windows, jump tables, and OBS
-success paths. Existing exact OBS checks are retained, not separately proven by
-these tiny fixtures. Real-build authorization/validation, segment hash checks,
-resource limits, cancellation/progress UX, large-module memory measurement,
-host-runtime compatibility, and integration with the production packaging
-pipeline remain blockers. Do not relax the fixture gate to claim those done.
-
-## Packaging-job adapter (synthetic integration only)
-
-`web/program-rewriter-adapter.mjs` exposes the coordinator's
-`generateProgram({extracted, selection, signal}) -> OutputEntry[]` contract. It
-requires an externally trusted, exact source/input/output/Guest digest catalog,
-a bounded input resolver and worker factory. The catalog is never obtained from
-extracted content or accepted because a module claims a build ID. The generator
-writes Guest.framework and the loader's `dm/main.{fixups,gates,cuts}.tsv` entries,
-with strict fixup bounds, structural ad-hoc signature metadata, cancellation,
-single-use lifecycle, output budgets, sanitized errors and explicit disposal.
-
-CI generates the synthetic catalog from independent native `patch_nso.py` AND
-`guest_dylib.py` subprocesses. Browser adapter outputs must match those native
-Guest bytes. This connects two real implementations for synthetic data; it is
-not a production adapter or a playable build. No real-version catalog exists,
-and the worker's original exact synthetic gate is unchanged. Source pins,
-catalog construction and host-version compatibility need a separately reviewed
-real-release trust policy before production support could be enabled.
+Remaining evidence gaps: real-input conversion/runtime testing; broader exclusive
+window, jump-table and OBS-success fixtures; throughput and peak memory on target
+browsers; complete extraction-to-archive integration and host-version validation.

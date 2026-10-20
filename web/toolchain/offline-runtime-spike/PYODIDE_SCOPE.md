@@ -4,9 +4,10 @@ This isolated prototype keeps the production UI, production CSP and original
 asset worker unchanged. It uses the actual generated Python core, Pillow and
 NumPy from the asset-generation spike, including the current complete packaged
 Python module set (`native_functions.py`, `core.py`, `derived.py`, `native_art_original.py`,
-`native_art.py`). The tested
-operations are image-default-frame, experience-table and overlay-paths. Derived-table, native-art and v61 operation parity remain separate proofs.
-The sealed initialization explicitly imports derived and native_art so their
+`native_art.py`, `hud_original.py`, `hud_design_original.py`,
+`hud_support_original.py`, `hud.py`). The tested
+operations are image-default-frame, experience-table and overlay-paths. Derived-table, native-art, HUD and v61 operation parity remain separate proofs.
+The sealed initialization explicitly imports all nine modules, including derived, native_art and hud, so their
 Python import closure must be present before any operation is accepted. This
 does not claim their output operations passed here. Native-art JSON metadata is
 consumed from explicit operation payloads, not fetched at import time, and is not
@@ -56,7 +57,7 @@ not excused or weakened; any required path that violates CSP must fail the proof
 
 The Worker imports the verified adapted runtime from blob URLs, initializes
 Python, loads both packages through the bounded reader with package integrity
-checks, installs the five Python files from bytes, and imports the real core.
+checks, installs the nine Python files from bytes, and imports the real core.
 Only then does it report initialized and accept bounded operation messages.
 Normal global fetch and imports attempt both local and second-origin sentinels
 before and after runtime initialization. These are actual browser requests, not
@@ -94,3 +95,20 @@ test server's filename regex rejected underscores in the official wheel names.
 The server now admits only the exact generated manifest paths plus the three
 entry files, rather than a narrower inconsistent filename regex. CSP and receipt
 assertions are unchanged. A successful corrected browser run is still required.
+
+### Package readiness diagnostic correction
+
+[Run 39400665142](https://github.com/n3crosis/d2r-mobile/actions/runs/39400665142)
+reached package initialization under the unchanged sealed policy, but the proof
+incorrectly checked `loadedPackages.pillow`. Pyodide 0.27.7 registers packages
+under the exact lock metadata name (`Pillow`), not the normalized lookup key
+(`pillow`). The proof now checks the exact allowlisted `Pillow` and `numpy` keys
+before importing Python modules, retaining bounded initialization-only error
+callbacks and separate import diagnostics. A resolved loadPackage Promise alone
+is not accepted as success. This failed run does not establish conversion parity
+or completed network-isolation proof; the corrected CI result is pending.
+
+HUD metadata and archive font bytes are not public preload assets. The HUD
+modules are imported to verify code closure only; the sealed worker does not
+accept HUD jobs, increase its 20 MiB operation input cap, or claim HUD rendering
+parity. The existing native parity corpus is unchanged.

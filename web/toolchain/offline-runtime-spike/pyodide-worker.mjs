@@ -107,7 +107,8 @@ async function initialize(data) {
   });
   const packages = {
     numpy: Object.hasOwn(py.loadedPackages, "numpy"),
-    pillow: Object.hasOwn(py.loadedPackages, "pillow"),
+    // Pyodide records lock metadata name (Pillow), not normalized lookup key.
+    pillow: Object.hasOwn(py.loadedPackages, "Pillow"),
   };
   if (py.version !== "0.27.7" || !packages.numpy || !packages.pillow)
     throw new Error(
@@ -119,6 +120,10 @@ async function initialize(data) {
     "derived.py",
     "native_art_original.py",
     "native_art.py",
+    "hud_original.py",
+    "hud_design_original.py",
+    "hud_support_original.py",
+    "hud.py",
   ]) {
     const bytes = assets.get(name);
     if (!bytes) throw new Error("Missing packaged Python source");
@@ -129,7 +134,8 @@ async function initialize(data) {
     ["import-pillow", "from PIL import Image"],
     ["import-native-functions", "import native_functions"],
     ["import-derived", "import derived"],
-    ["import-native-art", "import native_art"],
+    ["import-native-art", "import native_art_original, native_art"],
+    ["import-hud", "import hud_original, hud_design_original, hud_support_original, hud"],
     ["import-core", "from core import execute"],
   ]) {
     phase = stage;

@@ -150,6 +150,85 @@ for name, words, compressed, registered, ruleset, success in cases:
             "errorIncludes": expected_error,
         }
     )
+# A separate SDK fixture is rewritten with NAME=sdk, then native Guest combines
+# both modules in the exact native packager order. No source transformation.
+import shutil
+
+sdk_data = nso([0xD53BD040, 0x91000652, 0xD4000561, 0xD65F03C0], compressed=True)
+sdk_path = OUT / "sdk-gates.nso"
+sdk_path.write_bytes(sdk_data)
+multi_target = HERE / "oracle" / "main-sdk"
+multi_target.mkdir(parents=True, exist_ok=True)
+for file in (HERE / "oracle" / "gates").iterdir():
+    shutil.copyfile(file, multi_target / file.name)
+subprocess.run(
+    [sys.executable, str(SOURCE), str(sdk_path), str(multi_target), "sdk"],
+    env={**os.environ, "DM_RULESET": "native", "DM_PRIVATE_GATES": "1"},
+    check=True,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+)
+multi_guest = HERE / "oracle-guest" / "main-sdk"
+subprocess.run(
+    [
+        sys.executable,
+        str(SOURCE.with_name("guest_dylib.py")),
+        str(multi_target),
+        str(multi_guest),
+        "main",
+        "sdk",
+    ],
+    check=True,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+)
+manifest["cases"].append(
+    {
+        "name": "sdk-gates",
+        "moduleName": "sdk",
+        "sha256": hashlib.sha256(sdk_data).hexdigest(),
+        "ruleset": "native",
+        "success": True,
+        "multiOnly": True,
+    }
+)
+main_recipe = catalog["versions"][0]
+main_recipe = {
+    key: value
+    for key, value in main_recipe.items()
+    if key not in ("guestSha256", "plistSha256", "id")
+}
+main_recipe.update({"name": "main", "caseName": "gates"})
+sdk_recipe = {
+    "name": "sdk",
+    "caseName": "sdk-gates",
+    "buildId": sdk_data[0x40:0x50].hex(),
+    "ruleset": "native",
+    "inputSha256": hashlib.sha256(sdk_data).hexdigest(),
+    "files": {
+        file.name: hashlib.sha256(file.read_bytes()).hexdigest()
+        for file in sorted(multi_target.iterdir())
+        if file.name.startswith("sdk.") or file.name == "build_src.sha256"
+    },
+}
+multi_catalog = {
+    "schemaVersion": 2,
+    "scope": "synthetic-only",
+    "sourceSha256": manifest["sourceSha256"],
+    "versions": [
+        {
+            "id": "main-sdk",
+            "modules": [main_recipe, sdk_recipe],
+            "guestSha256": hashlib.sha256(
+                (multi_guest / "Guest.framework/Guest").read_bytes()
+            ).hexdigest(),
+            "plistSha256": hashlib.sha256(
+                (multi_guest / "Guest.framework/Info.plist").read_bytes()
+            ).hexdigest(),
+        }
+    ],
+}
+(OUT / "trusted-multi-catalog.json").write_text(json.dumps(multi_catalog, indent=2) + "\n")
 (OUT / "trusted-synthetic-catalog.json").write_text(json.dumps(catalog, indent=2) + "\n")
 (OUT / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-print(f"Generated {len(cases)} synthetic cases and independent native oracle outputs")
+print(f"Generated {len(manifest['cases'])} synthetic cases and independent native oracle outputs")

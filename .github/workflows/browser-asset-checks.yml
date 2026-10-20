@@ -10,6 +10,7 @@ on:
         "web/v61-asset-worker.mjs",
         "web/native-art-generator.mjs",
         "web/native-art-texture.mjs",
+        "web/hud-generator.mjs",
         "dm/gfx/nvn/nvn_tex.*",
         "dm/gfx/tex/nvn_*",
         "dm/ios/tools/**",
@@ -24,6 +25,7 @@ on:
         "web/v61-asset-worker.mjs",
         "web/native-art-generator.mjs",
         "web/native-art-texture.mjs",
+        "web/hud-generator.mjs",
         "dm/gfx/nvn/nvn_tex.*",
         "dm/gfx/tex/nvn_*",
         "dm/ios/tools/**",
@@ -54,7 +56,7 @@ jobs:
           npm ci --ignore-scripts
           npx --no-install playwright install --with-deps chromium
           python3 -m venv "$RUNNER_TEMP/asset-reference"
-          "$RUNNER_TEMP/asset-reference/bin/pip" install 'Pillow==11.1.0'
+          "$RUNNER_TEMP/asset-reference/bin/pip" install 'Pillow==11.1.0' 'numpy==2.0.2' 'fonttools==4.55.3'
       - name: Package audited native core and self-hosted runtime
         run: |
           npm run prepare:core
@@ -64,6 +66,7 @@ jobs:
           "$RUNNER_TEMP/asset-reference/bin/python" test/native-reference.py
           python3 test/native-derived.py
           "$RUNNER_TEMP/asset-reference/bin/python" test/native-art-reference.py
+          "$RUNNER_TEMP/asset-reference/bin/python" test/hud-reference.py
       - name: Execute real Chromium worker and demand exact parity
         run: |
           timeout --kill-after=5s 180s npm run test:browser
@@ -94,6 +97,7 @@ jobs:
             web/v61-asset-worker.mjs
             web/native-art-generator.mjs
             web/native-art-texture.mjs
+            web/hud-generator.mjs
             web/toolchain/texture-spike/texture-worker.mjs
             web/toolchain/texture-spike/browser-texture.mjs
             web/toolchain/texture-spike/dist/

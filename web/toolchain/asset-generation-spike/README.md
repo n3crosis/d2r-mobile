@@ -109,3 +109,7 @@ manifest PNGs plus the actual skill-index text intermediate, original hash check
 and separate padded-atlas decoding. Both strict synthetic proofs passed in
 [asset CI run 39399152831](https://github.com/n3crosis/d2r-mobile/actions/runs/39399152831)
 at `b90743b5b70fdf9ffa895dfd1d54a0201ad270c7`; this is not real-game or full-IPA validation.
+
+The complete [Switch-upscaled HUD stage](HUD.md) now preserves original layout,
+glyph rendering and every required image. Both fonts are read from the archive;
+CI uses newly authored synthetic outlines only. Full differential proof is pending.
