@@ -70,10 +70,13 @@ try {
     );
   }
   const sprite = await readFile(`${reference}/input.sprite`);
+  const derivedSources = await readFile("test-results/derived/sources.json");
+  const derivedOptions = JSON.parse(await readFile("test-results/derived/options.json", "utf8"));
   const cases = [
     ["image-default-frame", sprite, { frame: 1 }, ["frame.rgba", "frame.sprite"]],
     ["experience-table", await readFile(`${reference}/experience.tsv`), {}, ["dm_hud_exp.h"]],
     ["overlay-paths", await readFile(`${reference}/paths.json`), {}, ["overlay-paths.json"]],
+    ["derived-tables", derivedSources, derivedOptions, ["derived.tsv"]],
   ];
   const report = { browser: browser.version(), cases: [], externalRequests: blocked };
   const results = await Promise.all(cases.map((c) => run(c[0], c[1], c[2])));
@@ -86,7 +89,9 @@ try {
     for (const name of names)
       assert.deepEqual(
         Buffer.from(actual.result.files[name]),
-        await readFile(`${reference}/${name}`),
+        await readFile(
+          name === "derived.tsv" ? "test-results/derived/expected.tsv" : `${reference}/${name}`,
+        ),
         `${operation}: exact byte parity ${name}`,
       );
     report.cases.push({ operation, exactParity: names, versions: actual.result.versions });
@@ -96,6 +101,26 @@ try {
   const oversized = Buffer.from(sprite);
   oversized.writeUInt32LE(0xffffffff, 8);
   const negatives = [
+    ["derived-tables", derivedSources, {}, "DERIVED_COUNTS_REQUIRED"],
+    [
+      "derived-tables",
+      derivedSources,
+      { ...derivedOptions, expectedCounts: { ...derivedOptions.expectedCounts, TAROW: 3 } },
+      "DERIVED_COUNT_MISMATCH",
+    ],
+    [
+      "derived-tables",
+      derivedSources,
+      {
+        ...derivedOptions,
+        expectedSourceSha256: {
+          ...derivedOptions.expectedSourceSha256,
+          "dm_hud_exp.h": "0".repeat(64),
+        },
+      },
+      "DERIVED_SOURCE_HASH",
+    ],
+    ["derived-tables", Buffer.from("{}"), derivedOptions, "DERIVED_SOURCE_SET"],
     ["image-default-frame", v61, {}, "UNSUPPORTED_V61"],
     ["image-default-frame", sprite.subarray(0, 39), {}, "header"],
     ["image-default-frame", sprite.subarray(0, sprite.length - 1), {}, "Truncated"],

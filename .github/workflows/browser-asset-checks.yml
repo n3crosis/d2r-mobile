@@ -56,7 +56,9 @@ jobs:
           npm run prepare:core
           npm run prepare:runtime
       - name: Independent synthetic native reference
-        run: '"$RUNNER_TEMP/asset-reference/bin/python" test/native-reference.py'
+        run: |
+          "$RUNNER_TEMP/asset-reference/bin/python" test/native-reference.py
+          python3 test/native-derived.py
       - name: Execute real Chromium worker and demand exact parity
         run: |
           timeout --kill-after=5s 180s npm run test:browser

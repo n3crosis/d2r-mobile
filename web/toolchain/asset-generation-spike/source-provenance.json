@@ -5,6 +5,7 @@
     "dm/ios/tools/romfs_art.py": "cff93f60d60c230a2d83cadd3d8ecfa92aecefc19f6bf894c5e3f14593d6d9ab",
     "dm/ios/tools/gen_hud_v4.py": "d190a279fb63ec0a0da913e3661713917a4a0ad9d7a84307865e73d0fd1583a7",
     "dm/ios/tools/gen_hud_exp.py": "5217484a7cb8d4ae47d5cadf28fb85264a4cc11398890a60ad5cff493b073e02",
-    "dm/ios/tools/gen_romfs_overlay.py": "70004f772845f403e8e6a96c67ad1c303407202231bad46c7e828da759e2b10f"
+    "dm/ios/tools/gen_romfs_overlay.py": "70004f772845f403e8e6a96c67ad1c303407202231bad46c7e828da759e2b10f",
+    "dm/ios/tools/shell_stubs.py": "dad67b19195fa94eafc3db5737378e05b0fa3e29a8e6e0c42b5053d6a54ee41a"
   }
 }

@@ -25,3 +25,13 @@ pins `1.4.357.0`; that mismatch is not silently relabeled or accepted. This JSON
 is evidence only, **not an enabled trusted release catalog**. A matching source,
 compiler, complete shader catalog, generated assets and actual runtime proof are
 still needed before production use. The iOS 18 variant has not been inspected.
+
+## Source/toolchain comparison
+
+See [COMPATIBILITY_PLAN.md](COMPATIBILITY_PLAN.md) for the exact release-source,
+compiler and private-input promotion boundary. The read-only
+`compare-source.py` produces `v1.0.18-source-comparison.json`; its checks are
+covered by `test-source-comparison.py`. Neither a successful diagnostic run nor
+a matching compiler version enables a production recipe. In particular, the
+release's committed source chain and header do not match its published shell,
+and the release tag's deployment setting differs from the inspected binary.

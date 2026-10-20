@@ -12,9 +12,10 @@ SOURCES = {
     "dm/ios/tools/gen_hud_v4.py": ["dflt"],
     "dm/ios/tools/gen_hud_exp.py": ["main"],
     "dm/ios/tools/gen_romfs_overlay.py": ["touch_path"],
+    "dm/ios/tools/shell_stubs.py": ["unq", "paths", "parse", "data"],
 }
 manifest = json.loads((HERE / "source-provenance.json").read_text())
-parts = ["import csv, io, struct, sys\nimport numpy as np\nfrom PIL import Image\n"]
+parts = ["import csv, io, os, re, struct, sys\nimport numpy as np\nfrom PIL import Image\n"]
 for path, names in SOURCES.items():
     raw = (ROOT / path).read_bytes()
     digest = hashlib.sha256(raw).hexdigest()
@@ -43,8 +44,18 @@ for path, names in SOURCES.items():
                 raise SystemExit(f"Expected one {name}")
             ast.literal_eval(matches[0].value)  # Fail if a future assignment grows side effects.
             parts.append(ast.unparse(matches[0]))
+    if path.endswith("shell_stubs.py"):
+        constant = next(
+            n
+            for n in tree.body
+            if isinstance(n, ast.Assign)
+            and any(isinstance(t, ast.Name) and t.id == "CSTR" for t in n.targets)
+        )
+        ast.literal_eval(constant.value)
+        parts.append(ast.unparse(constant))
 output = HERE / "public/generated"
 output.mkdir(parents=True, exist_ok=True)
 (output / "native_functions.py").write_text("\n\n".join(parts) + "\n")
 (output / "core.py").write_text((HERE / "src/core.py").read_text())
+(output / "derived.py").write_text((HERE / "src/derived.py").read_text())
 (output / "provenance.json").write_text(json.dumps(manifest, indent=2) + "\n")

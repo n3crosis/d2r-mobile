@@ -11,6 +11,8 @@ on:
       - "web/toolchain/asset-generation-spike/test/native-v61.py"
       - "web/toolchain/program-rewrite-spike/**"
       - "web/toolchain/texture-spike/**"
+      - "web/toolchain/shell-release-evidence/compare-source.py"
+      - "web/toolchain/shell-release-evidence/test-source-comparison.py"
       - "web/toolchain/style/**"
       - ".github/workflows/toolchain-style-checks.yml"
   pull_request:
@@ -21,6 +23,8 @@ on:
       - "web/toolchain/asset-generation-spike/test/native-v61.py"
       - "web/toolchain/program-rewrite-spike/**"
       - "web/toolchain/texture-spike/**"
+      - "web/toolchain/shell-release-evidence/compare-source.py"
+      - "web/toolchain/shell-release-evidence/test-source-comparison.py"
       - "web/toolchain/style/**"
       - ".github/workflows/toolchain-style-checks.yml"
 
@@ -55,9 +59,13 @@ jobs:
             web/toolchain/nsp-extract-spike/prepare-source.py
             web/toolchain/spirv-cross-spike/native-oracle.py
             web/toolchain/spirv-cross-spike/provenance.py
+            web/toolchain/shell-release-evidence/compare-source.py
+            web/toolchain/shell-release-evidence/test-source-comparison.py
             web/toolchain/asset-generation-spike/scripts/package-core.py
             web/toolchain/asset-generation-spike/src/core.py
+            web/toolchain/asset-generation-spike/src/derived.py
             web/toolchain/asset-generation-spike/test/native-reference.py
+            web/toolchain/asset-generation-spike/test/native-derived.py
             web/toolchain/asset-generation-spike/test/native-v61.py
             web/toolchain/asset-generation-spike/test/verify-png.py
             web/toolchain/program-rewrite-spike/make-fixtures.py

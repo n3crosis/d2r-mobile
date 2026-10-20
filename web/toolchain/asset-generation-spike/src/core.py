@@ -47,6 +47,10 @@ def encode_v31(im):
 def execute(operation, payload, options):
     if len(payload) > MAX_BYTES:
         raise ValueError("Input exceeds 20 MiB spike limit")
+    if operation == "derived-tables":
+        from derived import generate
+
+        return generate(payload, options)
     if operation == "image-default-frame":
         im, fw = sprite_v31(payload)
         index = options.get("frame", 0)
