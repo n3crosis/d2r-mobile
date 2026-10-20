@@ -166,14 +166,16 @@ export async function createBoundary(factory) {
     // Reader lifetime is bound to this exact authenticated NCA. A later open,
     // inspect, key load, mount or input hash invalidates it even if that fails.
     openPatchedRomfs(baseIndex, patchIndex, onReadProgress, verifyRomfs = true) {
-      if (!Number.isSafeInteger(patchIndex) || patchIndex < 0)
+      if (!Number.isSafeInteger(patchIndex) || patchIndex < 0) {
+        ++generation;
         throw new Error("Invalid patch index");
+      }
       return this.openRomfs(baseIndex, patchIndex, onReadProgress, verifyRomfs);
     },
     openRomfs(index, patchIndex, onReadProgress, verifyRomfs = true) {
       return guard(() => {
-        if (typeof verifyRomfs !== "boolean") throw new Error("Invalid RomFS verification mode");
         const current = ++generation;
+        if (typeof verifyRomfs !== "boolean") throw new Error("Invalid RomFS verification mode");
         activeVerificationProgress = onReadProgress;
         nativeProgressSeen = false;
         const streamOps = module.WORKERFS.stream_ops;

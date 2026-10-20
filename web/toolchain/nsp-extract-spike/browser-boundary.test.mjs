@@ -131,3 +131,39 @@ test("older runtimes report real RomFS bytes read without inventing a percentage
     else globalThis.FileReaderSync = previous;
   }
 });
+
+test("failed RomFS open options revoke the previous reader", async () => {
+  const previous = globalThis.FileReaderSync;
+  globalThis.FileReaderSync = class {};
+  try {
+    let nativeReads = 0;
+    const boundary = await createBoundary(async () => ({
+      FS: { mkdir() {} },
+      WORKERFS: { stream_ops: { read: () => 0 } },
+      HEAPU8: new Uint8Array(16),
+      _malloc: () => 1,
+      _free() {},
+      _nsp_zero() {},
+      _nsp_read_romfs() {
+        nativeReads++;
+        return 1;
+      },
+      ccall(_operation, _returnType, _argumentTypes, args) {
+        new DataView(this.HEAPU8.buffer).setBigUint64(args[1], 100n, true);
+        return 0;
+      },
+    }));
+    for (const invalidOpen of [
+      () => boundary.openRomfs(0, undefined, undefined, "false"),
+      () => boundary.openPatchedRomfs(0, -1),
+    ]) {
+      const reader = boundary.openRomfs(0);
+      assert.throws(invalidOpen);
+      assert.throws(() => reader.readAt(0n, 1), /Local extraction operation failed/);
+      assert.equal(nativeReads, 0);
+    }
+  } finally {
+    if (previous === undefined) delete globalThis.FileReaderSync;
+    else globalThis.FileReaderSync = previous;
+  }
+});

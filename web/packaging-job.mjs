@@ -114,6 +114,16 @@ export async function runPackagingJob(options) {
       // Observers cannot change execution, cancel the job or expose callback errors.
     }
   };
+  const diagnosticObserver = (name) => (diagnostic) => {
+    if (signal.aborted || stage !== name) return;
+    const label = extractionProgressLabel(diagnostic);
+    if (!label) return;
+    try {
+      options.onProgress?.(Object.freeze({ stage: name, state: "running", label, diagnostic }));
+    } catch {
+      // Read-only progress observers cannot affect the job.
+    }
+  };
   const step = async (name, action) => {
     signal.throwIfAborted();
     stage = name;
@@ -205,22 +215,7 @@ export async function runPackagingJob(options) {
     await step("secrets", async () => {
       session = await adapters.openSecretSession({
         ...context,
-        onDiagnostic(diagnostic) {
-          const label = extractionProgressLabel(diagnostic);
-          if (!label) return;
-          try {
-            options.onProgress?.(
-              Object.freeze({
-                stage: "secrets",
-                state: "running",
-                label,
-                diagnostic,
-              }),
-            );
-          } catch {
-            // Read-only progress observers cannot affect the job.
-          }
-        },
+        onDiagnostic: diagnosticObserver("secrets"),
       });
       assertion(session && typeof session.dispose === "function");
     });
@@ -235,22 +230,7 @@ export async function runPackagingJob(options) {
         ...context,
         session,
         selection,
-        onDiagnostic(diagnostic) {
-          const label = extractionProgressLabel(diagnostic);
-          if (!label) return;
-          try {
-            options.onProgress?.(
-              Object.freeze({
-                stage: "extraction",
-                state: "running",
-                label,
-                diagnostic,
-              }),
-            );
-          } catch {
-            // Read-only progress observers cannot affect the job.
-          }
-        },
+        onDiagnostic: diagnosticObserver("extraction"),
       }),
     );
     if (options.secretLifetime !== "archive") await step("disposal", dispose);

@@ -488,3 +488,24 @@ test("safe input diagnoses survive packaging without exposing raw causes or impl
     return true;
   });
 });
+
+test("diagnostics from finished stages cannot overwrite current job progress", async () => {
+  const f = fixture();
+  const diagnostic = { stage: "keys-load", completed: 0, total: 0, bytes: 0 };
+  let savedObserver;
+  const open = f.adapters.openSecretSession;
+  f.adapters.openSecretSession = async (context) => {
+    savedObserver = context.onDiagnostic;
+    savedObserver(diagnostic);
+    return open(context);
+  };
+  const inspect = f.adapters.inspectContents;
+  f.adapters.inspectContents = async (context) => {
+    savedObserver(diagnostic);
+    return inspect(context);
+  };
+  const events = [];
+  await runPackagingJob({ ...f, onProgress: (event) => events.push(event) });
+  savedObserver(diagnostic);
+  assert.equal(events.filter((event) => event.diagnostic).length, 1);
+});

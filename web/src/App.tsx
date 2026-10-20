@@ -46,6 +46,7 @@ export default function App() {
   const copyRequest = useRef(0);
   const activityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingGenerationStatus = useRef<string | null>(null);
+  const pendingRomfsProgress = useRef<RomfsProgress | null | undefined>(undefined);
   const [loading, setLoading] = useState<LoadingProgress | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [status, setStatus] = useState("Loading application files…");
@@ -76,6 +77,13 @@ export default function App() {
       setStatus(pendingGenerationStatus.current);
       pendingGenerationStatus.current = null;
     }
+    if (pendingRomfsProgress.current !== undefined) {
+      const next = pendingRomfsProgress.current;
+      pendingRomfsProgress.current = undefined;
+      setRomfsProgress((current) =>
+        current?.phase === next?.phase && current?.percent === next?.percent ? current : next,
+      );
+    }
   }, []);
   const appendActivity = useCallback(
     (text: string | null, force = false) => {
@@ -102,6 +110,7 @@ export default function App() {
       if (activityTimer.current !== null) clearTimeout(activityTimer.current);
       activityTimer.current = null;
       pendingGenerationStatus.current = null;
+      pendingRomfsProgress.current = undefined;
     };
   }, []);
   const packager = useRef<Packager | null>(null),
@@ -246,6 +255,7 @@ export default function App() {
     setBusy(true);
     setGenerating(true);
     setCancelling(false);
+    pendingRomfsProgress.current = undefined;
     setRomfsProgress(null);
     setReady(false);
     setStatus("Starting IPA generation…");
@@ -267,19 +277,22 @@ export default function App() {
         }) => {
           if (!acceptingProgress || controller.signal.aborted || !mounted.current) return;
           pendingGenerationStatus.current = event.label;
+          const phase = event.diagnostic?.stage;
+          const percent = event.diagnostic?.completed;
+          pendingRomfsProgress.current =
+            (phase === "romfs-base" || phase === "romfs-merged") &&
+            event.state !== "failed" &&
+            event.state !== "complete" &&
+            typeof percent === "number" &&
+            Number.isFinite(percent) &&
+            percent >= 0 &&
+            percent <= 100
+              ? { phase: phase === "romfs-base" ? "base" : "merged", percent }
+              : null;
           appendActivity(
             packagingActivity(event),
             event.state === "failed" || event.state === "complete",
           );
-          const phase = event.diagnostic?.stage;
-          if (phase === "romfs-base" || phase === "romfs-merged") {
-            setRomfsProgress({
-              phase: phase === "romfs-base" ? "base" : "merged",
-              percent: event.diagnostic?.completed ?? 0,
-            });
-          } else if (event.stage !== "extraction" || event.state === "complete") {
-            setRomfsProgress(null);
-          }
         },
       });
       if (!mounted.current) return;
@@ -315,6 +328,8 @@ export default function App() {
     } finally {
       acceptingProgress = false;
       pendingGenerationStatus.current = null;
+      pendingRomfsProgress.current = undefined;
+      setRomfsProgress(null);
       setBusy(false);
       setGenerating(false);
       setCancelling(false);
@@ -358,6 +373,8 @@ export default function App() {
                   setCancelling(true);
                   cancellation.current?.abort();
                   pendingGenerationStatus.current = null;
+                  pendingRomfsProgress.current = undefined;
+                  setRomfsProgress(null);
                   setStatus("Cancelling… Waiting for the current operation to stop.");
                   appendActivity("Cancellation requested", true);
                 }}
