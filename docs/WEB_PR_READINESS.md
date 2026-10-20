@@ -6,33 +6,35 @@ This supplements, and does not replace or relax, [CONTRIBUTING.md](../CONTRIBUTI
 and the [PR template](../.github/PULL_REQUEST_TEMPLATE.md). This is not a claim
 that a PR is ready. Mark an item only after checking the exact change and recording
 the revision, platform and actual output. Only the source checks explicitly recorded below are reported as run.
-The full browser build and publication at 502fd5f passed; later edits require their
+The full browser build and publication at e93a15a passed; later edits require their
 own checks. Game/device tests and screenshots remain pending. No PR has been opened.
 
 ## Published checkpoint versus pending work
 
-Verified publication: `502fd5f95e3120859e41084f1b2e37060eb834be`, successful
-[Verify 39501206192](https://github.com/n3crosis/d2r-mobile/actions/runs/39501206192),
-artifact `12302035147`, owner-private Site deployment at 2026-10-20 21:39:47 UTC.
+Verified publication: `e93a15a1cb29c6bb84c86eeea53d9d130d143b73`, successful
+[Verify 39503950310](https://github.com/n3crosis/d2r-mobile/actions/runs/39503950310),
+artifact `12302183509`, owner-private Site deployment at 2026-10-20 22:00:20 UTC.
 Exact ZIP/runtime digests, artifact size and inventory are recorded in
 [the delivery receipt](WEB_DELIVERY_PROGRESS.md#publication-receipt-and-pending-source-changes).
 The publication includes canonical Warlock preselection, removal of 48 unused
 raw-source payload assets and a confirmed SDK cache hit, without a timing claim.
 
 The published shader changes passed 23 targeted shader tests, frontend checks
-and the full CI. Site source: `d0c84491a8b055e44de985d7069eeb1183e26dd7`.
+and the full CI. Site source: `ba230f16f48d37899c6f89256a56fd0a69b81930`.
 These checks do not establish real-game/device acceptance or measured RAM savings.
 The native fast/thorough option is live. Actual revised WASM tests passed 32
 synthetic fixtures / 80 calls with opaque-URL execution verified, not browser,
 decode, real-game or device proof. Cache metadata changes do not yet establish
 deterministic builds.
 
-Download-preparation retry and cleanup/cache cancellation fixes are now live.
-Paired builds at a1b4afe and 502fd5f produced identical SPIRV WASM. The .NET main
-assembly still differs in 67 GUID/debug/PDB metadata bytes; SourceLink has not
-been established as the cause. This is not proof of full build determinism.
-Batch suffix lookup remains uncommitted and unpublished, with synthetic
-operation-count evidence only.
+Download-preparation retry and cleanup/cache cancellation fixes are live; batch
+suffix lookup and art-buffer lifetime improvements are now published too.
+Evidence consists of synthetic operation-count and lifetime tests, not measured
+browser RAM, timing or real-game benefits. After the project-only SourceLink
+opt-out, CI no longer reports that diagnostic; local symbols remain and remote
+source retrieval is removed. Final cross-build .NET stability remains unverified,
+so full build determinism is not claimed. Apart from that evidence check, the
+implementations above are no longer listed as pending publication.
 
 ## What changed / why
 

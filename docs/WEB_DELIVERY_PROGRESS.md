@@ -4,11 +4,11 @@
 
 ## Latest verified publication
 
-[Commit 502fd5f](https://github.com/n3crosis/d2r-mobile/commit/502fd5f95e3120859e41084f1b2e37060eb834be)
-passed the [full Verify build](https://github.com/n3crosis/d2r-mobile/actions/runs/39501206192)
-and was published on 2026-10-20 at 21:39:47 UTC to the existing private
+[Commit e93a15a](https://github.com/n3crosis/d2r-mobile/commit/e93a15a1cb29c6bb84c86eeea53d9d130d143b73)
+passed the [full Verify build](https://github.com/n3crosis/d2r-mobile/actions/runs/39503950310)
+and was published on 2026-10-20 at 22:00:20 UTC to the existing private
 [preview Site](https://d2r-ipa-packager.nicekrill34.chatgpt.site).
-The verified artifact is 21,981,731 bytes (about 20.96 MiB compressed ZIP, containing both shell targets), includes
+The verified artifact is 21,981,932 bytes (about 20.96 MiB compressed ZIP, containing both shell targets), includes
 .NET, and contains no Python runtime, packages or scripts. This is archive size,
 not a browser RAM measurement.
 
@@ -34,14 +34,14 @@ Later source edits need their own build/publication; no new percentage is claime
 
 ## Publication receipt and pending source changes
 
-The published revision is `502fd5f95e3120859e41084f1b2e37060eb834be`.
-Verify run `39501206192` succeeded. Artifact `12302035147` has ZIP SHA-256
-`57dd3e9d1f90471ade57775334ebdbaefdca8a2fcf921a05dac996e5beaea6eb`.
-The owner-private Site deployment `appgdep_6ad7df9a3a24819181c2d89459a35920`
-succeeded at 21:39:47 UTC on 2026-10-20.
+The published revision is `e93a15a1cb29c6bb84c86eeea53d9d130d143b73`.
+Verify run `39503950310` succeeded. Artifact `12302183509` has ZIP SHA-256
+`f1fae625845fec902fb644a7bd6d92bdc13d518d012b20783e8f6fcb02ca7947`.
+The owner-private Site deployment `appgdep_6ad7e46a8c6481919ff9779bc8c1bc1f`
+succeeded at 22:00:20 UTC on 2026-10-20.
 
 The runtime inventory has 297 logical assets and 38 physical files. Its manifest
-SHA-256 is `96ca7cddea0115f56c47e824b79717551c598f249ecf951ea3772bfcf858b9db`;
+SHA-256 is `9585c1e3afbf7d7c1531d86afd53277eddf7451a3ff023056f6b842ad5d16aba`;
 frontend files are excluded from runtime inventory totals.
 This publication includes canonical Warlock preselection and removal of 48 unused
 raw-source payload assets. The SDK cache recorded an actual hit; no build-time
@@ -50,7 +50,7 @@ or browser-RAM improvement is measured or claimed.
 The deployed shader changes tighten final output accounting, bound replay
 copies to 64 KiB and shorten source/replay object lifetimes. All 23 targeted
 shader tests, frontend checks and the full CI passed. The Site source revision
-is `d0c84491a8b055e44de985d7069eeb1183e26dd7`. No browser-RAM measurement or
+is `ba230f16f48d37899c6f89256a56fd0a69b81930`. No browser-RAM measurement or
 real-game/device proof is added, and parity scores are unchanged.
 
 The native fast/thorough option is now live. Revised actual WASM tests passed
@@ -58,12 +58,14 @@ The native fast/thorough option is now live. Revised actual WASM tests passed
 this does not establish browser, decode, real-game or device behavior. Cache
 metadata changes are included but deterministic builds are not yet proven.
 
-Download-preparation retry and cleanup/cache cancellation fixes are now live.
-Paired builds at a1b4afe and 502fd5f produced identical SPIRV WASM. The .NET main
-assembly still differs in 67 GUID/debug/PDB metadata bytes; SourceLink has not
-been established as the cause. This is not proof of full build determinism.
-Batch suffix lookup remains uncommitted and unpublished, with synthetic
-operation-count evidence only.
+Download-preparation retry and cleanup/cache cancellation fixes are live; batch
+suffix lookup and art-buffer lifetime improvements are now published too.
+Evidence consists of synthetic operation-count and lifetime tests, not measured
+browser RAM, timing or real-game benefits. After the project-only SourceLink
+opt-out, CI no longer reports that diagnostic; local symbols remain and remote
+source retrieval is removed. Final cross-build .NET stability remains unverified,
+so full build determinism is not claimed. Apart from that evidence check, the
+implementations above are no longer listed as pending publication.
 
 ## Historical baseline: 42 / 100
 
