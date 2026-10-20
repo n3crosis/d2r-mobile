@@ -4,11 +4,11 @@
 
 ## Latest verified publication
 
-[Commit faae551](https://github.com/n3crosis/d2r-mobile/commit/faae5514b368be523dfd32be3f2022db7f1f5357)
-passed the [full Verify build](https://github.com/n3crosis/d2r-mobile/actions/runs/39498922769)
-and was published on 2026-10-20 at 21:21:15 UTC to the existing private
+[Commit 502fd5f](https://github.com/n3crosis/d2r-mobile/commit/502fd5f95e3120859e41084f1b2e37060eb834be)
+passed the [full Verify build](https://github.com/n3crosis/d2r-mobile/actions/runs/39501206192)
+and was published on 2026-10-20 at 21:39:47 UTC to the existing private
 [preview Site](https://d2r-ipa-packager.nicekrill34.chatgpt.site).
-The verified artifact is 21,982,418 bytes (about 20.96 MiB compressed ZIP, containing both shell targets), includes
+The verified artifact is 21,981,731 bytes (about 20.96 MiB compressed ZIP, containing both shell targets), includes
 .NET, and contains no Python runtime, packages or scripts. This is archive size,
 not a browser RAM measurement.
 
@@ -25,8 +25,8 @@ Each selection downloads only its own shell and common runtime assets; the
 experimental option additionally selects its closed optional group. Earlier
 revision-specific wire totals are not carried forward here. Frontend files are
 separate from runtime payloads. Actual WASM encoding
-passed 16 synthetic fixtures / 32 calls through an opaque module URL in CI;
-this is not browser, real-game or device proof. See [implementation and acceptance](WEB_IPA_PACKAGER.md).
+passed 32 synthetic fixtures / 80 calls through an opaque module URL in CI;
+this is not browser, decode, real-game or device proof. See [implementation and acceptance](WEB_IPA_PACKAGER.md).
 
 A successful build and publication do not establish real-game input conversion,
 separately signed device execution, gameplay or measured RAM/speed savings.
@@ -34,15 +34,15 @@ Later source edits need their own build/publication; no new percentage is claime
 
 ## Publication receipt and pending source changes
 
-The published revision is `faae5514b368be523dfd32be3f2022db7f1f5357`.
-Verify run `39498922769` succeeded. Artifact `12299027640` has ZIP SHA-256
-`70355132875d5bb51b7d4470b335c2e737ce50ae5ae415f9dfefd473c1495c6e`.
-The owner-private Site deployment `appgdep_6ad7db4242308191b331cc37956f9964`
-succeeded at 21:21:15 UTC on 2026-10-20.
+The published revision is `502fd5f95e3120859e41084f1b2e37060eb834be`.
+Verify run `39501206192` succeeded. Artifact `12302035147` has ZIP SHA-256
+`57dd3e9d1f90471ade57775334ebdbaefdca8a2fcf921a05dac996e5beaea6eb`.
+The owner-private Site deployment `appgdep_6ad7df9a3a24819181c2d89459a35920`
+succeeded at 21:39:47 UTC on 2026-10-20.
 
 The runtime inventory has 297 logical assets and 38 physical files. Its manifest
-SHA-256 is `74f57f3ad5d34585738e3f893f1a9379c85b335eaabb11b49e3f6b72f3edbb45`;
-the ASTC worker is 55,837 bytes. Frontend files are excluded from runtime inventory totals.
+SHA-256 is `96ca7cddea0115f56c47e824b79717551c598f249ecf951ea3772bfcf858b9db`;
+frontend files are excluded from runtime inventory totals.
 This publication includes canonical Warlock preselection and removal of 48 unused
 raw-source payload assets. The SDK cache recorded an actual hit; no build-time
 or browser-RAM improvement is measured or claimed.
@@ -50,12 +50,20 @@ or browser-RAM improvement is measured or claimed.
 The deployed shader changes tighten final output accounting, bound replay
 copies to 64 KiB and shorten source/replay object lifetimes. All 23 targeted
 shader tests, frontend checks and the full CI passed. The Site source revision
-is `2b73e44584f71308511a342da2b5e12f74991e97`. No browser-RAM measurement or
+is `d0c84491a8b055e44de985d7069eeb1183e26dd7`. No browser-RAM measurement or
 real-game/device proof is added, and parity scores are unchanged.
 
-The native fast/thorough option and deterministic build metadata are currently
-uncommitted/pending work, **not part of this publication**. They need their own
-checks and publication.
+The native fast/thorough option is now live. Revised actual WASM tests passed
+32 synthetic fixtures / 80 calls with opaque-module-URL execution verified in CI;
+this does not establish browser, decode, real-game or device behavior. Cache
+metadata changes are included but deterministic builds are not yet proven.
+
+Download-preparation retry and cleanup/cache cancellation fixes are now live.
+Paired builds at a1b4afe and 502fd5f produced identical SPIRV WASM. The .NET main
+assembly still differs in 67 GUID/debug/PDB metadata bytes; SourceLink has not
+been established as the cause. This is not proof of full build determinism.
+Batch suffix lookup remains uncommitted and unpublished, with synthetic
+operation-count evidence only.
 
 ## Historical baseline: 42 / 100
 

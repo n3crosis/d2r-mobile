@@ -4,6 +4,7 @@
  * 全目录 noMetal 源码组装。绝不调用 Apple Metal，也不在摘要证明之前重标记。
  * Full-catalog noMetal source assembly. Never invokes Apple Metal or relabels before digest proof.
  */
+import { resolveLogicalAssetSuffixes } from "./logical-asset-suffixes.mjs";
 import { assertShaderCatalog } from "./shader-catalog-adapter.mjs";
 import { createShaderPipeline } from "./shader-pipeline.mjs";
 import {
@@ -118,6 +119,19 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
             y = catalog.describe(b);
           return x.name < y.name ? -1 : x.name > y.name ? 1 : x.index - y.index;
         });
+        const packNameSet = new Set();
+        for (const key of keys) {
+          check();
+          const descriptor = catalog.describe(key);
+          if (!descriptor.embedded) packNameSet.add(descriptor.name);
+        }
+        const packNames = [...packNameSet];
+        const packPaths = resolveLogicalAssetSuffixes(
+          assets.logicalAssets,
+          packNames.map((name) => `/hd/shaders/${name}`),
+          check,
+        );
+        const pathsByPack = new Map(packNames.map((name, index) => [name, packPaths[index]]));
         sources = createShaderSourceCache(
           keys.filter((key) => catalog.describe(key).embedded).length,
         );
@@ -131,9 +145,7 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
             input = { mainImage: sources.image };
           } else {
             if (sources.packName !== descriptor.name) {
-              const path = assets.logicalAssets.findUniquePathSuffix(
-                `/hd/shaders/${descriptor.name}`,
-              );
+              const path = pathsByPack.get(descriptor.name);
               if (path.toLowerCase() !== `data:data/hd/shaders/${descriptor.name}`)
                 fail("Unexpected logical shader pack path");
               const pack = await assets.logicalAssets.read(path, {

@@ -6,6 +6,7 @@
  * Original image statements are packaged by package-remaining-art.py. MainPanel
  * copies original BC3 blocks without re-encoding, matching gen_widestash_art.py.
  */
+import { resolveLogicalAssetSuffixes } from "./logical-asset-suffixes.mjs";
 const BG = {
   StashPanelBG: "stash/v2/stashpanelbg",
   StashPanelBGPersonal: "stash/v2/stashpanelbgpersonal",
@@ -117,9 +118,10 @@ export async function generateRemainingArt({
       fail("REMAINING_ART_OUTPUT_LIMIT");
     files[path] = bytes.slice();
   };
+  let sourcePaths;
   async function source(rel) {
     check();
-    const path = logicalAssets.findUniquePathSuffix(`/ui/controller/panel/${rel}.sprite`);
+    const path = sourcePaths.get(rel);
     const raw = own(await logicalAssets.read(path, { maxBytes: 8 * 1024 * 1024, signal }));
     check();
     if (
@@ -199,6 +201,19 @@ export async function generateRemainingArt({
     return own(encoded.sprite);
   }
   try {
+    const names = [
+      "mainpanelbg",
+      ...Object.values(BG),
+      ...Object.values(ADV),
+      "charactersheet/v2/charactersheet_bg",
+      "inventorypanel/v2/inventorybg_classic",
+    ];
+    const paths = resolveLogicalAssetSuffixes(
+      logicalAssets,
+      names.map((name) => `/ui/controller/panel/${name}.sprite`),
+      check,
+    );
+    sourcePaths = new Map(names.map((name, index) => [name, paths[index]]));
     const main = own(await source("mainpanelbg"));
     const wide = widenMainPanelBlocks(main);
     own(wide.templateHeader);

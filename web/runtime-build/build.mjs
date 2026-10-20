@@ -7,6 +7,7 @@ import { mkdir, writeFile, readFile, appendFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { assembleRuntime, SHELL_BUILD_INPUTS } from "./package.mjs";
+import { inspectShaderSourceLink } from "./shader-sourcelink-diagnostic.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const workspace = resolve(root, "web/runtime-build/.build");
@@ -144,9 +145,19 @@ if (option === "--plan") {
       sdk: { version: sdk, rollForward: "disable", allowPrerelease: false, workloadVersion: sdk },
     }) + "\n",
   );
+  const sourceRevision = run("git", ["rev-parse", "HEAD"], root, true);
   for (const [name, directory, command, args] of stages) {
     console.log(`Build runtime: ${name}`);
     run(command, args, resolve(root, directory));
+    if (name === "shader browser publish")
+      console.log(
+        JSON.stringify(
+          await inspectShaderSourceLink({
+            projectDirectory: resolve(root, directory),
+            sourceRevision,
+          }),
+        ),
+      );
   }
   for (const input of SHELL_BUILD_INPUTS) {
     const response = await globalThis.fetch(input.sourceUrl, {
@@ -180,7 +191,7 @@ if (option === "--plan") {
       emscripten: "4.0.20",
       dotnet: sdk,
       crossCommit,
-      sourceRevision: run("git", ["rev-parse", "HEAD"], root, true),
+      sourceRevision,
       sourceDirty: Boolean(
         run("git", ["status", "--porcelain", "--untracked-files=no"], root, true),
       ),

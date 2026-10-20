@@ -5,6 +5,7 @@ import {
   createExtractionWorkerClient,
   ExtractionClientError,
 } from "./extraction-worker-client.mjs";
+import { findUniqueLogicalPathSuffixes } from "./logical-asset-suffixes.mjs";
 import { indexRomfs } from "./romfs-tree.mjs";
 import { createCascLogicalAssets, createCascAstcRecords } from "./casc-logical-reader.mjs";
 import { REQUIRED_NSO_MODULES } from "./preflight.mjs";
@@ -398,6 +399,9 @@ export function createExtractionJobAdapter({
               lines.push(line);
             }
             return lines.join("");
+          },
+          findUniquePathSuffixes(suffixes) {
+            return findUniqueLogicalPathSuffixes(logical, suffixes, check);
           },
           findUniquePathSuffix(suffix) {
             check();

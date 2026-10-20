@@ -42,12 +42,18 @@ test("stages main and sdk before token transition and returns only plaintext cap
       .filter((r) => r.operation.startsWith("read"))
       .every((r) => r.payload.count <= 65536),
   );
+  assert.deepEqual(extracted.logicalAssets.findUniquePathSuffixes([]), []);
+  assert.throws(
+    () => extracted.logicalAssets.findUniquePathSuffixes(["/missing.sprite"]),
+    /EXTRACTION_ASSET_MISSING/,
+  );
   const member = extracted.romfs.getFile("data/build_manifest.psv");
   assert.equal((await member.readAt(0n, 1))[0], 83);
   await session.dispose();
   assert.equal(f.disposed, true);
   assert.equal(f.worker.terminated, true);
   await assert.rejects(member.readAt(0n, 0), /EXTRACTION_DISPOSED/);
+  assert.throws(() => extracted.logicalAssets.findUniquePathSuffixes([]), /EXTRACTION_DISPOSED/);
   await assert.rejects(extracted.logicalAssets.read("anything"), /EXTRACTION_DISPOSED/);
   assert.equal(
     extracted.programModules.main[0],

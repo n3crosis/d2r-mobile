@@ -4,6 +4,7 @@
  * 精确的原始雇佣兵图像合成，不虚构发布哈希。
  * Exact original mercenary image composition, with no invented release hashes.
  */
+import { resolveLogicalAssetSuffixes } from "./logical-asset-suffixes.mjs";
 export const MERCENARY_INPUTS = Object.freeze({
   "hirelinginventory/v2/hirelinginventorybg": Object.freeze([652, 704]),
   "inventorypanel/v2/inventorybg_classic": Object.freeze([507, 700]),
@@ -47,9 +48,16 @@ export async function generateMercenaryArt({
     const images = {};
     let template,
       total = 0;
-    for (const [name, [width, height]] of Object.entries(MERCENARY_INPUTS)) {
+    const names = Object.keys(MERCENARY_INPUTS);
+    const paths = resolveLogicalAssetSuffixes(
+      logicalAssets,
+      names.map((name) => `/ui/controller/panel/${name}.sprite`),
+      check,
+    );
+    for (const [index, name] of names.entries()) {
+      const [width, height] = MERCENARY_INPUTS[name];
       check();
-      const path = logicalAssets.findUniquePathSuffix(`/ui/controller/panel/${name}.sprite`);
+      const path = paths[index];
       const source = own(await logicalAssets.read(path, { maxBytes: 8 * 1024 * 1024, signal }));
       check();
       if (
