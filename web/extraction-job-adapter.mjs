@@ -163,7 +163,7 @@ export function createExtractionJobAdapter({
       // Snapshot across the public coordinator boundary, not mutable cached records.
       return structuredClone(state.inspected);
     },
-    async extractSelected({ session, selection, signal } = {}) {
+    async extractSelected({ session, selection, signal, onDiagnostic } = {}) {
       const state = lookup(session);
       try {
         signal?.throwIfAborted();
@@ -242,7 +242,10 @@ export function createExtractionJobAdapter({
           programModules[name] = bytes;
         }
         // This revokes the ExeFS generation; all required modules are staged first.
-        const opened = await state.client.openRomfs(selected.token, { signal });
+        const opened = await state.client.openRomfs(selected.token, {
+          signal,
+          onProgress: onDiagnostic,
+        });
         const check = (readSignal) => {
           lookup(session);
           signal?.throwIfAborted();

@@ -30,6 +30,13 @@ test("activity log accepts only fixed stages, bounded counts and public codes", 
     packagingFailureSummary({ stage: "PRIVATE-PATH", detailCode: "PRIVATE-KEY" }),
     /PRIVATE/,
   );
+  assert.equal(
+    packagingActivity({
+      stage: "extraction",
+      diagnostic: { stage: "romfs-merged", completed: 50, total: 100, bytes: 4500000000 },
+    }),
+    "Verifying merged update RomFS: 50% (4500.0 MB verified)",
+  );
 });
 
 test("resource recovery details stay out of activity logs and copied failure summaries", () => {

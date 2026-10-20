@@ -397,9 +397,22 @@ export function createExtractionEngine(
         requireState("exefs");
         checkToken(payload.token);
         revoke();
+        const reportVerification = ({ phase, completed, total }) => {
+          if (phase === "read") {
+            progress("romfs-read", 0, 0, completed);
+            return;
+          }
+          if ((phase === "base" || phase === "merged") && total > 0)
+            progress(
+              phase === "base" ? "romfs-base" : "romfs-merged",
+              Math.min(100, Math.floor((completed / total) * 100)),
+              100,
+              completed,
+            );
+        };
         romfs = selection.patch
-          ? boundary.openPatchedRomfs(baseIndex, programIndex)
-          : boundary.openRomfs(baseIndex);
+          ? boundary.openPatchedRomfs(baseIndex, programIndex, reportVerification)
+          : boundary.openRomfs(baseIndex, undefined, reportVerification);
         state = "romfs";
         entries = [];
         return { token, size: romfs.size };

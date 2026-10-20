@@ -14,6 +14,7 @@ const keys = (value, expected) =>
   value &&
   typeof value === "object" &&
   Object.keys(value).sort().join(",") === [...expected].sort().join(",");
+const romfsProgress = (stage) => ["romfs-read", "romfs-base", "romfs-merged"].includes(stage);
 /** Total queue-plus-execution deadlines. Long verification never gets an
  * unbounded lease or heartbeat-based renewal; real-title throughput is unmeasured.
  */
@@ -118,10 +119,11 @@ export function createExtractionWorkerClient({
   function message(event) {
     const data = event.data;
     if (
-      active?.operation === "initialize" &&
+      (active?.operation === "initialize" || active?.operation === "openRomfs") &&
       data?.id === active.id &&
       keys(data, ["id", "progress"]) &&
-      isExtractionProgress(data.progress)
+      isExtractionProgress(data.progress) &&
+      (active.operation === "openRomfs") === romfsProgress(data.progress.stage)
     ) {
       try {
         active.onProgress?.(Object.freeze({ ...data.progress }));

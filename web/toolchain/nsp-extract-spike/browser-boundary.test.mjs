@@ -53,3 +53,73 @@ test("native key bridge accepts an empty title file and wipes temporary files an
     else globalThis.FileReaderSync = previous;
   }
 });
+
+test("RomFS progress reports verified native bytes and restores the file reader", async () => {
+  const previous = globalThis.FileReaderSync;
+  globalThis.FileReaderSync = class {};
+  try {
+    const events = [];
+    const streamOps = { read: () => 64 * 1024 * 1024 };
+    const originalRead = streamOps.read;
+    const boundary = await createBoundary(async (options) => ({
+      FS: { mkdir() {} },
+      WORKERFS: { stream_ops: streamOps },
+      HEAPU8: new Uint8Array(16),
+      _malloc: () => 1,
+      _free() {},
+      _nsp_zero() {},
+      ccall(operation, _returnType, _argumentTypes, args) {
+        assert.equal(operation, "nsp_open_patched_romfs");
+        options.onVerificationProgress(1, 0, 128 * 1024 * 1024);
+        streamOps.read(null, null, 0, 64 * 1024 * 1024, 0);
+        options.onVerificationProgress(1, 64 * 1024 * 1024, 128 * 1024 * 1024);
+        options.onVerificationProgress(2, 0, 256 * 1024 * 1024);
+        options.onVerificationProgress(2, 256 * 1024 * 1024, 256 * 1024 * 1024);
+        new DataView(this.HEAPU8.buffer).setBigUint64(args[2], 100n, true);
+        return 0;
+      },
+    }));
+    assert.equal(boundary.openPatchedRomfs(0, 1, (event) => events.push(event)).size, 100n);
+    assert.deepEqual(events, [
+      { phase: "base", completed: 0, total: 128 * 1024 * 1024 },
+      { phase: "base", completed: 64 * 1024 * 1024, total: 128 * 1024 * 1024 },
+      { phase: "merged", completed: 0, total: 256 * 1024 * 1024 },
+      { phase: "merged", completed: 256 * 1024 * 1024, total: 256 * 1024 * 1024 },
+    ]);
+    assert.equal(streamOps.read, originalRead);
+  } finally {
+    if (previous === undefined) delete globalThis.FileReaderSync;
+    else globalThis.FileReaderSync = previous;
+  }
+});
+
+test("older runtimes report real RomFS bytes read without inventing a percentage", async () => {
+  const previous = globalThis.FileReaderSync;
+  globalThis.FileReaderSync = class {};
+  try {
+    const events = [];
+    const streamOps = { read: () => 64 * 1024 * 1024 };
+    const boundary = await createBoundary(async () => ({
+      FS: { mkdir() {} },
+      WORKERFS: { stream_ops: streamOps },
+      HEAPU8: new Uint8Array(16),
+      _malloc: () => 1,
+      _free() {},
+      _nsp_zero() {},
+      ccall(_operation, _returnType, _argumentTypes, args) {
+        streamOps.read(null, null, 0, 64 * 1024 * 1024, 0);
+        streamOps.read(null, null, 0, 64 * 1024 * 1024, 0);
+        new DataView(this.HEAPU8.buffer).setBigUint64(args[1], 100n, true);
+        return 0;
+      },
+    }));
+    assert.equal(boundary.openRomfs(0, undefined, (event) => events.push(event)).size, 100n);
+    assert.deepEqual(events, [
+      { phase: "read", completed: 64 * 1024 * 1024, total: 0 },
+      { phase: "read", completed: 128 * 1024 * 1024, total: 0 },
+    ]);
+  } finally {
+    if (previous === undefined) delete globalThis.FileReaderSync;
+    else globalThis.FileReaderSync = previous;
+  }
+});

@@ -52,6 +52,9 @@ const progressLabels = Object.freeze({
   "content-hash": "Hashing package content",
   "content-header": "Verifying encrypted content headers",
   "content-metadata": "Verifying package metadata",
+  "romfs-read": "Reading RomFS for verification",
+  "romfs-base": "Verifying base RomFS",
+  "romfs-merged": "Verifying merged update RomFS",
 });
 export function isExtractionProgress(value) {
   return Boolean(
@@ -61,11 +64,17 @@ export function isExtractionProgress(value) {
     Object.hasOwn(progressLabels, value.stage) &&
     [value.bytes, value.completed, value.total].every((n) => Number.isSafeInteger(n) && n >= 0) &&
     value.completed <= value.total &&
-    value.total <= 4096,
+    value.total <= 4096 &&
+    (!value.stage.startsWith("romfs-") ||
+      (value.stage === "romfs-read"
+        ? value.completed === 0 && value.total === 0
+        : value.total === 100)),
   );
 }
 export function extractionProgressLabel(value) {
   if (!isExtractionProgress(value)) return null;
+  if (value.stage === "romfs-base" || value.stage === "romfs-merged")
+    return `${progressLabels[value.stage]}: ${value.completed}% (${(value.bytes / 1_000_000).toFixed(1)} MB verified)`;
   const count = value.stage.startsWith("ticket-")
     ? `: ${value.completed}`
     : value.total > 0

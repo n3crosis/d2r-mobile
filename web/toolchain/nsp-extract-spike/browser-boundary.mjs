@@ -18,8 +18,35 @@ const check = (result) => {
 export async function createBoundary(factory) {
   if (typeof FileReaderSync === "undefined")
     throw new Error("A dedicated browser Worker is required");
+  let activeVerificationProgress = null;
+  let nativeProgressSeen = false;
   // Suppress even runtime diagnostics; exceptions never expose upstream text.
-  const module = await factory({ print() {}, printErr() {}, onAbort() {} });
+  const module = await factory({
+    print() {},
+    printErr() {},
+    onAbort() {},
+    onVerificationProgress(phase, completed, total) {
+      if (
+        !activeVerificationProgress ||
+        ![1, 2].includes(phase) ||
+        ![completed, total].every(Number.isSafeInteger) ||
+        total <= 0 ||
+        completed < 0 ||
+        completed > total
+      )
+        return;
+      nativeProgressSeen = true;
+      try {
+        activeVerificationProgress({
+          phase: phase === 1 ? "base" : "merged",
+          completed,
+          total,
+        });
+      } catch {
+        // Progress observers cannot interrupt authenticated verification.
+      }
+    },
+  });
   module.FS.mkdir("/input");
   module.FS.mkdir("/secret");
   let mounted = false,
@@ -138,27 +165,62 @@ export async function createBoundary(factory) {
     },
     // Reader lifetime is bound to this exact authenticated NCA. A later open,
     // inspect, key load, mount or input hash invalidates it even if that fails.
-    openPatchedRomfs(baseIndex, patchIndex) {
+    openPatchedRomfs(baseIndex, patchIndex, onReadProgress) {
       if (!Number.isSafeInteger(patchIndex) || patchIndex < 0)
         throw new Error("Invalid patch index");
-      return this.openRomfs(baseIndex, patchIndex);
+      return this.openRomfs(baseIndex, patchIndex, onReadProgress);
     },
-    openRomfs(index, patchIndex) {
+    openRomfs(index, patchIndex, onReadProgress) {
       return guard(() => {
         const current = ++generation;
-        const size = withBuffer(8, (ptr) => {
-          check(
-            patchIndex === undefined
-              ? module.ccall("nsp_open_romfs", "number", ["string", "number"], [path(index), ptr])
-              : module.ccall(
-                  "nsp_open_patched_romfs",
-                  "number",
-                  ["string", "string", "number"],
-                  [path(index), path(patchIndex), ptr],
-                ),
-          );
-          return new DataView(module.HEAPU8.buffer, ptr, 8).getBigUint64(0, true);
-        });
+        activeVerificationProgress = onReadProgress;
+        nativeProgressSeen = false;
+        const streamOps = module.WORKERFS.stream_ops;
+        const originalRead = streamOps.read;
+        const reportStep = 64 * 1024 * 1024;
+        let bytesRead = 0;
+        let nextReport = reportStep;
+        let lastReported = 0;
+        const report = () => {
+          if (nativeProgressSeen || bytesRead === lastReported) return;
+          try {
+            onReadProgress?.({ phase: "read", completed: bytesRead, total: 0 });
+          } catch {
+            // Progress observers cannot interrupt authenticated verification.
+          }
+          lastReported = bytesRead;
+        };
+        streamOps.read = (...args) => {
+          const count = originalRead(...args);
+          if (Number.isSafeInteger(count) && count > 0) {
+            bytesRead += count;
+            if (bytesRead >= nextReport) {
+              report();
+              nextReport = bytesRead + reportStep;
+            }
+          }
+          return count;
+        };
+        let size;
+        try {
+          size = withBuffer(8, (ptr) => {
+            check(
+              patchIndex === undefined
+                ? module.ccall("nsp_open_romfs", "number", ["string", "number"], [path(index), ptr])
+                : module.ccall(
+                    "nsp_open_patched_romfs",
+                    "number",
+                    ["string", "string", "number"],
+                    [path(index), path(patchIndex), ptr],
+                  ),
+            );
+            return new DataView(module.HEAPU8.buffer, ptr, 8).getBigUint64(0, true);
+          });
+          report();
+        } finally {
+          streamOps.read = originalRead;
+          activeVerificationProgress = null;
+        }
         return Object.freeze({
           size,
           readAt(offset, count) {

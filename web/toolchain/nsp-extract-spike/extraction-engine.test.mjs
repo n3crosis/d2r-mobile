@@ -129,9 +129,11 @@ function setup({
         ? metadata[active / 2].slice(Number(offset), Number(offset) + count)
         : new Uint8Array(count).fill(7);
     },
-    openPatchedRomfs(baseIndex, patchIndex) {
+    openPatchedRomfs(baseIndex, patchIndex, onProgress) {
       assert.equal(baseIndex, 1);
       assert.equal(patchIndex, 3);
+      onProgress({ phase: "base", completed: 64 * 1024 * 1024, total: 128 * 1024 * 1024 });
+      onProgress({ phase: "merged", completed: 128 * 1024 * 1024, total: 128 * 1024 * 1024 });
       return {
         size: 10n,
         readAt(offset, count) {
@@ -178,7 +180,8 @@ test("package ticket filename must match its embedded rights ID", async () => {
   await engine.execute("dispose");
 });
 test("engine uses catalog, independent inventory and internal selection; tokens revoke ExeFS", async () => {
-  const env = setup(),
+  const progress = [];
+  const env = setup({ onProgress: (event) => progress.push(event) }),
     { engine } = env;
   const inspected = await initialize(engine);
   assert.equal(inspected.inventory.length, 6);
@@ -196,6 +199,13 @@ test("engine uses catalog, independent inventory and internal selection; tokens 
   assert(selected.selection.requiredContents.some((c) => c.contentId === "77".repeat(16)));
   assert.equal("owned" in selected.selection, false);
   const romfs = await engine.execute("openRomfs", { token: selected.token });
+  assert.deepEqual(
+    progress.filter(({ stage }) => stage.startsWith("romfs-")),
+    [
+      { stage: "romfs-base", completed: 50, total: 100, bytes: 64 * 1024 * 1024 },
+      { stage: "romfs-merged", completed: 100, total: 100, bytes: 128 * 1024 * 1024 },
+    ],
+  );
   assert.notEqual(romfs.token, selected.token);
   await assert.rejects(
     engine.execute("readExefs", { token: selected.token, index: 0, offset: 0n, count: 1 }),

@@ -11,6 +11,19 @@
 #include "sha.h"
 #include <limits.h>
 #include <stdint.h>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+/* Fixed numeric progress only. The worker supplies the trusted callback. */
+EM_JS(void, nsp_ivfc_report, (int phase, double verified, double total), {
+    Module["onVerificationProgress"]?.(phase, verified, total);
+});
+#else
+static void nsp_ivfc_report(int phase, double verified, double total) {
+    (void)phase;
+    (void)verified;
+    (void)total;
+}
+#endif
 #define META_LIMIT (16u * 1024u * 1024u)
 #define CHUNK_LIMIT (64u * 1024u)
 static hactool_ctx_t tool;
@@ -463,10 +476,12 @@ static int open_authenticated_pfs0(const char *path, int program) {
 /* IVFC reader contract: section-relative exact reads. The root is trusted
  * only when called from nsp_open_romfs AFTER NCA/section authentication. */
 typedef int (*ivfc_reader_t)(void *, uint64_t, void *, size_t);
-static int ivfc_verify(ivfc_reader_t reader, void *context, const ivfc_hdr_t *ivfc, uint64_t size) {
+static int ivfc_verify(ivfc_reader_t reader, void *context, const ivfc_hdr_t *ivfc, uint64_t size,
+                       int progress_phase) {
     if (ivfc->magic != MAGIC_IVFC || ivfc->id != 0x20000 ||
         ivfc->num_levels != IVFC_MAX_LEVEL + 1 || ivfc->master_hash_size != 32)
         return -4;
+    uint64_t total = 0;
     for (unsigned i = 0; i < IVFC_MAX_LEVEL; i++) {
         const ivfc_level_hdr_t *level = &ivfc->level_headers[i];
         if (!level->hash_data_size || level->block_size < 5 || level->block_size > 24 ||
@@ -475,6 +490,9 @@ static int ivfc_verify(ivfc_reader_t reader, void *context, const ivfc_hdr_t *iv
         uint64_t block_size = UINT64_C(1) << level->block_size;
         uint64_t blocks =
             level->hash_data_size / block_size + (level->hash_data_size % block_size != 0);
+        if (blocks > (UINT64_MAX - total) / block_size)
+            return -2;
+        total += blocks * block_size;
         uint64_t hash_size = i ? ivfc->level_headers[i - 1].hash_data_size : 32;
         if (blocks > hash_size / 32)
             return -2;
@@ -489,6 +507,9 @@ static int ivfc_verify(ivfc_reader_t reader, void *context, const ivfc_hdr_t *iv
     if (!chunk)
         return -1;
     int rc = 0;
+    uint64_t verified = 0, next_report = 64u * 1024u * 1024u;
+    if (progress_phase)
+        nsp_ivfc_report(progress_phase, 0, (double)total);
     for (unsigned i = 0; !rc && i < IVFC_MAX_LEVEL; i++) {
         const ivfc_level_hdr_t *level = &ivfc->level_headers[i];
         uint64_t block_size = UINT64_C(1) << level->block_size;
@@ -524,12 +545,21 @@ static int ivfc_verify(ivfc_reader_t reader, void *context, const ivfc_hdr_t *iv
                 sha_get_hash(hash, digest);
                 if (memcmp(digest, expected, 32))
                     rc = -3;
+                else {
+                    verified += block_size;
+                    if (progress_phase && verified >= next_report) {
+                        nsp_ivfc_report(progress_phase, (double)verified, (double)total);
+                        next_report = verified + 64u * 1024u * 1024u;
+                    }
+                }
             }
             free_sha_ctx(hash);
         }
     }
     nsp_zero(chunk, CHUNK_LIMIT);
     free(chunk);
+    if (!rc && progress_phase)
+        nsp_ivfc_report(progress_phase, (double)verified, (double)total);
     return rc;
 }
 static int ivfc_section_read(void *context, uint64_t offset, void *out, size_t size) {
@@ -617,7 +647,7 @@ int nsp_open_romfs(const char *path, unsigned char *out_size) {
             nsp_close();
             return -4;
         }
-    rc = ivfc_verify(ivfc_section_read, NULL, ivfc, extent);
+    rc = ivfc_verify(ivfc_section_read, NULL, ivfc, extent, 1);
     if (!rc) {
         const ivfc_level_hdr_t *last = &ivfc->level_headers[IVFC_MAX_LEVEL - 1];
         romfs_hdr_t header;
@@ -702,7 +732,7 @@ int nsp_open_patched_romfs(const char *base_path, const char *patch_path, unsign
     if (!rc) {
         merged_active = 1;
         extent = merged_size;
-        rc = ivfc_verify(ivfc_section_read, NULL, &sb->ivfc_header, extent);
+        rc = ivfc_verify(ivfc_section_read, NULL, &sb->ivfc_header, extent, 2);
     }
     if (!rc) {
         const ivfc_level_hdr_t *last = &sb->ivfc_header.level_headers[IVFC_MAX_LEVEL - 1];
@@ -761,18 +791,18 @@ int nsp_ivfc_fixture(void) {
                                     0x5f, 0x50, 0x05, 0x63, 0x3b, 0x42, 0xc0, 0x0b,
                                     0xff, 0x86, 0x3d, 0x95, 0x7d, 0xa1, 0x26, 0x7e};
     memcpy(header.master_hash, root, 32);
-    if (ivfc_verify(ivfc_fixture_read, bytes, &header, sizeof bytes))
+    if (ivfc_verify(ivfc_fixture_read, bytes, &header, sizeof bytes, 0))
         return 1;
     bytes[320] ^= 1;
-    if (ivfc_verify(ivfc_fixture_read, bytes, &header, sizeof bytes) != -3)
+    if (ivfc_verify(ivfc_fixture_read, bytes, &header, sizeof bytes, 0) != -3)
         return 2;
     bytes[320] ^= 1;
     header.level_headers[1].logical_offset = 0;
-    if (ivfc_verify(ivfc_fixture_read, bytes, &header, sizeof bytes) != -2)
+    if (ivfc_verify(ivfc_fixture_read, bytes, &header, sizeof bytes, 0) != -2)
         return 3;
     header.level_headers[1].logical_offset = 64;
     header.level_headers[5].block_size = 32;
-    if (ivfc_verify(ivfc_fixture_read, bytes, &header, sizeof bytes) != -2)
+    if (ivfc_verify(ivfc_fixture_read, bytes, &header, sizeof bytes, 0) != -2)
         return 4;
     return 0;
 }
@@ -885,13 +915,13 @@ int nsp_bktr_fixture(void) {
         header.level_headers[i].block_size = 6;
     }
     sha256_hash_buffer(header.master_hash, base, 64);
-    if (ivfc_verify(ivfc_section_read, NULL, &header, 384))
+    if (ivfc_verify(ivfc_section_read, NULL, &header, 384, 0))
         goto done;
     cipher[48] ^= 1;
     if (fseeko(nca.file, 0x200, SEEK_SET) ||
         fwrite(cipher, 1, sizeof cipher, nca.file) != sizeof cipher)
         goto done;
-    if (ivfc_verify(ivfc_section_read, NULL, &header, 384) != -3)
+    if (ivfc_verify(ivfc_section_read, NULL, &header, 384, 0) != -3)
         goto done;
     cipher[48] ^= 1;
     if (fseeko(nca.file, 0x200, SEEK_SET) ||
@@ -901,7 +931,7 @@ int nsp_bktr_fixture(void) {
     if (fseeko(base_nca->file, 0, SEEK_SET) ||
         fwrite(base, 1, sizeof base, base_nca->file) != sizeof base)
         goto done;
-    if (ivfc_verify(ivfc_section_read, NULL, &header, 384) != -3)
+    if (ivfc_verify(ivfc_section_read, NULL, &header, 384, 0) != -3)
         goto done;
     result = 0;
 done:

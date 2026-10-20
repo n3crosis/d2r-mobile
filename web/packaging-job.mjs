@@ -231,7 +231,27 @@ export async function runPackagingJob(options) {
       resolveContentSelection(inspected.records, inspected.inventory, options.selectionOptions),
     );
     const extracted = await step("extraction", () =>
-      adapters.extractSelected({ ...context, session, selection }),
+      adapters.extractSelected({
+        ...context,
+        session,
+        selection,
+        onDiagnostic(diagnostic) {
+          const label = extractionProgressLabel(diagnostic);
+          if (!label) return;
+          try {
+            options.onProgress?.(
+              Object.freeze({
+                stage: "extraction",
+                state: "running",
+                label,
+                diagnostic,
+              }),
+            );
+          } catch {
+            // Read-only progress observers cannot affect the job.
+          }
+        },
+      }),
     );
     if (options.secretLifetime !== "archive") await step("disposal", dispose);
     // Generators receive no input/key-file handles or secret-session reference.

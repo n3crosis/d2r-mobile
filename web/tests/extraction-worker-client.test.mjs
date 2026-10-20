@@ -232,3 +232,16 @@ test("allowlisted initialization progress and diagnoses expose no arbitrary work
   await assert.rejects(pending, /^ExtractionClientError: PROD_KEYS_MALFORMED$/);
   assert.equal(worker.terminated, true);
 });
+
+test("RomFS verification progress reaches the caller without completing the request", async () => {
+  const { worker, client } = make();
+  const events = [];
+  const pending = client.openRomfs("exefs", { onProgress: (event) => events.push(event) });
+  const progress = { stage: "romfs-base", completed: 50, total: 100, bytes: 4294967296 };
+  worker.emit({ id: 1, progress });
+  assert.deepEqual(events, [progress]);
+  assert.equal(worker.terminated, false);
+  worker.emit({ id: 1, ok: true, result: { token: "romfs", size: 100n } });
+  assert.deepEqual(await pending, { token: "romfs", size: 100n });
+  client.close();
+});

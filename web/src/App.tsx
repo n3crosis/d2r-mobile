@@ -31,6 +31,7 @@ type FolderProgress = {
   prodKeysFound: boolean;
   titleKeysFound: boolean;
 };
+type RomfsProgress = { phase: "base" | "merged"; percent: number };
 const folderSummary = (progress: FolderProgress) =>
   `${progress.nspCount} NSP file(s); prod.keys ${progress.prodKeysFound ? "found" : "missing"}; title.keys ${progress.titleKeysFound ? "found (optional)" : "not provided (optional)"}.`;
 const megabytes = (bytes: number) => `${(bytes / 1_000_000).toFixed(1)} MB`;
@@ -52,6 +53,7 @@ export default function App() {
     [busy, setBusy] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [romfsProgress, setRomfsProgress] = useState<RomfsProgress | null>(null);
   const [folder, setFolder] = useState<FileSystemDirectoryHandle | null>(null);
   const [nspNames, setNspNames] = useState<string[]>([]);
   const [selectedNsps, setSelectedNsps] = useState<Set<string>>(() => new Set());
@@ -244,6 +246,7 @@ export default function App() {
     setBusy(true);
     setGenerating(true);
     setCancelling(false);
+    setRomfsProgress(null);
     setReady(false);
     setStatus("Starting IPA generation…");
     appendActivity("Generation started; private inputs remain local", true);
@@ -255,13 +258,27 @@ export default function App() {
         input: folder,
         selectedNspNames: [...selectedNsps],
         signal: controller.signal,
-        onProgress: (event: { label: string; stage?: string; state?: string }) => {
+        onProgress: (event: {
+          label: string;
+          stage?: string;
+          state?: string;
+          diagnostic?: { stage?: string; completed?: number };
+        }) => {
           if (!acceptingProgress || controller.signal.aborted || !mounted.current) return;
           pendingGenerationStatus.current = event.label;
           appendActivity(
             packagingActivity(event),
             event.state === "failed" || event.state === "complete",
           );
+          const phase = event.diagnostic?.stage;
+          if (phase === "romfs-base" || phase === "romfs-merged") {
+            setRomfsProgress({
+              phase: phase === "romfs-base" ? "base" : "merged",
+              percent: event.diagnostic?.completed ?? 0,
+            });
+          } else if (event.stage !== "extraction" || event.state === "complete") {
+            setRomfsProgress(null);
+          }
         },
       });
       if (!mounted.current) return;
@@ -409,12 +426,22 @@ export default function App() {
               </p>
               <progress
                 className="h-2 w-full accent-primary"
-                aria-label={cancelling ? "Stopping IPA generation" : "IPA generation in progress"}
+                aria-label={
+                  cancelling
+                    ? "Stopping IPA generation"
+                    : romfsProgress
+                      ? `${romfsProgress.phase === "base" ? "Base" : "Merged update"} RomFS verification`
+                      : "IPA generation in progress"
+                }
+                value={cancelling ? undefined : romfsProgress?.percent}
+                max={100}
               />
               <p className="text-xs text-muted-foreground">
                 {cancelling
                   ? "Waiting for cancellation and cleanup to finish."
-                  : "Large packages can take several minutes to verify, even when the activity log is quiet."}
+                  : romfsProgress
+                    ? `${romfsProgress.phase === "base" ? "Base" : "Merged update"} RomFS: ${romfsProgress.percent}% verified.`
+                    : "Large packages can take several minutes to verify, even when the activity log is quiet."}
               </p>
             </div>
           )}
