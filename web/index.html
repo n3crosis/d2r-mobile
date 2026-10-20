@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; script-src 'self'; style-src 'self'">
+  <title>D2R Mobile · IPA preparation lab</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.mjs"></script>
+</head>
+<body>
+<main>
+  <p class="eyebrow">D2R MOBILE · DEVELOPMENT PREVIEW</p>
+  <h1>Prepare locally.<br>Keep your files yours.</h1>
+  <p class="intro">A browser-based unsigned IPA packager for Windows and Mac. No toolchain setup will be required.</p>
+  <aside><strong>Preflight only, not an IPA builder yet.</strong> This preview can inspect three executable headers. It does not convert files, verify a supported game version, create an IPA, or prove the game works.</aside>
+  <section aria-labelledby="start">
+    <h2 id="start">Start without game data</h2>
+    <p>The synthetic demo uses a tiny generated header and a virtual 6 GB file. No game content is included or downloaded.</p>
+    <div class="actions"><button id="demo">Run synthetic demo</button><button id="select" disabled>Select local game folder</button><button id="cancel" disabled>Cancel</button></div>
+    <p id="capability">Checking browser capabilities…</p>
+    <p class="muted">Optional folder check: select the folder containing ExeFS. The app reads only 256 bytes from each of main, sdk and subsdk0. It does not read the bulk RomFS archives.</p>
+  </section>
+  <section aria-labelledby="results">
+    <h2 id="results">Results</h2>
+    <pre id="output" role="status" aria-live="polite">Ready. No files selected.</pre>
+  </section>
+  <section>
+    <h2>The intended finished workflow</h2>
+    <ol><li>Select your own game folder and a compatible shell.</li><li>Validate versions and generate the missing program, art, data and shaders locally.</li><li>Save an IPA to disk, then sign and install it with your chosen tool.</li><li>Copy the large resource archives to the installed app separately.</li></ol>
+    <p>No account credentials, signing keys or uploads. The current preview explicitly blocks network connections. Chromium on desktop Windows/macOS is the initial target; API availability is checked rather than assumed.</p>
+  </section>
+</main>
+</body>
+</html>
