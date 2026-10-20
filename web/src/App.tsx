@@ -60,6 +60,8 @@ export default function App() {
   const [ready, setReady] = useState(false),
     [busy, setBusy] = useState(false);
   const [folder, setFolder] = useState<FileSystemDirectoryHandle | null>(null);
+  const [nspNames, setNspNames] = useState<string[]>([]);
+  const [selectedNsps, setSelectedNsps] = useState<Set<string>>(() => new Set());
   const [download, setDownload] = useState<{ url: string; fileName: string } | null>(null);
   const [finished, setFinished] = useState(false);
   const downloadUrl = useRef<string | null>(null);
@@ -147,25 +149,37 @@ export default function App() {
       controller.signal.throwIfAborted();
       selectedName = selected.name;
       setFolder(null);
+      setNspNames([]);
+      setSelectedNsps(new Set());
       setStatus(`Checking ${selected.name}…`);
-      await discoverNspFolder(selected, {
+      const files = await discoverNspFolder(selected, {
         signal: controller.signal,
         onProgress: (event: FolderProgress) => {
           progress = event;
           setStatus(`Checking ${selected.name}… ${folderSummary(event)}`);
         },
       });
+      const names = files.nsps.map((file) => file.name);
+      const base = names.filter((name) => /\[0100726014352000\]/iu.test(name));
+      const updates = names.filter((name) => /\[0100726014352800\]/iu.test(name));
+      const selectedNames = base.length === 1 && updates.length > 0 ? [...base, ...updates] : names;
+      setNspNames(names);
+      setSelectedNsps(new Set(selectedNames));
       setFolder(selected);
       appendActivity(
         `Folder checked: ${progress.nspCount} NSP files; prod.keys found; title.keys ${progress.titleKeysFound ? "provided" : "not provided (optional)"}`,
         true,
       );
-      setStatus(`${selected.name}: ${folderSummary(progress)} Ready to generate.`);
+      setStatus(
+        `${selected.name}: ${folderSummary(progress)} ${selectedNames.length} package(s) selected. Ready to generate.`,
+      );
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         if (!controller.signal.aborted) setStatus(previousStatus);
       } else {
         setFolder(null);
+        setNspNames([]);
+        setSelectedNsps(new Set());
         appendActivity("Folder check failed; check the status message", true);
         const code = (error as { code?: string })?.code;
         const permissionError =
@@ -186,7 +200,7 @@ export default function App() {
     }
   }
   async function generate() {
-    if (!folder || !packager.current) return;
+    if (!folder || !packager.current || !selectedNsps.size) return;
     setBusy(true);
     setReady(false);
     appendActivity("Generation started; private inputs remain local", true);
@@ -195,6 +209,7 @@ export default function App() {
       cancellation.current = controller;
       const result = await packager.current.generate({
         input: folder,
+        selectedNspNames: [...selectedNsps],
         signal: controller.signal,
         onProgress: (event: { label: string; stage?: string; state?: string }) => {
           setStatus(event.label);
@@ -251,7 +266,10 @@ export default function App() {
             <Button variant="outline" onClick={() => void choose()} disabled={!ready || busy}>
               Choose folder
             </Button>
-            <Button onClick={() => void generate()} disabled={!ready || !folder || busy}>
+            <Button
+              onClick={() => void generate()}
+              disabled={!ready || !folder || !selectedNsps.size || busy}
+            >
               Generate unsigned IPA
             </Button>
             {busy && (
@@ -268,6 +286,34 @@ export default function App() {
               </Button>
             )}
           </div>
+          {nspNames.length > 0 && (
+            <fieldset className="space-y-2 rounded-md border p-3" disabled={!ready || busy}>
+              <legend className="px-1 text-sm font-medium">Packages to use</legend>
+              <p className="text-xs text-muted-foreground">
+                Base and update are selected by default when recognized. Excluded packages stay in
+                the folder. A build without DLC will not include Warlock content.
+              </p>
+              {nspNames.map((name) => (
+                <label key={name} className="flex items-start gap-2 text-sm break-all">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={selectedNsps.has(name)}
+                    onChange={(event) => {
+                      const checked = event.target.checked;
+                      setSelectedNsps((current) => {
+                        const next = new Set(current);
+                        if (checked) next.add(name);
+                        else next.delete(name);
+                        return next;
+                      });
+                    }}
+                  />
+                  {name}
+                </label>
+              ))}
+            </fieldset>
+          )}
           {download && (
             <div className="space-y-2">
               <Button asChild>

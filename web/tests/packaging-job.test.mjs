@@ -160,6 +160,26 @@ test("complete ordered lifecycle and deterministic detached manifest", async () 
   assert.ok(Object.isFrozen(result.manifest[0]));
   assert.equal(f.calls.includes("abort"), false);
 });
+test("selected NSP names exclude an optional package before opening secrets", async () => {
+  const f = fixture();
+  f.input.push({
+    name: "dlc.nsp",
+    webkitRelativePath: "folder/dlc.nsp",
+    size: 0,
+    slice() {
+      throw new Error("Excluded package must not be opened");
+    },
+  });
+  f.adapters.openSecretSession = async ({ inputs }) => {
+    assert.deepEqual(
+      inputs.nsps.map((file) => file.name),
+      ["game.nsp"],
+    );
+    return { async dispose() {} };
+  };
+  const result = await runPackagingJob({ ...f, selectedNspNames: ["game.nsp"] });
+  assert.equal(result.status, "complete");
+});
 test("bounded generator concurrency and draining in-flight work before cleanup", async () => {
   const f = fixture();
   let active = 0,

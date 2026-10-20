@@ -89,7 +89,7 @@ export async function prepareBrowserPackager({ manifestSha256, signal, onProgres
     return Object.freeze({
       ready: true,
       realGameVerified: false,
-      async generate({ input, signal, onProgress }) {
+      async generate({ input, selectedNspNames, signal, onProgress }) {
         if (used) throw new Error("RELOAD_REQUIRED");
         if (
           input?.kind !== "directory" ||
@@ -229,6 +229,7 @@ export async function prepareBrowserPackager({ manifestSha256, signal, onProgres
         ];
         const result = await runPackagingJob({
           input,
+          selectedNspNames,
           adapters,
           signal,
           onProgress,

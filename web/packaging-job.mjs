@@ -66,6 +66,7 @@ const labels = Object.freeze({
  * @property {PackagingAdapters} adapters
  * @property {AbortSignal} [signal]
  * @property {object} [selectionOptions]
+ * @property {string[]} [selectedNspNames] Package filenames to use from the selected folder.
  * @property {"extraction"|"archive"} [secretLifetime] Default extraction; explicit archive mode permits isolated lazy plaintext readers until writing finishes.
  * @property {"zip32"|"zip64"} [archiveFormat] ZIP64 is explicit opt-in, not an iOS compatibility claim.
  * @property {number} [maxOutputBytes] Required positive safe-integer archive budget for ZIP64.
@@ -181,11 +182,25 @@ export async function runPackagingJob(options) {
         ["extraction", "archive"].includes(options.secretLifetime),
     );
     capabilitiesReady = true;
-    const inputs = await step("discovery", () =>
+    const discovered = await step("discovery", () =>
       options.input?.kind === "directory"
         ? discoverNspFolder(options.input, { signal })
         : discoverNspFiles(options.input),
     );
+    let inputs = discovered;
+    if (options.selectedNspNames !== undefined) {
+      const names = options.selectedNspNames;
+      assertion(
+        Array.isArray(names) &&
+          names.length > 0 &&
+          names.every((name) => typeof name === "string" && name.length > 0),
+      );
+      const selected = new Set(names.map((name) => name.toLowerCase()));
+      assertion(selected.size === names.length);
+      const nsps = discovered.nsps.filter((file) => selected.has(file.name.toLowerCase()));
+      assertion(nsps.length === selected.size);
+      inputs = { ...discovered, nsps };
+    }
     const context = { inputs, signal };
     await step("secrets", async () => {
       session = await adapters.openSecretSession({
