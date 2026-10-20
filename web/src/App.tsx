@@ -37,28 +37,20 @@ const megabytes = (bytes: number) => `${(bytes / 1_000_000).toFixed(1)} MB`;
 export default function App() {
   const [activity, setActivity] = useState<string[]>([]);
   const [copyStatus, setCopyStatus] = useState("");
-  const lastActivity = useRef({ text: "", time: 0 });
-  const pendingActivity = useRef<string | null>(null);
+  const lastActivity = useRef("");
   const appendActivity = useCallback((text: string | null, force = false) => {
     if (!text) return;
-    const now = Date.now();
-    if (!force && text === lastActivity.current.text) return;
-    const line = `${new Date(now).toISOString()} ${text}`;
-    if (!force && now - lastActivity.current.time < 250) {
-      pendingActivity.current = line;
-      return;
-    }
-    lastActivity.current = { text, time: now };
-    // Preserve the most recent substage when a rapid failure follows it.
-    const additions = pendingActivity.current ? [pendingActivity.current, line] : [line];
-    pendingActivity.current = null;
-    setActivity((previous) => [...previous, ...additions].slice(-200));
+    if (!force && text === lastActivity.current) return;
+    lastActivity.current = text;
+    const line = `${new Date().toISOString()} ${text}`;
+    setActivity((previous) => [...previous, line].slice(-200));
   }, []);
   const [loading, setLoading] = useState<LoadingProgress | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [status, setStatus] = useState("Loading application files…");
   const [ready, setReady] = useState(false),
     [busy, setBusy] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [folder, setFolder] = useState<FileSystemDirectoryHandle | null>(null);
   const [nspNames, setNspNames] = useState<string[]>([]);
   const [selectedNsps, setSelectedNsps] = useState<Set<string>>(() => new Set());
@@ -202,6 +194,7 @@ export default function App() {
   async function generate() {
     if (!folder || !packager.current || !selectedNsps.size) return;
     setBusy(true);
+    setGenerating(true);
     setReady(false);
     appendActivity("Generation started; private inputs remain local", true);
     try {
@@ -248,6 +241,7 @@ export default function App() {
       setStatus(packagingFailureMessage(report));
     } finally {
       setBusy(false);
+      setGenerating(false);
       setFinished(true);
     }
   }
@@ -269,8 +263,15 @@ export default function App() {
             <Button
               onClick={() => void generate()}
               disabled={!ready || !folder || !selectedNsps.size || busy}
+              aria-busy={generating}
             >
-              Generate unsigned IPA
+              {generating && (
+                <span
+                  className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none"
+                  aria-hidden="true"
+                />
+              )}
+              {generating ? "Generating IPA…" : "Generate unsigned IPA"}
             </Button>
             {busy && (
               <Button
@@ -330,6 +331,19 @@ export default function App() {
           <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
             {status}
           </p>
+          {generating && (
+            <div className="space-y-2 rounded-md border bg-muted/50 p-3 text-sm">
+              <p className="font-medium">Generation in progress</p>
+              <progress
+                className="h-2 w-full accent-primary"
+                aria-label="IPA generation in progress"
+              />
+              <p className="text-xs text-muted-foreground">
+                Large packages can take several minutes to verify, even when the activity log is
+                quiet.
+              </p>
+            </div>
+          )}
           <details className="space-y-2 text-xs text-muted-foreground">
             <summary className="cursor-pointer">Activity log ({activity.length})</summary>
             <p>
