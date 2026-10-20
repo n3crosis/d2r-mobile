@@ -27,9 +27,7 @@ def nso(words, compressed=False, registered=False):
     # eh_frame_hdr: version 1, absolute u32 pointer/count/table, one function.
     struct.pack_into("<4BIIII", ro, 0x20, 1, 3, 3, 3, 0, 1, 0x40, 0)
     segments = [bytes(text), bytes(ro), bytes(0x100)]
-    payloads = [
-        lz4.block.compress(s, store_size=False) if compressed else s for s in segments
-    ]
+    payloads = [lz4.block.compress(s, store_size=False) if compressed else s for s in segments]
     header = bytearray(0x100)
     header[:4] = b"NSO0"
     struct.pack_into("<I", header, 0xC, 7 if compressed else 0)
@@ -113,9 +111,7 @@ for name, words, compressed, registered, ruleset, success in cases:
     if expected_error and expected_error not in result.stderr.decode():
         raise RuntimeError(f"{name}: expected upstream assertion was not reached")
     if (result.returncode == 0) != success:
-        raise RuntimeError(
-            f"{name}: unexpected native result: {result.stderr.decode()}"
-        )
+        raise RuntimeError(f"{name}: unexpected native result: {result.stderr.decode()}")
     if success:
         guest_dir = HERE / "oracle-guest" / name
         subprocess.run(
@@ -141,12 +137,8 @@ for name, words, compressed, registered, ruleset, success in cases:
                     file.name: hashlib.sha256(file.read_bytes()).hexdigest()
                     for file in sorted(target.iterdir())
                 },
-                "guestSha256": hashlib.sha256(
-                    (framework / "Guest").read_bytes()
-                ).hexdigest(),
-                "plistSha256": hashlib.sha256(
-                    (framework / "Info.plist").read_bytes()
-                ).hexdigest(),
+                "guestSha256": hashlib.sha256((framework / "Guest").read_bytes()).hexdigest(),
+                "plistSha256": hashlib.sha256((framework / "Info.plist").read_bytes()).hexdigest(),
             }
         )
     manifest["cases"].append(
@@ -158,8 +150,6 @@ for name, words, compressed, registered, ruleset, success in cases:
             "errorIncludes": expected_error,
         }
     )
-(OUT / "trusted-synthetic-catalog.json").write_text(
-    json.dumps(catalog, indent=2) + "\n"
-)
+(OUT / "trusted-synthetic-catalog.json").write_text(json.dumps(catalog, indent=2) + "\n")
 (OUT / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 print(f"Generated {len(cases)} synthetic cases and independent native oracle outputs")

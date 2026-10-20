@@ -229,3 +229,14 @@ Windows/macOS probes were run for this design-only audit. The release blocker is
 unverified runtime closure plus browser-enforced post-load isolation, not an
 absence of a JavaScript “ready” flag. Keep production processing disabled until
 that evidence exists and the explicitly reviewed CSP change is accepted.
+
+## Narrow executable prototype added after the audit
+
+`toolchain/offline-runtime-spike/` now implements the proposed two-phase boundary
+for only the existing Emscripten texture converter: exact manifest/hash/byte caps,
+new CSP, fresh blob Worker, transferred WASM bytes and custom instantiation,
+known-red synthetic conversion, and same-/cross-origin network probes checked by
+server receipts without request interception. Its separate CI workflow must run
+before this is called browser-verified. Production CSP/UI and all broader runtime
+release gates above remain unchanged; this prototype is not the missing
+Pyodide/.NET integration or Windows/macOS proof.

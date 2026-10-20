@@ -31,7 +31,7 @@ The transformed sprite is the worker's **default-state color mask applied to a s
 
 ## Important build-artifact distinction
 
-The existing worker also produces an experience-table **C header** and an overlay-directory **plan**. Neither is a deployable application asset by itself. This packaging adapter deliberately rejects those operations rather than placing them in the application and pretending that experience compilation or CASC overlay generation happened. A future program-build stage may consume the header through a distinct build-artifact contract. A future CASC writer must consume and validate the overlay plan.
+The existing worker also produces an experience-table **C header** and an overlay-directory **plan**. Neither is a deployable application asset by itself. This packaging adapter deliberately rejects those operations rather than placing them in the application and pretending that experience compilation or CASC overlay generation happened. For released-shell packaging, native `d2rm_pack.py` passes the generated experience/vault/skill-index C sources through `shell_stubs.data()` to produce `dm/derived.tsv`; the shell reads that TSV at runtime using `dm_derived_rt.h`. The next bridge must preserve all five record families (EXP, VTPART, VTROW, VTSET, TAROW), verify shell-compatible row counts, and package the complete TSV, not compile or bundle the header directly. A future CASC writer must consume and validate the overlay plan.
 
 ## Bounds and lifecycle
 
@@ -60,7 +60,7 @@ const adapter = createAssetGeneratorAdapter({
 The composed worker invokes the actual texture WASM worker, checks source dimensions before decode, validates decoded format/length, then passes an internal raw-RGBA sprite to the unchanged Pyodide transform. This intermediate is not an application output. Only the resulting PNG is exposed; requesting `frame.sprite` from a v61 source fails `ASSET_V61_SPRITE_UNSUPPORTED`. Both workers are terminated on close and intermediate pixel buffers are erased. This does **not** implement native v61 BC3 encoding/swizzle or make PNG interchangeable with a game sprite.
 
 The existing v31 path and independent oracle are unchanged. A new asset-CI step builds the texture bridge with the same pinned official Emscripten SDK, authors a two-frame v61 BC3 source using the real native swizzle library, runs both actual browser workers through the packaging adapter, and compares the PNG pixels against native BC decode plus the independent scalar color-mask calculation. This cross-adapter proof is pending its first pushed CI run; prior texture/asset successes do not imply the composed path has passed.
-Missing: the real logical CASC reader connection, complete native image recipe inventory, source-manifest validation for actual game versions, original-font handling, BC encoding/swizzle where required, full HUD/skill/vault generation, generated C compilation, CASC overlay packing, destination inventory matching against the shell, main UI integration and real-game end-to-end proof.
+Missing: the real logical CASC reader connection, complete native image recipe inventory, source-manifest validation for actual game versions, original-font handling, BC encoding/swizzle where required, full HUD/skill/vault generation, complete `shell_stubs.data()` conversion to runtime `dm/derived.tsv`, CASC overlay packing, destination inventory matching against the shell, main UI integration and real-game end-to-end proof.
 
 ## Evidence and tests
 

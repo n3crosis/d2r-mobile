@@ -171,8 +171,13 @@ export function createAssetGeneratorAdapter({
           fail("ASSET_INPUT_LIMIT");
         inputTotal += bytes.byteLength;
         if (inputTotal > ASSET_ADAPTER_LIMITS.totalInputBytes) fail("ASSET_TOTAL_INPUT_LIMIT");
-        // Reject v61 here as well as in the current worker. Never silently substitute pixels.
-        if (bytes.length >= 6 && bytes[4] === 61 && bytes[5] === 0) fail("ASSET_V61_NOT_CONNECTED");
+        // v61 requires the explicit PNG-only composition, never a raw sprite substitute.
+        if (bytes.length >= 6 && bytes[4] === 61 && bytes[5] === 0) {
+          if (!enableV61Png || activeWorker.capabilities?.v61Png !== true)
+            fail("ASSET_V61_NOT_CONNECTED");
+          if (job.outputs.some(([name]) => name !== "frame.png"))
+            fail("ASSET_V61_SPRITE_UNSUPPORTED");
+        }
         const worker = activeWorker;
         const result = await abortable(
           () => worker.run("image-default-frame", bytes, { frame: job.frame }),

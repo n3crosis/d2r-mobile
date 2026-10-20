@@ -1,0 +1,59 @@
+name: Offline runtime sealed-worker proof
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "web/toolchain/offline-runtime-spike/**"
+      - "web/toolchain/texture-spike/**"
+      - "dm/gfx/nvn/nvn_tex.*"
+      - "dm/gfx/tex/nvn_*"
+      - "dm/third_party/bcdec/**"
+      - ".github/workflows/offline-runtime-checks.yml"
+  pull_request:
+    paths:
+      - "web/toolchain/offline-runtime-spike/**"
+      - "web/toolchain/texture-spike/**"
+      - "dm/gfx/nvn/nvn_tex.*"
+      - "dm/gfx/tex/nvn_*"
+      - "dm/third_party/bcdec/**"
+      - ".github/workflows/offline-runtime-checks.yml"
+permissions:
+  contents: read
+concurrency:
+  group: offline-runtime-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  synthetic-wasm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "22"
+      - name: Install pinned official Emscripten SDK
+        shell: bash
+        run: |
+          git clone --depth 1 --branch 4.0.20 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/texture-emsdk"
+          test "$(git -C "$RUNNER_TEMP/texture-emsdk" rev-parse HEAD)" = e4fe26ef59168ff44f4c23c466e497bf60b3411e
+          "$RUNNER_TEMP/texture-emsdk/emsdk" install 4.0.20
+          "$RUNNER_TEMP/texture-emsdk/emsdk" activate 4.0.20
+      - name: Build bounded texture WASM API
+        shell: bash
+        run: |
+          source "$RUNNER_TEMP/texture-emsdk/emsdk_env.sh"
+          bash web/toolchain/texture-spike/build-wasm.sh
+      - name: Prepare hashed offline runtime bundle
+        run: node web/toolchain/offline-runtime-spike/prepare-bundle.mjs
+      - name: Install browser proof tooling
+        shell: bash
+        run: |
+          npm install --prefix "$RUNNER_TEMP/offline-playwright" --no-audit --no-fund playwright@1.64.1
+          "$RUNNER_TEMP/offline-playwright/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Prove sealed worker conversion and blocked network without request interception
+        shell: bash
+        run: |
+          PLAYWRIGHT_ENTRY="$RUNNER_TEMP/offline-playwright/node_modules/playwright/index.mjs" \
+            node web/toolchain/offline-runtime-spike/browser-proof.mjs

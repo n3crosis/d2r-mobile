@@ -14,7 +14,7 @@ Any BKTR section, unknown crypto, ambiguous PFS0 selection, unsupported selected
 
 PFS0 directory handling now rejects duplicate names and overlapping nonempty members with sorted bounded metadata, and clears failed-open state. Expanded synthetic Chromium smoke compares input/member digests against independent WebCrypto, rejects duplicate/overlapping containers and unsigned Program headers, and retains existing tests. It does not supply a valid signed NCA or prove positive Program extraction. The linked GitHub run passed this expanded smoke.
 
-## Pending non-BKTR RomFS boundary (next CI batch)
+## Non-BKTR RomFS boundary
 
 `openRomfs(index)` returns a frozen `{size: bigint, readAt(offset: bigint,count: number)}` reader only after fixed retail RSA-PSS signature verification, all present section-header hashes and ranges, and the selected section's complete six-level IVFC hierarchy verification. Offsets are relative to the final IVFC data level, and reads are limited to 64 KiB. This synchronous dedicated-Worker reader can be passed to `indexRomfs` in `web/romfs-tree.mjs`, which awaits reads and validates the separate directory/file tree. A reader expires on another mount, inspect, open, key load, full-input hash or disposal. Do not mutate the mounted files or expose the underlying WASM module to other callers.
 
@@ -22,7 +22,7 @@ Supported layout is legacy IVFC `0x20000`, seven levels including the signed roo
 
 All BKTR, sparse, compressed, newer metadata-hash/skip-layer-hash extensions, unsupported IVFC layouts, ambiguous sections, and selected XTS encryption are rejected. This is not patch/base merging. Only the selected RomFS hierarchy is verified; opening RomFS does not verify the separate ExeFS payload. Normal CNMT whole-NCA inventory hashing and exact executable compatibility checks remain necessary.
 
-The new closed synthetic C fixture exercises the same IVFC verifier with six levels, independent fixed SHA256 root, partial-block padding, payload tampering, overlapping levels and oversized block exponents. It takes no caller-controlled root and cannot activate a production reader. Chromium smoke also requires unsigned Program RomFS rejection, preserving production signature policy. These new tests await the next CI run. No valid signed NCA positive fixture or actual game extraction has been tested, and this does not establish end-to-end NSP-to-IPA support.
+The new closed synthetic C fixture exercises the same IVFC verifier with six levels, independent fixed SHA256 root, partial-block padding, payload tampering, overlapping levels and oversized block exponents. It takes no caller-controlled root and cannot activate a production reader. Chromium smoke also requires unsigned Program RomFS rejection, preserving production signature policy. These tests passed [GitHub run 39396249923](https://github.com/n3crosis/d2r-mobile/actions/runs/39396249923), commit `582d586945db659a89094a0e8a4971196f330600`, including official WASM build and Chromium smoke. No valid signed NCA positive fixture or actual game extraction has been tested, and this does not establish end-to-end NSP-to-IPA support.
 
 Format evidence: pinned [hactool ivfc.h](https://github.com/SciresM/hactool/blob/1d64a83450e025622f3468c28fc4164dad2c5ef6/ivfc.h) and [nca.c](https://github.com/SciresM/hactool/blob/1d64a83450e025622f3468c28fc4164dad2c5ef6/nca.c). No additional upstream code or license dependency is introduced.
 

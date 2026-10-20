@@ -38,7 +38,7 @@ jobs:
           source "$RUNNER_TEMP/nsp-emsdk/emsdk_env.sh"
           bash web/toolchain/nsp-extract-spike/build-wasm.sh
       - name: Run synthetic container tests
-        run: node --test web/toolchain/nsp-extract-spike/container-boundary.test.mjs
+        run: node --test web/toolchain/nsp-extract-spike/*.test.mjs
       - name: Install browser test tools from official npm package
         shell: bash
         run: |
