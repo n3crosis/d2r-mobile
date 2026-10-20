@@ -21,9 +21,9 @@ const stages = [
   ],
   ["texture decoder and BC3 encoder", ".", "bash", ["web/toolchain/texture-spike/build-wasm.sh"]],
   ["Rust BC3 encoder", ".", "node", ["web/toolchain/texture-spike/build-bc3.mjs"]],
-  // 编译实验 ASTC 并在 Node 工作线程中检查 WASM；不加入发布载荷，不代表浏览器或设备验证。
-  // Compile experimental ASTC and check WASM in a Node worker; not deployed or browser/device proof.
-  ["experimental ASTC compile only", ".", "bash", ["web/toolchain/astc-encoder-wasm/build.sh"]],
+  // 编译可选 ASTC 并在 Node 工作线程中检查 WASM；默认不下载，不代表浏览器或设备验证。
+  // Compile optional ASTC and check WASM in a Node worker; omitted by default, not browser/device proof.
+  ["optional ASTC codec", ".", "bash", ["web/toolchain/astc-encoder-wasm/build.sh"]],
   ["experimental ASTC WASM smoke", ".", "node", ["web/toolchain/astc-encoder-wasm/wasm-smoke.mjs"]],
 
   ["Pinned PNG and CASC zlib codec", ".", "node", ["web/toolchain/png-codec-exact/build.mjs"]],

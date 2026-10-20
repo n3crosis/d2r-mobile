@@ -8,6 +8,7 @@ import {
 import { createRuntimeTransport } from "./transport.mjs";
 import { resolveShellProfile } from "../shell-profiles.mjs";
 import { SHADER_CATALOG_SOURCES } from "../shader-catalog-adapter.mjs";
+import { OPTIONAL_RUNTIME_ASSET_GROUPS } from "../runtime-asset-groups.mjs";
 import {
   readFile,
   writeFile,
@@ -22,6 +23,7 @@ import {
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { resolve, relative, sep } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 
 const web = resolve(fileURLToPath(new URL("../", import.meta.url)));
 const hash = (value) => createHash("sha256").update(value).digest("hex");
@@ -85,6 +87,37 @@ const safe = (name) => {
     throw new Error("Unsafe runtime path");
   return name;
 };
+/**
+ * 可选编解码器仍须提供固定源码、编译器和有界 SHA ABI 的构建凭据。
+ * Optional codecs still require pinned source/compiler receipts and the bounded SHA ABI build contract.
+ */
+export function validateOptionalCodecReceipts({
+  astcCommit,
+  astcCompiler,
+  shaReport,
+  shaSourcePin,
+}) {
+  if (
+    astcCommit.trim() !== "2ff200e08c98a61775351687ea2b5d38e455ad8b" ||
+    !/^emcc .* 4\.0\.20(?:\s|$)/.test(astcCompiler.split("\n")[0]) ||
+    shaSourcePin?.commit !== "1d64a83450e025622f3468c28fc4164dad2c5ef6" ||
+    !isDeepStrictEqual(shaReport?.source, shaSourcePin) ||
+    shaReport.schemaVersion !== 1 ||
+    shaReport.emsdk !== "4.0.20" ||
+    !/^emcc .*4\.0\.20\b/m.test(shaReport.compilerVersion ?? "") ||
+    shaReport.memoryBytes !== 262144 ||
+    shaReport.stackBytes !== 16384 ||
+    shaReport.chunkBytes !== 65536 ||
+    shaReport.hostImports !== 0 ||
+    shaReport.memoryGrowth !== false ||
+    !Number.isSafeInteger(shaReport.bytes) ||
+    shaReport.bytes < 1 ||
+    shaReport.bytes > maximumFile ||
+    !/^[a-f0-9]{64}$/.test(shaReport.sha256)
+  )
+    throw new Error("Invalid optional codec build receipt");
+  return { bytes: shaReport.bytes, sha256: shaReport.sha256 };
+}
 export async function assembleRuntime({ build } = {}) {
   if (
     build?.emscripten !== "4.0.20" ||
@@ -100,7 +133,7 @@ export async function assembleRuntime({ build } = {}) {
     seen = new Set(),
     contents = new Map();
   let total = 0;
-  async function add(path, bytes, source) {
+  async function add(path, bytes, source, optionalGroup) {
     safe(path);
     assertNoPythonRuntimeAsset(path);
     const key = path.toLowerCase();
@@ -115,9 +148,15 @@ export async function assembleRuntime({ build } = {}) {
     seen.add(key);
     const sha256 = hash(bytes);
     contents.set(`${sha256}:${bytes.length}`, { sha256, bytes: bytes.length, data: bytes });
-    assets.push({ path, bytes: bytes.length, sha256, source });
+    assets.push({
+      path,
+      bytes: bytes.length,
+      sha256,
+      source,
+      ...(optionalGroup ? { optionalGroup } : {}),
+    });
   }
-  async function copy(path, expected, destination = path) {
+  async function copy(path, expected, destination = path, optionalGroup) {
     safe(path);
     const file = resolve(web, path);
     const info = await lstat(file);
@@ -134,7 +173,7 @@ export async function assembleRuntime({ build } = {}) {
     const bytes = await readFile(file);
     if (expected && (bytes.length !== expected.bytes || hash(bytes) !== expected.sha256))
       throw new Error(`Runtime manifest mismatch: ${path}`);
-    await add(destination, bytes, path);
+    await add(destination, bytes, path, optionalGroup);
   }
   async function licenseDirectory(path) {
     for (const item of await readdir(resolve(web, path), { withFileTypes: true })) {
@@ -174,6 +213,18 @@ export async function assembleRuntime({ build } = {}) {
     // native binaries, build caches, key files or user-selected resources.
     for (const path of [
       "sealed-runtime/clients.mjs",
+      "astc-producer-client.mjs",
+      "astc-job-directory.mjs",
+      "archive-read-rpc.mjs",
+      "archive-reader.mjs",
+      "casc-logical-reader.mjs",
+      "casc-overlay-writer.mjs",
+      "checksum-verifier.mjs",
+      "extraction-job-adapter.mjs",
+      "extraction-worker-client.mjs",
+      "romfs-tree.mjs",
+      "toolchain/casc-overlay-js/overlay.mjs",
+      "vendor/spark-md5-3.0.2/spark-md5.mjs",
       "runtime-asset-groups.mjs",
       "toolchain/asset-runtime-js/payload-policy.mjs",
       "toolchain/asset-runtime-js/contract.mjs",
@@ -304,6 +355,33 @@ export async function assembleRuntime({ build } = {}) {
         `sealed-workers/${name}`,
       );
     }
+    const astc = "toolchain/astc-encoder-wasm/dist",
+      sha = "toolchain/sha256-stream-wasm",
+      shaSourcePin = JSON.parse(await readFile(resolve(web, `${sha}/source-pin.json`), "utf8")),
+      shaReport = JSON.parse(await readFile(resolve(web, `${sha}/dist/build-report.json`), "utf8")),
+      shaWasm = validateOptionalCodecReceipts({
+        astcCommit: await readFile(resolve(web, `${astc}/ARM-COMMIT.txt`), "utf8"),
+        astcCompiler: await readFile(resolve(web, `${astc}/compiler-version.txt`), "utf8"),
+        shaReport,
+        shaSourcePin,
+      });
+    for (const name of [
+      "bridge.c",
+      "sha256_config.h",
+      "adapter.mjs",
+      "build.mjs",
+      "source-pin.json",
+    ])
+      if (hash(await readFile(resolve(web, `${sha}/${name}`))) !== shaReport.localSha256?.[name])
+        throw new Error("SHA-256 local source receipt mismatch");
+    for (const path of OPTIONAL_RUNTIME_ASSET_GROUPS["legacy-astc"]) {
+      const source = path.startsWith("sealed-workers/") ? `runtime-build/.build/${path}` : path;
+      let expected;
+      if (path === `${sha}/dist/sha256.wasm`) expected = shaWasm;
+      else if ([`${sha}/dist/LICENSE`, `${sha}/dist/apache-2.0.txt`].includes(path))
+        expected = shaSourcePin.files[`mbedtls/${path.split("/").at(-1)}`];
+      await copy(source, expected, path, "legacy-astc");
+    }
     // 大外壳文件各自生成独立传输载荷；客户端只选择需要的配置。
     // Large shell archives receive separate transport payloads; clients select only the needed profile.
     for (const input of SHELL_BUILD_INPUTS) {
@@ -356,6 +434,12 @@ export async function assembleRuntime({ build } = {}) {
         spirvCross: {
           sealedEntry: "sealed-workers/cross-worker.mjs",
           entry: "toolchain/spirv-cross-spike/wwwroot/worker.mjs",
+          sealedJobAdapter: false,
+        },
+        astcProducer: {
+          sealedEntry: "sealed-workers/astc-producer-worker.mjs",
+          entry: "sealed-workers/astc-producer-worker.mjs",
+          optionalGroup: "legacy-astc",
           sealedJobAdapter: false,
         },
       },

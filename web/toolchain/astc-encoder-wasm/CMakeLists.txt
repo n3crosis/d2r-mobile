@@ -1,5 +1,5 @@
-# 独立标量 WASM 库，不是生产构建目标。
-# Standalone scalar WASM library, not a production build target.
+# 标量 WASM 库，仅供显式实验选项的可选闭包；不代表浏览器或设备验证。
+# Scalar WASM library for an explicit experimental optional closure, not browser/device validation.
 # 基于 Arm 5.0.0 的静态库目标与 Emscripten 有界内存设置。
 # Based on the Arm 5.0.0 static library target and bounded Emscripten memory settings.
 cmake_minimum_required(VERSION 3.20)

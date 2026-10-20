@@ -4,18 +4,18 @@ English: [WEB_DELIVERY_PROGRESS.md](WEB_DELIVERY_PROGRESS.md)
 
 ## 最近一次已验证的发布
 
-[提交 69b5955](https://github.com/n3crosis/d2r-mobile/commit/69b59551e20fef559fab79f302b8ebf5d82c2ab1)
-通过[完整 Verify 构建](https://github.com/n3crosis/d2r-mobile/actions/runs/39481188951)，
-并于 2026-10-20 19:20 UTC 发布到既有的私有
+[提交 26e4da7](https://github.com/n3crosis/d2r-mobile/commit/26e4da79b111d27afff781f1f77c0bae7ff3d6ac)
+通过[完整 Verify 构建](https://github.com/n3crosis/d2r-mobile/actions/runs/39487373613)，
+并于 2026-10-20 20:00 UTC 发布到既有的私有
 [预览站点](https://d2r-ipa-packager.nicekrill34.chatgpt.site)。
-已验证产物为 22,005,534 字节（压缩 ZIP 约 21.0 MiB，包含两种外壳目标），包含 .NET，
+已验证产物为 22,015,812 字节（压缩 ZIP 约 21.0 MiB，包含两种外壳目标），包含 .NET，
 不含 Python 运行时、包或脚本。这是归档大小，不是浏览器内存测量。
 
 该版本实现单目录本体/更新/可选 DLC 转换、可选 `title.keys` 与内嵌通用票据处理、
 资源子目录输出和有上限的 Blob IPA 下载。目标为 Windows/macOS 桌面 Chromium。
 页面可选择 iOS 26 或 iOS 18；两者仍要求 BC 纹理支持。
-每次仅下载所选外壳及通用运行时：iOS 26 为 16,966,916 字节，iOS 18 为
-16,962,999 字节（约 16.18 MiB，不含前端文件）。ASTC 补充包集成仍是独立工作。
+每次仅下载所选外壳及通用运行时：iOS 26 为 16,972,563 字节，iOS 18 为
+16,968,646 字节（约 16.19 MiB，不含前端文件）。ASTC 补充包集成仍是独立工作。
 见[实现与验收](WEB_IPA_PACKAGER.zh-CN.md)。
 
 构建与发布成功不等于真实游戏输入转换、另行签名后的设备运行、实际游戏或内存/速度收益已验证。

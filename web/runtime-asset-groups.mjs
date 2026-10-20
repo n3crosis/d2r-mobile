@@ -2,6 +2,7 @@
 // Partition optional public assets by fixed compiler outputs; common dependencies and shells cannot become optional.
 export const OPTIONAL_RUNTIME_ASSET_GROUPS = Object.freeze({
   "legacy-astc": Object.freeze([
+    "sealed-workers/astc-producer-worker.mjs",
     "toolchain/astc-encoder-wasm/dist/astc-encoder.mjs",
     "toolchain/astc-encoder-wasm/dist/astc-encoder.wasm",
     "toolchain/astc-encoder-wasm/dist/ARM-LICENSE.txt",
@@ -47,14 +48,19 @@ export function validateRuntimeAssetGroups(assets) {
   return ownership;
 }
 
-export function selectRuntimeAssetGroups(assets, optionalGroups = []) {
-  validateRuntimeAssetGroups(assets);
+export function validateRuntimeGroupSelection(optionalGroups = []) {
   if (
     !Array.isArray(optionalGroups) ||
     new Set(optionalGroups).size !== optionalGroups.length ||
     optionalGroups.some((group) => !Object.hasOwn(OPTIONAL_RUNTIME_ASSET_GROUPS, group))
   )
     throw new Error("Invalid optional runtime group selection");
+  return Object.freeze([...optionalGroups]);
+}
+
+export function selectRuntimeAssetGroups(assets, optionalGroups = []) {
+  validateRuntimeAssetGroups(assets);
+  optionalGroups = validateRuntimeGroupSelection(optionalGroups);
   for (const group of optionalGroups)
     if (!assets.some((asset) => asset.optionalGroup === group))
       throw new Error("Selected optional runtime group is unavailable");

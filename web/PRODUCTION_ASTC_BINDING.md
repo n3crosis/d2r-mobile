@@ -30,3 +30,25 @@ The packager binds after asset generation and before shell loading/assembly. Ord
 The getter, staged pack hash and archive allocation are trusted internal contracts, not user authentication. This layer cannot establish path-to-CFT associations, texture conversion completeness, source pack integrity or native-device compatibility. Separate pack export and source disposal remain caller responsibilities.
 
 Focused synthetic tests cover default behavior, exact contract extension, immutable original profile, unexpected/partial/unbound paths, external-data rejection, exact stream sizes, producer errors, mode/buffer bounds, cancellation, pack JSON mismatch and bounded draining. Existing production-profile tests remain passing. No browser, game, device or end-to-end installation proof is claimed.
+
+## Optional producer orchestration
+
+`prepareBrowserPackager({legacyAstc: true})` preloads the closed `legacy-astc`
+group during public bootstrap; default false stays unchanged. A preinitialized
+one-shot producer consumes authenticated extraction capabilities before the asset
+adapter is constructed. Only finalized `{pack,records}` metadata enters asset
+generation, never external pack bytes or index TSV.
+
+Implementation limits: 256 MiB per encoded/decoded record, 8 GiB staged pack,
+4096 blocks per encoder batch. These are limits, not native parity evidence.
+Oversized records fail rather than being skipped; original error causes retain
+size/quota diagnostics.
+
+The File-backed pack exports after resources and before opening the IPA sink,
+into a fresh owned child of the already authorized input directory. `legacyPack`
+outcomes remain separate from `resources` and IPA committed state. Progress uses
+`stage: "legacy-pack"` with exporter state and byte/file counts. Export failure
+prevents IPA completion. Previously completed folders can remain after a later
+failure and are reported separately. The producer lease closes after job cleanup;
+cleanup failures remain observable without replacing the primary cause. Synthetic
+tests do not prove real-browser, real-game or native compatibility.

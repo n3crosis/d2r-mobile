@@ -7,6 +7,7 @@ import {
   runtimeContentKey,
   selectRuntimeAssetGroups,
   validateRuntimeAssetGroups,
+  validateRuntimeGroupSelection,
   validateRuntimeTransportGroups,
 } from "../runtime-asset-groups.mjs";
 
@@ -61,6 +62,14 @@ test("unknown, malformed, duplicate and unavailable requested groups reject", ()
   ])
     assert.throws(() => selectRuntimeAssetGroups(optional(), selection), /group selection/);
   assert.throws(() => selectRuntimeAssetGroups([common], ["legacy-astc"]), /unavailable/);
+});
+
+test("trusted optional selection is snapshotted before asynchronous setup", () => {
+  const requested = ["legacy-astc"],
+    selected = validateRuntimeGroupSelection(requested);
+  requested.length = 0;
+  assert.deepEqual(selected, ["legacy-astc"]);
+  assert.ok(Object.isFrozen(selected));
 });
 
 test("shared common content wins independently of asset order", () => {

@@ -22,6 +22,7 @@ import { createProductionShaderAdapter } from "./production-shaders.mjs";
 import { createBrowserBlobOutputAdapters, IPA_DOWNLOAD_LIMITS } from "./browser-blob-output.mjs";
 import { planStagedZip } from "./staged-zip-validator.mjs";
 import { exportRomfsResources, ResourceExportError } from "./resource-folder-export.mjs";
+import { exportLegacyDevicePack, LegacyPackExportError } from "./legacy-device-pack-export.mjs";
 import { deriveD2rRuntimeContentMode } from "./d2r-runtime-content-mode.mjs";
 import { runPackagingJob, PackagingJobError } from "./packaging-job.mjs";
 import {
@@ -29,14 +30,22 @@ import {
   sanitizeResourceProgress,
   resourceProgressLabel,
   packagingActivity,
+  isLegacyAstcDiagnosticCode,
 } from "./packaging-diagnostics.mjs";
 import { inspectGuestTarget, inspectGuestPlist } from "./guest-target-stream.mjs";
+/**
+ * 可选补充包在公开引导阶段选择，私有输入开始后不再联网。
+ * Select the optional pack during public bootstrap; no networking after private inputs begin.
+ * @param {{manifestSha256?: string, signal?: AbortSignal, onProgress?: (event: any) => void, profileId?: string, legacyAstc?: boolean}} [options]
+ */
 export async function prepareBrowserPackager({
   manifestSha256,
   signal,
   onProgress,
   profileId,
+  legacyAstc = false,
 } = {}) {
+  if (typeof legacyAstc !== "boolean") throw new Error("LEGACY_ASTC_OPTION");
   const selectedProfile = resolveShellProfile(profileId);
   if (
     !globalThis.isSecureContext ||
@@ -49,16 +58,20 @@ export async function prepareBrowserPackager({
     baseUrl: "./runtime/",
     profileId: selectedProfile.id,
     manifestSha256,
+    ...(legacyAstc ? { optionalGroups: ["legacy-astc"] } : {}),
     signal,
     onProgress,
   });
   let profile, program, assets, shaders, shellVariantBytes;
   let closed = false;
+  let deferRuntimeClose = false;
+  let closePromise;
   const close = () => {
-    if (closed) return;
+    if (closed) return closePromise;
     closed = true;
     let failure,
       failed = false;
+    const pending = [];
     // 即使某项清理失败，也继续释放其余运行时及输出缓冲区。
     // Release remaining runtimes and output buffers even if one cleanup fails.
     for (const release of [
@@ -66,11 +79,14 @@ export async function prepareBrowserPackager({
       () => assets?.dispose(),
       () => shaders?.dispose(),
       () => profile?.close(),
-      () => runtime.close(),
+      () => {
+        if (!deferRuntimeClose) return runtime.close();
+      },
       () => shellVariantBytes?.fill(0),
     ]) {
       try {
-        release();
+        const released = release();
+        if (released && typeof released.then === "function") pending.push(released);
       } catch (error) {
         if (!failed) {
           failure = error;
@@ -79,9 +95,22 @@ export async function prepareBrowserPackager({
       }
     }
     shellVariantBytes = profile = program = assets = shaders = undefined;
+    if (pending.length) {
+      closePromise = Promise.allSettled(pending).then((outcomes) => {
+        const failures = [
+          ...(failed ? [failure] : []),
+          ...outcomes.filter((value) => value.status === "rejected").map((value) => value.reason),
+        ];
+        if (failures.length) throw new AggregateError(failures, "PACKAGER_CLEANUP_FAILED");
+      });
+      closePromise.catch(() => undefined);
+      return closePromise;
+    }
     if (failed) throw failure;
   };
   try {
+    if (legacyAstc && typeof runtime.createAstcProducerClient !== "function")
+      throw new Error("LEGACY_ASTC_UNAVAILABLE");
     profile = await loadProductionProfile(runtime, { signal, profileId: selectedProfile.id });
     const extraction = createExtractionJobAdapter({
       createWorker: runtime.createExtractionWorker,
@@ -97,7 +126,7 @@ export async function prepareBrowserPackager({
       verifyProvenance: readAuthenticatedProgramModules,
       createWorker: runtime.createProgramWorker,
     });
-    assets = createProductionAssetAdapter({ runtime, profile });
+    if (!legacyAstc) assets = createProductionAssetAdapter({ runtime, profile });
     shaders = createProductionShaderAdapter({
       runtime,
       catalog: profile.catalog,
@@ -120,7 +149,35 @@ export async function prepareBrowserPackager({
         )
           throw new Error("INPUT_FOLDER_WRITE_PERMISSION_REQUIRED");
         used = true;
-        let authenticated, selected, output, resources, resourceOutcome;
+        let authenticated,
+          selected,
+          output,
+          resources,
+          resourceOutcome,
+          finalizedPack,
+          legacyPack,
+          legacyPackOutcome;
+        const producer = legacyAstc ? runtime.createAstcProducerClient() : undefined;
+        deferRuntimeClose = legacyAstc;
+        const producerLease = producer
+          ? {
+              async close() {
+                const failures = [];
+                try {
+                  await producer.close();
+                } catch (error) {
+                  failures.push(error);
+                }
+                try {
+                  await runtime.close();
+                } catch (error) {
+                  failures.push(error);
+                }
+                if (failures.length)
+                  throw new AggregateError(failures, "LEGACY_ASTC_RELEASE_FAILED");
+              },
+            }
+          : undefined;
         const archiveFormat = "zip32";
         const maxOutputBytes = IPA_DOWNLOAD_LIMITS.maxOutputBytes;
         const adapters = {
@@ -164,6 +221,20 @@ export async function prepareBrowserPackager({
                 resourceOutcome = sanitizeResourceOutcome(error.report);
               throw error;
             }
+            if (finalizedPack) {
+              try {
+                legacyPack = await exportLegacyDevicePack({
+                  finalizedPack,
+                  outputDirectoryHandle: input,
+                  signal,
+                  onProgress: (progress) => onProgress?.({ stage: "legacy-pack", ...progress }),
+                });
+                legacyPackOutcome = legacyPack;
+              } catch (error) {
+                if (error instanceof LegacyPackExportError) legacyPackOutcome = error.report;
+                throw error;
+              }
+            }
             output = createBrowserBlobOutputAdapters({ archiveFormat, maxOutputBytes });
             return output.createOutput(context);
           },
@@ -171,6 +242,22 @@ export async function prepareBrowserPackager({
           generateProgram: async (context) =>
             (await program.generateProgram(context)).filter((e) => allowed(e.path)),
           async generateAssets(context) {
+            if (producer) {
+              const root = await navigator.storage.getDirectory();
+              context.signal.throwIfAborted();
+              finalizedPack = await producer.produce(context.extracted, context.selection, {
+                root,
+                ...LEGACY_ASTC_PRODUCTION_LIMITS,
+                signal: context.signal,
+                onProgress: createLegacyAstcDiagnosticObserver(onProgress, context.signal),
+              });
+              context.signal.throwIfAborted();
+              assets = createProductionAssetAdapter({
+                runtime,
+                profile,
+                prebuiltPack: { pack: finalizedPack.pack, records: finalizedPack.records },
+              });
+            }
             const entries = await assets.generateAssets(context);
             const binding = assets.getAstcOutputBinding?.();
             const astcEntries = selectProductionAstcEntries(entries, binding);
@@ -263,7 +350,7 @@ export async function prepareBrowserPackager({
             try {
               await extraction.cleanup(context);
             } finally {
-              close();
+              await close();
             }
           },
         };
@@ -284,32 +371,56 @@ export async function prepareBrowserPackager({
         ];
         let result;
         try {
-          result = await runPackagingJob({
-            input,
-            selectedNspNames,
-            adapters,
-            signal,
-            onProgress,
-            archiveFormat,
-            maxOutputBytes,
-            selectionOptions: { contentMode: profile.contentMode },
-            secretLifetime: "archive",
-            concurrency: 1,
-          });
+          result = await withLegacyAstcProducerLease(producerLease, () =>
+            runPackagingJob({
+              input,
+              selectedNspNames,
+              adapters,
+              signal,
+              onProgress,
+              archiveFormat,
+              maxOutputBytes,
+              selectionOptions: { contentMode: profile.contentMode },
+              secretLifetime: "archive",
+              concurrency: 1,
+            }),
+          );
         } catch (error) {
-          if (error instanceof PackagingJobError && resourceOutcome)
-            throw new PackagingJobError(
+          if (
+            error instanceof PackagingJobError &&
+            (resourceOutcome || legacyPackOutcome || legacyAstc)
+          ) {
+            const reported = new PackagingJobError(
               error.cause,
-              Object.freeze({ ...error.report, resources: resourceOutcome }),
+              Object.freeze({
+                ...error.report,
+                ...(legacyAstc && legacyAstcFailureDetailCode(error)
+                  ? { detailCode: legacyAstcFailureDetailCode(error) }
+                  : {}),
+                ...(resourceOutcome ? { resources: resourceOutcome } : {}),
+                ...(legacyPackOutcome ? { legacyPack: legacyPackOutcome } : {}),
+              }),
             );
+            if (error.cleanupErrors) reported.cleanupErrors = error.cleanupErrors;
+            throw reported;
+          }
           throw error;
         }
-        return { ...result, resources, download: output.getDownload() };
+        return {
+          ...result,
+          resources,
+          ...(legacyPack ? { legacyPack } : {}),
+          download: output.getDownload(),
+        };
       },
       close,
     });
   } catch (error) {
-    close();
+    try {
+      await close();
+    } catch (cleanup) {
+      throw new AggregateError([error, cleanup], "PACKAGER_SETUP_CLEANUP_FAILED", { cause: error });
+    }
     throw error;
   }
 }
@@ -336,4 +447,104 @@ export function selectProductionAstcEntries(entries, binding) {
   if (binding !== undefined && (!binding || selected.length !== 11))
     throw new Error("PRODUCTION_ASTC_INVENTORY");
   return selected;
+}
+
+// 显式限制单记录和暂存包大小；补充包始终独立于 IPA。
+// Explicit per-record and staged-pack limits; supplemental data always stays outside the IPA.
+export const LEGACY_ASTC_PRODUCTION_LIMITS = Object.freeze({
+  maxEncodedBytes: 256 * 1024 * 1024,
+  maxDecodedBytes: 256 * 1024 * 1024,
+  maxPackBytes: 8 * 1024 * 1024 * 1024,
+  batchBlocks: 4096,
+});
+
+// 作业清理结束后才释放文件租约；清理错误不能掩盖原始失败。
+// Release the File lease only after job cleanup; cleanup failures must not hide the primary failure.
+export async function withLegacyAstcProducerLease(producer, operation) {
+  let result, primary;
+  let failed = false;
+  try {
+    result = await operation();
+  } catch (error) {
+    primary = error;
+    failed = true;
+  }
+  try {
+    await producer?.close();
+  } catch (cleanup) {
+    if (!failed) {
+      const error = new PackagingJobError(
+        cleanup,
+        Object.freeze({
+          status: "failed",
+          code: "STAGE_FAILED",
+          stage: "cleanup",
+          committed: result?.committed === true,
+          cleanupCodes: Object.freeze(["LEGACY_ASTC_CLEANUP_FAILED"]),
+        }),
+      );
+      error.cleanupErrors = Object.freeze([cleanup]);
+      throw error;
+    }
+    const combined = new AggregateError([primary, cleanup], "LEGACY_ASTC_CLEANUP_FAILED", {
+      cause: primary,
+    });
+    if (primary instanceof PackagingJobError) {
+      const error = new PackagingJobError(
+        primary.cause,
+        Object.freeze({
+          ...primary.report,
+          cleanupCodes: Object.freeze([
+            ...(primary.report.cleanupCodes ?? []),
+            "LEGACY_ASTC_CLEANUP_FAILED",
+          ]),
+        }),
+      );
+      error.cleanupErrors = Object.freeze([cleanup]);
+      throw error;
+    }
+    throw combined;
+  }
+  if (failed) throw primary;
+  return result;
+}
+
+// 只转发封闭阶段及实际工作计数；多遍处理字节不是总进度，观察者不能改变转换结果。
+// Forward only closed phases and actual work counts; multi-pass bytes are not total progress and observers cannot affect conversion.
+export function createLegacyAstcDiagnosticObserver(onDiagnostic, signal) {
+  return (progress) => {
+    if (signal?.aborted || typeof onDiagnostic !== "function") return;
+    if (!progress || !["preparing", "converting", "complete"].includes(progress.phase)) return;
+    const count = (value) => Number.isSafeInteger(value) && value >= 0;
+    if (
+      !count(progress.processedBytes) ||
+      !count(progress.completedBlocks) ||
+      (progress.completedRecords !== undefined && !count(progress.completedRecords))
+    )
+      return;
+    const diagnostic = Object.freeze({
+      kind: "legacy-astc",
+      phase: progress.phase,
+      processedBytes: progress.processedBytes,
+      completedBlocks: progress.completedBlocks,
+      ...(progress.completedRecords === undefined
+        ? {}
+        : { completedRecords: progress.completedRecords }),
+    });
+    try {
+      Promise.resolve(
+        onDiagnostic(Object.freeze({ stage: "assets", state: "running", diagnostic })),
+      ).catch(() => undefined);
+    } catch {
+      /* 观察者错误不影响任务。 | Observer failures do not affect the job. */
+    }
+  };
+}
+
+// 只从生产器的直接原因提升封闭诊断，不递归搜索或渲染原始错误。
+// Promote closed diagnostics only from the producer's direct cause; never recursively search or render raw errors.
+export function legacyAstcFailureDetailCode(error) {
+  return error instanceof PackagingJobError && isLegacyAstcDiagnosticCode(error.cause?.detailCode)
+    ? error.cause.detailCode
+    : undefined;
 }

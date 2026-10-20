@@ -594,8 +594,8 @@ export const catalog = Object.freeze({
     "正在保存游戏资源：%s/%s 个文件；%s/%s MB"
   ],
   "dmWebCompatibility": [
-    "IPA target: iOS 26+ with BC texture support. Older-GPU ASTC output is not available. Signing is separate.",
-    "IPA 目标：iOS 26 或更新版本，且 GPU 支持 BC 纹理。暂不生成旧 GPU 所需的 ASTC 包；签名需另行完成。"
+    "IPA target: iOS 26+. Default output requires BC texture support. Signing is separate.",
+    "IPA 目标：iOS 26 或更新版本；默认需要 GPU 支持 BC 纹理。签名需另行完成。"
   ],
   "dmWebTarget": [
     "IPA target",
@@ -614,7 +614,35 @@ export const catalog = Object.freeze({
     "切换目标会重新加载页面；请先选择目标，再选择文件夹。"
   ],
   "dmWebCompatibility18": [
-    "IPA target: iOS 18+, still requiring BC texture support. Not a guarantee for every device. ASTC output is unavailable. Signing is separate.",
-    "IPA 目标：iOS 18 或更新版本，仍需 GPU 支持 BC 纹理；不代表所有设备均可运行。暂不提供 ASTC 包；签名需另行完成。"
+    "IPA target: iOS 18+. Default output requires BC texture support. Not a guarantee for every device. Signing is separate.",
+    "IPA 目标：iOS 18 或更新版本；默认需要 GPU 支持 BC 纹理。不代表所有设备均可运行；签名需另行完成。"
+  ],
+  "dmWebLegacyOption": [
+    "Older-GPU option (experimental)",
+    "较旧 GPU 选项（实验性）"
+  ],
+  "dmWebLegacyHelp": [
+    "Changing this reloads the page. Also requires a separate Legacy Device Pack export. Device compatibility is not verified.",
+    "切换会重新加载页面。还需单独导出 Legacy Device Pack（旧设备资源包）；尚未验证设备兼容性。"
+  ],
+  "dmWebLegacyPreparing": [
+    "Legacy Device Pack: preparing; exported separately from the IPA.",
+    "Legacy Device Pack：正在准备；与 IPA 分开导出。"
+  ],
+  "dmWebLegacySaving": [
+    "Legacy Device Pack: saving %s / %s.",
+    "Legacy Device Pack：正在保存 %s / %s。"
+  ],
+  "dmWebLegacyComplete": [
+    "Legacy Device Pack saved to %s. Copy it alongside the game resources into the app’s Files folder; this does not mean the IPA is complete.",
+    "Legacy Device Pack 已保存到 %s。请与游戏资源一同复制到应用的文件夹；这不代表 IPA 已完成。"
+  ],
+  "dmWebLegacyIncomplete": [
+    "Legacy Device Pack is not complete. Do not use a partial folder; reload to retry.",
+    "Legacy Device Pack 未完成。请勿使用不完整的文件夹；重新加载后重试。"
+  ],
+  "dmWebLegacyConverting": [
+    "Legacy Device Pack: processed %d blocks; %s MB of work (multiple passes).",
+    "Legacy Device Pack：已处理 %d 个块；处理工作量 %s MB（含多轮处理）。"
   ]
 });

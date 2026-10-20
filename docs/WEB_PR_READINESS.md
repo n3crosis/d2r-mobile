@@ -6,7 +6,7 @@ This supplements, and does not replace or relax, [CONTRIBUTING.md](../CONTRIBUTI
 and the [PR template](../.github/PULL_REQUEST_TEMPLATE.md). This is not a claim
 that a PR is ready. Mark an item only after checking the exact change and recording
 the revision, platform and actual output. Only the source checks explicitly recorded below are reported as run.
-The full browser build and publication at 69b5955 passed; later edits require their
+The full browser build and publication at 26e4da7 passed; later edits require their
 own checks. Game/device tests and screenshots remain pending. No PR has been opened.
 
 ## What changed / why
@@ -38,7 +38,7 @@ coverage for every historical browser spike, comment or document.
 No game files needed:
 
 - [x] `python3 dm/i18n/scan_literals.py` — `I18N OK：中文字面量 459 条全在白名单（105 行），其余走中英表`
-- [x] `python3 dm/ios/tools/dm_i18n.py --check` — `dm_i18n OK 540 条`
+- [x] `python3 dm/ios/tools/dm_i18n.py --check` — `dm_i18n OK 547 条`
 
 Game files and a workspace prepared by `./setup.sh` needed:
 

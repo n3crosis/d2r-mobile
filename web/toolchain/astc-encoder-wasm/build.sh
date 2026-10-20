@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # 构建固定的官方源码，不下载或执行预编译二进制文件。
 # Build official pinned source, never download or execute prebuilt binaries.
+# 产物用于显式实验选项的可选闭包，构建成功不代表浏览器或设备验证。
+# Artifacts serve an explicit experimental optional closure; build success is not browser/device validation.
 # 基于官方 Arm 5.0.0 源码及项目固定的 Emscripten 4.0.20。
 # Based on official Arm 5.0.0 source and project-pinned Emscripten 4.0.20.
 set -euo pipefail

@@ -46,11 +46,28 @@ async function runWorker() {
       throw new Error("XHR forbidden in local WASM smoke");
     }
   };
-  const { default: createModule } = await import("./dist/astc-encoder.mjs");
+  // 不透明 data URL 模拟 Blob 的不可解析相对基址，但不宣称真实浏览器验证。
+  // An opaque data URL exercises Blob-like relative-base rejection, without claiming browser verification.
+  const { default: createModule } = await import(
+    `data:text/javascript;base64,${javascript.toString("base64")}`
+  );
   assert.equal(typeof createModule, "function");
+  let instantiations = 0;
   const module = await createModule({
     wasmBinary: new Uint8Array(wasm.buffer, wasm.byteOffset, wasm.byteLength),
+    locateFile(name) {
+      assert.equal(name, "astc-encoder.wasm");
+      return "data:application/wasm;base64,";
+    },
+    instantiateWasm(imports, receive) {
+      const compiled = new WebAssembly.Module(wasm),
+        instance = new WebAssembly.Instance(compiled, imports);
+      instantiations++;
+      receive(instance, compiled);
+      return instance.exports;
+    },
   });
+  assert.equal(instantiations, 1);
   for (const name of ["_malloc", "_free", "_astc_output_size", "_astc_encode_rgba"])
     assert.equal(typeof module[name], "function", `Missing ABI export ${name}`);
   assert.equal(module._astc_output_size(0, 4), 0);
@@ -124,6 +141,7 @@ async function runWorker() {
   return {
     kind: "actual-wasm-encoding-node-worker-test-shims",
     browserVerified: false,
+    opaqueModuleUrlVerified: true,
     decodeVerified: false,
     fixtureCount: fixtures.length,
     encodeCalls: fixtures.length * 2,

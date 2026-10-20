@@ -99,9 +99,17 @@ export function packagingActivity(event) {
     t({ running: "dmWebRunning", complete: "dmWebComplete", failed: "dmWebFailed" }[state]),
   );
 }
+// 只显示四个固定的补充包失败代码，绝不显示工作线程原始文本。
+// Show only four fixed supplemental-pack failure codes, never raw worker text.
+export function isLegacyAstcDiagnosticCode(code) {
+  return ["STORAGE_QUOTA", "SIZE_LIMIT", "INTEGRITY_FAILED", "CODEC_FAILED"].includes(code);
+}
 export function packagingFailureSummary(report) {
   if (report?.code === "CANCELLED") return t("dmWebCancelled");
-  const code = isExtractionDiagnosticCode(report?.detailCode) ? report.detailCode : null;
+  const code =
+    isExtractionDiagnosticCode(report?.detailCode) || isLegacyAstcDiagnosticCode(report?.detailCode)
+      ? report.detailCode
+      : null;
   const stage = Object.hasOwn(stages, report?.stage)
     ? t(stages[report.stage])
     : t("dmWebLocalPackaging");
@@ -109,7 +117,7 @@ export function packagingFailureSummary(report) {
     "dmWebFailureSummary",
     stage,
     code ? ` [${code}]` : "",
-    code ? `${t(reasons[code])} ` : "",
+    code && Object.hasOwn(reasons, code) ? `${t(reasons[code])} ` : "",
   );
 }
 // 仅使用生成的目标名称；不复制源文件名或任意嵌套报告。

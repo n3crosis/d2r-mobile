@@ -170,3 +170,31 @@ test("module factory rejects growable memory before accepting an ABI", async () 
   ]);
   await assert.rejects(createSha256FileHasher(module), /memory must not grow/);
 });
+
+// 进度只包含完成散列的单调计数；同步及异步观察者失败不能破坏结果或泄漏所有者。
+// Progress contains only monotonic completed-hash counts; sync/async observer failures cannot corrupt results or leak owners.
+test("mock ABI: completed hash progress is monotonic and observer failures are isolated", async () => {
+  const f = fixture(),
+    bytes = new Uint8Array(65537),
+    events = [],
+    evidence = [];
+  const result = await f.hasher.hashFile(new Blob([bytes]), {
+    onProgress: (value) => {
+      evidence.push([Object.isFrozen(value), f.calls.at(-1)[0]]);
+      events.push(value);
+      if (events.length === 1) throw new Error("observer");
+      return Promise.reject(new Error("observer async"));
+    },
+  });
+  assert.deepEqual(events, [
+    { bytesHashed: 65536, totalBytes: 65537 },
+    { bytesHashed: 65537, totalBytes: 65537 },
+  ]);
+  assert.deepEqual(evidence, [
+    [true, "update"],
+    [true, "update"],
+  ]);
+  assert.equal(result.sha256, expected(bytes));
+  assert.equal(f.active, 0);
+  await assert.rejects(f.hasher.hashFile(new Blob(), { onProgress: true }), /observer/);
+});

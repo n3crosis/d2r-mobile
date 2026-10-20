@@ -53,13 +53,15 @@ export function createSha256FileHasherFromAbi(wasm) {
     return new Uint8Array(wasm.memory.buffer, pointer, length);
   };
   return Object.freeze({
-    async hashFile(file, { signal } = {}) {
+    async hashFile(file, { signal, onProgress } = {}) {
       if (!(file instanceof Blob)) throw new TypeError("Expected File or Blob");
       const size = file.size;
       if (!Number.isSafeInteger(size) || size < 0)
         throw new TypeError("Expected bounded File or Blob");
       if (signal !== undefined && !(signal instanceof AbortSignal))
         throw new TypeError("Expected AbortSignal");
+      if (onProgress !== undefined && typeof onProgress !== "function")
+        throw new TypeError("Expected progress observer");
       check(signal);
       if (current) throw new Error("SHA-256 instance is busy");
       const owner = wasm.sha_begin() >>> 0;
@@ -93,6 +95,17 @@ export function createSha256FileHasherFromAbi(wasm) {
           if (wasm.sha_update(owner, length) !== 0) throw new Error("SHA-256 update failed");
           bytesHashed += length;
           offset += length;
+          // 仅在实际散列更新完成后报告计数；观察者失败不影响散列所有权。
+          // Report counts only after actual hash updates; observer failures never affect hash ownership.
+          if (onProgress) {
+            try {
+              Promise.resolve(onProgress(Object.freeze({ bytesHashed, totalBytes: size }))).catch(
+                () => {},
+              );
+            } catch {
+              /* 保留散列状态。 | Preserve hash state. */
+            }
+          }
           // 给任务队列让出执行机会，使大文件取消可在有限块之间生效。
           // Yield to the task queue so large-file cancellation is observable between bounded chunks.
           if (bytesHashed % (SHA256_CHUNK_BYTES * 16) === 0)

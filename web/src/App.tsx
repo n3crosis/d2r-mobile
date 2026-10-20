@@ -51,6 +51,10 @@ export default function App() {
   const [target] = useState(() =>
     new URLSearchParams(window.location.search).get("target") === "ios18" ? "ios18" : "ios26",
   );
+  const [legacyAstc] = useState(
+    () => new URLSearchParams(window.location.search).get("legacyAstc") === "1",
+  );
+  const [legacyStatus, setLegacyStatus] = useState("");
   const profileId = target === "ios18" ? "v1.0.18-ios18" : DEFAULT_SHELL_PROFILE_ID;
   const [hasSelectedFolder, setHasSelectedFolder] = useState(false);
   useEffect(() => {
@@ -155,6 +159,7 @@ export default function App() {
     void prepareBrowserPackager({
       manifestSha256: digest,
       profileId,
+      legacyAstc,
       signal: controller.signal,
       onProgress: (event: LoadingProgress) => {
         if (!controller.signal.aborted) {
@@ -200,7 +205,7 @@ export default function App() {
       packager.current?.close();
       if (downloadUrl.current) URL.revokeObjectURL(downloadUrl.current);
     };
-  }, [appendActivity, profileId]);
+  }, [appendActivity, profileId, legacyAstc]);
   async function choose() {
     if (!ready || busy || !browser.showDirectoryPicker) return;
     const previousStatus = status;
@@ -283,6 +288,7 @@ export default function App() {
     setRomfsProgress(null);
     setReady(false);
     setStatus(t("dmWebStarting"));
+    if (legacyAstc) setLegacyStatus(t("dmWebLegacyPreparing"));
     appendActivity(t("dmWebGenerationStarted"), true);
     appendActivity(t("dmWebFastMode"), true);
     let acceptingProgress = true;
@@ -297,7 +303,16 @@ export default function App() {
           label?: string;
           stage?: string;
           state?: string;
-          diagnostic?: { stage?: string; completed?: number };
+          bytesWritten?: number;
+          totalBytes?: number;
+          directoryName?: string;
+          diagnostic?: {
+            stage?: string;
+            completed?: number;
+            kind?: string;
+            processedBytes?: number;
+            completedBlocks?: number;
+          };
           resourceProgress?: {
             filesWritten: number;
             totalFiles: number;
@@ -306,6 +321,34 @@ export default function App() {
           };
         }) => {
           if (!acceptingProgress || controller.signal.aborted || !mounted.current) return;
+          // 补充包导出单独显示，不把它的完成状态当作 IPA 完成。
+          // Show the supplemental export separately; its completion is not IPA completion.
+          if (legacyAstc && event.stage === "assets" && event.diagnostic?.kind === "legacy-astc") {
+            const blocks = event.diagnostic.completedBlocks;
+            const bytes = event.diagnostic.processedBytes;
+            if (
+              typeof blocks === "number" &&
+              Number.isSafeInteger(blocks) &&
+              blocks >= 0 &&
+              typeof bytes === "number" &&
+              Number.isSafeInteger(bytes) &&
+              bytes >= 0
+            )
+              setLegacyStatus(t("dmWebLegacyConverting", blocks, (bytes / 1_000_000).toFixed(1)));
+            return;
+          }
+          if (legacyAstc && event.stage === "legacy-pack") {
+            setLegacyStatus(
+              event.state === "complete"
+                ? t("dmWebLegacyComplete", event.directoryName ?? "")
+                : t(
+                    "dmWebLegacySaving",
+                    megabytes(event.bytesWritten ?? 0),
+                    megabytes(event.totalBytes ?? 0),
+                  ),
+            );
+            return;
+          }
           const activityLabel = packagingActivity(event);
           pendingGenerationStatus.current =
             resourceProgressLabel(event) ?? activityLabel ?? t("dmWebInProgress");
@@ -325,6 +368,8 @@ export default function App() {
         },
       });
       if (!mounted.current) return;
+      if (legacyAstc && result.legacyPack?.status === "complete")
+        setLegacyStatus(t("dmWebLegacyComplete", result.legacyPack.directoryName));
       const url = URL.createObjectURL(result.download.blob);
       if (downloadUrl.current) URL.revokeObjectURL(downloadUrl.current);
       downloadUrl.current = url;
@@ -350,9 +395,21 @@ export default function App() {
     } catch (error) {
       const report = (
         error as {
-          report?: { stage?: string; code?: string; detailCode?: string; outputStarted?: boolean };
+          report?: {
+            stage?: string;
+            code?: string;
+            detailCode?: string;
+            outputStarted?: boolean;
+            legacyPack?: { status?: string; directoryName?: string };
+          };
         }
       )?.report;
+      if (legacyAstc)
+        setLegacyStatus(
+          report?.legacyPack?.status === "complete"
+            ? t("dmWebLegacyComplete", report.legacyPack.directoryName ?? "")
+            : t("dmWebLegacyIncomplete"),
+        );
       appendActivity(packagingFailureSummary(report), true);
       setStatus(packagingFailureMessage(report));
     } finally {
@@ -411,6 +468,30 @@ export default function App() {
             </select>
             <p id="ios-target-help" className="text-xs text-muted-foreground">
               {t("dmWebTargetReload")}
+            </p>
+          </div>
+          <div className="space-y-2">
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={legacyAstc}
+                aria-describedby="legacy-option-help"
+                disabled={hasSelectedFolder || busy || generating || download !== null}
+                onChange={(event) => {
+                  if (hasSelectedFolder || busy || generating || download !== null) return;
+                  // 在接触私有输入前重载，确保可选资源已预加载。
+                  // Reload before private inputs so optional resources are preloaded.
+                  const url = new URL(window.location.href);
+                  if (event.target.checked) url.searchParams.set("legacyAstc", "1");
+                  else url.searchParams.delete("legacyAstc");
+                  window.location.assign(url.href);
+                }}
+              />
+              {t("dmWebLegacyOption")}
+            </label>
+            <p id="legacy-option-help" className="text-xs text-muted-foreground">
+              {t("dmWebLegacyHelp")}
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -498,6 +579,11 @@ export default function App() {
           <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
             {status}
           </p>
+          {legacyAstc && legacyStatus && (
+            <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
+              {legacyStatus}
+            </p>
+          )}
           {generating && (
             <div className="space-y-2 rounded-md border bg-muted/50 p-3 text-sm">
               <p className="font-medium">

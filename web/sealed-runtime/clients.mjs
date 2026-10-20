@@ -10,8 +10,10 @@ import {
 import { OPERATION_LIMITS, validateRequest } from "../toolchain/asset-runtime-js/contract.mjs";
 import {
   selectRuntimeAssetGroups,
+  validateRuntimeGroupSelection,
   validateRuntimeTransportGroups,
 } from "../runtime-asset-groups.mjs";
+import { createAstcProducerClient as initializeAstcProducerClient } from "../astc-producer-client.mjs";
 const OFFLINE = "toolchain/offline-runtime-spike";
 const TEXTURE = "toolchain/texture-spike";
 const LIMIT = Object.freeze({
@@ -414,10 +416,12 @@ export async function prepareSealedRuntime({
   manifestSha256,
   profileId,
   components = ["assets", "texture", "translator", "extraction", "program", "spirvCross"],
+  optionalGroups = [],
   signal,
   onProgress,
 } = {}) {
   const selectedProfile = resolveShellProfile(profileId);
+  const selectedGroups = validateRuntimeGroupSelection(optionalGroups);
   if (attempted) fail("Runtime bootstrap is one-shot per page");
   attempted = true;
   if (
@@ -456,7 +460,9 @@ export async function prepareSealedRuntime({
   if ((await hash(publicBytes)) !== manifestSha256) fail("Runtime manifest integrity mismatch");
   const manifest = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(publicBytes));
   const { inventory, selectedInventory, transport, downloadFiles, downloadBytes } =
-    validateRuntimeProfileSelection(manifest, selectedProfile.id);
+    validateRuntimeProfileSelection(manifest, selectedProfile.id, {
+      optionalGroups: selectedGroups,
+    });
   const assets = new Map();
   const downloadedAssets = new Map();
   let cache = await optionalStorage(() => caches.open(PUBLIC_CACHE));
@@ -679,22 +685,46 @@ export async function prepareSealedRuntime({
         ["capstone-lz4.wasm", bytes("toolchain/program-rewrite-spike/dist/capstone-lz4.wasm")],
       ],
     };
+  if (selectedGroups.includes("legacy-astc"))
+    plans.astcProducer = {
+      entry: "sealed-workers/astc-producer-worker.mjs",
+      assets: [
+        ["astc-encoder.mjs", bytes("toolchain/astc-encoder-wasm/dist/astc-encoder.mjs")],
+        ["astc-encoder.wasm", bytes("toolchain/astc-encoder-wasm/dist/astc-encoder.wasm")],
+        ["png-codec.wasm", bytes(`${ASSET_RUNTIME_DIRECTORY}/png-codec.wasm`)],
+        ["sha256.wasm", bytes("toolchain/sha256-stream-wasm/dist/sha256.wasm")],
+      ],
+    };
   for (const plan of Object.values(plans)) bytes(plan.entry);
   if (signal?.aborted) throw new DOMException("Runtime cancelled", "AbortError");
   // 原型：没有页面级 CSP 锁定。输入处理保持在本地。
   // Prototype: no page-level CSP lockdown. Input handling remains local.
   const channels = {},
     urls = [];
-  let closed = false;
+  let closed = false,
+    producerClient,
+    producerWorker,
+    producerTaken = false,
+    closing;
   let session;
   function close() {
-    if (closed) return;
+    if (closed) return closing;
     closed = true;
     if (session) sealedRuntimes.delete(session);
     for (const c of Object.values(channels)) c.stop();
+    try {
+      closing = Promise.resolve(producerClient?.close());
+    } catch (error) {
+      closing = Promise.reject(error);
+    }
+    producerWorker?.terminate();
+    // 同步关闭调用方可能忽略返回值；保留可等待的错误，同时观察拒绝以避免未处理异常。
+    // Synchronous callers may ignore the return value; retain awaitable cleanup errors while observing rejection.
+    closing.catch(() => {});
     for (const url of urls) URL.revokeObjectURL(url);
     for (const plan of Object.values(plans)) plan.assets.length = 0;
     assets.clear();
+    return closing;
   }
   try {
     const initialized = {};
@@ -708,9 +738,29 @@ export async function prepareSealedRuntime({
         extraction: "package reader",
         program: "application compiler",
         spirvCross: "shader converter",
+        astcProducer: "legacy texture producer",
       };
       const label = `Preparing ${labels[name] ?? "application"}…`;
       report({ phase: "initializing", label }, true);
+      if (name === "astcProducer") {
+        const transferred = plan.assets.map(([local, value]) => [local, value.slice().buffer]),
+          buffers = transferred.map(([, buffer]) => buffer);
+        plan.assets.length = 0;
+        producerWorker = new Worker(url, { type: "module" });
+        producerClient = await initializeAstcProducerClient({
+          worker: producerWorker,
+          assets: transferred,
+          signal,
+        });
+        if (signal?.aborted) throw new DOMException("Runtime cancelled", "AbortError");
+        if (
+          producerClient?.initialized !== true ||
+          buffers.some((buffer) => buffer.byteLength !== 0)
+        )
+          fail("Actual ASTC producer initialization/transfer failed");
+        initialized.astcProducer = { initialized: true };
+        continue;
+      }
       let initializationStage = "starting";
       const c = (channels[name] = channel(new Worker(url, { type: "module" }), close, (stage) => {
         initializationStage = String(stage).slice(0, 80);
@@ -981,6 +1031,12 @@ export async function prepareSealedRuntime({
       extractionTaken = true;
       return channels.extraction.takeWorker();
     }
+    function createAstcProducerClient() {
+      if (closed || !producerClient || producerTaken)
+        fail("ASTC producer unavailable or already acquired");
+      producerTaken = true;
+      return producerClient;
+    }
     const workerUrls = Object.freeze(
       Object.fromEntries(
         ["translator", "spirvCross"]
@@ -1006,6 +1062,7 @@ export async function prepareSealedRuntime({
       createCrossWorker,
       createProgramWorker,
       createExtractionWorker,
+      createAstcProducerClient,
       createShaderWorkerFactory,
       workerUrls,
       close,
@@ -1015,7 +1072,12 @@ export async function prepareSealedRuntime({
     if (signal?.aborted) throw new DOMException("Runtime cancelled", "AbortError");
     return session;
   } catch (error) {
-    close();
+    try {
+      await close();
+    } catch {
+      // 保留初始化失败；公开准备未完成时没有可交付的私有输出。
+      // Preserve the initialization failure; incomplete public bootstrap cannot have deliverable private output.
+    }
     throw error;
   }
 }

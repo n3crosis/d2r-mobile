@@ -1,11 +1,14 @@
+// 依据固定入口打包封闭公开工作线程；运行时依赖只由已验证字节提供。
+// Bundle closed public workers from fixed entries; runtime dependencies arrive only as verified bytes.
 import { mkdir, rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 const outdir = fileURLToPath(new URL("../runtime-build/.build/sealed-workers/", import.meta.url));
 await rm(outdir, { recursive: true, force: true });
 await mkdir(outdir, { recursive: true });
-for (const name of ["nsp-worker", "cross-worker", "program-worker"]) {
+for (const name of ["nsp-worker", "cross-worker", "program-worker", "astc-producer-worker"]) {
+  const source = name === "astc-producer-worker" ? `../sealed-runtime/${name}.mjs` : `${name}.mjs`;
   const result = await globalThis.Bun.build({
-    entrypoints: [fileURLToPath(new URL(`${name}.mjs`, import.meta.url))],
+    entrypoints: [fileURLToPath(new URL(source, import.meta.url))],
     outdir,
     naming: `${name}.mjs`,
     target: "browser",
@@ -15,15 +18,15 @@ for (const name of ["nsp-worker", "cross-worker", "program-worker"]) {
     sourcemap: "none",
     env: "disable",
     define: { process: "undefined" },
-    // Generated Emscripten includes dormant Node branches. They cannot run in
-    // these browser-only workers, and no Node shim is bundled into the output.
+    // Emscripten 生成的休眠 Node 分支不能在浏览器工作线程执行；不打包 Node 垫片。
+    // Dormant generated Emscripten Node branches cannot run in browser workers; no Node shim is bundled.
     external: ["node:*", "module", "fs", "path", "url", "crypto"],
   });
   if (!result.success) throw new AggregateError(result.logs, `Failed to bundle ${name}`);
   if (result.outputs.length !== 1) throw new Error(`Unexpected split worker output: ${name}`);
   const code = await result.outputs[0].text();
-  // All literal imports must be closed by the build. The only dynamic imports
-  // remaining are verified in-memory Pyodide blob URLs created at initialization.
+  // 构建必须闭合所有字面量导入；剩余动态工厂导入只使用初始化时的已验证内存 Blob。
+  // Close every literal import at build time; remaining dynamic factory imports use verified initialization Blobs only.
   const imports = new globalThis.Bun.Transpiler({ loader: "js" }).scanImports(code);
   if (imports.length)
     throw new Error(`Unclosed worker import graph: ${name}: ${JSON.stringify(imports)}`);

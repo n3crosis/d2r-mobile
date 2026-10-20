@@ -16,8 +16,8 @@ git -C "$SRC" remote add origin https://github.com/SciresM/hactool.git
 git -C "$SRC" fetch -q --depth 1 origin "$PIN"
 git -C "$SRC" checkout -q --detach FETCH_HEAD
 [[ $(git -C "$SRC" rev-parse HEAD) == "$PIN" ]]
-# 复用同一固定源码构建隔离散列原语；不接触提取器状态，也不加入发布载荷。
-# Reuse the pinned source for isolated hashing; do not touch extractor state or ship this candidate yet.
+# 复用同一固定源码构建可选生产器的隔离散列原语；不接触提取器状态。
+# Reuse the pinned source for the optional producer's isolated hashing without touching extractor state.
 node "$HERE/../sha256-stream-wasm/build.mjs" --source "$SRC"
 node "$HERE/../sha256-stream-wasm/wasm-smoke.mjs"
 python3 "$HERE/prepare-source.py" "$SRC"

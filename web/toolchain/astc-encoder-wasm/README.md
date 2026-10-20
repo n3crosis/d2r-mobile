@@ -2,7 +2,7 @@
 
 [简体中文](README.zh-CN.md)
 
-Experimental, isolated source only. Not a production option, full-texture converter, or browser/native parity claim. No game assets, keys, generated binaries, or upstream source copies are included.
+Experimental bounded encoder, now included in the explicit optional Legacy Device Pack runtime closure, not the default download. Integration does not establish browser/device validation or full native parity. No game assets, keys, generated binaries, or upstream source copies are included.
 
 ## Provenance
 
@@ -20,7 +20,7 @@ WASM starts at 32 MiB and has a 128 MiB linear-memory ceiling with recoverable m
 
 ## Build and checks
 
-Use an already installed official Emscripten 4.0.20 SDK, Git, and CMake: `bash build.sh`. The recipe fetches official source only, verifies the exact clean commit, builds the scalar backend with floating-point invariance enabled, and writes ignored `dist/` artifacts plus compiler version and license. No SDK installer or downloaded executable is run. The recipe requires exactly Emscripten 4.0.20 before fetching sources and retains its version receipt. Native-vs-WASM fidelity measurements remain a future gate. Do not commit generated binaries or expose this primitive in production until reviewed and tested.
+Use an already installed official Emscripten 4.0.20 SDK, Git, and CMake: `bash build.sh`. The recipe fetches official source only, verifies the exact clean commit, builds the scalar backend with floating-point invariance enabled, and writes ignored `dist/` artifacts plus compiler version and license. No SDK installer or downloaded executable is run. The recipe requires exactly Emscripten 4.0.20 before fetching sources and retains its version receipt. Native-vs-WASM fidelity measurements remain a future gate. Do not commit generated binaries. Optional production wiring uses verified preload and the separate bounded producer; browser/device validation remains a release gate.
 
 Run `node --test synthetic.test.mjs` for lightweight synthetic JS validation, allocation cleanup, ownership transfer, cancellation, deadline, and error handling. These tests use a fake codec/worker and do not demonstrate actual ASTC encoding, WASM build correctness, quality, speed, or game parity. Separate CI WASM evidence is recorded below; browser codec tests remain unrun.
 
