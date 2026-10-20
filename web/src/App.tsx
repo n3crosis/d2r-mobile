@@ -5,11 +5,9 @@ import { prepareBrowserPackager } from "../browser-packager.mjs";
 import { discoverNspFolder } from "../nsp-input.mjs";
 
 type LocalPickers = typeof globalThis & {
-  showDirectoryPicker?: (options: { mode: "read" }) => Promise<FileSystemDirectoryHandle>;
-  showSaveFilePicker?: (options: {
-    suggestedName: string;
-    types: { description: string; accept: Record<string, string[]> }[];
-  }) => Promise<FileSystemFileHandle>;
+  showDirectoryPicker?: (options: {
+    mode: "read" | "readwrite";
+  }) => Promise<FileSystemDirectoryHandle>;
 };
 const browser = globalThis as LocalPickers;
 type Packager = Awaited<ReturnType<typeof prepareBrowserPackager>>;
@@ -18,6 +16,7 @@ export default function App() {
   const [ready, setReady] = useState(false),
     [busy, setBusy] = useState(false);
   const [folder, setFolder] = useState<FileSystemDirectoryHandle | null>(null);
+  const [outputFolder, setOutputFolder] = useState<FileSystemDirectoryHandle | null>(null);
   const packager = useRef<Packager | null>(null),
     cancellation = useRef<AbortController | null>(null);
   useEffect(() => {
@@ -26,12 +25,7 @@ export default function App() {
     const digest = document.querySelector<HTMLMetaElement>(
       'meta[name="runtime-manifest-sha256"]',
     )?.content;
-    if (
-      !browser.showDirectoryPicker ||
-      !browser.showSaveFilePicker ||
-      !digest ||
-      !/^[a-f0-9]{64}$/.test(digest)
-    ) {
+    if (!browser.showDirectoryPicker || !digest || !/^[a-f0-9]{64}$/.test(digest)) {
       setStatus(
         "This build is not ready, or this browser is unsupported. Use desktop Chrome or Edge.",
       );
@@ -71,33 +65,44 @@ export default function App() {
       setBusy(false);
     }
   }
-  async function generate() {
-    if (!folder || !packager.current || !browser.showSaveFilePicker) return;
+  async function chooseOutput() {
+    if (!ready || !browser.showDirectoryPicker) return;
     try {
-      const destinationHandle = await browser.showSaveFilePicker({
-        suggestedName: "D2RMobile-unsigned.ipa",
-        types: [{ description: "Unsigned IPA", accept: { "application/octet-stream": [".ipa"] } }],
-      });
-      setBusy(true);
-      setReady(false);
+      const selected = await browser.showDirectoryPicker({ mode: "readwrite" });
+      if (
+        folder &&
+        ((await folder.resolve(selected)) !== null || (await selected.resolve(folder)) !== null)
+      )
+        throw new Error("OUTPUT_OVERLAP");
+      setOutputFolder(selected);
+      setStatus("Output folder selected. Use an empty folder with enough free space for the game.");
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === "AbortError"))
+        setStatus("Choose a separate empty output folder, outside the input folder.");
+    }
+  }
+  async function generate() {
+    if (!folder || !outputFolder || !packager.current) return;
+    setBusy(true);
+    setReady(false);
+    try {
       const controller = new AbortController();
       cancellation.current = controller;
-      await packager.current.generate({
+      const result = await packager.current.generate({
         input: folder,
-        destinationHandle,
+        outputDirectoryHandle: outputFolder,
         signal: controller.signal,
         onProgress: (event: { label: string }) => setStatus(event.label),
       });
       setStatus(
-        "Unsigned IPA saved. Game compatibility has not been verified. Reload to make another.",
+        `Unsigned IPA and game resources saved. Copy ${result.resources.directoryName} into the app’s Files folder after signing and installing the IPA. Game compatibility is not yet verified.`,
       );
     } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") return;
       const report = (error as { report?: { stage?: string; code?: string } })?.report;
       setStatus(
         report?.code === "CANCELLED"
           ? "Cancelled. Reload to start again."
-          : `Could not finish${report?.stage ? ` (${report.stage})` : ""}. No completed IPA was saved. Reload to try again.`,
+          : `Could not finish${report?.stage ? ` (${report.stage})` : ""}. No completed IPA was saved. Resources may already have been exported; check the output folder. Reload to try again.`,
       );
     } finally {
       setBusy(false);
@@ -117,11 +122,24 @@ export default function App() {
             <Button variant="outline" onClick={() => void choose()} disabled={!ready || busy}>
               Choose folder
             </Button>
-            <Button onClick={() => void generate()} disabled={!ready || !folder || busy}>
+            <Button variant="outline" onClick={() => void chooseOutput()} disabled={!ready || busy}>
+              Choose output folder
+            </Button>
+            <Button
+              onClick={() => void generate()}
+              disabled={!ready || !folder || !outputFolder || busy}
+            >
               Generate unsigned IPA
             </Button>
             {busy && (
-              <Button variant="outline" onClick={() => cancellation.current?.abort()}>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setReady(false);
+                  cancellation.current?.abort();
+                  setStatus("Cancelled. Reload to start again.");
+                }}
+              >
                 Cancel
               </Button>
             )}
@@ -130,7 +148,7 @@ export default function App() {
             {status}
           </p>
           <p className="text-xs text-muted-foreground">
-            Unsigned output. Game resources remain separate.
+            Unsigned IPA plus a separate game-resource folder. Files never leave this device.
           </p>
         </CardContent>
       </Card>

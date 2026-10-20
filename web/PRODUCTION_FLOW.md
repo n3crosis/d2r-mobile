@@ -20,8 +20,15 @@ chain, provided the complete normalized shader-source digest matches SHADER_SRC.
 The browser preserves that digest gate, pinned shell hash, and target checks.
 Relabeling cannot accept differing shader sources.
 
-Bulk RomFS remains separate as required by the unchanged native shell. This flow
-creates an unsigned app package, not a self-contained game-data IPA. Older GPUs'
+Bulk RomFS is exported directly into a fresh resource folder alongside the IPA,
+streaming authenticated chunks while the isolated extraction session is alive.
+The user chooses a separate empty output folder before keys are read. Export runs
+only after generated-content and assembly validation, and completes before IPA
+commit. The resource exporter marks incomplete transfers; a later IPA failure
+does not invalidate an independently completed resource folder. Users copy the
+resource folder into the installed app’s Files folder. This preserves the native
+shell layout without requiring external extraction tools or bundling huge game
+data into the IPA. Older GPUs'
 optional ASTC resource pack is not produced here. No real game input or device run
 has validated this browser flow. ZIP32, in-memory stage budgets, OPFS quota and
 adapter limits can reject a genuine large build rather than silently truncate it.

@@ -4,11 +4,14 @@ import { loadProductionProfile } from "./production-profile.mjs";
 import {
   createExtractionJobAdapter,
   readAuthenticatedProgramModules,
+  readAuthenticatedAssets,
 } from "./extraction-job-adapter.mjs";
 import { createProgramRewriterAdapter } from "./program-rewriter-adapter.mjs";
 import { createProductionAssetAdapter } from "./production-assets.mjs";
 import { createProductionShaderAdapter } from "./production-shaders.mjs";
 import { createBrowserStagedOutputAdapters } from "./browser-staged-output.mjs";
+import { planStagedZip } from "./staged-zip-validator.mjs";
+import { exportRomfsResources } from "./resource-folder-export.mjs";
 import { runPackagingJob } from "./packaging-job.mjs";
 
 function guestTarget(bytes) {
@@ -76,14 +79,73 @@ export async function prepareBrowserPackager({ manifestSha256, signal } = {}) {
     return Object.freeze({
       ready: true,
       realGameVerified: false,
-      async generate({ input, destinationHandle, signal, onProgress }) {
+      async generate({ input, outputDirectoryHandle, signal, onProgress }) {
         if (used) throw new Error("RELOAD_REQUIRED");
+        if (
+          input?.kind !== "directory" ||
+          outputDirectoryHandle?.kind !== "directory" ||
+          (await input.resolve(outputDirectoryHandle)) !== null ||
+          (await outputDirectoryHandle.resolve(input)) !== null ||
+          (await outputDirectoryHandle.queryPermission({ mode: "readwrite" })) !== "granted"
+        )
+          throw new Error("OUTPUT_DIRECTORY_UNSAFE");
+        // An empty user-chosen output folder prevents accidental replacement.
+        for await (const _entry of outputDirectoryHandle.values())
+          throw new Error("OUTPUT_DIRECTORY_NOT_EMPTY");
         used = true;
+        let authenticated, selected, output, resources;
         const archiveFormat = "zip32";
-        const output = createBrowserStagedOutputAdapters({ destinationHandle, archiveFormat });
         const adapters = {
           ...extraction,
-          ...output,
+          async extractSelected(context) {
+            authenticated = await extraction.extractSelected(context);
+            selected = context.selection;
+            return authenticated;
+          },
+          async createOutput(context) {
+            planStagedZip(context.manifest, { archiveFormat });
+            const { romfs } = readAuthenticatedAssets(authenticated, selected, { signal });
+            resources = await exportRomfsResources({
+              romfs,
+              outputDirectoryHandle,
+              signal,
+              onProgress: () =>
+                onProgress?.({
+                  stage: "resources",
+                  state: "running",
+                  label: "Saving game resources locally",
+                }),
+            });
+            // No existing output is ever deliberately replaced.
+            try {
+              await outputDirectoryHandle.getFileHandle("D2RMobile-unsigned.ipa");
+              throw new Error("OUTPUT_EXISTS");
+            } catch (error) {
+              if (error?.name !== "NotFoundError") throw error;
+            }
+            // Defer the named IPA until staged bytes have passed validation and
+            // the coordinator reaches its commit boundary. No empty IPA on an
+            // earlier conversion failure. Recheck collisions at that boundary.
+            const destinationHandle = {
+              kind: "file",
+              queryPermission: (options) => outputDirectoryHandle.queryPermission(options),
+              async createWritable(options) {
+                try {
+                  await outputDirectoryHandle.getFileHandle("D2RMobile-unsigned.ipa");
+                  throw new Error("OUTPUT_EXISTS");
+                } catch (error) {
+                  if (error?.name !== "NotFoundError") throw error;
+                }
+                const file = await outputDirectoryHandle.getFileHandle("D2RMobile-unsigned.ipa", {
+                  create: true,
+                });
+                return file.createWritable(options);
+              },
+            };
+            output = createBrowserStagedOutputAdapters({ destinationHandle, archiveFormat });
+            return output.createOutput(context);
+          },
+          validateArchive: (context) => output.validateArchive(context),
           generateProgram: async (context) =>
             (await program.generateProgram(context)).filter((e) => allowed(e.path)),
           generateAssets: async (context) =>
@@ -133,7 +195,7 @@ export async function prepareBrowserPackager({ manifestSha256, signal } = {}) {
             },
           },
         ];
-        return runPackagingJob({
+        const result = await runPackagingJob({
           input,
           adapters,
           signal,
@@ -142,6 +204,7 @@ export async function prepareBrowserPackager({ manifestSha256, signal } = {}) {
           secretLifetime: "archive",
           concurrency: 1,
         });
+        return { ...result, resources };
       },
       close,
     });
