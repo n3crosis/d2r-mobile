@@ -67,8 +67,7 @@ that check did not execute the binary or use game inputs.
 The candidate UI selects the closed target before private inputs and reloads to
 switch runtimes. Assembly includes both public archives, while the browser validates
 the complete manifest and downloads only the selected shell plus all common assets.
-The live publication remains default-only until this candidate passes CI and is
-deployed. This OS profile does not implement the separate older-GPU ASTC pipeline.
+This selection passed CI and was deployed in source f4f3326 on 2026-10-20. This OS profile does not implement the separate older-GPU ASTC pipeline.
 
 A real public legacy archive was also loaded with repository metadata: all 16
 inventory entries, 13 file streams, hashes, recipe, shader catalog and art/HUD

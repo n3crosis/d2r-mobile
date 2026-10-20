@@ -9,13 +9,14 @@ The versions are different in the actual production Pyodide runtime. Linking a d
 
 ## API
 
-`codec.mjs` exports async `createPngCodec(wasmBytes)`. The result is synchronous:
+`codec.mjs` exports async `createPngCodec(wasmBytes)`. The existing whole-buffer methods are synchronous:
 
 - `zlibVersion === "1.3.1"`
 - `genericZlibVersion === "1.2.13"`
 - `encodeRgba(rgba, width, height) -> Uint8Array`
 - `decodeRgba(png) -> { width, height, channels: 4, data: Uint8Array }`
 - `compressZlib(raw, { level: 9 }) -> Uint8Array`
+- `compressZlibStream(input, { maxInputBytes, maxOutputBytes, signal?, level?: 9 }) -> AsyncGenerator<Uint8Array>`; see [bounded streaming contract](STREAMING_ZLIB.md) and [中文说明](STREAMING_ZLIB.zh-CN.md).
 
 The encoder implements only the production Pillow save defaults: RGBA8, noninterlaced, no metadata, `optimize=False`, default compression level, `Z_FILTERED`, 15-bit window, memory level 9. Row filter scoring, strict tie-breaking, NONE/UP/SUB/PAETH order, streaming calls, 65,536-byte IDAT boundaries and chunk CRCs match Pillow. AVERAGE is deliberately not considered by the encoder because Pillow defaults omit it. The decoder supports all five PNG row filters.
 

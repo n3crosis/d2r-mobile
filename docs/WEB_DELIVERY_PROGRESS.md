@@ -4,19 +4,21 @@
 
 ## Latest verified publication
 
-[Commit 6193cc3](https://github.com/n3crosis/d2r-mobile/commit/6193cc35bcf6666f7a24885eeabe83db0b0ede8f)
-passed the [full Verify build](https://github.com/n3crosis/d2r-mobile/actions/runs/39474470604)
-and was published on 2026-10-20 at 18:32 UTC to the existing private
+[Commit f4f3326](https://github.com/n3crosis/d2r-mobile/commit/f4f3326cff60afbecb598a8385157790b6c02a7a)
+passed the [full Verify build](https://github.com/n3crosis/d2r-mobile/actions/runs/39477410207)
+and was published on 2026-10-20 at 18:53 UTC to the existing private
 [preview Site](https://d2r-ipa-packager.nicekrill34.chatgpt.site).
-The verified artifact is 17,122,257 bytes (about 16.3 MiB compressed ZIP), includes
+The verified artifact is 22,004,341 bytes (about 21.0 MiB compressed ZIP, containing both shell targets), includes
 .NET, and contains no Python runtime, packages or scripts. This is archive size,
 not a browser RAM measurement.
 
 The release implements single-folder base/update/optional-DLC conversion,
 optional `title.keys` with embedded common-ticket handling, a resource child
 folder and bounded Blob IPA download. Desktop Chromium on Windows/macOS is the
-target. The pinned output shell requires iOS 26 and BC texture support; ASTC and
-alternate-shell parity remain separate work. See [implementation and acceptance](WEB_IPA_PACKAGER.md).
+target. The page selects iOS 26 or iOS 18; both still require BC texture support.
+Each selection downloads only its own shell and common runtime assets: 16,965,967
+bytes for iOS 26, or 16,962,050 bytes for iOS 18 (about 16.18 MiB, excluding
+frontend files). ASTC supplemental-pack integration remains separate work. See [implementation and acceptance](WEB_IPA_PACKAGER.md).
 
 A successful build and publication do not establish real-game input conversion,
 separately signed device execution, gameplay or measured RAM/speed savings.

@@ -38,6 +38,25 @@ for (const test of fixture.generic) {
     bytes(test.compressed),
     `CPython zlib ${test.length}`,
   );
+  // 真实 WASM 流与同一固定 CPython 字节基准比较；不采用模拟 ABI。
+  // Compare the real WASM stream against the same pinned CPython bytes, without ABI mocks.
+  const chunks = [];
+  const input = {
+    async *[Symbol.asyncIterator]() {
+      for (let offset = 0; offset < raw.length; offset += 65536)
+        yield raw.slice(offset, offset + 65536);
+    },
+  };
+  for await (const chunk of codec.compressZlibStream(input, {
+    maxInputBytes: raw.length,
+    maxOutputBytes: raw.length + 1048576,
+  }))
+    chunks.push(chunk);
+  assert.deepEqual(
+    new Uint8Array(Buffer.concat(chunks)),
+    bytes(test.compressed),
+    `Streaming CPython zlib ${test.length}`,
+  );
 }
 const good = bytes(fixture.cases[2].png);
 const bad = good.slice();

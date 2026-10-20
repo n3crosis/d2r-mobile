@@ -27,6 +27,12 @@ const stages = [
   ["experimental ASTC WASM smoke", ".", "node", ["web/toolchain/astc-encoder-wasm/wasm-smoke.mjs"]],
 
   ["Pinned PNG and CASC zlib codec", ".", "node", ["web/toolchain/png-codec-exact/build.mjs"]],
+  [
+    "bounded zlib WASM stream smoke",
+    ".",
+    "node",
+    ["web/toolchain/png-codec-exact/test/stream-smoke.mjs"],
+  ],
   ["Rust image kernels", ".", "node", ["web/toolchain/image-kernels-rust/build.mjs"]],
   ["Pinned font rasterizer", ".", "node", ["web/toolchain/font-rasterizer-exact/build.mjs"]],
   ["authenticated extraction", ".", "bash", ["web/toolchain/nsp-extract-spike/build-wasm.sh"]],
