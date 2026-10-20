@@ -51,6 +51,7 @@ export default function App() {
   const [ready, setReady] = useState(false),
     [busy, setBusy] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [folder, setFolder] = useState<FileSystemDirectoryHandle | null>(null);
   const [nspNames, setNspNames] = useState<string[]>([]);
   const [selectedNsps, setSelectedNsps] = useState<Set<string>>(() => new Set());
@@ -135,6 +136,7 @@ export default function App() {
       titleKeysFound: false,
     };
     setBusy(true);
+    setCancelling(false);
     setStatus("Waiting for folder selection…");
     try {
       const selected = await browser.showDirectoryPicker({ mode: "readwrite" });
@@ -147,6 +149,7 @@ export default function App() {
       const files = await discoverNspFolder(selected, {
         signal: controller.signal,
         onProgress: (event: FolderProgress) => {
+          if (controller.signal.aborted || !mounted.current) return;
           progress = event;
           setStatus(`Checking ${selected.name}… ${folderSummary(event)}`);
         },
@@ -163,11 +166,11 @@ export default function App() {
         true,
       );
       setStatus(
-        `${selected.name}: ${folderSummary(progress)} ${selectedNames.length} package(s) selected. Ready to generate.`,
+        `${selected.name}: ${folderSummary(progress)} Review the package selection before generating.`,
       );
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
-        if (!controller.signal.aborted) setStatus(previousStatus);
+        setStatus(controller.signal.aborted ? "Cancelled. Reload to start again." : previousStatus);
       } else {
         setFolder(null);
         setNspNames([]);
@@ -189,13 +192,17 @@ export default function App() {
       }
     } finally {
       setBusy(false);
+      setCancelling(false);
+      if (controller.signal.aborted && mounted.current) setFinished(true);
     }
   }
   async function generate() {
-    if (!folder || !packager.current || !selectedNsps.size) return;
+    if (!ready || busy || !folder || !packager.current || !selectedNsps.size) return;
     setBusy(true);
     setGenerating(true);
+    setCancelling(false);
     setReady(false);
+    setStatus("Starting IPA generation…");
     appendActivity("Generation started; private inputs remain local", true);
     try {
       const controller = new AbortController();
@@ -205,6 +212,7 @@ export default function App() {
         selectedNspNames: [...selectedNsps],
         signal: controller.signal,
         onProgress: (event: { label: string; stage?: string; state?: string }) => {
+          if (controller.signal.aborted || !mounted.current) return;
           setStatus(event.label);
           appendActivity(packagingActivity(event), event.state === "failed");
         },
@@ -242,6 +250,7 @@ export default function App() {
     } finally {
       setBusy(false);
       setGenerating(false);
+      setCancelling(false);
       setFinished(true);
     }
   }
@@ -276,29 +285,33 @@ export default function App() {
             {busy && (
               <Button
                 variant="outline"
+                disabled={cancelling}
                 onClick={() => {
                   setReady(false);
+                  setCancelling(true);
                   cancellation.current?.abort();
-                  setStatus("Cancelled. Reload to start again.");
+                  setStatus("Cancelling… Waiting for the current operation to stop.");
                   appendActivity("Cancellation requested", true);
                 }}
               >
-                Cancel
+                {cancelling ? "Cancelling…" : "Cancel"}
               </Button>
             )}
           </div>
           {nspNames.length > 0 && (
             <fieldset className="space-y-2 rounded-md border p-3" disabled={!ready || busy}>
               <legend className="px-1 text-sm font-medium">Packages to use</legend>
-              <p className="text-xs text-muted-foreground">
-                Base and update are selected by default when recognized. Excluded packages stay in
-                the folder. A build without DLC will not include Warlock content.
+              <p id="package-selection-help" className="text-xs text-muted-foreground">
+                Base and updates are preselected when filenames identify one base and its updates;
+                otherwise all packages are selected. Review your selection. Include DLC for Warlock
+                content; excluded files stay untouched.
               </p>
               {nspNames.map((name) => (
                 <label key={name} className="flex items-start gap-2 text-sm break-all">
                   <input
                     type="checkbox"
                     className="mt-1"
+                    aria-describedby="package-selection-help package-selection-count"
                     checked={selectedNsps.has(name)}
                     onChange={(event) => {
                       const checked = event.target.checked;
@@ -313,6 +326,14 @@ export default function App() {
                   {name}
                 </label>
               ))}
+              <p
+                id="package-selection-count"
+                className="text-xs text-muted-foreground"
+                role="status"
+              >
+                {selectedNsps.size} of {nspNames.length} package(s) selected.
+                {selectedNsps.size === 0 ? " Select at least one package to generate an IPA." : ""}
+              </p>
             </fieldset>
           )}
           {download && (
@@ -333,14 +354,17 @@ export default function App() {
           </p>
           {generating && (
             <div className="space-y-2 rounded-md border bg-muted/50 p-3 text-sm">
-              <p className="font-medium">Generation in progress</p>
+              <p className="font-medium">
+                {cancelling ? "Stopping generation" : "Generation in progress"}
+              </p>
               <progress
                 className="h-2 w-full accent-primary"
-                aria-label="IPA generation in progress"
+                aria-label={cancelling ? "Stopping IPA generation" : "IPA generation in progress"}
               />
               <p className="text-xs text-muted-foreground">
-                Large packages can take several minutes to verify, even when the activity log is
-                quiet.
+                {cancelling
+                  ? "Waiting for cancellation and cleanup to finish."
+                  : "Large packages can take several minutes to verify, even when the activity log is quiet."}
               </p>
             </div>
           )}
