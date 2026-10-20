@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { prepareBrowserPackager } from "../browser-packager.mjs";
+import { DEFAULT_SHELL_PROFILE_ID } from "../shell-profiles.mjs";
 import { discoverNspFolder } from "../nsp-input.mjs";
 import {
   packagingActivity,
@@ -47,6 +48,11 @@ const megabytes = (bytes: number) => t("dmWebMegabytes", (bytes / 1_000_000).toF
 const loadingLabel = (phase: string) =>
   t(phase === "download" ? "dmWebDownloading" : "dmWebPreparing");
 export default function App() {
+  const [target] = useState(() =>
+    new URLSearchParams(window.location.search).get("target") === "ios18" ? "ios18" : "ios26",
+  );
+  const profileId = target === "ios18" ? "v1.0.18-ios18" : DEFAULT_SHELL_PROFILE_ID;
+  const [hasSelectedFolder, setHasSelectedFolder] = useState(false);
   useEffect(() => {
     document.documentElement.lang = browserLanguage();
     document.title = t("dmWebTitle");
@@ -148,6 +154,7 @@ export default function App() {
     let previousPhase = "";
     void prepareBrowserPackager({
       manifestSha256: digest,
+      profileId,
       signal: controller.signal,
       onProgress: (event: LoadingProgress) => {
         if (!controller.signal.aborted) {
@@ -193,7 +200,7 @@ export default function App() {
       packager.current?.close();
       if (downloadUrl.current) URL.revokeObjectURL(downloadUrl.current);
     };
-  }, [appendActivity]);
+  }, [appendActivity, profileId]);
   async function choose() {
     if (!ready || busy || !browser.showDirectoryPicker) return;
     const previousStatus = status;
@@ -211,6 +218,7 @@ export default function App() {
     try {
       const selected = await browser.showDirectoryPicker({ mode: "readwrite" });
       controller.signal.throwIfAborted();
+      setHasSelectedFolder(true);
       selectedName = selected.name;
       setFolder(null);
       setNspNames([]);
@@ -364,9 +372,47 @@ export default function App() {
         <CardHeader>
           <CardTitle>{t("dmWebTitle")}</CardTitle>
           <CardDescription>{t("dmWebInstructions")}</CardDescription>
-          <CardDescription>{t("dmWebCompatibility")}</CardDescription>
+          <CardDescription>
+            {t(target === "ios18" ? "dmWebCompatibility18" : "dmWebCompatibility")}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <label htmlFor="ios-target" className="text-sm font-medium">
+              {t("dmWebTarget")}
+            </label>
+            <select
+              id="ios-target"
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+              aria-describedby="ios-target-help"
+              value={target}
+              disabled={hasSelectedFolder || busy || generating || download !== null}
+              onChange={(event) => {
+                const next = event.target.value;
+                if (
+                  (next !== "ios18" && next !== "ios26") ||
+                  next === target ||
+                  hasSelectedFolder ||
+                  busy ||
+                  generating ||
+                  download !== null
+                )
+                  return;
+                // 密封运行时只初始化一次；选择输入之前用整页重载切换封闭目标。
+                // The sealed runtime initializes once; reload to switch closed targets before selecting inputs.
+                const url = new URL(window.location.href);
+                if (next === "ios18") url.searchParams.set("target", "ios18");
+                else url.searchParams.delete("target");
+                window.location.assign(url.href);
+              }}
+            >
+              <option value="ios26">{t("dmWebTarget26")}</option>
+              <option value="ios18">{t("dmWebTarget18")}</option>
+            </select>
+            <p id="ios-target-help" className="text-xs text-muted-foreground">
+              {t("dmWebTargetReload")}
+            </p>
+          </div>
           <div className="flex flex-wrap gap-3">
             <Button variant="outline" onClick={() => void choose()} disabled={!ready || busy}>
               {t("dmWebChoose")}

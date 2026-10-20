@@ -4,6 +4,6 @@
   "dm/ios/tools/layout_patch.py": "a4ca908c93c1ff563cacd506d242a94833731e5629c7e543ecb6c123bdddee9b",
   "dm/ios/tools/dm_i18n.py": "e0a9c1ee8285e798cb3cf588c04c6e7275a9d053c91fee558d3126faf029f274",
   "dm/ios/tools/touchrectv1_patch.json": "631bdf2195978f24f44804176a21345dd16fd9a924e6a8c8d0bfe84eae83fa2e",
-  "dm/i18n/ui_text.tsv": "e1d1f025e8473bd8beef0a96dc588c83be4e0f8dab9051a96215e019bc879886",
+  "dm/i18n/ui_text.tsv": "d6dca4ed703cbe21b1e8a38f281cfe2871dd94bf7da90a7b9dc1c1f007897b5c",
   "dm/ios/Sources/TouchArt/native_art_manifest.json": "edab392805937478af106de6949807bea7f597b8d4a3c3fa208528c5ae53a14a"
 }

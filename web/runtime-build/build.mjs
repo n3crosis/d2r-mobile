@@ -1,10 +1,12 @@
+// 依据固定工具链、封闭外壳配置和构建凭据生成公开浏览器运行时。
+// Build the public browser runtime from pinned toolchains, closed shell profiles and build receipts.
 import { createHash } from "node:crypto";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { mkdir, writeFile, readFile, appendFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
-import { assembleRuntime } from "./package.mjs";
+import { assembleRuntime, SHELL_BUILD_INPUTS } from "./package.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const workspace = resolve(root, "web/runtime-build/.build");
@@ -19,6 +21,11 @@ const stages = [
   ],
   ["texture decoder and BC3 encoder", ".", "bash", ["web/toolchain/texture-spike/build-wasm.sh"]],
   ["Rust BC3 encoder", ".", "node", ["web/toolchain/texture-spike/build-bc3.mjs"]],
+  // 编译实验 ASTC 并在 Node 工作线程中检查 WASM；不加入发布载荷，不代表浏览器或设备验证。
+  // Compile experimental ASTC and check WASM in a Node worker; not deployed or browser/device proof.
+  ["experimental ASTC compile only", ".", "bash", ["web/toolchain/astc-encoder-wasm/build.sh"]],
+  ["experimental ASTC WASM smoke", ".", "node", ["web/toolchain/astc-encoder-wasm/wasm-smoke.mjs"]],
+
   ["Pinned PNG and CASC zlib codec", ".", "node", ["web/toolchain/png-codec-exact/build.mjs"]],
   ["Rust image kernels", ".", "node", ["web/toolchain/image-kernels-rust/build.mjs"]],
   ["Pinned font rasterizer", ".", "node", ["web/toolchain/font-rasterizer-exact/build.mjs"]],
@@ -89,6 +96,7 @@ if (option === "--plan") {
           commands: ["git", "cmake", "make", "python3", "node", "npm", "bun"],
         },
         crossCommit,
+        publicShells: SHELL_BUILD_INPUTS,
         stages,
         output: "web/runtime-build/out/",
         productionEnabled: false,
@@ -98,6 +106,7 @@ if (option === "--plan") {
     ),
   );
 } else if (option === undefined) {
+  // 先决工具由贡献者或 CI 单独安装；不提权、不安装 SDK、不启动浏览器、测试、游戏输入或签名凭据。
   // Prerequisites are installed separately by the contributor or CI. No sudo,
   // SDK installation, browser launch, tests, game inputs or signing credentials.
   if (!run("emcc", ["--version"], root, true).split("\n")[0].includes("4.0.20"))
@@ -106,6 +115,7 @@ if (option === "--plan") {
     throw new Error(`Expected .NET SDK ${sdk}`);
   await mkdir(workspace, { recursive: true });
   const checkout = resolve(workspace, "spirv-cross");
+  // 隔离且固定的修订版本，不使用分支最新提交或用户的检出目录。
   // An isolated exact revision, never a branch tip or a user's checkout.
   run("git", ["init", "-q", checkout]);
   run(
@@ -132,38 +142,32 @@ if (option === "--plan") {
     console.log(`Build runtime: ${name}`);
     run(command, args, resolve(root, directory));
   }
-  const shell = JSON.parse(
-    await readFile(resolve(root, "web/toolchain/shell-release-evidence/v1.0.18.json"), "utf8"),
-  );
-  if (
-    shell.sourceUrl !==
-      "https://github.com/jhaizhou-ops/d2r-mobile/releases/download/v1.0.18/D2RMobile-shell-build-input.zip" ||
-    shell.archiveBytes !== 4884778 ||
-    shell.sha256 !== "a383552871851ddb5923033639358e2a3c205ae411676e6538cd098743bbe37b"
-  )
-    throw new Error("Pinned public shell registry drift");
-  const response = await globalThis.fetch(shell.sourceUrl, { signal: AbortSignal.timeout(120000) });
-  if (!response.ok || !response.body) throw new Error("Public shell download failed");
-  const reader = response.body.getReader(),
-    shellBytes = new Uint8Array(shell.archiveBytes);
-  let offset = 0;
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (offset + value.length > shellBytes.length) throw new Error("Public shell size limit");
-      shellBytes.set(value, offset);
-      offset += value.length;
+  for (const input of SHELL_BUILD_INPUTS) {
+    const response = await globalThis.fetch(input.sourceUrl, {
+      signal: AbortSignal.timeout(120000),
+    });
+    if (!response.ok || !response.body) throw new Error("Public shell download failed");
+    const reader = response.body.getReader(),
+      shellBytes = new Uint8Array(input.bytes);
+    let offset = 0;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (offset + value.length > shellBytes.length) throw new Error("Public shell size limit");
+        shellBytes.set(value, offset);
+        offset += value.length;
+      }
+    } finally {
+      await reader.cancel();
     }
-  } finally {
-    await reader.cancel();
+    if (
+      offset !== input.bytes ||
+      createHash("sha256").update(shellBytes).digest("hex") !== input.sha256
+    )
+      throw new Error("Public shell digest mismatch");
+    await writeFile(resolve(root, "web", input.buildPath), shellBytes);
   }
-  if (
-    offset !== shell.archiveBytes ||
-    createHash("sha256").update(shellBytes).digest("hex") !== shell.sha256
-  )
-    throw new Error("Public shell digest mismatch");
-  await writeFile(resolve(workspace, "shell.zip"), shellBytes);
   run("bun", ["web/runtime-sealing/build-workers.mjs"]);
   await assembleRuntime({
     build: {

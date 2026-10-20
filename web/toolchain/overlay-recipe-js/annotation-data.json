@@ -6,7 +6,7 @@
     "dm/ios/tools/annot_world.py": "2517bc142a45d80df400ef51c755f11f7b4203b4ed34b63d691e4daa67b14c81",
     "dm/ios/tools/touch_strings.py": "bf8b853cdbefe8adfd0c15d91df8d9c5402879eaad453c4d8d8e7c422b384648",
     "dm/ios/tools/dm_i18n.py": "e0a9c1ee8285e798cb3cf588c04c6e7275a9d053c91fee558d3126faf029f274",
-    "dm/i18n/ui_text.tsv": "e1d1f025e8473bd8beef0a96dc588c83be4e0f8dab9051a96215e019bc879886"
+    "dm/i18n/ui_text.tsv": "d6dca4ed703cbe21b1e8a38f281cfe2871dd94bf7da90a7b9dc1c1f007897b5c"
   },
   "touch": {
     "tables": {

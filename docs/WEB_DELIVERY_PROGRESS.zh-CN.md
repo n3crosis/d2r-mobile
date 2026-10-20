@@ -4,11 +4,11 @@ English: [WEB_DELIVERY_PROGRESS.md](WEB_DELIVERY_PROGRESS.md)
 
 ## 最近一次已验证的发布
 
-[提交 95e20ef](https://github.com/n3crosis/d2r-mobile/commit/95e20ef17ae2890b06cf7e3453706cba64cb3889)
-通过[完整 Verify 构建](https://github.com/n3crosis/d2r-mobile/actions/runs/39471068849)，
-并于 2026-10-20 18:07 UTC 发布到既有的私有
+[提交 6193cc3](https://github.com/n3crosis/d2r-mobile/commit/6193cc35bcf6666f7a24885eeabe83db0b0ede8f)
+通过[完整 Verify 构建](https://github.com/n3crosis/d2r-mobile/actions/runs/39474470604)，
+并于 2026-10-20 18:32 UTC 发布到既有的私有
 [预览站点](https://d2r-ipa-packager.nicekrill34.chatgpt.site)。
-已验证产物为 17,118,942 字节（压缩 ZIP 约 16.3 MiB），包含 .NET，
+已验证产物为 17,122,257 字节（压缩 ZIP 约 16.3 MiB），包含 .NET，
 不含 Python 运行时、包或脚本。这是归档大小，不是浏览器内存测量。
 
 该版本实现单目录本体/更新/可选 DLC 转换、可选 `title.keys` 与内嵌通用票据处理、

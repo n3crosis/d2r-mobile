@@ -4,11 +4,11 @@
 
 ## Latest verified publication
 
-[Commit 95e20ef](https://github.com/n3crosis/d2r-mobile/commit/95e20ef17ae2890b06cf7e3453706cba64cb3889)
-passed the [full Verify build](https://github.com/n3crosis/d2r-mobile/actions/runs/39471068849)
-and was published on 2026-10-20 at 18:07 UTC to the existing private
+[Commit 6193cc3](https://github.com/n3crosis/d2r-mobile/commit/6193cc35bcf6666f7a24885eeabe83db0b0ede8f)
+passed the [full Verify build](https://github.com/n3crosis/d2r-mobile/actions/runs/39474470604)
+and was published on 2026-10-20 at 18:32 UTC to the existing private
 [preview Site](https://d2r-ipa-packager.nicekrill34.chatgpt.site).
-The verified artifact is 17,118,942 bytes (about 16.3 MiB compressed ZIP), includes
+The verified artifact is 17,122,257 bytes (about 16.3 MiB compressed ZIP), includes
 .NET, and contains no Python runtime, packages or scripts. This is archive size,
 not a browser RAM measurement.
 

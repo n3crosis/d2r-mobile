@@ -5,6 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 python_sources=(
+  web/toolchain/astc-encoder-wasm/bc3-native-reference.py
   web/scripts/generate-i18n.py
   web/toolchain/nsp-extract-spike/prepare-source.py
   web/toolchain/synthetic-signed-nca/inject-test-root.py

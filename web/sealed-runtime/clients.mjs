@@ -1,5 +1,6 @@
 // 依据已验证公开清单、完整性摘要及各工作线程协议管理密封运行时。
 // Manage sealed runtimes using verified public inventories, integrity digests and worker protocols.
+import { resolveShellProfile, SHELL_PROFILE_IDS } from "../shell-profiles.mjs";
 import { nativeArtAtlasDescriptor } from "../native-art-texture.mjs";
 import { validateEncodeRequest } from "../toolchain/texture-spike/browser-texture-encoder.mjs";
 import {
@@ -133,6 +134,57 @@ function runtimeTransport(manifest, inventory) {
     if (end !== physical.get(path).decodedBytes) fail("Unused runtime transport bytes");
   }
   return { files, totalBytes: transport.totalBytes, entries };
+}
+/**
+ * 验证完整清单后，只省略另一个内置外壳；绝不省略工作线程或通用资产。
+ * Validate the complete manifest before omitting only the other built-in shell, never workers or common assets.
+ */
+export function validateRuntimeProfileSelection(manifest, profileId) {
+  const profile = resolveShellProfile(profileId);
+  const inventory = validateRuntimeInventory(manifest);
+  const transport = runtimeTransport(manifest, inventory);
+  const shellPaths = new Set();
+  for (const id of SHELL_PROFILE_IDS) {
+    const known = resolveShellProfile(id);
+    shellPaths.add(known.archivePath);
+    const record = inventory.find((asset) => asset.path === known.archivePath);
+    if (
+      record &&
+      (record.bytes !== known.evidence.archiveBytes || record.sha256 !== known.evidence.sha256)
+    )
+      fail("Runtime shell profile integrity mismatch");
+  }
+  if (!inventory.some((asset) => asset.path === profile.archivePath))
+    fail("Selected runtime shell is unavailable");
+  const selectedInventory = inventory.filter(
+    (asset) => !shellPaths.has(asset.path) || asset.path === profile.archivePath,
+  );
+  let downloadFiles;
+  if (transport.entries) {
+    const keys = new Set(selectedInventory.map((asset) => `${asset.sha256}-${asset.bytes}`));
+    for (const asset of inventory.filter((asset) => !selectedInventory.includes(asset))) {
+      const key = `${asset.sha256}-${asset.bytes}`;
+      const entry = transport.entries.get(key);
+      // 被省略的外壳必须独占载荷，不能与任何保留资产共享内容或物理文件。
+      // An omitted shell must own its payload, without sharing content or a physical file with retained assets.
+      if (
+        keys.has(key) ||
+        [...transport.entries.values()].filter((item) => item.file === entry.file).length !== 1
+      )
+        fail("Optional runtime shell payload is shared");
+    }
+    const requiredFiles = new Set([...keys].map((key) => transport.entries.get(key).file));
+    downloadFiles = transport.files.filter((file) => requiredFiles.has(file.path));
+  } else {
+    downloadFiles = selectedInventory;
+  }
+  return {
+    inventory,
+    selectedInventory,
+    transport,
+    downloadFiles,
+    downloadBytes: downloadFiles.reduce((total, file) => total + file.bytes, 0),
+  };
 }
 // 私有输入打开之前，只有已验证的公开清单资源能进入此缓存。
 // Only verified public inventory assets enter this cache, before private inputs are opened.
@@ -351,10 +403,12 @@ function channel(worker, onFatal, onStage) {
 export async function prepareSealedRuntime({
   baseUrl,
   manifestSha256,
+  profileId,
   components = ["assets", "texture", "translator", "extraction", "program", "spirvCross"],
   signal,
   onProgress,
 } = {}) {
+  const selectedProfile = resolveShellProfile(profileId);
   if (attempted) fail("Runtime bootstrap is one-shot per page");
   attempted = true;
   if (
@@ -392,10 +446,9 @@ export async function prepareSealedRuntime({
   const publicBytes = await read(new URL("runtime-manifest.json", base), LIMIT.manifest, signal);
   if ((await hash(publicBytes)) !== manifestSha256) fail("Runtime manifest integrity mismatch");
   const manifest = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(publicBytes));
-  const inventory = validateRuntimeInventory(manifest),
-    assets = new Map();
-  const transport = runtimeTransport(manifest, inventory);
-  const downloadFiles = transport.files;
+  const { inventory, selectedInventory, transport, downloadFiles, downloadBytes } =
+    validateRuntimeProfileSelection(manifest, selectedProfile.id);
+  const assets = new Map();
   const downloadedAssets = new Map();
   let cache = await optionalStorage(() => caches.open(PUBLIC_CACHE));
   const cacheKey = (record) =>
@@ -413,7 +466,7 @@ export async function prepareSealedRuntime({
         cachedBytes,
         completedFiles,
         totalFiles: downloadFiles.length,
-        totalBytes: transport.totalBytes,
+        totalBytes: downloadBytes,
         label: "Loading application files…",
       },
       force,
@@ -491,7 +544,7 @@ export async function prepareSealedRuntime({
     if (cache) {
       // 仅逐出我们公开缓存中的过期条目，绝不处理任何私有浏览器存储。
       // Evict only obsolete entries from our public cache, never any private browser storage.
-      const activeKeys = new Set(downloadFiles.map(cacheKey));
+      const activeKeys = new Set(transport.files.map(cacheKey));
       await optionalStorage(async () => {
         for (const request of await cache.keys())
           if (!activeKeys.has(request.url)) await cache.delete(request);
@@ -529,7 +582,7 @@ export async function prepareSealedRuntime({
     }
   }
   const verifiedContents = new Map();
-  for (const record of inventory) {
+  for (const record of selectedInventory) {
     if (signal?.aborted) throw new DOMException("Runtime cancelled", "AbortError");
     if (!transport.entries) {
       assets.set(record.path, downloadedAssets.get(record.path));

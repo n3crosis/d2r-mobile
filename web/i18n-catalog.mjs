@@ -596,5 +596,25 @@ export const catalog = Object.freeze({
   "dmWebCompatibility": [
     "IPA target: iOS 26+ with BC texture support. Older-GPU ASTC output is not available. Signing is separate.",
     "IPA 目标：iOS 26 或更新版本，且 GPU 支持 BC 纹理。暂不生成旧 GPU 所需的 ASTC 包；签名需另行完成。"
+  ],
+  "dmWebTarget": [
+    "IPA target",
+    "IPA 目标"
+  ],
+  "dmWebTarget26": [
+    "iOS 26+",
+    "iOS 26 或更新版本"
+  ],
+  "dmWebTarget18": [
+    "iOS 18+",
+    "iOS 18 或更新版本"
+  ],
+  "dmWebTargetReload": [
+    "Changing target reloads the page. Choose before selecting a folder.",
+    "切换目标会重新加载页面；请先选择目标，再选择文件夹。"
+  ],
+  "dmWebCompatibility18": [
+    "IPA target: iOS 18+, still requiring BC texture support. Not a guarantee for every device. ASTC output is unavailable. Signing is separate.",
+    "IPA 目标：iOS 18 或更新版本，仍需 GPU 支持 BC 纹理；不代表所有设备均可运行。暂不提供 ASTC 包；签名需另行完成。"
   ]
 });

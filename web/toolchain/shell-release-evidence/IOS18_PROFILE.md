@@ -64,7 +64,13 @@ Focused synthetic checks passed. Both content modes were also derived in memory
 from the pinned public iOS 18 executable with matching complete output hashes;
 that check did not execute the binary or use game inputs.
 
-The live UI and runtime archive assembly remain default-only. The second archive
-is not downloaded for everybody, and no iOS 18 option is exposed yet. Profile
-selection and efficient optional payload delivery are still required. This OS
-profile does not implement the separate older-GPU ASTC texture-pack pipeline.
+The candidate UI selects the closed target before private inputs and reloads to
+switch runtimes. Assembly includes both public archives, while the browser validates
+the complete manifest and downloads only the selected shell plus all common assets.
+The live publication remains default-only until this candidate passes CI and is
+deployed. This OS profile does not implement the separate older-GPU ASTC pipeline.
+
+A real public legacy archive was also loaded with repository metadata: all 16
+inventory entries, 13 file streams, hashes, recipe, shader catalog and art/HUD
+pins passed. Closing zeroed the archive and subsequent entry reads rejected.
+This remains packaging evidence, not binary execution or device proof.

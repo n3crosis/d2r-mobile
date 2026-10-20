@@ -36,6 +36,16 @@ for file in js/*.mjs; do
   sed 's@../../../program-release-catalog.mjs@../program-release-catalog.mjs@g' "$file" > "dist/js/$(basename "$file")"
 done
 cp ../../program-rewriter-adapter.mjs ../../program-release-catalog.mjs ../../guest-framework.mjs dist/
+# 保留独立适配器的相对模块路径，并完整复制封闭外壳配置的公开依赖。
+# Preserve standalone adapter module paths and copy the closed shell registry's complete public closure.
+for file in shell-profiles.mjs \
+  toolchain/shell-release-evidence/v1.0.18.json \
+  toolchain/shell-release-evidence/v1.0.18-derived-capacities.mjs \
+  toolchain/shell-release-evidence/v1.0.18-ios18.json \
+  toolchain/shell-release-evidence/v1.0.18-ios18-derived-capacities.json; do
+  mkdir -p "dist/$(dirname "$file")"
+  cp "../../$file" "dist/$file"
+done
 cp deps/capstone/LICENSE.TXT dist/licenses/capstone.txt
 cp deps/lz4/lib/LICENSE dist/licenses/lz4.txt
 cp toolchain-lock.json dist/

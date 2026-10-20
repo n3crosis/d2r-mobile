@@ -15,7 +15,8 @@ if ! head -n 1 .build/compiler-version.txt | grep -Eq '^emcc .* 4\.0\.20([[:spac
   exit 1
 fi
 if [[ ! -d .build/source/.git ]]; then
-  git clone --no-checkout https://github.com/ARM-software/astc-encoder.git .build/source
+  git init -q .build/source
+  git -C .build/source fetch --depth 1 https://github.com/ARM-software/astc-encoder.git "$PIN"
 fi
 git -C .build/source checkout --detach "$PIN"
 test "$(git -C .build/source rev-parse HEAD)" = "$PIN"

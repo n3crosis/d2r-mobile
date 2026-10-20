@@ -6,6 +6,7 @@ import {
   validateAssetRuntimeInventory,
 } from "../toolchain/asset-runtime-js/payload-policy.mjs";
 import { createRuntimeTransport } from "./transport.mjs";
+import { resolveShellProfile } from "../shell-profiles.mjs";
 import { SHADER_CATALOG_SOURCES } from "../shader-catalog-adapter.mjs";
 import {
   readFile,
@@ -24,6 +25,54 @@ import { resolve, relative, sep } from "node:path";
 
 const web = resolve(fileURLToPath(new URL("../", import.meta.url)));
 const hash = (value) => createHash("sha256").update(value).digest("hex");
+// 下载和打包共同使用独立固定的发布输入；配置注册表漂移必须在网络读取前失败。
+// Download and packaging share independently pinned release inputs; registry drift fails before network reads.
+export const SHELL_BUILD_INPUTS = Object.freeze(
+  [
+    {
+      profileId: "v1.0.18-ios26",
+      sourceUrl:
+        "https://github.com/jhaizhou-ops/d2r-mobile/releases/download/v1.0.18/D2RMobile-shell-build-input.zip",
+      bytes: 4884778,
+      sha256: "a383552871851ddb5923033639358e2a3c205ae411676e6538cd098743bbe37b",
+      archivePath: "profile/shell.zip",
+      evidencePath: "toolchain/shell-release-evidence/v1.0.18.json",
+      metadataPath: "profile/shell.json",
+    },
+    {
+      profileId: "v1.0.18-ios18",
+      sourceUrl:
+        "https://github.com/jhaizhou-ops/d2r-mobile/releases/download/v1.0.18/D2RMobile-shell-ios18-build-input.zip",
+      bytes: 4880624,
+      sha256: "e52c119ffacf8aaafd9457f92b8e57384ab04c7ce289eecd84972743d14570e4",
+      archivePath: "profile/shell-ios18.zip",
+      evidencePath: "toolchain/shell-release-evidence/v1.0.18-ios18.json",
+      metadataPath: "profile/shell-ios18.json",
+    },
+  ].map((input) => {
+    const profile = resolveShellProfile(input.profileId);
+    if (
+      profile.archivePath !== input.archivePath ||
+      profile.evidence.sourceUrl !== input.sourceUrl ||
+      profile.evidence.archiveBytes !== input.bytes ||
+      profile.evidence.sha256 !== input.sha256
+    )
+      throw new Error("Pinned public shell registry drift");
+    return Object.freeze({
+      ...input,
+      buildPath: `runtime-build/.build/${input.archivePath.slice("profile/".length)}`,
+    });
+  }),
+);
+// 原始客户端和独立适配器保留相对导入；两处都携带同一份公开配置闭包。
+// Raw clients and standalone adapters retain relative imports; both carry the same public registry closure.
+const shellProfileSources = [
+  "shell-profiles.mjs",
+  "toolchain/shell-release-evidence/v1.0.18.json",
+  "toolchain/shell-release-evidence/v1.0.18-derived-capacities.mjs",
+  "toolchain/shell-release-evidence/v1.0.18-ios18.json",
+  "toolchain/shell-release-evidence/v1.0.18-ios18-derived-capacities.json",
+];
 const maximumFile = 64 * 1024 * 1024;
 const maximumTotal = 512 * 1024 * 1024;
 const safe = (name) => {
@@ -175,6 +224,14 @@ export async function assembleRuntime({ build } = {}) {
     ])
       await licenseDirectory(`${prefix}/licenses`);
     const program = "toolchain/program-rewrite-spike/dist";
+    for (const path of shellProfileSources) {
+      await copy(path);
+      const sourceBytes = await readFile(resolve(web, path));
+      await copy(`${program}/${path}`, {
+        bytes: sourceBytes.length,
+        sha256: hash(sourceBytes),
+      });
+    }
     for (const name of [
       "capstone-lz4.mjs",
       "capstone-lz4.wasm",
@@ -245,15 +302,12 @@ export async function assembleRuntime({ build } = {}) {
         `sealed-workers/${name}`,
       );
     }
-    await copy("toolchain/shell-release-evidence/v1.0.18.json", undefined, "profile/shell.json");
-    await copy(
-      "runtime-build/.build/shell.zip",
-      {
-        bytes: 4884778,
-        sha256: "a383552871851ddb5923033639358e2a3c205ae411676e6538cd098743bbe37b",
-      },
-      "profile/shell.zip",
-    );
+    // 大外壳文件各自生成独立传输载荷；客户端只选择需要的配置。
+    // Large shell archives receive separate transport payloads; clients select only the needed profile.
+    for (const input of SHELL_BUILD_INPUTS) {
+      await copy(input.evidencePath, undefined, input.metadataPath);
+      await copy(input.buildPath, input, input.archivePath);
+    }
     const { transport, payloads } = createRuntimeTransport(contents);
     await mkdir(resolve(staging, "payloads"));
     for (const [path, bytes] of payloads) await writeFile(resolve(staging, path), bytes);

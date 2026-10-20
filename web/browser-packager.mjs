@@ -6,6 +6,7 @@
  */
 import { prepareSealedRuntime } from "./sealed-runtime/clients.mjs";
 import { loadProductionProfile } from "./production-profile.mjs";
+import { resolveShellProfile } from "./shell-profiles.mjs";
 import {
   createExtractionJobAdapter,
   readAuthenticatedProgramModules,
@@ -32,6 +33,7 @@ export async function prepareBrowserPackager({
   onProgress,
   profileId,
 } = {}) {
+  const selectedProfile = resolveShellProfile(profileId);
   if (
     !globalThis.isSecureContext ||
     !navigator.storage?.getDirectory ||
@@ -41,6 +43,7 @@ export async function prepareBrowserPackager({
     throw new Error("BROWSER_UNSUPPORTED");
   const runtime = await prepareSealedRuntime({
     baseUrl: "./runtime/",
+    profileId: selectedProfile.id,
     manifestSha256,
     signal,
     onProgress,
@@ -75,7 +78,7 @@ export async function prepareBrowserPackager({
     if (failed) throw failure;
   };
   try {
-    profile = await loadProductionProfile(runtime, { signal, profileId });
+    profile = await loadProductionProfile(runtime, { signal, profileId: selectedProfile.id });
     const extraction = createExtractionJobAdapter({
       createWorker: runtime.createExtractionWorker,
       contentMode: profile.contentMode,
