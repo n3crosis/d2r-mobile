@@ -45,7 +45,9 @@ the new `NativeArtTextureClient` in `web/native-art-texture.mjs` uses the existi
 texture worker's explicit descriptor decode operation, not the crop helper. It
 validates padded frame extents without changing stored width/height. CI adds an
 independent native 136×65, frame-width65/pitch68 two-frame atlas oracle and compares
-every RGBA byte. This new proof is pending until CI completes. Callers supply
+every RGBA byte. This proof passed at commit `b90743b5b70fdf9ffa895dfd1d54a0201ad270c7` in
+[asset CI run 39399152831](https://github.com/n3crosis/d2r-mobile/actions/runs/39399152831),
+along with exact native-art PNG/C bytes and corruption rejection. Callers supply
 `decodeAtlas: (bytes, options) => client.decodeAtlas(bytes, options)` and close the
 client when the stage finishes. No existing texture adapter checks were relaxed.
 This stage is not yet an automatic packaging-job stage. Trusted shell table counts,

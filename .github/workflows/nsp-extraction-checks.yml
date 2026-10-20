@@ -4,10 +4,24 @@ on:
   push:
     paths:
       - "web/toolchain/nsp-extract-spike/**"
+      - "web/extraction-worker-client.mjs"
+      - "web/extraction-job-adapter.mjs"
+      - "web/nsp-input.mjs"
+      - "web/content-selection.mjs"
+      - "web/romfs-tree.mjs"
+      - "web/casc-logical-reader.mjs"
+      - "web/tests/*extraction*"
       - ".github/workflows/nsp-extraction-checks.yml"
   pull_request:
     paths:
       - "web/toolchain/nsp-extract-spike/**"
+      - "web/extraction-worker-client.mjs"
+      - "web/extraction-job-adapter.mjs"
+      - "web/nsp-input.mjs"
+      - "web/content-selection.mjs"
+      - "web/romfs-tree.mjs"
+      - "web/casc-logical-reader.mjs"
+      - "web/tests/*extraction*"
       - ".github/workflows/nsp-extraction-checks.yml"
 permissions:
   contents: read
@@ -38,7 +52,7 @@ jobs:
           source "$RUNNER_TEMP/nsp-emsdk/emsdk_env.sh"
           bash web/toolchain/nsp-extract-spike/build-wasm.sh
       - name: Run synthetic container tests
-        run: node --test web/toolchain/nsp-extract-spike/*.test.mjs
+        run: node --test web/toolchain/nsp-extract-spike/*.test.mjs web/tests/extraction-worker-client.test.mjs web/tests/extraction-job-adapter.test.mjs
       - name: Install browser test tools from official npm package
         shell: bash
         run: |

@@ -62,7 +62,7 @@ Geometry/tessellation, readable-tile variants, full per-game shader/facts
 extraction, control-key construction, c1 index generation and final replay
 metadata remain unintegrated. Unsupported stages and translator query/default
 notes fail closed instead of falling back or silently inferring resource types.
-Graphics implementation is pending its own linked CI result; accepting its
+Authored graphics cases passed the linked CI run below; accepting this
 validated input layout does not prove all game graphics shaders compatible.
 
 One conversion runs at a time. Code is copied before transfer, so caller bytes
@@ -110,7 +110,7 @@ release/source/toolchain and source-digest proof, not a label substitution.
 The mismatch alone is not evidence that any particular game shader renders
 incorrectly; real-game compatibility remains unestablished.
 
-## Authored graphics extension (CI pending)
+## Verified authored graphics extension
 
 The new vertex fixture loads attribute0's four components with ALD, writes all
 four position components with AST, and exits. The fragment fixture writes four
@@ -120,5 +120,14 @@ from the vendored decoder, not game bytes. Native and browser pipelines must
 match exact MSL/resource/reflection outputs and SPIR-V hashes; additional checks
 require vertex input0 plus position and fragment color0 with no discard.
 Actual C# bridge rejection of invalid headers/type maps is exercised directly
-in Chromium, separately from the adapter guards. The earlier green linked run
-covers compute only; this expanded graphic corpus has not yet run.
+in Chromium, separately from the adapter guards.
+
+[Graphics run 39398141357](https://github.com/n3crosis/d2r-mobile/actions/runs/39398141357)
+passed on `44b8e64d550f3575e88ebf83f65bdcfb9673b6c5` (2026-10-20), including
+all three real linked stages and negative bridge cases. Artifact `12252583163`
+records Chromium `156.0.8078.4` and aggregate synthetic SHADER_SRC
+`bb602debeac6ca51`. Inspected vertex output/replay has `pos_attr=0`,
+`pos_w=attr`; fragment MSL writes exactly `(1.0, 0.5, 0.0, 1.0)` to color0,
+with no discard/sample mask. Existing compute-only native byte/sidecar parity
+also remained green in run `39398141113`. These synthetic semantics and parity
+results do not establish real-game, GPU-rendering or release-shell compatibility.

@@ -82,7 +82,10 @@ PLAYWRIGHT_ENTRY=/absolute/path/to/playwright/index.mjs \
   node web/toolchain/staged-output-spike/browser-smoke.mjs
 ```
 
-A passing hosted run must be observed before claiming browser proof. Windows and
-macOS save-picker behavior, actual multi-GB OPFS endurance, crash recovery and
-real-game output correctness remain release gates. The separate ZIP64
+Hosted proof passed on 2026-10-20 for commit
+`b90743b5b70fdf9ffa895dfd1d54a0201ad270c7` using Chromium `156.0.8078.4`:
+[real OPFS workflow run](https://github.com/n3crosis/d2r-mobile/actions/runs/39399152890).
+All four browser scenarios passed; this establishes only the tiny OPFS scope
+described above. Windows and macOS save-picker behavior, actual multi-GB OPFS
+endurance, crash recovery and real-game output correctness remain release gates. The separate ZIP64
 large-output workflow proves writer bytes, not this browser staging lifecycle.

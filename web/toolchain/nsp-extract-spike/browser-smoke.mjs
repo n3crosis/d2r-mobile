@@ -18,7 +18,11 @@ const server = http.createServer(async (req, res) => {
     res.end("<!doctype html><title>Synthetic WASM smoke</title>");
     return;
   }
-  const shared = ["/nsp-input.mjs", "/content-selection.mjs"].includes(pathname);
+  const shared = [
+    "/nsp-input.mjs",
+    "/content-selection.mjs",
+    "/extraction-worker-client.mjs",
+  ].includes(pathname);
   const target = shared
     ? path.resolve(root, "../..", pathname.slice(1))
     : path.resolve(root, `.${pathname}`);
@@ -104,6 +108,27 @@ try {
   });
   assert.deepEqual(protocol[0], { id: 1, ok: false, error: "EXTRACTION_FAILED" });
   assert.deepEqual(protocol[1], { id: 1, ok: true, result: { disposed: true } });
+  const clientResult = await page.evaluate(async () => {
+    const { createExtractionWorkerClient } = await import("/extraction-worker-client.mjs");
+    const createWorker = () => new Worker("/extraction-worker.mjs", { type: "module" });
+    const clean = createExtractionWorkerClient({ createWorker });
+    await clean.dispose();
+    const rejected = createExtractionWorkerClient({ createWorker });
+    let code;
+    try {
+      await rejected.initialize({
+        nsps: [new Blob()],
+        prodKeys: new Blob(),
+        titleKeys: new Blob(),
+      });
+    } catch (error) {
+      code = error.code;
+    } finally {
+      rejected.close();
+    }
+    return { disposed: true, code };
+  });
+  assert.deepEqual(clientResult, { disposed: true, code: "EXTRACTION_FAILED" });
   assert.deepEqual(external, [], "No external traffic");
   assert.deepEqual(diagnostics, [], "No native or runtime diagnostic output");
   console.log(JSON.stringify({ ok: true, checks: result.checks }));

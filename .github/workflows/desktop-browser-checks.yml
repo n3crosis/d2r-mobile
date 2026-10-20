@@ -1,0 +1,121 @@
+name: Windows and macOS synthetic Chromium proofs
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/web-ipa-packager]
+    paths:
+      - "web/toolchain/desktop-browser-spike/**"
+      - "web/toolchain/staged-output-spike/**"
+      - "web/toolchain/offline-runtime-spike/**"
+      - "web/toolchain/texture-spike/**"
+      - "web/browser-staged-output.mjs"
+      - "web/staged-zip-validator.mjs"
+      - "web/zip*-writer.mjs"
+      - "web/preflight.mjs"
+      - "dm/gfx/nvn/nvn_tex.*"
+      - "dm/gfx/tex/nvn_*"
+      - "dm/third_party/bcdec/**"
+      - ".github/workflows/desktop-browser-checks.yml"
+  pull_request:
+    paths:
+      - "web/toolchain/desktop-browser-spike/**"
+      - "web/toolchain/staged-output-spike/**"
+      - "web/toolchain/offline-runtime-spike/**"
+      - "web/toolchain/texture-spike/**"
+      - "web/browser-staged-output.mjs"
+      - "web/staged-zip-validator.mjs"
+      - "web/zip*-writer.mjs"
+      - "web/preflight.mjs"
+      - "dm/gfx/nvn/nvn_tex.*"
+      - "dm/gfx/tex/nvn_*"
+      - "dm/third_party/bcdec/**"
+      - ".github/workflows/desktop-browser-checks.yml"
+permissions:
+  contents: read
+concurrency:
+  group: desktop-browser-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+# Only standard hosted runners. Public-only gate avoids private-repository minute
+# overages if visibility changes. Public runtime transfer is capped at 32 MiB and
+# retained for one day; artifacts still count toward the owner's storage allowance.
+# Official action tag SHAs and node24 runtimes verified on 2026-10-20.
+jobs:
+  build-runtime:
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      digest: ${{ steps.seal.outputs.digest }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Check transfer-integrity negative cases
+        run: node --test web/toolchain/desktop-browser-spike/verify-transfer.test.mjs
+      - name: Build public WASM once with pinned official SDK
+        shell: bash
+        run: |
+          git clone --depth 1 --branch 4.0.20 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/desktop-emsdk"
+          test "$(git -C "$RUNNER_TEMP/desktop-emsdk" rev-parse HEAD)" = e4fe26ef59168ff44f4c23c466e497bf60b3411e
+          "$RUNNER_TEMP/desktop-emsdk/emsdk" install 4.0.20
+          "$RUNNER_TEMP/desktop-emsdk/emsdk" activate 4.0.20
+          source "$RUNNER_TEMP/desktop-emsdk/emsdk_env.sh"
+          bash web/toolchain/texture-spike/build-wasm.sh
+          node web/toolchain/offline-runtime-spike/prepare-bundle.mjs
+      - name: Seal exact public runtime transfer tree
+        id: seal
+        run: node web/toolchain/desktop-browser-spike/verify-transfer.mjs seal web/toolchain/offline-runtime-spike/dist
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: desktop-public-texture-runtime
+          path: web/toolchain/offline-runtime-spike/dist/
+          if-no-files-found: error
+          retention-days: 1
+  desktop-chromium:
+    needs: build-runtime
+    name: Synthetic Chromium (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, macos-14]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: desktop-public-texture-runtime
+          path: web/toolchain/offline-runtime-spike/dist/
+      - name: Verify transfer against trusted producing-job digest
+        env:
+          EXPECTED_DIGEST: ${{ needs.build-runtime.outputs.digest }}
+        shell: bash
+        run: node web/toolchain/desktop-browser-spike/verify-transfer.mjs verify web/toolchain/offline-runtime-spike/dist "$EXPECTED_DIGEST"
+      - name: Install pinned official Chromium proof tooling
+        shell: bash
+        run: |
+          npm install --prefix "$RUNNER_TEMP/desktop-playwright" --ignore-scripts --no-audit --no-fund playwright@1.64.1
+          node "$RUNNER_TEMP/desktop-playwright/node_modules/playwright/cli.js" install chromium
+      - name: Exercise real OPFS commit and cancellation
+        timeout-minutes: 3
+        env:
+          PLAYWRIGHT_ENTRY: ${{ runner.temp }}/desktop-playwright/node_modules/playwright/index.mjs
+        run: node web/toolchain/staged-output-spike/browser-smoke.mjs
+      - name: Exercise sealed Emscripten Worker and negative preload cases
+        timeout-minutes: 3
+        env:
+          PLAYWRIGHT_ENTRY: ${{ runner.temp }}/desktop-playwright/node_modules/playwright/index.mjs
+        run: node web/toolchain/offline-runtime-spike/browser-proof.mjs
+      - name: Record environment and evidence boundary
+        if: ${{ !cancelled() }}
+        run: node web/toolchain/desktop-browser-spike/report-environment.mjs

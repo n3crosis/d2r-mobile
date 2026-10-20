@@ -49,7 +49,16 @@ CLI: `node capture-browser.mjs prepare <fixture-directory>` or
 
 ## Graphics extension status
 
-The vertex/fragment bridge, authored opcode corpus and expanded native/Chromium
-gate are implemented but await their first CI run. The green run above is
-compute-only evidence and must not be quoted as graphics parity. Compiler pins
-remain unchanged; the newer release-shell mismatch is still blocked.
+[Graphics run 39398141357](https://github.com/n3crosis/d2r-mobile/actions/runs/39398141357)
+passed on `44b8e64d550f3575e88ebf83f65bdcfb9673b6c5` (2026-10-20).
+The real linked compute/vertex/fragment pipelines, unchanged native oracles,
+Vulkan validation and direct negative C# bridge cases all passed. Artifact
+`12252583163` records Chromium `156.0.8078.4` and aggregate source digest
+`bb602debeac6ca51`. Inspected MSL confirms unchanged attribute0-to-position;
+replay has `pos_attr=0`, `pos_w=attr`. Fragment output is exactly RGBA
+`(1.0, 0.5, 0.0, 1.0)` at color0 with no discard or sample mask.
+
+The earlier run above remains compute-only evidence. Compiler pins remain
+unchanged and the newer release-shell mismatch is still blocked. Geometry,
+tessellation, broader graphics instructions/resources, both precision modes,
+GPU execution and game compatibility need their own evidence.

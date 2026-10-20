@@ -6,6 +6,13 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 import process from "node:process";
 const root = fileURLToPath(new URL("./pyodide-dist/", import.meta.url));
+const publicManifest = JSON.parse(await readFile(path.join(root, "manifest.json"), "utf8"));
+const runtimeNames = publicManifest.assets.map((asset) => asset.path);
+assert.ok(
+  runtimeNames.every((name) => /^[a-zA-Z0-9][a-zA-Z0-9_.+-]*$/.test(name)),
+  "Prepared runtime names must be flat safe filenames",
+);
+const publicNames = new Set(["index.html", "bootstrap.mjs", "manifest.json", ...runtimeNames]);
 const { chromium } = await import(pathToFileURL(process.env.PLAYWRIGHT_ENTRY).href);
 let sealed = false;
 let mode = "valid";
@@ -33,7 +40,7 @@ function makeServer(assets) {
       return;
     }
     const name = pathname === "/" ? "index.html" : pathname.slice(1);
-    if (!/^[a-zA-Z0-9.-]+$/.test(name)) {
+    if (!publicNames.has(name)) {
       res.writeHead(404);
       res.end();
       return;

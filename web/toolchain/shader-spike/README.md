@@ -19,8 +19,9 @@ A module worker calls a `JSExport` taking job JSON and shader bytes, returning
 SPIR-V as base64 and the existing resource sidecar. File paths and CLI filesystem
 operations stay out of the bridge. The original proven fixture is synthetic compute.
 The graphics extension now validates a full 0x50-byte SPH, declared-stage agreement
-and explicit attribute/output component maps for vertex and fragment; its new
-linked native differential corpus is pending CI. Other stages remain rejected. Size caps
+and explicit attribute/output component maps for vertex and fragment. Its authored
+linked native differential corpus passed run `39398141357`; other stages remain
+rejected. Size caps
 (1 MiB shader, 64 KiB metadata) and terminating the worker bound this test;
 they are not a complete hostile-input validator. The worker is single-threaded,
 not a shared-memory/pthread build. Do not expose this harness as a production API.
@@ -251,6 +252,15 @@ The repaired gate passed in run `39389720867` with no browser diagnostic events:
 - Installed validator reported SPIRV-Tools `v2025.1`; native and decoded browser
   bytes both passed `--target-env vulkan1.1` without relaxing the target.
 
-Windows/macOS Chromium, nontrivial arithmetic/resources/branches, graphics,
-rendering, game compatibility, Metal conversion, and working IPA assembly remain
-unverified. Nothing from this job was deployed or uploaded as a binary artifact.
+This historical compute-only job did not establish Windows/macOS Chromium,
+nontrivial arithmetic/resources/branches, graphics, rendering, game compatibility,
+Metal conversion or working IPA assembly. Nothing from that job was deployed or
+uploaded as a binary artifact.
+
+The later linked [graphics gate](https://github.com/n3crosis/d2r-mobile/actions/runs/39398141357)
+passed on `44b8e64d550f3575e88ebf83f65bdcfb9673b6c5`: authored vertex
+attribute0-to-position and fragment constant-color cases match original native
+SPIR-V hashes, complete sidecars, Metal source and replay reflection. Raw bridge
+SPH/type-map rejection was exercised in Chromium. The unchanged compute gate
+also passed run `39398141113`. This extends synthetic stage evidence, not game
+coverage, rendering proof or current release-shell compatibility.

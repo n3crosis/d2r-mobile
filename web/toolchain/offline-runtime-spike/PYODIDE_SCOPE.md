@@ -84,3 +84,13 @@ WebRTC or top-level navigations.
   remains pending. Do not claim Pillow/NumPy isolation verified before it passes.
 - No private files, key material, user inputs, generated game data, production
   deployment or production enablement are part of this work.
+
+### First CI result and harness correction
+
+[Run 39399152923](https://github.com/n3crosis/d2r-mobile/actions/runs/39399152923)
+on `b90743b5b70fdf9ffa895dfd1d54a0201ad270c7` completed runtime packaging and
+source-lock verification, then failed before runtime initialization because the
+test server's filename regex rejected underscores in the official wheel names.
+The server now admits only the exact generated manifest paths plus the three
+entry files, rather than a narrower inconsistent filename regex. CSP and receipt
+assertions are unchanged. A successful corrected browser run is still required.

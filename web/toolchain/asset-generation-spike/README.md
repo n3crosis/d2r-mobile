@@ -106,4 +106,6 @@ The standalone worker above still rejects v61. `web/v61-asset-worker.mjs` compos
 
 The next named generator boundary is [complete native art](NATIVE_ART.md): all
 manifest PNGs plus the actual skill-index text intermediate, original hash checks,
-and separate padded-atlas decoding. Its new CI proof remains pending.
+and separate padded-atlas decoding. Both strict synthetic proofs passed in
+[asset CI run 39399152831](https://github.com/n3crosis/d2r-mobile/actions/runs/39399152831)
+at `b90743b5b70fdf9ffa895dfd1d54a0201ad270c7`; this is not real-game or full-IPA validation.
