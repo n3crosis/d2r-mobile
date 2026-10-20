@@ -50,6 +50,42 @@ const stages = Object.freeze({
   cleanup: "dmWebStagesCleanup",
   commit: "dmWebStagesCommit",
 });
+// 只投影有界计数器；不转发导出器的目录名、路径或其他字段。
+// Project bounded counters only; never forward exporter directory names, paths or other fields.
+export function sanitizeResourceProgress(value) {
+  if (!value || typeof value !== "object") return undefined;
+  const bytes = (count) =>
+    typeof count === "bigint" && count >= 0n && count <= BigInt(Number.MAX_SAFE_INTEGER)
+      ? Number(count)
+      : count;
+  const progress = {
+    filesWritten: value.filesWritten,
+    totalFiles: value.totalFiles,
+    bytesWritten: bytes(value.bytesWritten),
+    totalBytes: bytes(value.totalBytes),
+  };
+  if (
+    !Object.values(progress).every((count) => Number.isSafeInteger(count) && count >= 0) ||
+    progress.filesWritten > progress.totalFiles ||
+    progress.bytesWritten > progress.totalBytes
+  )
+    return undefined;
+  return Object.freeze(progress);
+}
+// 高频资源计数仅显示在现有状态行；活动日志保留阶段事件。
+// Frequent resource counters belong only in the existing status line; activity logs keep stage events.
+export function resourceProgressLabel(event) {
+  if (event?.stage !== "resources" || event.state !== "running") return null;
+  const progress = sanitizeResourceProgress(event.resourceProgress);
+  if (!progress) return null;
+  return t(
+    "dmWebResourceProgress",
+    progress.filesWritten,
+    progress.totalFiles,
+    (progress.bytesWritten / 1_000_000).toFixed(1),
+    (progress.totalBytes / 1_000_000).toFixed(1),
+  );
+}
 // 仅固定标签与有界数值进度进入活动日志。
 // Only fixed labels and bounded numeric progress enter the activity log.
 export function packagingActivity(event) {

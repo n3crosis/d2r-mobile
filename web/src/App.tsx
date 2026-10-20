@@ -10,6 +10,7 @@ import {
   packagingActivity,
   packagingFailureMessage,
   packagingFailureSummary,
+  resourceProgressLabel,
 } from "../packaging-diagnostics.mjs";
 
 type LocalPickers = typeof globalThis & {
@@ -285,13 +286,21 @@ export default function App() {
         selectedNspNames: [...selectedNsps],
         signal: controller.signal,
         onProgress: (event: {
-          label: string;
+          label?: string;
           stage?: string;
           state?: string;
           diagnostic?: { stage?: string; completed?: number };
+          resourceProgress?: {
+            filesWritten: number;
+            totalFiles: number;
+            bytesWritten: number;
+            totalBytes: number;
+          };
         }) => {
           if (!acceptingProgress || controller.signal.aborted || !mounted.current) return;
-          pendingGenerationStatus.current = packagingActivity(event) ?? t("dmWebInProgress");
+          const activityLabel = packagingActivity(event);
+          pendingGenerationStatus.current =
+            resourceProgressLabel(event) ?? activityLabel ?? t("dmWebInProgress");
           const phase = event.diagnostic?.stage;
           const percent = event.diagnostic?.completed;
           pendingRomfsProgress.current =
@@ -304,10 +313,7 @@ export default function App() {
             percent <= 100
               ? { phase: phase === "romfs-base" ? "base" : "merged", percent }
               : null;
-          appendActivity(
-            packagingActivity(event),
-            event.state === "failed" || event.state === "complete",
-          );
+          appendActivity(activityLabel, event.state === "failed" || event.state === "complete");
         },
       });
       if (!mounted.current) return;
@@ -358,6 +364,7 @@ export default function App() {
         <CardHeader>
           <CardTitle>{t("dmWebTitle")}</CardTitle>
           <CardDescription>{t("dmWebInstructions")}</CardDescription>
+          <CardDescription>{t("dmWebCompatibility")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-3">

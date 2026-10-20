@@ -588,5 +588,13 @@ export const catalog = Object.freeze({
   "dmWebProgressSize": [
     "; %s MB",
     "；%s MB"
+  ],
+  "dmWebResourceProgress": [
+    "Saving game resources: %s/%s files; %s/%s MB",
+    "正在保存游戏资源：%s/%s 个文件；%s/%s MB"
+  ],
+  "dmWebCompatibility": [
+    "IPA target: iOS 26+ with BC texture support. Older-GPU ASTC output is not available. Signing is separate.",
+    "IPA 目标：iOS 26 或更新版本，且 GPU 支持 BC 纹理。暂不生成旧 GPU 所需的 ASTC 包；签名需另行完成。"
   ]
 });

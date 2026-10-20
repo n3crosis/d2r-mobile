@@ -535,4 +535,6 @@ static const struct { const char *k, *zh, *en, *es, *mx, *ru; } k_dm_i18n[] = {
     { "dmWebProgressCount", "：%s", ": %s", ": %s", ": %s", ": %s" },
     { "dmWebProgressFraction", "（%s/%s）", " (%s/%s)", " (%s/%s)", " (%s/%s)", " (%s/%s)" },
     { "dmWebProgressSize", "；%s MB", "; %s MB", "; %s MB", "; %s MB", "; %s MB" },
+    { "dmWebResourceProgress", "正在保存游戏资源：%s/%s 个文件；%s/%s MB", "Saving game resources: %s/%s files; %s/%s MB", "Saving game resources: %s/%s files; %s/%s MB", "Saving game resources: %s/%s files; %s/%s MB", "Saving game resources: %s/%s files; %s/%s MB" },
+    { "dmWebCompatibility", "IPA 目标：iOS 26 或更新版本，且 GPU 支持 BC 纹理。暂不生成旧 GPU 所需的 ASTC 包；签名需另行完成。", "IPA target: iOS 26+ with BC texture support. Older-GPU ASTC output is not available. Signing is separate.", "IPA target: iOS 26+ with BC texture support. Older-GPU ASTC output is not available. Signing is separate.", "IPA target: iOS 26+ with BC texture support. Older-GPU ASTC output is not available. Signing is separate.", "IPA target: iOS 26+ with BC texture support. Older-GPU ASTC output is not available. Signing is separate." },
 };

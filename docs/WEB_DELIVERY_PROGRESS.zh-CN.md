@@ -2,18 +2,22 @@
 
 English: [WEB_DELIVERY_PROGRESS.md](WEB_DELIVERY_PROGRESS.md)
 
-## 当前源码不等于已验证的部署
+## 最近一次已验证的发布
 
-当前源码实现了单目录本体/更新/可选 DLC 转换、可选 `title.keys` 与内嵌通用票据处理、
-资源子目录输出和有上限的 Blob IPA 下载。生产浏览器路径不再使用 Python；
-着色器翻译仍保留 .NET WASM。目标为 Windows/macOS 桌面 Chromium。
+[提交 95e20ef](https://github.com/n3crosis/d2r-mobile/commit/95e20ef17ae2890b06cf7e3453706cba64cb3889)
+通过[完整 Verify 构建](https://github.com/n3crosis/d2r-mobile/actions/runs/39471068849)，
+并于 2026-10-20 18:07 UTC 发布到既有的私有
+[预览站点](https://d2r-ipa-packager.nicekrill34.chatgpt.site)。
+已验证产物为 17,118,942 字节（压缩 ZIP 约 16.3 MiB），包含 .NET，
+不含 Python 运行时、包或脚本。这是归档大小，不是浏览器内存测量。
+
+该版本实现单目录本体/更新/可选 DLC 转换、可选 `title.keys` 与内嵌通用票据处理、
+资源子目录输出和有上限的 Blob IPA 下载。目标为 Windows/macOS 桌面 Chromium。
+固定的输出外壳要求 iOS 26 和 BC 纹理支持；ASTC 与其他外壳目标仍是独立的对齐工作。
 见[实现与验收](WEB_IPA_PACKAGER.zh-CN.md)。
 
-本次对齐没有编译、构建、测试或部署这些移除 Python 的改动。此前
-[158d6cf 的 Verify 运行](https://github.com/n3crosis/d2r-mobile/actions/runs/39415236827)
-记录为该版本的完整公共运行时构建通过，不能证明后续修改、当前托管站点或游戏兼容性。
-真实游戏输入转换、另行签名后的设备执行与实际游戏仍未得到证明。
-这里不宣称任何新的完成百分比或测试结果。
+构建与发布成功不等于真实游戏输入转换、另行签名后的设备运行、实际游戏或内存/速度收益已验证。
+后续源码修改仍需各自构建与发布；这里不宣称新的完成百分比。
 
 ## 历史基线：42 / 100
 

@@ -19,7 +19,12 @@ import { planStagedZip } from "./staged-zip-validator.mjs";
 import { exportRomfsResources, ResourceExportError } from "./resource-folder-export.mjs";
 import { deriveD2rRuntimeContentMode } from "./d2r-runtime-content-mode.mjs";
 import { runPackagingJob, PackagingJobError } from "./packaging-job.mjs";
-import { sanitizeResourceOutcome } from "./packaging-diagnostics.mjs";
+import {
+  sanitizeResourceOutcome,
+  sanitizeResourceProgress,
+  resourceProgressLabel,
+  packagingActivity,
+} from "./packaging-diagnostics.mjs";
 import { inspectGuestTarget } from "./guest-target-stream.mjs";
 export async function prepareBrowserPackager({ manifestSha256, signal, onProgress } = {}) {
   if (
@@ -124,12 +129,21 @@ export async function prepareBrowserPackager({ manifestSha256, signal, onProgres
                 // Export writes only to a fresh UUID child, never the source files.
                 outputDirectoryHandle: input,
                 signal,
-                onProgress: () =>
-                  onProgress?.({
+                onProgress: (progress) => {
+                  const event = {
                     stage: "resources",
-                    state: "running",
-                    label: "Saving game resources locally",
-                  }),
+                    // 只有导出器完成标记写入后才报告完成，不能仅依据字节计数。
+                    // Completion follows the exporter's marker write, not merely the byte count.
+                    state: progress.state === "complete" ? "complete" : "running",
+                    resourceProgress: sanitizeResourceProgress(progress),
+                  };
+                  return onProgress?.(
+                    Object.freeze({
+                      ...event,
+                      label: resourceProgressLabel(event) ?? packagingActivity(event),
+                    }),
+                  );
+                },
               });
               resourceOutcome = sanitizeResourceOutcome(resources);
             } catch (error) {

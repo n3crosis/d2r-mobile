@@ -2,20 +2,25 @@
 
 中文: [WEB_DELIVERY_PROGRESS.zh-CN.md](WEB_DELIVERY_PROGRESS.zh-CN.md)
 
-## Current source is not a verified deployment
+## Latest verified publication
 
-The current source implements single-folder base/update/optional-DLC conversion,
+[Commit 95e20ef](https://github.com/n3crosis/d2r-mobile/commit/95e20ef17ae2890b06cf7e3453706cba64cb3889)
+passed the [full Verify build](https://github.com/n3crosis/d2r-mobile/actions/runs/39471068849)
+and was published on 2026-10-20 at 18:07 UTC to the existing private
+[preview Site](https://d2r-ipa-packager.nicekrill34.chatgpt.site).
+The verified artifact is 17,118,942 bytes (about 16.3 MiB compressed ZIP), includes
+.NET, and contains no Python runtime, packages or scripts. This is archive size,
+not a browser RAM measurement.
+
+The release implements single-folder base/update/optional-DLC conversion,
 optional `title.keys` with embedded common-ticket handling, a resource child
-folder and a bounded Blob IPA download. The production browser path no longer
-uses Python; .NET WASM remains for shader translation. Desktop Chromium on
-Windows/macOS is the target. See [implementation and acceptance](WEB_IPA_PACKAGER.md).
+folder and bounded Blob IPA download. Desktop Chromium on Windows/macOS is the
+target. The pinned output shell requires iOS 26 and BC texture support; ASTC and
+alternate-shell parity remain separate work. See [implementation and acceptance](WEB_IPA_PACKAGER.md).
 
-These Python-free changes have not been compiled, built, tested or deployed in
-this alignment pass. The earlier [Verify run at 158d6cf](https://github.com/n3crosis/d2r-mobile/actions/runs/39415236827)
-was recorded as a successful full public-runtime build at that revision only.
-It does not certify later edits, the currently hosted site or game compatibility.
-Real game-input conversion, separately signed device execution and gameplay
-remain unproven. No new percentage or test result is claimed here.
+A successful build and publication do not establish real-game input conversion,
+separately signed device execution, gameplay or measured RAM/speed savings.
+Later source edits need their own build/publication; no new percentage is claimed.
 
 ## Historical baseline: 42 / 100
 

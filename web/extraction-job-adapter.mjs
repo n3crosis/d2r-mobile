@@ -16,7 +16,10 @@ export const EXTRACTION_ADAPTER_CAPABILITIES = Object.freeze({
   requiresArchiveSecretLifetime: true,
   productionConversion: false,
   dlcExtraction: false,
-  knownExpansionPackageRequired: true,
+  // 资料片是否必需由内容模式决定；生产配置允许仅基础包和更新。
+  // Expansion requirements depend on content mode; production allows base plus update only.
+  defaultContentMode: "warlock",
+  contentModes: D2R_CONTENT_MODES,
   offlineRuntimeProven: false,
 });
 const fail = (code) => {
