@@ -132,7 +132,11 @@ def generate(payload, options):
                 sys.modules.pop(name, None)
             sys.modules["gen_assets"] = types.SimpleNamespace(ensure=lambda _: None)
             sys.modules["gen_merc_art"] = types.SimpleNamespace(
-                ART=str(gen / "NativeHUD/mercslots")
+                ART=str(gen / "NativeHUD/mercslots"),
+                # Pinned gen_merc_art.py (0d65f6f3...b7b179), also used by
+                # merc_slots.rects to place slots over the generated image.
+                DX=63,
+                DY=11,
             )
 
             def read(path):

@@ -1,0 +1,16 @@
+{
+  "scope": "complete HUD JavaScript recipe; not production-integrated",
+  "sourcePinsVerified": true,
+  "orchestration": {
+    "exactOutputFiles": 96,
+    "comparison": "new JavaScript recipe with actual image-kernel WASM vs bundled Pillow10.2.0/FreeType2.6.0/BASIC",
+    "fontAndPngDependencies": "bundled Pillow oracle adapters, not standalone WASM",
+    "fixtures": "synthetic sprites, structural layout, atlas PNGs; local DejaVuSans.ttf and NimbusSans-Regular.otf",
+    "jsonAndPngComparison": "all output bytes and exact inventory"
+  },
+  "helpers": { "pythonRoundCases": 44, "jsonCases": 2, "metadataAndEarlyRejections": "passed" },
+  "standaloneFontPngVerified": false,
+  "gameInputsVerified": false,
+  "productionRuntimeVerified": false,
+  "payloadSavingsClaimed": false
+}

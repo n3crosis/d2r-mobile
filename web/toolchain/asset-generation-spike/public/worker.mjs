@@ -1,7 +1,19 @@
 import { loadPyodide } from "./vendor/pyodide/pyodide.mjs";
 import * as kernels from "./generated/art-kernels.mjs";
 import { hasAssetTransform, executeAssetTransform } from "../../asset-transforms-js/transforms.mjs";
+import { createPinnedCascOverlayTransform } from "../../casc-overlay-js/overlay.mjs";
+import { createPngCodec } from "../../png-codec-exact/codec.mjs";
+import SparkMD5 from "../../../vendor/spark-md5-3.0.2/spark-md5.mjs";
 let runtime;
+let cascRuntime;
+async function initializeCasc() {
+  const response = await fetch(
+    new URL("../../png-codec-exact/dist/png-codec.wasm", import.meta.url),
+  );
+  if (!response.ok) throw new Error("Missing packaged CASC codec");
+  const codec = await createPngCodec(await response.arrayBuffer());
+  return createPinnedCascOverlayTransform({ codec, SparkMD5 });
+}
 async function initialize() {
   const py = await loadPyodide({ indexURL: new URL("./vendor/pyodide/", import.meta.url).href });
   await py.loadPackage(["pillow"], { checkIntegrity: true });
@@ -18,8 +30,6 @@ async function initialize() {
     "hud.py",
     "map_goal_original.py",
     "map_goal.py",
-    "casc_overlay_original.py",
-    "casc_overlay.py",
     "mercenary_original.py",
     "mercenary.py",
     "overlay_recipe_sources.py",
@@ -72,6 +82,11 @@ self.onmessage = ({ data }) => {
       if (hasAssetTransform(operation)) {
         const result = await executeAssetTransform(operation, payload, options);
         postResult(id, result);
+        return;
+      }
+      if (operation === "casc-overlay") {
+        const generate = await (cascRuntime ??= initializeCasc());
+        postResult(id, await generate(payload, options));
         return;
       }
       const py = await (runtime ??= initialize());

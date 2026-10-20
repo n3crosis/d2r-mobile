@@ -1,5 +1,9 @@
 import { nativeArtAtlasDescriptor } from "../native-art-texture.mjs";
 import { validateEncodeRequest } from "../toolchain/texture-spike/browser-texture-encoder.mjs";
+import {
+  ASSET_RUNTIME_DIRECTORY,
+  validateAssetRuntimeInventory,
+} from "../toolchain/asset-runtime-js/payload-policy.mjs";
 const OFFLINE = "toolchain/offline-runtime-spike";
 const TEXTURE = "toolchain/texture-spike";
 const LIMIT = Object.freeze({
@@ -509,10 +513,11 @@ export async function prepareSealedRuntime({
     if (!value) fail(`Missing verified runtime asset: ${path}`);
     return value;
   }
-  function closure(directory) {
+  function closure(directory, validate) {
     const sub = JSON.parse(new TextDecoder().decode(bytes(`${directory}/manifest.json`)));
     if (sub.version !== 1 || !Array.isArray(sub.assets) || sub.assets.length > 1024)
       fail("Invalid component manifest");
+    validate?.(sub);
     const seen = new Set();
     return sub.assets
       .filter((a) => a.path !== "worker.mjs")
@@ -530,8 +535,8 @@ export async function prepareSealedRuntime({
   const plans = {};
   if (components.includes("assets"))
     plans.assets = {
-      entry: `${OFFLINE}/pyodide-dist/worker.mjs`,
-      assets: closure(`${OFFLINE}/pyodide-dist`),
+      entry: `${ASSET_RUNTIME_DIRECTORY}/worker.mjs`,
+      assets: closure(ASSET_RUNTIME_DIRECTORY, validateAssetRuntimeInventory),
     };
   if (components.includes("translator"))
     plans.translator = {
@@ -674,10 +679,7 @@ export async function prepareSealedRuntime({
                 : 20) *
             1024 *
             1024;
-          const payload = input(
-            value,
-            operation === "encode-linear-bc3" ? 16 * 1024 * 1024 : cap,
-          ).buffer;
+          const payload = input(value, cap).buffer;
           return l.request(
             {
               type: "run",
@@ -764,50 +766,15 @@ export async function prepareSealedRuntime({
     }
     function createTextureEncoder() {
       const texture = createTextureClient();
-      // The integrity-verified inventory advertises capability by including the Rust binary.
-      // A present but broken binary fails initialization; it never falls back.
-      if (assets.has(`${TEXTURE}/dist/bc3.wasm`))
-        return {
-          packLinearBC3: texture.packLinearBC3,
-          encodeAndPack: texture.encodeAndPack,
-          close: texture.close,
-        };
-      let asset;
-      try {
-        asset = createAssetWorker();
-      } catch (error) {
+      // 已验证 Rust 二进制为必需项，不再尝试旧 Python 编码分派。 | The verified Rust binary is required; never attempt the old Python encoder dispatch.
+      if (!assets.has(`${TEXTURE}/dist/bc3.wasm`)) {
         texture.close();
-        throw error;
+        fail("Verified Rust BC3 encoder is required");
       }
       return {
         packLinearBC3: texture.packLinearBC3,
-        async encodeAndPack({ templateHeader, rgba, width, height }, { signal } = {}) {
-          if (signal?.aborted) throw new DOMException("Encoding cancelled", "AbortError");
-          validateEncodeRequest(templateHeader, width, height);
-          if (
-            ![width, height].every((n) => Number.isSafeInteger(n) && n > 0 && n <= 8192) ||
-            width * height > 4194304 ||
-            rgba?.byteLength !== width * height * 4
-          )
-            fail("RGBA dimensions mismatch");
-          const stop = () => close();
-          signal?.addEventListener("abort", stop, { once: true });
-          try {
-            const encoded = await asset.run("encode-linear-bc3", rgba, { width, height });
-            const linearBC3 = new Uint8Array(encoded.files["linear.bc3"]);
-            const packed = await texture.packLinearBC3(
-              { templateHeader, linearBC3, width, height },
-              { signal },
-            );
-            return { ...packed, linearBC3 };
-          } finally {
-            signal?.removeEventListener("abort", stop);
-          }
-        },
-        close() {
-          asset.close();
-          texture.close();
-        },
+        encodeAndPack: texture.encodeAndPack,
+        close: texture.close,
       };
     }
     function createTranslator() {

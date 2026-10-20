@@ -2,6 +2,7 @@
 import { readFile, writeFile, mkdir, cp, copyFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import "../asset-transforms-js/scripts/verify-source.mjs";
+import "../casc-overlay-js/scripts/verify-source.mjs";
 const here = new URL("./", import.meta.url);
 const source = new URL("../asset-generation-spike/public/", here);
 const out = new URL("./pyodide-dist/", here);
@@ -54,8 +55,6 @@ for (const name of [
   "hud.py",
   "map_goal_original.py",
   "map_goal.py",
-  "casc_overlay_original.py",
-  "casc_overlay.py",
   "mercenary_original.py",
   "mercenary.py",
   "overlay_recipe_sources.py",
@@ -74,6 +73,13 @@ await add(
   "asset-transforms.mjs",
   await readFile(new URL("../asset-transforms-js/transforms.mjs", here)),
 );
+for (const [name, sourcePath] of [
+  ["casc-overlay.mjs", "../casc-overlay-js/overlay.mjs"],
+  ["spark-md5.mjs", "../../vendor/spark-md5-3.0.2/spark-md5.mjs"],
+  ["png-codec.mjs", "../png-codec-exact/codec.mjs"],
+  ["png-codec.wasm", "../png-codec-exact/dist/png-codec.wasm"],
+])
+  await add(name, await readFile(new URL(sourcePath, here)));
 await add("worker.mjs", await readFile(new URL("pyodide-worker.mjs", here)));
 async function add(path, bytes) {
   if (!bytes.length || bytes.length > 32 * 1024 * 1024)
@@ -133,4 +139,16 @@ await copyFile(
   new URL("../asset-transforms-js/source-provenance.json", here),
   new URL("licenses/asset-transform-source-provenance.json", out),
 );
+for (const [name, sourcePath] of [
+  ["casc-overlay-source-provenance.json", "../casc-overlay-js/source-provenance.json"],
+  ["spark-md5-LICENSE.txt", "../../vendor/spark-md5-3.0.2/LICENSE2"],
+  ["spark-md5-PROVENANCE.md", "../../vendor/spark-md5-3.0.2/PROVENANCE.md"],
+  ["png-codec-LICENSE-Pillow.txt", "../png-codec-exact/reference/LICENSE"],
+  ["png-codec-LICENSE-zlib.txt", "../png-codec-exact/reference/LICENSE-zlib"],
+  ["png-codec-LICENSE-zlib-legacy.txt", "../png-codec-exact/reference/LICENSE-zlib-legacy"],
+  ["png-codec-zlib-source.json", "../png-codec-exact/zlib-source.json"],
+  ["png-codec-zlib-legacy-source.json", "../png-codec-exact/zlib-legacy-source.json"],
+  ["png-codec-build-report.json", "../png-codec-exact/dist/build-report.json"],
+])
+  await copyFile(new URL(sourcePath, here), new URL(`licenses/${name}`, out));
 console.log(JSON.stringify({ assets, manifestSha256: hash(manifest) }));

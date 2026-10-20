@@ -1,5 +1,7 @@
 """原始函数的纯标准库对照；只处理合成输入。 | Original stdlib-only oracle on synthetic inputs."""
+
 import ast
+import importlib
 import base64
 import contextlib
 import io
@@ -11,15 +13,30 @@ import types
 ROOT = Path(__file__).resolve().parents[4]
 SOURCE = ROOT / "web/toolchain/asset-generation-spike/src"
 
+
 def functions(path, names=None, constants=()):
     tree = ast.parse((ROOT / path).read_text())
-    nodes = [n for n in ast.walk(tree) if
-             isinstance(n, ast.FunctionDef) and (names is None or n.name in names)
-             or isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id in constants for t in n.targets)]
-    namespace = dict(json=json, io=io, contextlib=contextlib, types=types,
-                     csv=__import__("csv"), re=__import__("re"), os=__import__("os"), sys=sys)
+    nodes = [
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef)
+        and (names is None or n.name in names)
+        or isinstance(n, ast.Assign)
+        and any(isinstance(t, ast.Name) and t.id in constants for t in n.targets)
+    ]
+    namespace = dict(
+        json=json,
+        io=io,
+        contextlib=contextlib,
+        types=types,
+        csv=__import__("csv"),
+        re=__import__("re"),
+        os=__import__("os"),
+        sys=sys,
+    )
     exec(compile(ast.Module(body=nodes, type_ignores=[]), path, "exec"), namespace)
     return namespace
+
 
 native = types.ModuleType("native_functions")
 for path, names, constants in [
@@ -36,11 +53,14 @@ for path, names, constants in [
         derived_globals = values
 sys.modules["native_functions"] = native
 original = types.ModuleType("vault_original")
-original.__dict__.update(functions("dm/ios/tools/gen_vault_table.py", constants=("PARTS", "PART_OF")))
+original.__dict__.update(
+    functions("dm/ios/tools/gen_vault_table.py", constants=("PARTS", "PART_OF"))
+)
 sys.modules["vault_original"] = original
 sys.path.insert(0, str(SOURCE))
-from derived import generate as derived
-from vault import generate as vault
+derived = importlib.import_module("derived").generate
+vault = importlib.import_module("vault").generate
+
 core = functions("web/toolchain/asset-generation-spike/src/core.py", {"execute"})["execute"]
 core.__globals__["native"] = native
 
@@ -55,13 +75,17 @@ for line in sys.stdin:
             # 保留原始函数的共享 globals 字典，允许适配器替换 open。 | Keep original shared globals while the adapter installs its open boundary.
             native.parse = lambda *args: derived_globals["parse"](*args)
             original_data = derived_globals["data"]
+
             def data(*args):
                 derived_globals["open"] = native.open
                 return original_data(*args)
+
             native.data = data
+
             def parse(*args):
                 derived_globals["open"] = native.open
                 return derived_globals["parse"](*args)
+
             native.parse = parse
             result = derived(payload, request.get("options", {}))
         elif operation == "vault-table":
@@ -70,15 +94,19 @@ for line in sys.stdin:
                 if isinstance(value, types.FunctionType):
                     value.__globals__.update(original.__dict__)
             old_main = original.main
+
             def main():
                 old_main.__globals__.update(original.__dict__)
                 return old_main()
+
             original.main = main
             result = vault(payload, request.get("options", {}))
             original.main = old_main
         else:
             result = core(operation, payload, request.get("options", {}))
-        result["files"] = {name: base64.b64encode(data).decode() for name, data in result["files"].items()}
+        result["files"] = {
+            name: base64.b64encode(data).decode() for name, data in result["files"].items()
+        }
         print(json.dumps({"ok": True, "result": result}))
     except Exception as error:
         print(json.dumps({"ok": False, "error": type(error).__name__ + ":" + str(error)}))

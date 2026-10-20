@@ -85,7 +85,10 @@ def extract():
             values.append(ast.literal_eval(target))
         why = next(node.args[0].elts[3] for node in ast.walk(block) if append_call(node, "cuts"))
         kind = next(node.args[0] for node in ast.walk(block) if named_call(node, "stat"))
-        branches.append(values + [ast.literal_eval(gates[0].elts[2]), ast.literal_eval(kind), ast.literal_eval(why)])
+        branches.append(
+            values
+            + [ast.literal_eval(gates[0].elts[2]), ast.literal_eval(kind), ast.literal_eval(why)]
+        )
     tables["PRIVATE_BRANCHES"] = branches
     # Canonicalize Python tuples to the JSON arrays used in JavaScript.
     return json.loads(json.dumps(tables, ensure_ascii=False))
@@ -100,10 +103,17 @@ def main():
         header = "/** Literal rule data from dm/tools/patch_nso.py. Do not alter independently of the pinned source. */\n"
         output = [header]
         for name, value in expected.items():
-            output.append(f"export const {name} = {json.dumps(value, ensure_ascii=False, indent=2)};")
+            output.append(
+                f"export const {name} = {json.dumps(value, ensure_ascii=False, indent=2)};"
+            )
         OUTPUT.write_text("\n\n".join(output) + "\n", encoding="utf-8")
     actual = subprocess.run(
-        ["node", "--input-type=module", "--eval", "import * as data from './js/rule-data.mjs'; process.stdout.write(JSON.stringify(data));"],
+        [
+            "node",
+            "--input-type=module",
+            "--eval",
+            "import * as data from './js/rule-data.mjs'; process.stdout.write(JSON.stringify(data));",
+        ],
         cwd=HERE,
         check=True,
         capture_output=True,
@@ -111,8 +121,12 @@ def main():
         encoding="utf-8",
     )
     if json.loads(actual.stdout) != expected:
-        raise RuntimeError("Generated JS rule data differs from the pinned Python AST; regenerate deliberately")
-    print(f"JS rule tables match pinned source {expected['SOURCE_SHA256']}; {len(expected['PRIVATE_BRANCHES'])} private branches, {len(expected['PRIVATE_OBS'])} private observations")
+        raise RuntimeError(
+            "Generated JS rule data differs from the pinned Python AST; regenerate deliberately"
+        )
+    print(
+        f"JS rule tables match pinned source {expected['SOURCE_SHA256']}; {len(expected['PRIVATE_BRANCHES'])} private branches, {len(expected['PRIVATE_OBS'])} private observations"
+    )
 
 
 if __name__ == "__main__":

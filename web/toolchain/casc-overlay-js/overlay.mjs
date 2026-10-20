@@ -1,0 +1,633 @@
+// 原生 CASC 二进制改写的 JavaScript 端口；压缩和 MD5 由固定来源内核注入。 | Native CASC binary rewrite port with source-pinned compression and MD5 injected.
+const MAX_INPUT = 64 * 1024 * 1024;
+const MAX_OUTPUT = 64 * 1024 * 1024;
+const MAX_TABLE = 16 * 1024 * 1024;
+const MAX_REPLACEMENT = 16 * 1024 * 1024;
+const MAX_JOBS = 4096;
+const encoder = new TextEncoder();
+const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+const fail = () => {
+  throw new Error("CASC_OVERLAY_INVALID");
+};
+function requireValue(value) {
+  if (!value) fail();
+}
+const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+const u32 = (bytes, pos) => {
+  requireValue(pos >= 0 && pos + 4 <= bytes.length);
+  return new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(pos, false);
+};
+const put32 = (bytes, pos, value) => {
+  requireValue(
+    Number.isSafeInteger(value) &&
+      value >= 0 &&
+      value <= 0xffffffff &&
+      pos >= 0 &&
+      pos + 4 <= bytes.length,
+  );
+  new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setUint32(pos, value, false);
+};
+const word = (value) => {
+  const bytes = new Uint8Array(4);
+  put32(bytes, 0, value);
+  return bytes;
+};
+const concat = (parts, cap = MAX_OUTPUT) => {
+  const length = parts.reduce((sum, part) => sum + part.length, 0);
+  requireValue(length <= cap);
+  const output = new Uint8Array(length);
+  let at = 0;
+  for (const part of parts) {
+    output.set(part, at);
+    at += part.length;
+  }
+  return output;
+};
+const equal = (a, b) => a.length === b.length && a.every((value, i) => value === b[i]);
+const hex = (bytes) => Array.from(bytes, (n) => n.toString(16).padStart(2, "0")).join("");
+const unhex = (text) => {
+  requireValue(typeof text === "string" && text.length === 32 && /^[0-9a-fA-F]{32}$/.test(text));
+  return Uint8Array.from(text.match(/../g), (value) => Number.parseInt(value, 16));
+};
+const byteKey = (bytes) => {
+  let result = "";
+  for (let i = 0; i < bytes.length; i += 8192)
+    result += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  return result;
+};
+const byteValue = (key) => Uint8Array.from(key, (c) => c.charCodeAt(0));
+const lowerBytes = (key) => key.replace(/[A-Z]/g, (c) => c.toLowerCase());
+const compare = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+const compareUnicode = (a, b) => {
+  const x = Array.from(a, (c) => c.codePointAt(0)),
+    y = Array.from(b, (c) => c.codePointAt(0));
+  for (let i = 0; i < Math.min(x.length, y.length); i++) if (x[i] !== y[i]) return x[i] - y[i];
+  return x.length - y.length;
+};
+function utf8(value) {
+  requireValue(
+    typeof value === "string" &&
+      Array.from(value).every((c) => c.codePointAt(0) < 0xd800 || c.codePointAt(0) > 0xdfff),
+  );
+  return encoder.encode(value);
+}
+function checkedPath(path) {
+  requireValue(typeof path === "string" && utf8(path).length <= 4096);
+  // Python strip 所用空白码点；不能把 BOM 当空白。 | Python strip whitespace, excluding BOM.
+  requireValue(Array.from(path).every((c) => c.codePointAt(0) >= 32 && c !== ":" && c !== "\\"));
+  requireValue(
+    path === path.toLowerCase() &&
+      !path.startsWith("/") &&
+      path.split("/").every((part) => part && part !== "." && part !== ".."),
+  );
+  const whitespace = new Set([
+    32,
+    133,
+    160,
+    5760,
+    8232,
+    8233,
+    8239,
+    8287,
+    12288,
+    ...Array.from({ length: 11 }, (_, i) => 8192 + i),
+  ]);
+  requireValue(
+    !whitespace.has(path.codePointAt(0)) && !whitespace.has(path.codePointAt(path.length - 1)),
+  );
+  return path;
+}
+function table(raw) {
+  requireValue(
+    raw.length >= 46 &&
+      raw.length <= MAX_TABLE &&
+      byteKey(raw.subarray(0, 4)) === "TVFS" &&
+      raw[4] === 1 &&
+      raw[5] >= 46 &&
+      raw[5] <= raw.length &&
+      raw[6] === 16 &&
+      raw[7] === 0 &&
+      u32(raw, 8) === 10,
+  );
+  const path = u32(raw, 12),
+    pathSize = u32(raw, 16),
+    vfs = u32(raw, 20),
+    vfsSize = u32(raw, 24),
+    cft = u32(raw, 28),
+    cftSize = u32(raw, 32),
+    est = u32(raw, 38),
+    estSize = u32(raw, 42);
+  const spans = [
+    [path, pathSize],
+    [vfs, vfsSize],
+    [cft, cftSize],
+    [est, estSize],
+  ];
+  for (const [start, size] of spans) requireValue(start >= 46 && start + size <= raw.length);
+  requireValue(estSize > 0 && estSize <= 255 && cftSize % 25 === 0);
+  const nonempty = spans.filter(([, size]) => size > 0).sort((a, b) => a[0] - b[0]);
+  for (let i = 1; i < nonempty.length; i++)
+    requireValue(nonempty[i - 1][0] + nonempty[i - 1][1] <= nonempty[i][0]);
+  const specs = byteKey(raw.subarray(est, est + estSize)).split("\0");
+  for (let pos = cft; pos < cft + cftSize; pos += 25)
+    requireValue(["n", "z", "b:256K*=z"].includes(specs[raw[pos + 20]]));
+  return { path, pathSize, vfs, vfsSize, cft, cftSize, end: cft + cftSize, est, estSize, specs };
+}
+function pathEntry(raw, at) {
+  let pos = at,
+    pre = 0,
+    post = 0,
+    name = "",
+    value = null;
+  const next = () => {
+    requireValue(pos < raw.length);
+    return raw[pos];
+  };
+  if (next() === 0) {
+    pre = 1;
+    pos++;
+  }
+  if (next() !== 255) {
+    const size = raw[pos++];
+    requireValue(pos + size <= raw.length);
+    name = byteKey(raw.subarray(pos, pos + size));
+    pos += size;
+  }
+  if (next() === 0) {
+    post = 1;
+    pos++;
+  }
+  if (next() === 255) {
+    value = u32(raw, pos + 1);
+    pos += 5;
+  } else post = 2;
+  return { pos, pre, name, post, value };
+}
+function validatePathTree(raw) {
+  const start = u32(raw, 12),
+    size = u32(raw, 16),
+    stack = [[start, start + size, 0]];
+  let count = 0;
+  while (stack.length) {
+    let [pos, end, depth] = stack.pop();
+    requireValue(depth <= 128);
+    while (pos < end) {
+      const old = pos,
+        entry = pathEntry(raw, pos);
+      pos = entry.pos;
+      count++;
+      requireValue(pos > old && pos <= end && count <= 1000000);
+      if (entry.value !== null && entry.value & 0x80000000) {
+        const stop = pos + (entry.value & 0x7fffffff) - 4;
+        requireValue(stop >= pos && stop <= end);
+        stack.push([pos, stop, depth + 1]);
+        pos = stop;
+      }
+    }
+  }
+}
+function* walkPaths(raw, start, end, prefix = "", parents = []) {
+  let pos = start;
+  const base = prefix;
+  while (pos < end) {
+    const at = pos,
+      entry = pathEntry(raw, pos);
+    pos = entry.pos;
+    prefix += (entry.pre ? "/" : "") + entry.name + (entry.post ? "/" : "");
+    if (entry.value === null) continue;
+    if (entry.value & 0x80000000) {
+      const stop = pos + (entry.value & 0x7fffffff) - 4;
+      yield { at, path: prefix, value: entry.value, folder: [pos, stop], parents };
+      yield* walkPaths(raw, pos, stop, prefix, [...parents, at]);
+      pos = stop;
+    } else yield { at, path: prefix, value: entry.value, folder: null, parents };
+    prefix = base;
+  }
+}
+function trieBytes(names) {
+  const groups = new Map(),
+    out = [];
+  let depth = 0;
+  for (const name of [...names.keys()].sort(compare)) {
+    requireValue(name.length <= 254);
+    const first = name.slice(0, 1);
+    if (!groups.has(first)) groups.set(first, []);
+    groups.get(first).push(name);
+  }
+  for (const group of groups.values()) {
+    if (group.length === 1) {
+      const name = group[0];
+      out.push(
+        new Uint8Array([name.length]),
+        byteValue(name),
+        new Uint8Array([255]),
+        word(names.get(name)),
+      );
+      continue;
+    }
+    let common = group[0];
+    for (const name of group.slice(1))
+      while (!name.startsWith(common)) common = common.slice(0, -1);
+    requireValue(!group.includes(common));
+    const sub = trieBytes(
+      new Map(group.map((name) => [name.slice(common.length), names.get(name)])),
+    );
+    out.push(
+      new Uint8Array([common.length]),
+      byteValue(common),
+      new Uint8Array([255]),
+      word(0x80000000 + sub.bytes.length + 4),
+      sub.bytes,
+    );
+    depth = Math.max(depth, sub.depth + 1);
+  }
+  return { bytes: concat(out, MAX_TABLE), depth };
+}
+const offsetFieldSize = (size) => (size <= 255 ? 1 : size <= 65535 ? 2 : size <= 16777215 ? 3 : 4);
+function sizedWord(value, size) {
+  requireValue(Number.isSafeInteger(value) && value >= 0 && value < 2 ** (size * 8));
+  const result = new Uint8Array(size);
+  for (let i = size - 1; i >= 0; i--) {
+    result[i] = value % 256;
+    value = Math.floor(value / 256);
+  }
+  return result;
+}
+function addPaths(raw, additions) {
+  const {
+    path: pathOff,
+    pathSize,
+    vfs: vfsOff,
+    vfsSize,
+    cft: cftOff,
+    cftSize,
+    est: estOff,
+    estSize,
+  } = table(raw);
+  requireValue(
+    pathOff + pathSize === estOff &&
+      estOff + estSize === cftOff &&
+      cftOff + cftSize === vfsOff &&
+      vfsOff + vfsSize === raw.length,
+  );
+  const before = new Map(),
+    nodes = new Map();
+  for (const node of walkPaths(raw, pathOff, pathOff + pathSize)) {
+    if (node.folder) nodes.set(node.path, node);
+    else before.set(node.path, node.value);
+  }
+  const field = offsetFieldSize(cftSize);
+  requireValue(offsetFieldSize(cftSize + 25 * additions.size) === field);
+  const entrySize = 9 + field,
+    newCft = [],
+    newVfs = [],
+    groups = new Map();
+  let number = 0;
+  for (const [logical, item] of [...additions].sort((a, b) => compareUnicode(a[0], b[0]))) {
+    const bytes = byteKey(utf8(logical)),
+      slash = bytes.lastIndexOf("/"),
+      second = bytes.lastIndexOf("/", slash - 1);
+    requireValue(slash >= 0 && second >= 0);
+    const parent = bytes.slice(0, second + 1),
+      folder = bytes.slice(second + 1, slash),
+      name = bytes.slice(slash + 1),
+      groupKey = parent + "\0" + folder;
+    if (!groups.has(groupKey)) groups.set(groupKey, { parent, folder, names: new Map() });
+    groups.get(groupKey).names.set(name, vfsSize + number * entrySize);
+    newCft.push(
+      item.ekey,
+      word(item.encoded),
+      new Uint8Array([item.specIndex]),
+      word(item.decoded),
+    );
+    newVfs.push(
+      new Uint8Array([1]),
+      word(0),
+      word(item.decoded),
+      sizedWord(cftSize + number * 25, field),
+    );
+    number++;
+  }
+  const path = raw.slice(pathOff, pathOff + pathSize),
+    grown = new Map(),
+    inserts = [];
+  let maxDepth = new DataView(raw.buffer, raw.byteOffset, raw.byteLength).getUint16(36, false);
+  for (const { parent, folder, names } of [...groups.values()].sort(
+    (a, b) => compare(a.parent, b.parent) || compare(a.folder, b.folder),
+  )) {
+    const target = [...nodes].find(([key]) => lowerBytes(key) === lowerBytes(parent))?.[1];
+    requireValue(target);
+    requireValue(
+      ![...before.keys(), ...nodes.keys()].some((key) =>
+        lowerBytes(key).startsWith(lowerBytes(parent + folder)),
+      ),
+    );
+    const sub = trieBytes(names);
+    requireValue(folder.length <= 255);
+    const block = concat(
+      [
+        new Uint8Array([folder.length]),
+        byteValue(folder),
+        new Uint8Array([0, 255]),
+        word(0x80000000 + sub.bytes.length + 4),
+        sub.bytes,
+      ],
+      MAX_TABLE,
+    );
+    const [start, end] = target.folder;
+    let at = end,
+      pos = start,
+      continuation = false;
+    while (pos < end) {
+      const child = pos,
+        entry = pathEntry(raw, pos);
+      pos = entry.pos;
+      const first = entry.pre ? "/" : entry.name.slice(0, 1),
+        wasContinuation = continuation;
+      continuation = entry.value === null;
+      if (wasContinuation) {
+        if (entry.value !== null && entry.value & 0x80000000) pos += (entry.value & 0x7fffffff) - 4;
+        continue;
+      }
+      requireValue(first !== folder.slice(0, 1));
+      if (first > folder.slice(0, 1) && at === end) at = child;
+      if (entry.value !== null && entry.value & 0x80000000) pos += (entry.value & 0x7fffffff) - 4;
+    }
+    inserts.push({ at: at - pathOff, block });
+    for (const ancestor of [...target.parents, target.at])
+      grown.set(ancestor - pathOff, (grown.get(ancestor - pathOff) ?? 0) + block.length);
+    maxDepth = Math.max(maxDepth, target.parents.length + 2 + sub.depth);
+  }
+  for (const [relative, delta] of grown) {
+    const at = pathEntry(path, relative).pos - 4;
+    const size = (u32(path, at) & 0x7fffffff) + delta;
+    requireValue(size <= 0x7fffffff);
+    put32(path, at, 0x80000000 + size);
+  }
+  // 与原生逆序插入等价，单次拼接避免重复复制整棵树。 | One concatenation is equivalent to native reverse insertion, without repeatedly copying the tree.
+  const pieces = [];
+  let cursor = 0;
+  for (const item of inserts.sort(
+    (a, b) => a.at - b.at || compare(byteKey(a.block), byteKey(b.block)),
+  )) {
+    pieces.push(path.subarray(cursor, item.at), item.block);
+    cursor = item.at;
+  }
+  pieces.push(path.subarray(cursor));
+  const tree = concat(pieces, MAX_TABLE),
+    head = raw.slice(0, pathOff),
+    est = raw.subarray(estOff, estOff + estSize),
+    cft = concat([raw.subarray(cftOff, cftOff + cftSize), ...newCft], MAX_TABLE),
+    vfs = concat([raw.subarray(vfsOff, vfsOff + vfsSize), ...newVfs], MAX_TABLE);
+  const nextEst = pathOff + tree.length,
+    nextCft = nextEst + est.length,
+    nextVfs = nextCft + cft.length;
+  [pathOff, tree.length, nextVfs, vfs.length, nextCft, cft.length].forEach((value, i) =>
+    put32(head, 12 + i * 4, value),
+  );
+  requireValue(maxDepth <= 65535);
+  new DataView(head.buffer, head.byteOffset, head.byteLength).setUint16(36, maxDepth, false);
+  put32(head, 38, nextEst);
+  const result = concat([head, tree, est, cft, vfs], MAX_TABLE),
+    after = new Map();
+  validatePathTree(result);
+  for (const node of walkPaths(result, pathOff, pathOff + tree.length))
+    if (!node.folder) after.set(node.path, node.value);
+  for (const [key, value] of before) requireValue(after.get(key) === value);
+  const added = [...after.keys()]
+    .filter((path) => !before.has(path))
+    .map((path) => decoder.decode(byteValue(path)).toLowerCase())
+    .sort(compareUnicode);
+  const expected = [...additions.keys()].sort(compareUnicode);
+  requireValue(
+    added.length === expected.length && added.every((value, i) => value === expected[i]),
+  );
+  return result;
+}
+function setCftSizes(raw, pos, encoded, decoded) {
+  const width = offsetFieldSize(u32(raw, 42));
+  put32(raw, pos + 16, encoded);
+  put32(raw, pos + 20 + width, decoded);
+}
+function cftPosition(raw, start, end, key) {
+  const table = byteKey(raw.subarray(start, end)),
+    needle = byteKey(key);
+  const first = table.indexOf(needle);
+  requireValue(first >= 0 && table.indexOf(needle, first + 1) === -1);
+  return start + first;
+}
+/* eslint-disable no-control-regex -- 精确 Python 换行集合。 | Exact Python line-ending set. */
+function configLines(text) {
+  const expression =
+    /[^\r\n\v\f\x1c-\x1e\x85\u2028\u2029]*(?:\r\n|[\r\n\v\f\x1c-\x1e\x85\u2028\u2029]|$)/gu;
+  return text.match(expression).filter((line) => line.length);
+}
+/* eslint-enable no-control-regex */
+const replaceConfig = (lines, key, value) =>
+  lines.map((line) => (line.startsWith(key + " = ") ? key + " = " + value + "\n" : line));
+export function createCascOverlayTransform({ md5, compress } = {}) {
+  requireValue(typeof md5 === "function" && typeof compress === "function");
+  const digest = (bytes) => {
+    const result = md5(bytes);
+    requireValue(result instanceof Uint8Array && result.length === 16);
+    return result;
+  };
+  const zip = async (bytes) => {
+    const result = await compress(bytes);
+    requireValue(result instanceof Uint8Array && result.length <= MAX_OUTPUT);
+    return result;
+  };
+  async function blte(content) {
+    const blocks = [];
+    for (let at = 0; at < content.length; at += 256 * 1024) {
+      const raw = content.subarray(at, at + 256 * 1024);
+      blocks.push({ encoded: concat([new Uint8Array([90]), await zip(raw)]), decoded: raw.length });
+    }
+    if (!blocks.length) blocks.push({ encoded: new Uint8Array([78]), decoded: 0 });
+    const headerSize = 12 + 24 * blocks.length,
+      header = new Uint8Array(headerSize);
+    header.set([66, 76, 84, 69]);
+    put32(header, 4, headerSize);
+    header[8] = 15;
+    header.set(sizedWord(blocks.length, 3), 9);
+    blocks.forEach((block, i) => {
+      const at = 12 + i * 24;
+      put32(header, at, block.encoded.length);
+      put32(header, at + 4, block.decoded);
+      header.set(digest(block.encoded), at + 8);
+    });
+    return concat([header, ...blocks.map((block) => block.encoded)]);
+  }
+  async function encode(content, spec) {
+    return spec === "n" ? content.slice() : spec === "z" ? zip(content) : blte(content);
+  }
+  function ekey(encoded, location, offset) {
+    const size = byteKey(encoded.subarray(0, 4)) === "BLTE" ? u32(encoded, 4) : encoded.length;
+    return concat(
+      [
+        digest(encoded.subarray(0, size)).subarray(0, 9),
+        new Uint8Array(location),
+        sizedWord(offset, 5),
+      ],
+      16,
+    );
+  }
+  return async function generate(value, options) {
+    requireValue(value instanceof Uint8Array || value instanceof ArrayBuffer);
+    const payload = value instanceof Uint8Array ? value : new Uint8Array(value);
+    requireValue(payload.length <= MAX_INPUT && isObject(options));
+    const { parts, jobs, location } = options;
+    requireValue(
+      Array.isArray(parts) &&
+        Array.isArray(jobs) &&
+        jobs.length >= 1 &&
+        jobs.length <= MAX_JOBS &&
+        parts.length === 3 + jobs.length,
+    );
+    requireValue(
+      Array.isArray(location) &&
+        location.length === 2 &&
+        location.every((n) => Number.isInteger(n) && n >= 0 && n <= 255) &&
+        location[1] !== 0,
+    );
+    const slices = [];
+    let cursor = 0;
+    for (let i = 0; i < parts.length; i++) {
+      const length = parts[i],
+        cap = i === 0 ? 1024 * 1024 : i < 3 ? MAX_TABLE : MAX_REPLACEMENT;
+      requireValue(
+        Number.isInteger(length) &&
+          length >= 0 &&
+          length <= cap &&
+          cursor + length <= payload.length,
+      );
+      slices.push(payload.subarray(cursor, cursor + length));
+      cursor += length;
+    }
+    requireValue(cursor === payload.length);
+    let lines = configLines(decoder.decode(slices[0]));
+    const values = new Map();
+    for (const line of lines) {
+      if (line.includes(" = ") && !line.startsWith("#")) {
+        const trimmed = line.replace(/\n+$/, ""),
+          at = trimmed.indexOf(" = "),
+          key = trimmed.slice(0, at),
+          value = trimmed.slice(at + 3);
+        requireValue(!values.has(key));
+        values.set(key, value);
+      }
+    }
+    for (const [name, raw] of [
+      ["vfs-1", slices[1]],
+      ["vfs-root", slices[2]],
+    ]) {
+      const keyText = values.get(name) ?? "",
+        sizeText = values.get(name + "-size") ?? "";
+      requireValue(keyText.length === 65 && /^[0-9a-fA-F]{32} [0-9a-fA-F]{32}$/.test(keyText));
+      requireValue(/^[0-9]+ [0-9]+$/.test(sizeText) && !/[^0-9 ]/.test(sizeText));
+      requireValue(
+        hex(digest(raw)) === keyText.split(" ")[0].toLowerCase() &&
+          BigInt(raw.length) === BigInt(sizeText.split(" ")[0]),
+      );
+    }
+    let vfs = slices[1].slice();
+    const root = slices[2].slice(),
+      vfsTable = table(vfs),
+      rootTable = table(root),
+      chunks = [],
+      inventory = [],
+      seen = new Set(),
+      additions = new Map();
+    let outputLength = 0;
+    const append = async (content, spec = "b:256K*=z") => {
+      const encoded = await encode(content, spec);
+      requireValue(outputLength + encoded.length <= MAX_OUTPUT);
+      const key = ekey(encoded, location, outputLength);
+      chunks.push(encoded);
+      outputLength += encoded.length;
+      return { ekey: key, decoded: content.length, encoded: encoded.length };
+    };
+    for (const wantAdd of [false, true]) {
+      for (let i = 0; i < jobs.length; i++) {
+        const job = jobs[i];
+        requireValue(isObject(job) && (!Object.hasOwn(job, "add") || typeof job.add === "boolean"));
+        if ((job.add ?? false) !== wantAdd) continue;
+        const path = checkedPath(job.path);
+        requireValue(!seen.has(path));
+        seen.add(path);
+        let pos, specIndex;
+        if (wantAdd) {
+          requireValue(job.oldEkey === undefined || job.oldEkey === null);
+          const found = vfsTable.specs.indexOf("z");
+          specIndex = found < 0 ? 0 : found;
+        } else {
+          pos = cftPosition(vfs, vfsTable.cft, vfsTable.end, unhex(job.oldEkey));
+          requireValue((pos - vfsTable.cft) % 25 === 0 && pos + 25 <= vfsTable.end);
+          specIndex = vfs[pos + 20];
+        }
+        const result = await append(slices[i + 3], vfsTable.specs[specIndex]);
+        if (wantAdd) additions.set(path, { ...result, specIndex });
+        else {
+          vfs.set(result.ekey, pos);
+          setCftSizes(vfs, pos, result.encoded, result.decoded);
+        }
+        inventory.push({
+          path,
+          add: wantAdd,
+          ekey: hex(result.ekey),
+          encodedSize: result.encoded,
+          decodedSize: result.decoded,
+        });
+      }
+    }
+    if (additions.size) {
+      validatePathTree(vfs);
+      vfs = addPaths(vfs, additions);
+      table(vfs);
+    }
+    const vfsResult = await append(vfs),
+      old = unhex(values.get("vfs-1").split(" ")[1]),
+      hits = [];
+    for (let pos = rootTable.cft; pos < rootTable.end; pos += 25)
+      if (equal(root.subarray(pos, pos + 16), old)) hits.push(pos);
+    requireValue(hits.length === 1);
+    root.set(vfsResult.ekey, hits[0]);
+    setCftSizes(root, hits[0], vfsResult.encoded, vfsResult.decoded);
+    const rootResult = await append(root);
+    lines = replaceConfig(lines, "vfs-1", hex(digest(vfs)) + " " + hex(vfsResult.ekey));
+    lines = replaceConfig(lines, "vfs-1-size", `${vfsResult.decoded} ${vfsResult.encoded}`);
+    const rootValue = hex(digest(root)) + " " + hex(rootResult.ekey);
+    for (const name of ["vfs-root", "vfs-2"]) {
+      if (values.get(name) === values.get("vfs-root")) {
+        requireValue(values.has(name + "-size"));
+        lines = replaceConfig(lines, name, rootValue);
+        lines = replaceConfig(lines, name + "-size", `${rootResult.decoded} ${rootResult.encoded}`);
+      }
+    }
+    const config = utf8(lines.join(""));
+    requireValue(config.length + outputLength <= MAX_OUTPUT);
+    return {
+      files: {
+        "data/.build.config": config,
+        [`data/${String(location[0]).padStart(2, "0")}-${String(location[1]).padStart(8, "0")}.data`]:
+          concat(chunks),
+      },
+      inventory,
+    };
+  };
+}
+// 固定浏览器实现组合，禁止跨 zlib 版本静默替代。 | Bind the pinned browser implementations; reject silent zlib version substitutions.
+export function createPinnedCascOverlayTransform({ codec, SparkMD5 } = {}) {
+  requireValue(
+    codec?.genericZlibVersion === "1.2.13" &&
+      typeof codec.compressZlib === "function" &&
+      typeof SparkMD5?.ArrayBuffer?.hash === "function",
+  );
+  return createCascOverlayTransform({
+    md5(bytes) {
+      const raw = SparkMD5.ArrayBuffer.hash(bytes.slice().buffer, true);
+      return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+    },
+    compress: (bytes) => codec.compressZlib(bytes, { level: 9 }),
+  });
+}

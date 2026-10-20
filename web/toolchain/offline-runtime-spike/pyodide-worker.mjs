@@ -18,6 +18,7 @@ let initialized = false;
 let starting = false;
 let py;
 let transforms;
+let cascTransform;
 let phase = "validate";
 let queue = Promise.resolve();
 const objectUrls = [];
@@ -105,6 +106,12 @@ async function initialize(data) {
   }
   phase = "import-table-transforms";
   transforms = await import(moduleUrl("asset-transforms.mjs"));
+  phase = "initialize-casc-codec";
+  const { createPngCodec } = await import(moduleUrl("png-codec.mjs"));
+  const codec = await createPngCodec(assets.get("png-codec.wasm"));
+  const { default: SparkMD5 } = await import(moduleUrl("spark-md5.mjs"));
+  const { createPinnedCascOverlayTransform } = await import(moduleUrl("casc-overlay.mjs"));
+  cascTransform = createPinnedCascOverlayTransform({ codec, SparkMD5 });
   phase = "import-runtime";
   await import(moduleUrl("pyodide.asm.js"));
   const { loadPyodide } = await import(moduleUrl("pyodide.mjs"));
@@ -145,8 +152,6 @@ async function initialize(data) {
     "hud.py",
     "map_goal_original.py",
     "map_goal.py",
-    "casc_overlay_original.py",
-    "casc_overlay.py",
     "mercenary_original.py",
     "mercenary.py",
     "overlay_recipe_sources.py",
@@ -165,7 +170,6 @@ async function initialize(data) {
     ["import-native-art", "import native_art_original, native_art"],
     ["import-hud", "import hud_original, hud_design_original, hud_support_original, hud"],
     ["import-map-goal", "import map_goal_original, map_goal"],
-    ["import-casc-overlay", "import casc_overlay_original, casc_overlay"],
     ["import-mercenary", "import mercenary_original, mercenary"],
     ["import-overlay-recipe", "import overlay_recipe_sources, overlay_recipe"],
     ["import-remaining-art", "import remaining_art_original, trove_original, remaining_art"],
@@ -211,6 +215,10 @@ async function run(data) {
       data.options,
     );
     postResult(data.id, result);
+    return;
+  }
+  if (data.operation === "casc-overlay") {
+    postResult(data.id, await cascTransform(data.payload, data.options));
     return;
   }
   py.globals.set("_op", data.operation);

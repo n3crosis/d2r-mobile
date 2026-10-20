@@ -51,9 +51,7 @@ def migrate():
             replace_function(tree, "vault_cover", "return art_pixels.vault_cover(im)")
         if name == "trove_original":
             replace_function(tree, "_stats", "return art_pixels.stats(im, boxes)")
-            replace_function(
-                tree, "_stone", "return art_pixels.stone(csh, w, h, target, ox, oy)"
-            )
+            replace_function(tree, "_stone", "return art_pixels.stone(csh, w, h, target, ox, oy)")
             replace_function(tree, "_feather", "return art_pixels.feather(sz, n)")
         if name == "hud_design_original":
             replace_function(

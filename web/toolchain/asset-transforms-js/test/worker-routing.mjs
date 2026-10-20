@@ -14,7 +14,7 @@ for (const [relative, production] of [
   let source = await readFile(new URL(relative, import.meta.url), "utf8");
   if (!production) {
     const imports = source.match(/^import .*;$/gm);
-    assert.equal(imports.length, 3);
+    assert.equal(imports.length, 6);
     source = source
       .replace(/^import .*;\n/gm, "")
       .replaceAll("import.meta.url", JSON.stringify(new URL(relative, import.meta.url).href));

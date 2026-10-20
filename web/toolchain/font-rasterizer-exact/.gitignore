@@ -1,0 +1,8 @@
+/dist/
+/vendor/
+/reference/*.c
+/reference/*.py
+/reference/ImagingUtils.h
+/test/fixtures.json
+/test/fixtures-meta.json
+/test/*.so

@@ -47,6 +47,23 @@ python_sources=(
   web/toolchain/texture-spike/native-encoder-fixtures.py
   web/toolchain/texture-spike/package-encoder.py
   web/toolchain/texture-spike/native-fixtures.py
+  web/toolchain/art-kernels/art_pixels.py
+  web/toolchain/art-kernels/migrate.py
+  web/toolchain/asset-transforms-js/test/reference.py
+  web/toolchain/casc-overlay-js/test/fixture.py
+  web/toolchain/font-rasterizer-exact/reference/ImageDraw.py
+  web/toolchain/font-rasterizer-exact/reference/ImageFont.py
+  web/toolchain/font-rasterizer-exact/reference/freetype-port.py
+  web/toolchain/font-rasterizer-exact/test/native-equivalence.py
+  web/toolchain/image-kernels-rust/reference/Image.py
+  web/toolchain/image-kernels-rust/reference/PngImagePlugin.py
+  web/toolchain/image-kernels-rust/test/make-fixtures.py
+  web/toolchain/nsp-extract-spike/native-key-parser-test.py
+  web/toolchain/overlay-recipe-js/scripts/extract-touch-data.py
+  web/toolchain/png-codec-exact/reference/ImageFile.py
+  web/toolchain/png-codec-exact/reference/PngImagePlugin.py
+  web/toolchain/png-codec-exact/test/native-equivalence.py
+  web/toolchain/program-rewrite-spike/audit-js-source.py
 )
 ruff check --no-cache --config web/toolchain/style/ruff.toml "${python_sources[@]}"
 ruff format --check --no-cache --config web/toolchain/style/ruff.toml "${python_sources[@]}"
@@ -57,7 +74,10 @@ clang-format --dry-run --Werror --style=file:web/toolchain/style/clang-format.ya
   web/toolchain/nsp-extract-spike/crypto-fixture.c \
   web/toolchain/nsp-extract-spike/quiet.h \
   web/toolchain/program-rewrite-spike/bridge.c \
-  web/toolchain/texture-spike/boundary.c
+  web/toolchain/texture-spike/boundary.c \
+  web/toolchain/font-rasterizer-exact/src/font_rasterizer.c \
+  web/toolchain/png-codec-exact/src/generic_zlib.c \
+  web/toolchain/png-codec-exact/src/png_codec.c
 
 bash -n web/toolchain/nsp-extract-spike/build-wasm.sh
 bash -n web/toolchain/synthetic-signed-nca/run-ci.sh

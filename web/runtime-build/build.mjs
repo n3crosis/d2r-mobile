@@ -11,7 +11,6 @@ const workspace = resolve(root, "web/runtime-build/.build");
 const sdk = "10.0.402";
 const crossCommit = "f11ba9f0b21ba8fc15153d50a2a1ae31ab1cf8f7";
 const stages = [
-  ["asset dependencies", "web/toolchain/asset-generation-spike", "npm", ["ci", "--ignore-scripts"]],
   [
     "program dependencies",
     "web/toolchain/program-rewrite-spike",
@@ -20,32 +19,18 @@ const stages = [
   ],
   ["texture decoder and BC3 encoder", ".", "bash", ["web/toolchain/texture-spike/build-wasm.sh"]],
   ["Rust BC3 encoder", ".", "node", ["web/toolchain/texture-spike/build-bc3.mjs"]],
+  ["Pinned PNG and CASC zlib codec", ".", "node", ["web/toolchain/png-codec-exact/build.mjs"]],
+  ["Rust image kernels", ".", "node", ["web/toolchain/image-kernels-rust/build.mjs"]],
+  ["Pinned font rasterizer", ".", "node", ["web/toolchain/font-rasterizer-exact/build.mjs"]],
   ["authenticated extraction", ".", "bash", ["web/toolchain/nsp-extract-spike/build-wasm.sh"]],
   ["ARM64 rewrite runtime", ".", "bash", ["web/toolchain/program-rewrite-spike/build-wasm.sh"]],
-  [
-    "asset Python runtime",
-    "web/toolchain/asset-generation-spike",
-    "npm",
-    ["run", "prepare:runtime"],
-  ],
-  [
-    "source-pinned asset modules",
-    "web/toolchain/asset-generation-spike",
-    "npm",
-    ["run", "prepare:core"],
-  ],
   [
     "sealed texture closure",
     ".",
     "node",
     ["web/toolchain/offline-runtime-spike/prepare-bundle.mjs"],
   ],
-  [
-    "sealed asset closure",
-    ".",
-    "node",
-    ["web/toolchain/offline-runtime-spike/pyodide-prepare.mjs"],
-  ],
+  ["JavaScript asset closure", ".", "bun", ["web/toolchain/asset-runtime-js/build.mjs"]],
   ["shader restore", "web/toolchain/shader-spike", "dotnet", ["restore", "ShaderSpike.csproj"]],
   [
     "shader browser publish",
@@ -100,7 +85,8 @@ if (option === "--plan") {
           rust: "1.99.1",
           dotnet: sdk,
           workload: "wasm-tools 10.0.402",
-          commands: ["git", "cmake", "make", "python3", "node", "npm"],
+          bun: "1.4.3",
+          commands: ["git", "cmake", "make", "python3", "node", "npm", "bun"],
         },
         crossCommit,
         stages,
