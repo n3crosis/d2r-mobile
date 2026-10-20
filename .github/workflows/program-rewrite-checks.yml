@@ -1,0 +1,58 @@
+name: Synthetic browser ARM64 program rewrite parity
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/web-ipa-packager]
+    paths:
+      - "web/toolchain/program-rewrite-spike/**"
+      - "dm/tools/patch_nso.py"
+      - ".github/workflows/program-rewrite-checks.yml"
+  pull_request:
+    paths:
+      - "web/toolchain/program-rewrite-spike/**"
+      - "dm/tools/patch_nso.py"
+      - ".github/workflows/program-rewrite-checks.yml"
+permissions:
+  contents: read
+concurrency:
+  group: program-rewrite-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  native-browser-parity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+        working-directory: web/toolchain/program-rewrite-spike
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+      - name: Install exact official registry dependencies
+        run: |
+          npm ci --ignore-scripts
+          python3 -m venv .venv
+          .venv/bin/pip install capstone==5.0.3 lz4==4.4.4
+          npx playwright install --with-deps chromium
+      - name: Build real ARM64 Capstone and LZ4 WASM with pinned official SDK
+        run: bash build-wasm.sh
+      - name: Generate synthetic NSOs and original native Python oracle
+        run: |
+          .venv/bin/python make-fixtures.py
+          cp -r fixtures dist/
+      - name: Compare actual Chromium worker outputs byte for byte with native
+        run: npm run test:browser
+      - name: Upload synthetic proof and deployable runtime (no game inputs)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: synthetic-program-rewrite-proof
+          path: |
+            web/toolchain/program-rewrite-spike/browser-results/
+            web/toolchain/program-rewrite-spike/dist/
+            web/toolchain/program-rewrite-spike/oracle/
+          retention-days: 7

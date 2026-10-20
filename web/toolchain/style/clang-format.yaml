@@ -1,0 +1,5 @@
+# Apply explicitly, never recursively to native/vendor/generated code.
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 100
+SortIncludes: Never

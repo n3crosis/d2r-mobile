@@ -1,0 +1,322 @@
+import { discoverNspFiles, discoverNspFolder } from "./nsp-input.mjs";
+import { resolveContentSelection } from "./content-selection.mjs";
+import { validateShellContract, validateAssemblyInventory } from "./shell-contract.mjs";
+import { writeZip } from "./zip-writer.mjs";
+
+/** Explicit capabilities, not implementations or evidence of real conversion support. */
+export const REQUIRED_PACKAGING_ADAPTERS = Object.freeze([
+  "openSecretSession",
+  "inspectContents",
+  "extractSelected",
+  "generateProgram",
+  "generateAssets",
+  "generateShaders",
+  "loadShell",
+  "validateGenerated",
+  "createOutput",
+  "validateArchive",
+  "cleanup",
+]);
+const labels = Object.freeze({
+  capabilities: "Checking local conversion capabilities",
+  discovery: "Finding local package and key files",
+  secrets: "Opening an isolated key session",
+  inspection: "Inspecting package content identities",
+  selection: "Selecting base, update and additional content",
+  extraction: "Extracting selected content locally",
+  disposal: "Closing the isolated key session",
+  program: "Generating the executable framework",
+  assets: "Generating game assets",
+  shaders: "Generating shader assets",
+  shell: "Validating the application shell",
+  validation: "Validating generated application content",
+  assembly: "Checking the complete assembly inventory",
+  output: "Writing a staged unsigned archive",
+  archive: "Validating the staged archive",
+  cleanup: "Releasing temporary conversion resources",
+  commit: "Finalizing the unsigned archive",
+});
+
+/** @typedef {{path:string,size:number,mode:number,signature?:{kind:string,offset:number,size:number},chunks:()=>AsyncIterable<Uint8Array>}} OutputEntry */
+/** @typedef {{write:(bytes:Uint8Array)=>Promise<void>,close:()=>Promise<void>,abort:(error:Error)=>Promise<void>}} OutputSink */
+/** @typedef {{signal:AbortSignal, inputs?:object, session?:object, selection?:object, extracted?:unknown}} AdapterContext */
+/**
+ * Adapters are trusted local capabilities. They must honor signal, avoid logging/caching
+ * secrets, and never commit output except through the returned sink.close(). A failed
+ * openSecretSession must clean up its own partially-created worker before rejecting.
+ * @typedef {object} PackagingAdapters
+ * @property {(context:AdapterContext)=>Promise<{dispose:()=>Promise<void>}>} openSecretSession
+ * @property {(context:AdapterContext)=>Promise<{records:object[],inventory:object[]}>} inspectContents
+ * @property {(context:AdapterContext)=>Promise<unknown>} extractSelected
+ * @property {(context:AdapterContext)=>Promise<OutputEntry[]>} generateProgram
+ * @property {(context:AdapterContext)=>Promise<OutputEntry[]>} generateAssets
+ * @property {(context:AdapterContext)=>Promise<OutputEntry[]>} generateShaders
+ * @property {(context:AdapterContext)=>Promise<{contract:object,entries:OutputEntry[]}>} loadShell
+ * @property {(context:object)=>Promise<{valid:boolean,observedOutputTargetOS:object}>} validateGenerated
+ * @property {(context:object)=>Promise<OutputSink>} createOutput
+ * @property {(context:object)=>Promise<{valid:boolean}>} validateArchive
+ * @property {(context:{signal:AbortSignal})=>Promise<void>} cleanup
+ */
+/** @typedef {{stage:string,state:string,label:string}} PackagingProgress */
+/**
+ * @typedef {object} PackagingJobOptions
+ * @property {File[]|FileList|FileSystemDirectoryHandle} input
+ * @property {PackagingAdapters} adapters
+ * @property {AbortSignal} [signal]
+ * @property {object} [selectionOptions]
+ * @property {number} [concurrency] Maximum concurrent generators (1–3; default 2).
+ * @property {(progress:PackagingProgress)=>void} [onProgress] Observer only; exceptions ignored.
+ */
+export class PackagingJobError extends Error {
+  constructor(cause, report) {
+    super("Local packaging did not complete.", { cause });
+    this.name = "PackagingJobError";
+    this.report = report;
+  }
+}
+const assertion = (condition) => {
+  if (!condition) throw new Error("PACKAGING_CONTRACT");
+};
+const comparePaths = (a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+
+/**
+ * No UI integration or conversion fallback. Resolves only after full validation,
+ * temporary-resource cleanup and sink.close. Original errors are available as cause
+ * for trusted callers, NEVER suitable for UI/logging; only report is user-safe.
+ * @param {PackagingJobOptions} options
+ */
+export async function runPackagingJob(options) {
+  const controller = new AbortController();
+  const signal = controller.signal;
+  const abort = () => controller.abort(); // Never copy caller-supplied abort reasons.
+  options.signal?.addEventListener("abort", abort, { once: true });
+  if (options.signal?.aborted) abort();
+  let stage = "capabilities",
+    session,
+    output,
+    committed = false,
+    commitStarted = false;
+  let cleanupDone = false,
+    outputAborted = false;
+  const cleanupCodes = [];
+  const adapters = options.adapters;
+  const emit = (name, state) => {
+    try {
+      options.onProgress?.(Object.freeze({ stage: name, state, label: labels[name] }));
+    } catch {
+      // Observers cannot change execution, cancel the job or expose callback errors.
+    }
+  };
+  const step = async (name, action) => {
+    signal.throwIfAborted();
+    stage = name;
+    emit(name, "running");
+    try {
+      const result = await action();
+      if (!committed) signal.throwIfAborted();
+      emit(name, "complete");
+      return result;
+    } catch (error) {
+      emit(name, "failed");
+      throw error;
+    }
+  };
+  const dispose = async () => {
+    if (!session) return;
+    const current = session;
+    session = undefined; // Disposal is attempted exactly once, including on failure.
+    try {
+      await current.dispose();
+    } catch (error) {
+      cleanupCodes.push("SECRET_DISPOSAL_FAILED");
+      throw error;
+    }
+  };
+  const cleanup = async () => {
+    if (cleanupDone) return;
+    cleanupDone = true;
+    try {
+      await adapters.cleanup({ signal });
+    } catch (error) {
+      cleanupCodes.push("RESOURCE_CLEANUP_FAILED");
+      throw error;
+    }
+  };
+  const abortOutput = async () => {
+    if (!output || outputAborted || committed) return;
+    outputAborted = true;
+    try {
+      await output.abort(new Error("PACKAGING_ABORTED"));
+    } catch {
+      cleanupCodes.push("OUTPUT_ABORT_FAILED");
+    }
+  };
+  let capabilitiesReady = false;
+  try {
+    // Fail closed BEFORE even discovering files, opening keys or creating output.
+    assertion(
+      adapters && REQUIRED_PACKAGING_ADAPTERS.every((key) => typeof adapters[key] === "function"),
+    );
+    assertion(
+      options.concurrency === undefined ||
+        (Number.isInteger(options.concurrency) &&
+          options.concurrency >= 1 &&
+          options.concurrency <= 3),
+    );
+    capabilitiesReady = true;
+    const inputs = await step("discovery", () =>
+      options.input?.kind === "directory"
+        ? discoverNspFolder(options.input, { signal })
+        : discoverNspFiles(options.input),
+    );
+    const context = { inputs, signal };
+    await step("secrets", async () => {
+      session = await adapters.openSecretSession(context);
+      assertion(session && typeof session.dispose === "function");
+    });
+    const inspected = await step("inspection", () =>
+      adapters.inspectContents({ ...context, session }),
+    );
+    const selection = await step("selection", () =>
+      resolveContentSelection(inspected.records, inspected.inventory, options.selectionOptions),
+    );
+    const extracted = await step("extraction", () =>
+      adapters.extractSelected({ ...context, session, selection }),
+    );
+    await step("disposal", dispose);
+    // Generators receive no input/key-file handles or secret-session reference.
+    const generationContext = { extracted, selection, signal };
+    const tasks = [
+      ["program", "generateProgram"],
+      ["assets", "generateAssets"],
+      ["shaders", "generateShaders"],
+    ];
+    const results = new Array(tasks.length);
+    let next = 0,
+      firstFailure;
+    const worker = async () => {
+      while (!firstFailure && next < tasks.length && !signal.aborted) {
+        const index = next++;
+        const [name, capability] = tasks[index];
+        try {
+          results[index] = await step(name, () => adapters[capability](generationContext));
+          assertion(Array.isArray(results[index]));
+        } catch (error) {
+          if (!firstFailure) firstFailure = { error, stage: name };
+          controller.abort();
+        }
+      }
+    };
+    // Only this bounded pool runs concurrently. Drain all started work before cleanup.
+    await Promise.all(Array.from({ length: options.concurrency ?? 2 }, worker));
+    if (firstFailure) {
+      stage = firstFailure.stage;
+      throw firstFailure.error;
+    }
+    signal.throwIfAborted();
+    const generatedEntries = results.flat().sort(comparePaths);
+    const shell = await step("shell", async () => {
+      const loaded = await adapters.loadShell({ signal });
+      validateShellContract(loaded.contract);
+      return loaded;
+    });
+    const validated = await step("validation", async () => {
+      const result = await adapters.validateGenerated({
+        generatedEntries,
+        selection,
+        shell,
+        signal,
+      });
+      assertion(result?.valid === true);
+      return result;
+    });
+    const assembly = await step("assembly", () =>
+      validateAssemblyInventory({
+        shell: shell.contract,
+        generatedEntries,
+        observedOutputTargetOS: validated.observedOutputTargetOS,
+      }),
+    );
+    const entries = [
+      ...shell.entries,
+      ...generatedEntries.map((entry) => ({ ...entry, path: assembly.base + entry.path })),
+    ].sort(comparePaths);
+    // Bind actual streamed entries to validated metadata; no unchecked shell extras.
+    const metadata = (list) =>
+      list.map(({ path, size, mode }) => ({ path, size, mode })).sort(comparePaths);
+    assertion(JSON.stringify(metadata(entries)) === JSON.stringify(metadata(assembly.entries)));
+    const manifest = Object.freeze(metadata(entries).map(Object.freeze));
+    const result = await step("output", async () => {
+      output = await adapters.createOutput({ manifest, signal });
+      assertion(
+        output && ["write", "close", "abort"].every((key) => typeof output[key] === "function"),
+      );
+      return writeZip(
+        entries.map((entry) => ({ ...entry, mode: entry.mode & 0o777 })),
+        {
+          write: (bytes) => output.write(bytes),
+          abort: abortOutput,
+          close: async () => {
+            await step("archive", async () => {
+              const checked = await adapters.validateArchive({ output, manifest, signal });
+              assertion(checked?.valid === true);
+            });
+            await step("cleanup", cleanup);
+            signal.throwIfAborted();
+            stage = "commit";
+            emit("commit", "running");
+            commitStarted = true;
+            // Deliberately no post-close cancellation check: close is the commit boundary.
+            await output.close();
+            committed = true;
+            emit("commit", "complete");
+          },
+        },
+        { signal },
+      );
+    });
+    return Object.freeze({
+      status: "complete",
+      unsigned: true,
+      installable: false,
+      committed,
+      manifest,
+      ...result,
+    });
+  } catch (cause) {
+    const failedStage = stage;
+    const cancelled = signal.aborted && !commitStarted;
+    controller.abort();
+    try {
+      await dispose();
+    } catch {
+      /* Collected above; preserve primary cause. */
+    }
+    if (capabilitiesReady) {
+      try {
+        await cleanup();
+      } catch {
+        /* Collected above; preserve primary cause. */
+      }
+    }
+    await abortOutput();
+    throw new PackagingJobError(
+      cause,
+      Object.freeze({
+        status: "failed",
+        code:
+          failedStage === "capabilities"
+            ? "CAPABILITY_UNAVAILABLE"
+            : cancelled && options.signal?.aborted
+              ? "CANCELLED"
+              : "STAGE_FAILED",
+        stage: failedStage,
+        committed,
+        commitStarted,
+        cleanupCodes: Object.freeze([...cleanupCodes]),
+      }),
+    );
+  } finally {
+    options.signal?.removeEventListener("abort", abort);
+  }
+}

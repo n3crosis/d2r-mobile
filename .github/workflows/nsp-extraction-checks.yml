@@ -1,0 +1,58 @@
+name: NSP extraction WASM boundary
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "web/toolchain/nsp-extract-spike/**"
+      - ".github/workflows/nsp-extraction-checks.yml"
+  pull_request:
+    paths:
+      - "web/toolchain/nsp-extract-spike/**"
+      - ".github/workflows/nsp-extraction-checks.yml"
+permissions:
+  contents: read
+concurrency:
+  group: nsp-extraction-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  synthetic-wasm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+      - name: Install pinned official Emscripten SDK
+        shell: bash
+        run: |
+          git clone --depth 1 --branch 4.0.20 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/nsp-emsdk"
+          test "$(git -C "$RUNNER_TEMP/nsp-emsdk" rev-parse HEAD)" = e4fe26ef59168ff44f4c23c466e497bf60b3411e
+          "$RUNNER_TEMP/nsp-emsdk/emsdk" install 4.0.20
+          "$RUNNER_TEMP/nsp-emsdk/emsdk" activate 4.0.20
+      - name: Build pinned upstream and bounded WASM API
+        shell: bash
+        run: |
+          source "$RUNNER_TEMP/nsp-emsdk/emsdk_env.sh"
+          bash web/toolchain/nsp-extract-spike/build-wasm.sh
+      - name: Run synthetic container tests
+        run: node --test web/toolchain/nsp-extract-spike/container-boundary.test.mjs
+      - name: Install browser test tools from official npm package
+        shell: bash
+        run: |
+          npm install --prefix "$RUNNER_TEMP/nsp-playwright" --no-audit --no-fund playwright@1.64.1
+          "$RUNNER_TEMP/nsp-playwright/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Exercise WASM in Chromium dedicated Worker
+        shell: bash
+        run: |
+          PLAYWRIGHT_ENTRY="$RUNNER_TEMP/nsp-playwright/node_modules/playwright/index.mjs" \
+            node web/toolchain/nsp-extract-spike/browser-smoke.mjs
+      - name: Retain public WASM and required notices only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: nsp-metadata-wasm-synthetic-verified
+          path: web/toolchain/nsp-extract-spike/dist/
+          if-no-files-found: error
+          retention-days: 7

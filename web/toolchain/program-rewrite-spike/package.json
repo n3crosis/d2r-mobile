@@ -1,0 +1,14 @@
+{
+  "name": "program-rewrite-synthetic-spike",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:browser": "node verify-parity.mjs"
+  },
+  "dependencies": {
+    "pyodide": "0.27.7"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}

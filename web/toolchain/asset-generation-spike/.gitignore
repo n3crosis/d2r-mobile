@@ -1,0 +1,5 @@
+node_modules/
+public/vendor/
+public/generated/
+test-results/
+__pycache__/

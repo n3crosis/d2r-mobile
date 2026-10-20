@@ -1,0 +1,74 @@
+name: Authored toolchain style checks
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/web-ipa-packager]
+    paths:
+      - "web/toolchain/nsp-extract-spike/**"
+      - "web/toolchain/spirv-cross-spike/**"
+      - "web/toolchain/asset-generation-spike/**"
+      - "web/toolchain/program-rewrite-spike/**"
+      - "web/toolchain/style/**"
+      - ".github/workflows/toolchain-style-checks.yml"
+  pull_request:
+    paths:
+      - "web/toolchain/nsp-extract-spike/**"
+      - "web/toolchain/spirv-cross-spike/**"
+      - "web/toolchain/asset-generation-spike/**"
+      - "web/toolchain/program-rewrite-spike/**"
+      - "web/toolchain/style/**"
+      - ".github/workflows/toolchain-style-checks.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: toolchain-style-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  authored-source-style:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install exact formatter versions from the official Python registry
+        run: |
+          python3 -m venv "$RUNNER_TEMP/style-tools"
+          "$RUNNER_TEMP/style-tools/bin/pip" install --index-url https://pypi.org/simple --only-binary=:all: ruff==0.14.0 clang-format==21.1.2
+          echo "$RUNNER_TEMP/style-tools/bin" >> "$GITHUB_PATH"
+      - name: Lint and format-check authored Python only
+        # Explicit paths prevent touching AST-extracted native functions, runtime
+        # copies, downloaded sources or anything under dm/.
+        run: |
+          python_sources=(
+            web/toolchain/nsp-extract-spike/prepare-source.py
+            web/toolchain/spirv-cross-spike/native-oracle.py
+            web/toolchain/spirv-cross-spike/provenance.py
+            web/toolchain/asset-generation-spike/scripts/package-core.py
+            web/toolchain/asset-generation-spike/src/core.py
+            web/toolchain/asset-generation-spike/test/native-reference.py
+            web/toolchain/asset-generation-spike/test/verify-png.py
+            web/toolchain/program-rewrite-spike/make-fixtures.py
+            web/toolchain/program-rewrite-spike/python-adapters.py
+          )
+          ruff check --config web/toolchain/style/ruff.toml "${python_sources[@]}"
+          ruff format --check --config web/toolchain/style/ruff.toml "${python_sources[@]}"
+      - name: Format-check authored C bindings and fixture only
+        run: |
+          clang-format --dry-run --Werror --style=file:web/toolchain/style/clang-format.yaml \
+            web/toolchain/nsp-extract-spike/boundary.c \
+            web/toolchain/nsp-extract-spike/crypto-fixture.c \
+            web/toolchain/nsp-extract-spike/quiet.h \
+            web/toolchain/program-rewrite-spike/bridge.c
+      - name: Syntax-check authored Bash build scripts only
+        run: |
+          bash -n web/toolchain/nsp-extract-spike/build-wasm.sh
+          bash -n web/toolchain/spirv-cross-spike/build.sh
+          bash -n web/toolchain/program-rewrite-spike/build-wasm.sh

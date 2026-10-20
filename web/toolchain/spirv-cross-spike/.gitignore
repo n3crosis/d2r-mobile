@@ -1,0 +1,5 @@
+wwwroot/spirv-cross.mjs
+wwwroot/spirv-cross.wasm
+wwwroot/*.spv
+build/
+results/

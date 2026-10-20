@@ -1,0 +1,217 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
+  validateShellContract,
+  validateAssemblyInventory,
+  SHELL_LIMITS,
+} from "../shell-contract.mjs";
+const base = "Payload/DmIOS.app/";
+const entry = (path, size = 10, mode = 0o100644) => ({ path, size, mode });
+const requiredPaths = ["dm/derived.tsv", "Frameworks/Guest.framework/", "msl/b-test/"];
+function fixture() {
+  const targetOS = { platform: "ios", minimumVersion: "16.0" };
+  return {
+    shell: {
+      entries: ["Info.plist", "DmIOS", "dm/shell_info.txt", "dm/shell_manifest.txt"].map((p) =>
+        entry(base + p),
+      ),
+      shellInfoText:
+        "PRODUCT=synthetic\nCHAIN=test\nKIND=ios\nSHADER_SRC=0123456789abcdef\nSPIRV_CROSS=synthetic\n",
+      shellManifestText: requiredPaths.join("\n"),
+      trustedRecipe: {
+        schemaVersion: 1,
+        product: "synthetic",
+        chain: "test",
+        kind: "ios",
+        shaderDigest: "0123456789abcdef",
+        targetOS,
+        requiredPaths,
+        extraFiles: ["dm/pack_info.txt"],
+      },
+      observedTargetOS: targetOS,
+    },
+    generatedEntries: [
+      entry("dm/derived.tsv"),
+      {
+        ...entry("Frameworks/Guest.framework/Guest", 100, 0o100755),
+        signature: { kind: "ad-hoc", offset: 80, size: 20 },
+      },
+      entry("Frameworks/Guest.framework/Info.plist"),
+      entry("msl/b-test/synthetic.metal"),
+      entry("dm/pack_info.txt"),
+    ],
+    observedOutputTargetOS: targetOS,
+  };
+}
+test("metadata preserves executable Guest and signature without installability claims", () => {
+  const f = fixture(),
+    r = validateAssemblyInventory(f);
+  assert.equal(r.status, "assembly-inventory-valid");
+  assert.equal(r.installable, false);
+  assert.equal(r.contentVerified, false);
+  const g = r.entries.find((e) => e.path.endsWith("/Guest"));
+  assert.equal(g.mode, 0o100755);
+  assert.deepEqual(g.signature, { kind: "ad-hoc", offset: 80, size: 20 });
+  g.signature.offset = 0;
+  assert.equal(f.generatedEntries[1].signature.offset, 80);
+});
+test("strict recipe, independent target observations and text", () => {
+  for (const mutate of [
+    (f) => {
+      delete f.shell.trustedRecipe;
+    },
+    (f) => {
+      f.shell.trustedRecipe.schemaVersion = 2;
+    },
+    (f) => {
+      delete f.shell.observedTargetOS;
+    },
+    (f) => {
+      f.shell.observedTargetOS = { platform: "ios", minimumVersion: "17.0" };
+    },
+    (f) => {
+      f.observedOutputTargetOS = { platform: "ios", minimumVersion: "15.0" };
+    },
+    (f) => {
+      f.shell.trustedRecipe.kind = "mac";
+    },
+    (f) => {
+      f.shell.shellInfoText += "VERSION=2\n";
+    },
+    (f) => {
+      f.shell.shellInfoText += "PRODUCT=synthetic\n";
+    },
+    (f) => {
+      f.shell.shellInfoText = f.shell.shellInfoText.replace("test", "other");
+    },
+    (f) => {
+      f.shell.shellInfoText = f.shell.shellInfoText.replace("0123456789abcdef", "ffffffffffffffff");
+    },
+    (f) => {
+      f.shell.shellManifestText += "\nunknown/";
+    },
+  ]) {
+    const f = fixture();
+    mutate(f);
+    assert.throws(() => validateAssemblyInventory(f));
+  }
+});
+test("one app and required shell files", () => {
+  for (const extra of ["Payload/Other.app/Info.plist", "__MACOSX/file", "outside"]) {
+    const f = fixture();
+    f.shell.entries.push(entry(extra));
+    assert.throws(() => validateShellContract(f.shell));
+  }
+  const f = fixture();
+  f.shell.entries.shift();
+  assert.throws(() => validateShellContract(f.shell), /Missing required file/);
+});
+test("unsafe paths, duplicate entries, case collisions and ancestor conflicts", () => {
+  for (const p of [
+    "../escape",
+    "/absolute",
+    "a\\b",
+    "a//b",
+    "a/./b",
+    "a/../b",
+    "a\0b",
+    "a:b",
+    "a./b",
+    "a /b",
+    "dm/shell_info.txt",
+    "DM/extra",
+    "Info.plist/child",
+  ]) {
+    const f = fixture();
+    f.shell.entries.push(entry(base + p));
+    assert.throws(() => validateShellContract(f.shell), p);
+  }
+  const f = fixture();
+  f.generatedEntries.push(f.generatedEntries[0]);
+  assert.throws(() => validateAssemblyInventory(f), /Duplicate/);
+});
+test("reject symlinks, special files, credentials, signing and bulk archives", () => {
+  for (const mode of [0o120777, 0o020600, 0o104755]) {
+    const f = fixture();
+    f.shell.entries.push(entry(base + "bad", 10, mode));
+    assert.throws(() => validateShellContract(f.shell));
+  }
+  for (const p of [
+    "embedded.mobileprovision",
+    "_CodeSignature/CodeResources",
+    "Extensions/Bad",
+    "PlugIns/Bad",
+    "RomFS/data/file",
+    "dm/00-00000000.data",
+    "secret.keys",
+    "file.nsp",
+    "cert.p12",
+  ]) {
+    const f = fixture();
+    f.shell.entries.push(entry(base + p));
+    assert.throws(() => validateShellContract(f.shell), /Forbidden/);
+  }
+});
+test("manifest completeness, no empty directories and no shell overwrite", () => {
+  for (const remove of [
+    "dm/derived.tsv",
+    "msl/b-test/synthetic.metal",
+    "Frameworks/Guest.framework/Guest",
+  ]) {
+    const f = fixture();
+    f.generatedEntries = f.generatedEntries.filter((e) => e.path !== remove);
+    assert.throws(() => validateAssemblyInventory(f));
+  }
+  const f = fixture();
+  f.generatedEntries = f.generatedEntries.filter((e) => !e.path.startsWith("msl/"));
+  f.generatedEntries.push(entry("msl/b-test/", 0, 0o40755));
+  assert.throws(() => validateAssemblyInventory(f), /empty required directory/);
+  const c = fixture();
+  c.shell.entries.push(entry(base + "dm/pack_info.txt"));
+  assert.throws(() => validateAssemblyInventory(c), /Duplicate/);
+  const l = fixture();
+  l.shell.entries.push(entry(base + "dm/derived.tsv"));
+  assert.throws(() => validateAssemblyInventory(l), /already contains/);
+});
+test("Guest signature range and executable permissions required", () => {
+  for (const change of [
+    (g) => {
+      g.mode = 0o100644;
+    },
+    (g) => {
+      delete g.signature;
+    },
+    (g) => {
+      g.signature.size = 21;
+    },
+    (g) => {
+      g.signature.kind = "developer";
+    },
+  ]) {
+    const f = fixture();
+    change(f.generatedEntries[1]);
+    assert.throws(() => validateAssemblyInventory(f));
+  }
+});
+test("bounded inputs and generated allowlist", () => {
+  const f = fixture();
+  f.generatedEntries.push(entry("unapproved"));
+  assert.throws(() => validateAssemblyInventory(f), /outside trusted/);
+  for (const size of [-1, NaN, Infinity, SHELL_LIMITS.bytes + 1]) {
+    const f = fixture();
+    f.shell.entries[0].size = size;
+    assert.throws(() => validateShellContract(f.shell));
+  }
+  const b = fixture();
+  b.shell.shellInfoText = "x".repeat(SHELL_LIMITS.text + 1);
+  assert.throws(() => validateShellContract(b.shell), /oversized/);
+  const m = fixture();
+  m.shell.entries = Array(SHELL_LIMITS.entries + 1).fill(entry(base + "x"));
+  assert.throws(() => validateShellContract(m.shell), /limit/);
+});
+test("explicit parent directories and equivalent target patch zero", () => {
+  const f = fixture();
+  f.shell.entries.unshift(entry("Payload/", 0, 0o40755), entry(base, 0, 0o40755));
+  f.observedOutputTargetOS = { platform: "ios", minimumVersion: "16.0.0" };
+  assert.equal(validateAssemblyInventory(f).status, "assembly-inventory-valid");
+});
