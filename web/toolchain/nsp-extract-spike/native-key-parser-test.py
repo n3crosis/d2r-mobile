@@ -4,6 +4,7 @@
 Usage: python3 native-key-parser-test.py /path/to/unmodified/pinned/hactool
 Requires a local C compiler. Does not download sources or read any key files.
 """
+
 from pathlib import Path
 import shutil
 import subprocess
@@ -17,7 +18,7 @@ with tempfile.TemporaryDirectory(prefix="d2r-synthetic-key-parser-") as director
     for name in ["extkeys.c", "utils.h"]:
         shutil.copyfile(source / name, work / name)
     subprocess.run([sys.executable, str(here / "prepare-source.py"), str(work)], check=True)
-    (work / "fixture.c").write_text(r'''
+    (work / "fixture.c").write_text(r"""
 #include <assert.h>
 #include "extkeys.c"
 void nsp_zero(void *ptr, size_t size) { memset(ptr, 0, size); }
@@ -60,11 +61,23 @@ int main(void) {
     puts("PASS synthetic native key-line size and non-fragmentation checks");
     return 0;
 }
-''')
-    subprocess.run([
-        "cc", "-std=gnu11", "-O2", "-ffunction-sections", "-fdata-sections",
-        "-include", str(here / "quiet.h"), "-I" + str(source),
-        "-I" + str(source / "mbedtls/include"), str(work / "fixture.c"),
-        "-Wl,--gc-sections", "-o", str(work / "fixture"),
-    ], check=True)
+""")
+    subprocess.run(
+        [
+            "cc",
+            "-std=gnu11",
+            "-O2",
+            "-ffunction-sections",
+            "-fdata-sections",
+            "-include",
+            str(here / "quiet.h"),
+            "-I" + str(source),
+            "-I" + str(source / "mbedtls/include"),
+            str(work / "fixture.c"),
+            "-Wl,--gc-sections",
+            "-o",
+            str(work / "fixture"),
+        ],
+        check=True,
+    )
     subprocess.run([str(work / "fixture")], check=True)
