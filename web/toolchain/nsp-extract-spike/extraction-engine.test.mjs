@@ -8,15 +8,18 @@ import {
 } from "../../d2r-expansion-policy.mjs";
 const ids = [0x11, 0x33, 0x44, 0x55, 0x99, 0x77],
   hashes = [0xaa, 0x22, 0xbb, 0x66, 0xcc, 0x88];
-function fixture() {
+function fixture({ ticket = false, ticketName = "aa".repeat(16) } = {}) {
   const names = ids.map(
     (id, i) => id.toString(16).repeat(16) + (i % 2 ? ".nca" : ".cnmt.nca") + "\0",
   );
+  if (ticket) names.push(`${ticketName}.tik\0`);
   const nameBytes = new TextEncoder().encode(names.join(""));
-  const bytes = new Uint8Array(16 + 24 * 6 + nameBytes.length + 6),
+  const count = names.length;
+  const dataOffset = 16 + 24 * count + nameBytes.length;
+  const bytes = new Uint8Array(dataOffset + 6 + (ticket ? 0x2c0 : 0)),
     v = new DataView(bytes.buffer);
   bytes.set([80, 70, 83, 48]);
-  v.setUint32(4, 6, true);
+  v.setUint32(4, count, true);
   v.setUint32(8, nameBytes.length, true);
   let nameOffset = 0;
   for (let i = 0; i < 6; i++) {
@@ -25,7 +28,15 @@ function fixture() {
     v.setUint32(32 + 24 * i, nameOffset, true);
     nameOffset += names[i].length;
   }
-  bytes.set(nameBytes, 160);
+  if (ticket) {
+    v.setBigUint64(16 + 24 * 6, 6n, true);
+    v.setBigUint64(24 + 24 * 6, 0x2c0n, true);
+    v.setUint32(32 + 24 * 6, nameOffset, true);
+    v.setUint32(dataOffset + 6, 0x10004, true);
+    bytes.fill(0x11, dataOffset + 6 + 0x180, dataOffset + 6 + 0x190);
+    bytes.fill(0xaa, dataOffset + 6 + 0x2a0, dataOffset + 6 + 0x2b0);
+  }
+  bytes.set(nameBytes, 16 + 24 * count);
   return new Blob([bytes]);
 }
 function cnmt(kind) {
@@ -55,12 +66,14 @@ function setup({
   let mode,
     active,
     disposed = false,
-    keyArrays;
+    keyArrays,
+    loadedTitle;
   const metadata = [cnmt(0), cnmt(1), cnmt(2)],
     calls = [];
   const boundary = {
     loadKeys(prod, title) {
       keyArrays = [prod, title];
+      loadedTitle = title.slice();
     },
     mount(blobs) {
       assert.equal(blobs.length, 6);
@@ -116,14 +129,34 @@ function setup({
   };
   let sequence = 0;
   const engine = createExtractionEngine(boundary, { newToken: () => `token-${++sequence}` });
-  return { engine, calls, keys: () => keyArrays, disposed: () => disposed };
+  return {
+    engine,
+    calls,
+    keys: () => keyArrays,
+    title: () => loadedTitle,
+    disposed: () => disposed,
+  };
 }
-const initialize = (engine) =>
+const initialize = (engine, fixtureOptions) =>
   engine.execute("initialize", {
-    nsps: [fixture()],
+    nsps: [fixture(fixtureOptions)],
     prodKeys: new Blob([`header_key = ${"12".repeat(32)}\n`]),
     titleKeys: new Blob([`${"34".repeat(16)} = ${"56".repeat(16)}\n`]),
   });
+test("package tickets supply title keys when title.keys has no matching rights ID", async () => {
+  const { engine, title, keys } = setup();
+  await initialize(engine, { ticket: true });
+  assert.match(new TextDecoder().decode(title()), /a{32} = 1{32}\n/);
+  assert(keys().every((bytes) => bytes.every((byte) => byte === 0)));
+  await engine.execute("dispose");
+});
+test("package ticket filename must match its embedded rights ID", async () => {
+  const { engine } = setup();
+  await assert.rejects(initialize(engine, { ticket: true, ticketName: "bb".repeat(16) }), {
+    code: "PACKAGE_INDEX_INVALID",
+  });
+  await engine.execute("dispose");
+});
 test("engine uses catalog, independent inventory and internal selection; tokens revoke ExeFS", async () => {
   const env = setup(),
     { engine } = env;

@@ -10,6 +10,67 @@ import { resolveD2rExpansionSelection } from "../../d2r-expansion-policy.mjs";
 const CHUNK = 65536,
   META_LIMIT = 16 * 1024 * 1024,
   MAX_CONTENTS = 4096;
+const TICKET_MIN_SIZE = 0x2b0;
+const HEX = "0123456789abcdef";
+function ticketKeyLine(bytes) {
+  if (
+    bytes.length !== TICKET_MIN_SIZE ||
+    new DataView(bytes.buffer, bytes.byteOffset).getUint32(0, true) !== 0x10004 ||
+    bytes[0x281] !== 0
+  )
+    diagnostic("PACKAGE_INDEX_INVALID");
+  const id = bytes.subarray(0x2a0, 0x2b0);
+  const key = bytes.subarray(0x180, 0x190);
+  if (id.every((byte) => byte === 0) || key.every((byte) => byte === 0))
+    diagnostic("PACKAGE_INDEX_INVALID");
+  const line = new Uint8Array(68);
+  const writeHex = (source, at) => {
+    for (const byte of source) {
+      line[at++] = HEX.charCodeAt(byte >>> 4);
+      line[at++] = HEX.charCodeAt(byte & 15);
+    }
+  };
+  writeHex(id, 0);
+  line.set([32, 61, 32], 32);
+  writeHex(key, 35);
+  line[67] = 10;
+  return line;
+}
+function containsTitleId(bytes, id) {
+  for (let start = 0; start < bytes.length;) {
+    let end = bytes.indexOf(10, start);
+    if (end < 0) end = bytes.length;
+    let at = start;
+    while (at < end && (bytes[at] === 32 || bytes[at] === 9)) at++;
+    if (end - at >= 32) {
+      let same = true;
+      for (let i = 0; i < 32; i++) {
+        const c = bytes[at + i];
+        if ((c >= 65 && c <= 70 ? c + 32 : c) !== id[i]) same = false;
+      }
+      if (same) return true;
+    }
+    start = end + 1;
+  }
+  return false;
+}
+function mergeTicketKeys(title, tickets) {
+  const additional = [...tickets.values()].filter((line) => !containsTitleId(title, line));
+  if (!additional.length) return title;
+  const separator = title.length && title[title.length - 1] !== 10 ? 1 : 0;
+  const size = title.length + separator + additional.length * 68;
+  if (size > NSP_INPUT_LIMITS.keyBytes) diagnostic("TITLE_KEYS_TOO_LARGE");
+  const merged = new Uint8Array(size);
+  merged.set(title);
+  if (separator) merged[title.length] = 10;
+  let at = title.length + separator;
+  for (const line of additional) {
+    merged.set(line, at);
+    at += line.length;
+  }
+  title.fill(0);
+  return merged;
+}
 const fail = () => {
   throw new Error("EXTRACTION_REQUEST_REJECTED");
 };
@@ -143,38 +204,70 @@ export function createExtractionEngine(
           payload.nsps.some((file) => !(file instanceof Blob))
         )
           fail();
+        const blobs = [],
+          ids = [],
+          tickets = new Map();
         let prod, title;
         try {
           progress("prod-keys-read");
           prod = await readKeys(payload.prodKeys, "prod");
           progress("title-keys-read");
           title = await readKeys(payload.titleKeys, "title");
+          for (const [index, file] of payload.nsps.entries()) {
+            progress("package-index", index, payload.nsps.length);
+            let catalog;
+            try {
+              catalog = await inspectNsp(file);
+            } catch {
+              diagnostic("PACKAGE_INDEX_INVALID");
+            }
+            for (const entry of catalog.entries) {
+              const match = /^([0-9a-f]{32})(?:\.cnmt)?\.nca$/iu.exec(entry.name);
+              if (!match) {
+                const ticket = /^([0-9a-f]{32})\.tik$/iu.exec(entry.name);
+                if (ticket) {
+                  if (entry.size < BigInt(TICKET_MIN_SIZE) || entry.size > 4096n)
+                    diagnostic("PACKAGE_INDEX_INVALID");
+                  let bytes, line;
+                  try {
+                    bytes = new Uint8Array(
+                      await file
+                        .slice(Number(entry.offset), Number(entry.offset + BigInt(TICKET_MIN_SIZE)))
+                        .arrayBuffer(),
+                    );
+                    line = ticketKeyLine(bytes);
+                    if (ticket[1].toLowerCase() !== String.fromCharCode(...line.subarray(0, 32)))
+                      diagnostic("PACKAGE_INDEX_INVALID");
+                    const id = ticket[1].toLowerCase();
+                    const old = tickets.get(id);
+                    if (old && old.some((byte, i) => byte !== line[i]))
+                      diagnostic("PACKAGE_INDEX_INVALID");
+                    if (!old) {
+                      tickets.set(id, line);
+                      line = undefined;
+                    }
+                  } catch {
+                    diagnostic("PACKAGE_INDEX_INVALID");
+                  } finally {
+                    bytes?.fill(0);
+                    line?.fill(0);
+                  }
+                } else if (/\.(?:nca|ncz|tik)$/iu.test(entry.name))
+                  diagnostic("PACKAGE_INDEX_INVALID");
+                continue;
+              }
+              if (blobs.length >= MAX_CONTENTS) diagnostic("PACKAGE_INDEX_INVALID");
+              blobs.push(file.slice(Number(entry.offset), Number(entry.offset + entry.size)));
+              ids.push(match[1].toLowerCase());
+            }
+          }
+          title = mergeTicketKeys(title, tickets);
           progress("keys-load");
           checked("KEYS_RUNTIME_FAILED", () => boundary.loadKeys(prod, title));
         } finally {
           prod?.fill(0);
           title?.fill(0);
-        }
-        const blobs = [],
-          ids = [];
-        for (const [index, file] of payload.nsps.entries()) {
-          progress("package-index", index, payload.nsps.length);
-          let catalog;
-          try {
-            catalog = await inspectNsp(file);
-          } catch {
-            diagnostic("PACKAGE_INDEX_INVALID");
-          }
-          for (const entry of catalog.entries) {
-            const match = /^([0-9a-f]{32})(?:\.cnmt)?\.nca$/iu.exec(entry.name);
-            if (!match) {
-              if (/\.(?:nca|ncz)$/iu.test(entry.name)) diagnostic("PACKAGE_INDEX_INVALID");
-              continue;
-            }
-            if (blobs.length >= MAX_CONTENTS) diagnostic("PACKAGE_INDEX_INVALID");
-            blobs.push(file.slice(Number(entry.offset), Number(entry.offset + entry.size)));
-            ids.push(match[1].toLowerCase());
-          }
+          for (const line of tickets.values()) line.fill(0);
         }
         if (!blobs.length) diagnostic("PACKAGE_INDEX_INVALID");
         checked("CONTENT_READ_FAILED", () => boundary.mount(blobs));
