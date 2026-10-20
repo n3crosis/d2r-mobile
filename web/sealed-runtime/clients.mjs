@@ -138,8 +138,11 @@ function runtimeTransport(manifest, inventory) {
 // Only verified public inventory assets enter this cache, before private inputs are opened.
 const PUBLIC_CACHE = "d2r-public-runtime-sha256-v1";
 const DOWNLOAD_CONCURRENCY = 4;
-async function responseBytes(response, cap, onChunk) {
+async function responseBytes(response, cap, onChunk, exactSize = false) {
   if (!response.ok || !response.body) fail("Missing public runtime asset");
+  // 已知大小的资源直接写入最终缓冲区，避免同时保留完整分块和合并副本。
+  // Write known-size assets into the final buffer instead of retaining chunks plus a full copy.
+  const output = exactSize ? new Uint8Array(cap) : undefined;
   const reader = response.body.getReader();
   const chunks = [];
   let size = 0;
@@ -149,7 +152,8 @@ async function responseBytes(response, cap, onChunk) {
       if (done) break;
       size += value.length;
       if (size > cap) fail("Public runtime byte cap");
-      chunks.push(value);
+      if (output) output.set(value, size - value.length);
+      else chunks.push(value);
       onChunk?.(value.length);
     }
   } catch (error) {
@@ -158,6 +162,7 @@ async function responseBytes(response, cap, onChunk) {
   } finally {
     reader.releaseLock();
   }
+  if (output) return size === cap ? output : output.subarray(0, size);
   const bytes = new Uint8Array(size);
   let offset = 0;
   for (const chunk of chunks) {
@@ -166,7 +171,7 @@ async function responseBytes(response, cap, onChunk) {
   }
   return bytes;
 }
-async function read(url, cap, signal, onChunk) {
+async function read(url, cap, signal, onChunk, exactSize = false) {
   const controller = new AbortController();
   const abort = () => controller.abort(signal?.reason);
   signal?.addEventListener("abort", abort, { once: true });
@@ -184,7 +189,7 @@ async function read(url, cap, signal, onChunk) {
       cache: "no-store",
       signal: controller.signal,
     });
-    return await responseBytes(response, cap, onChunk);
+    return await responseBytes(response, cap, onChunk, exactSize);
   } finally {
     clearTimeout(timeout);
     signal?.removeEventListener("abort", abort);
@@ -434,7 +439,7 @@ export async function prepareSealedRuntime({
           const response = await publicCache.match(key);
           if (!response) return { value: undefined };
           try {
-            const value = await responseBytes(response, record.bytes);
+            const value = await responseBytes(response, record.bytes, undefined, true);
             if (value.length === record.bytes && (await hash(value)) === record.sha256)
               return { value };
           } catch {
@@ -452,10 +457,16 @@ export async function prepareSealedRuntime({
         }
       }
       if (!bytes) {
-        bytes = await read(new URL(record.path, base), record.bytes, downloads.signal, (size) => {
-          downloadedBytes += size;
-          update();
-        });
+        bytes = await read(
+          new URL(record.path, base),
+          record.bytes,
+          downloads.signal,
+          (size) => {
+            downloadedBytes += size;
+            update();
+          },
+          true,
+        );
         if (bytes.length !== record.bytes || (await hash(bytes)) !== record.sha256)
           fail("Runtime asset integrity mismatch. Reload to retry.");
         if (cache) {
@@ -506,7 +517,12 @@ export async function prepareSealedRuntime({
         const stream = new Blob([downloadedAssets.get(file.path)])
           .stream()
           .pipeThrough(new DecompressionStream("gzip"));
-        const decoded = await responseBytes(new Response(stream), file.decodedBytes);
+        const decoded = await responseBytes(
+          new Response(stream),
+          file.decodedBytes,
+          undefined,
+          true,
+        );
         if (decoded.length !== file.decodedBytes) fail("Decoded runtime size mismatch");
         downloadedAssets.set(file.path, decoded);
       }
@@ -615,6 +631,7 @@ export async function prepareSealedRuntime({
     if (session) sealedRuntimes.delete(session);
     for (const c of Object.values(channels)) c.stop();
     for (const url of urls) URL.revokeObjectURL(url);
+    for (const plan of Object.values(plans)) plan.assets.length = 0;
     assets.clear();
   }
   try {
@@ -649,6 +666,9 @@ export async function prepareSealedRuntime({
         );
       }));
       const transferred = plan.assets.map(([local, value]) => [local, value.slice().buffer]);
+      // 验证后的公开原件由 assets 保留；传输副本准备好后即可释放计划中的重复引用。
+      // assets retains verified public originals; drop duplicate plan references once copies are ready.
+      plan.assets.length = 0;
       const buffers = transferred.map(([, buffer]) => buffer);
       let result;
       try {

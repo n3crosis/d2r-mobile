@@ -1,3 +1,5 @@
+// 依据固定着色器目录和合成标记数据验证目录解析与记录边界。
+// Verify catalog parsing and record boundaries using pinned shader metadata and synthetic markers.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -131,4 +133,37 @@ test("invalid c1 and SPH fail closed even with a matching control hash", async (
       kind === "c1" ? /c1 range/ : /SPH stage/,
     );
   }
+});
+test("control search skips partial candidates without skipping the first full marker", async () => {
+  const { rec, descriptor } = fixture("cs", 0);
+  rec.set([0x34, 0x34, 0x12, 0x76], 0x38);
+  const actual = await decodeShaderRecord(descriptor, rec, { debug: true, reduced: false });
+  assert.deepEqual(actual.code, rec.slice(0x38, rec.length - 0x880));
+  rec.set([0x34, 0x12, 0x76, 0x98], 0x38);
+  await assert.rejects(
+    decodeShaderRecord(descriptor, rec, { debug: true, reduced: false }),
+    /Control hash/,
+  );
+});
+test("control search rejects a partial marker at the end of the record", async () => {
+  const { rec, descriptor } = fixture("cs", 0);
+  rec[rec.length - 0x880] = 0;
+  rec.set([0x34, 0x12, 0x76], rec.length - 3);
+  await assert.rejects(
+    decodeShaderRecord(descriptor, rec, { debug: true, reduced: false }),
+    /Missing\/truncated shader control segment/,
+  );
+});
+test("pack record search keeps native non-overlapping marker boundaries", async () => {
+  const catalog = await loadShaderCatalog(input());
+  const key = catalog.keys.find((candidate) => {
+    const descriptor = catalog.describe(candidate);
+    return !descriptor.embedded && descriptor.index === 2 && descriptor.stage === "cs";
+  });
+  assert.ok(key);
+  const packBytes = new TextEncoder().encode("BTCDBTCDBTCDBTCD");
+  await assert.rejects(
+    catalog.prepare(key, { packBytes, debug: true, reduced: false }),
+    /Catalog record absent from pack/,
+  );
 });

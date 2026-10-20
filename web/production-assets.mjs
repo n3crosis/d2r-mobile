@@ -11,6 +11,17 @@ import { generateProductionDerived } from "./production-derived.mjs";
 import { createAssetPipelineAdapter } from "./asset-pipeline-adapter.mjs";
 import { FRONTEND_PANEL_SOURCE, transformFrontendPanel } from "./frontend-panel-transform.mjs";
 
+// 工作线程传回 ArrayBuffer；只建立字节视图，不复制生成文件。
+// Workers return ArrayBuffers; create byte views without copying generated files.
+const fileViews = (files) =>
+  Object.fromEntries(
+    Object.entries(files).map(([path, value]) => {
+      if (value instanceof Uint8Array) return [path, value];
+      if (value instanceof ArrayBuffer) return [path, new Uint8Array(value)];
+      throw new Error("PRODUCTION_ASSET_OUTPUT_TYPE");
+    }),
+  );
+
 export function createProductionAssetAdapter({ runtime, profile }) {
   const owned = [];
   let pipeline;
@@ -41,30 +52,33 @@ export function createProductionAssetAdapter({ runtime, profile }) {
           metadataSha256: profile.nativeArtSha256,
           signal,
         });
+        const artFiles = fileViews(art.files);
         const hud = await generateHud({
           logicalAssets,
           assetWorker: worker,
           decodeAtlas,
-          nativeArtFiles: art.files,
+          nativeArtFiles: artFiles,
           metadata: profile.hud,
           metadataSha256: profile.hudSha256,
+          mode: "switch-upscaled",
           signal,
         });
+        const hudFiles = fileViews(hud.files);
         const derived = await generateProductionDerived({
           logicalAssets,
           assetWorker: worker,
-          nativeArtFiles: art.files,
+          nativeArtFiles: artFiles,
           signal,
         });
         for (const [tag, expected] of Object.entries(profile.derivedCounts)) {
           if (derived.counts?.[tag] !== expected)
             throw new Error("SHELL_DERIVED_CAPACITY_MISMATCH");
         }
-        const source = await logicalAssets.read(FRONTEND_PANEL_SOURCE.input, {
+        let source = await logicalAssets.read(FRONTEND_PANEL_SOURCE.input, {
           maxBytes: 8 * 1024 * 1024,
           signal,
         });
-        let decoded, transformed, encoded;
+        let decoded, transformed, encoded, panelSprite;
         try {
           decoded = await decodeAtlas(source);
           transformed = transformFrontendPanel({ ...decoded, signal });
@@ -72,17 +86,21 @@ export function createProductionAssetAdapter({ runtime, profile }) {
             { templateHeader: source.slice(0, 40), ...transformed },
             { signal },
           );
+          panelSprite = encoded.sprite;
         } finally {
           source.fill(0);
           decoded?.pixels.fill(0);
           transformed?.rgba.fill(0);
           encoded?.linearBC3?.fill(0);
+          // 擦除后解除临时缓冲区引用，避免后续流水线等待期间保留它们。
+          // Drop wiped temporary buffers before awaiting the subsequent pipeline.
+          source = decoded = transformed = encoded = undefined;
         }
         const generated = {
-          "NativeHUD/v4/base.png": hud.files["base.png"],
-          "NativeHUD/v4/hud.json": hud.files["hud.json"],
-          "NativeHUD/v4/hud_v4_ui/ui.json": hud.files["hud_v4_ui/ui.json"],
-          "NativeHUD/touch/fe_rightpanel.sprite": encoded.sprite,
+          "NativeHUD/v4/base.png": hudFiles["base.png"],
+          "NativeHUD/v4/hud.json": hudFiles["hud.json"],
+          "NativeHUD/v4/hud_v4_ui/ui.json": hudFiles["hud_v4_ui/ui.json"],
+          "NativeHUD/touch/fe_rightpanel.sprite": panelSprite,
         };
         pipeline = createAssetPipelineAdapter({
           mapGoal: true,
@@ -94,17 +112,17 @@ export function createProductionAssetAdapter({ runtime, profile }) {
           createTextureEncoder: runtime.createTextureEncoder,
         });
         const entries = await pipeline.generateAssets({ extracted, selection, signal });
-        for (const [path, bytes] of Object.entries(art.files)) {
+        for (const [path, bytes] of Object.entries(artFiles)) {
           if (path !== "dm_touch_native_art.c") entries.push(entry(path, bytes));
         }
-        for (const [path, bytes] of Object.entries(hud.files))
+        for (const [path, bytes] of Object.entries(hudFiles))
           if (path.startsWith("hud_v4_ui/")) entries.push(entry(path, bytes));
         for (const [path, bytes] of Object.entries(derived.files ?? derived))
           entries.push(entry(path, bytes));
         entries.push(
           entry("native_art_manifest.json", new TextEncoder().encode(profile.nativeArt.manifest)),
         );
-        art.files["dm_touch_native_art.c"].fill(0);
+        artFiles["dm_touch_native_art.c"].fill(0);
         for (const [path, bytes] of Object.entries(generated))
           if (path !== "NativeHUD/v4/hud_v4_ui/ui.json") bytes.fill(0);
         return entries;

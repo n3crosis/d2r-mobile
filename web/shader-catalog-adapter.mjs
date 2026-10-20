@@ -30,7 +30,16 @@ function match(data, at, marker) {
   return marker.every((v, i) => data[at + i] === v);
 }
 function find(data, marker, start = 0, end = data.length) {
-  for (let i = start; i <= end - marker.length; i++) if (match(data, i, marker)) return i;
+  if (!marker.length) return start <= end ? start : -1;
+  // 原生字节搜索跳过不可能的起点；视图限制搜索范围且不复制内容。
+  // Native byte search skips impossible starts; a view bounds the search without copying content.
+  const search = end === data.length ? data : data.subarray(0, end);
+  for (
+    let i = search.indexOf(marker[0], start);
+    i >= 0 && i <= end - marker.length;
+    i = search.indexOf(marker[0], i + 1)
+  )
+    if (match(data, i, marker)) return i;
   return -1;
 }
 function supported(stage, optIn = false) {
@@ -201,7 +210,12 @@ export async function loadShaderCatalog(input) {
         if (o < 0x1000 || o + 0x880 > image.length || !match(image, o, control))
           throw new Error("Invalid embedded control location");
         let g = -1;
-        for (let i = o - 0x1000; i <= o - 4; i++) if (match(image, i, codeMarker)) g = i;
+        for (
+          let i = find(image, codeMarker, o - 0x1000, o);
+          i >= 0;
+          i = find(image, codeMarker, i + 1, o)
+        )
+          g = i;
         if (g < 0) throw new Error("Embedded code marker missing");
         rec = new Uint8Array(0x38 + o + 0x880 - g);
         rec.set(image.subarray(g, o + 0x880), 0x38);
@@ -210,16 +224,19 @@ export async function loadShaderCatalog(input) {
         let count = 0,
           begin = -1,
           end = pack.length;
-        for (let i = 0; i <= pack.length - 8; i++)
-          if (match(pack, i, recordMarker)) {
-            if (count === e.index) begin = i;
-            if (count === e.index + 1) {
-              end = i;
-              break;
-            }
-            count++;
-            i += 7; // Python re.finditer 使用不重叠匹配。 | Python re.finditer uses non-overlapping matches.
+        // Python re.finditer 使用不重叠匹配。 | Python re.finditer uses non-overlapping matches.
+        for (
+          let i = find(pack, recordMarker);
+          i >= 0;
+          i = find(pack, recordMarker, i + recordMarker.length)
+        ) {
+          if (count === e.index) begin = i;
+          if (count === e.index + 1) {
+            end = i;
+            break;
           }
+          count++;
+        }
         if (begin < 0) throw new Error("Catalog record absent from pack");
         rec = pack.subarray(begin, end);
       }

@@ -20,34 +20,7 @@ import { exportRomfsResources, ResourceExportError } from "./resource-folder-exp
 import { deriveD2rRuntimeContentMode } from "./d2r-runtime-content-mode.mjs";
 import { runPackagingJob, PackagingJobError } from "./packaging-job.mjs";
 import { sanitizeResourceOutcome } from "./packaging-diagnostics.mjs";
-
-function guestTarget(bytes) {
-  const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength),
-    u = (o) => v.getUint32(o, true);
-  if (bytes.length < 32 || u(0) !== 0xfeedfacf || u(4) !== 0x0100000c || u(12) !== 6)
-    throw new Error("GUEST_TARGET");
-  const end = 32 + u(20);
-  if (end > bytes.length || u(16) > 4096) throw new Error("GUEST_TARGET");
-  let offset = 32,
-    target;
-  for (let i = 0; i < u(16); i++) {
-    if (offset + 8 > end) throw new Error("GUEST_TARGET");
-    const command = u(offset),
-      size = u(offset + 4);
-    if (size < 8 || size % 8 || offset + size > end) throw new Error("GUEST_TARGET");
-    if (command === 0x32) {
-      if (target || size < 24 || u(offset + 8) !== 2) throw new Error("GUEST_TARGET");
-      const version = u(offset + 12);
-      target = {
-        platform: "ios",
-        minimumVersion: `${version >>> 16}.${(version >>> 8) & 255}.${version & 255}`,
-      };
-    }
-    offset += size;
-  }
-  if (!target || offset !== end) throw new Error("GUEST_TARGET");
-  return target;
-}
+import { inspectGuestTarget } from "./guest-target-stream.mjs";
 export async function prepareBrowserPackager({ manifestSha256, signal, onProgress } = {}) {
   if (
     !globalThis.isSecureContext ||
@@ -210,20 +183,10 @@ export async function prepareBrowserPackager({ manifestSha256, signal, onProgres
             const guest = generatedEntries.find(
               (e) => e.path === "Frameworks/Guest.framework/Guest",
             );
-            if (!guest || guest.size > 128 * 1024 * 1024) throw new Error("GUEST_MISSING");
-            const bytes = new Uint8Array(guest.size);
-            let offset = 0;
-            for await (const chunk of guest.chunks()) {
-              if (offset + chunk.length > bytes.length) throw new Error("GUEST_SIZE");
-              bytes.set(chunk, offset);
-              offset += chunk.length;
-            }
-            try {
-              if (offset !== bytes.length) throw new Error("GUEST_SIZE");
-              return { valid: true, observedOutputTargetOS: guestTarget(bytes) };
-            } finally {
-              bytes.fill(0);
-            }
+            return {
+              valid: true,
+              observedOutputTargetOS: await inspectGuestTarget(guest, { signal }),
+            };
           },
           async cleanup(context) {
             try {

@@ -56,7 +56,16 @@ export async function createAssetRuntime(assets, expected, onStage = () => {}) {
   onStage("initialize-font-rasterizer");
   const font = await createFontRasterizer(modules.get("font-rasterizer.wasm"));
   onStage("bind-asset-recipes");
-  const md5 = (bytes) => SparkMD5.ArrayBuffer.hash(bytes.slice().buffer);
+  // SparkMD5 仅读取完整缓冲区；子视图仍复制精确范围，避免散列额外字节。
+  // SparkMD5 only reads full buffers; copy subviews to avoid hashing unrelated bytes.
+  const md5 = (bytes) =>
+    SparkMD5.ArrayBuffer.hash(
+      bytes.buffer instanceof ArrayBuffer &&
+        bytes.byteOffset === 0 &&
+        bytes.byteLength === bytes.buffer.byteLength
+        ? bytes.buffer
+        : bytes.slice().buffer,
+    );
   const sha256 = (bytes) => digest("SHA-256", bytes),
     sha1 = (bytes) => digest("SHA-1", bytes);
   const art = createArtRecipes({
