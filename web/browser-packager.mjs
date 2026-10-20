@@ -25,8 +25,13 @@ import {
   resourceProgressLabel,
   packagingActivity,
 } from "./packaging-diagnostics.mjs";
-import { inspectGuestTarget } from "./guest-target-stream.mjs";
-export async function prepareBrowserPackager({ manifestSha256, signal, onProgress } = {}) {
+import { inspectGuestTarget, inspectGuestPlist } from "./guest-target-stream.mjs";
+export async function prepareBrowserPackager({
+  manifestSha256,
+  signal,
+  onProgress,
+  profileId,
+} = {}) {
   if (
     !globalThis.isSecureContext ||
     !navigator.storage?.getDirectory ||
@@ -70,7 +75,7 @@ export async function prepareBrowserPackager({ manifestSha256, signal, onProgres
     if (failed) throw failure;
   };
   try {
-    profile = await loadProductionProfile(runtime, { signal });
+    profile = await loadProductionProfile(runtime, { signal, profileId });
     const extraction = createExtractionJobAdapter({
       createWorker: runtime.createExtractionWorker,
       contentMode: profile.contentMode,
@@ -81,6 +86,7 @@ export async function prepareBrowserPackager({ manifestSha256, signal, onProgres
       verifyRomfs: false,
     });
     program = createProgramRewriterAdapter({
+      profileId: profile.profileId,
       verifyProvenance: readAuthenticatedProgramModules,
       createWorker: runtime.createProgramWorker,
     });
@@ -177,6 +183,7 @@ export async function prepareBrowserPackager({ manifestSha256, signal, onProgres
               }
               if (offset !== bytes.length) throw new Error("SHELL_SIZE");
               const variant = await deriveD2rRuntimeContentMode(bytes, {
+                profileId: profile.profileId,
                 contentMode: selected.dlc.length === 0 ? "base-update-only" : "warlock",
               });
               shellVariantBytes = variant.bytes;
@@ -220,7 +227,18 @@ export async function prepareBrowserPackager({ manifestSha256, signal, onProgres
             );
             return {
               valid: true,
-              observedOutputTargetOS: await inspectGuestTarget(guest, { signal }),
+              observedOutputTargetOS: await inspectGuestTarget(guest, {
+                signal,
+                expectedSdkVersion: profile.guestTarget.sdkVersion,
+                minimumOSVersion: (
+                  await inspectGuestPlist(
+                    generatedEntries.find(
+                      (e) => e.path === "Frameworks/Guest.framework/Info.plist",
+                    ),
+                    { profileId: profile.profileId, signal },
+                  )
+                ).minimumVersion,
+              }),
             };
           },
           async cleanup(context) {

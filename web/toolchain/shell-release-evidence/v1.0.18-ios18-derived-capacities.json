@@ -1,0 +1,654 @@
+{
+  "schemaVersion": 1,
+  "shellSha256": "e52c119ffacf8aaafd9457f92b8e57384ab04c7ce289eecd84972743d14570e4",
+  "counts": {
+    "EXP": 100,
+    "VTPART": 11,
+    "VTROW": 562,
+    "VTSET": 35,
+    "TAROW": 429
+  },
+  "evidence": {
+    "method": "Read-only non-STAB LC_SYMTAB lookup and ARM64 bounds/completion control-flow inspection; no array spacing or game inputs",
+    "executablePath": "Payload/DmIOS.app/DmIOS",
+    "executableSha256": "62fabe715bf88a488470554b7d01c3b261e55ac0ab2b0e8b9053e3d8615a0e01",
+    "architecture": "arm64",
+    "disassembler": "Capstone 5.0.6",
+    "sourceCommit": "120fe55c02a5633476998a44f8c3c3c809fa48b0",
+    "sourcePath": "dm/ios/tools/shell_stubs.py",
+    "sourceSha256": "dad67b19195fa94eafc3db5737378e05b0fa3e29a8e6e0c42b5053d6a54ee41a",
+    "scope": "Compiled capacities only; not content correctness, complete shader parity or device execution",
+    "bindings": [
+      {
+        "symbol": "_k_exp_load",
+        "fileOffset": 456608,
+        "address": "0x10006f7a0",
+        "size": 568,
+        "sha256": "047ca5b3141f7e52a303521f1fdc4945cb8c6e159a4b2dfc7e8e6d7513f0f08a",
+        "tag": "EXP",
+        "instructions": [
+          {
+            "address": "0x10006f944",
+            "offset": 457028,
+            "bytes": "777f4093",
+            "op": "sxtw",
+            "args": "x23, w27"
+          },
+          {
+            "address": "0x10006f948",
+            "offset": 457032,
+            "bytes": "ff9201f1",
+            "op": "cmp",
+            "args": "x23, #0x64"
+          },
+          {
+            "address": "0x10006f94c",
+            "offset": 457036,
+            "bytes": "880c8052",
+            "op": "mov",
+            "args": "w8, #0x64"
+          },
+          {
+            "address": "0x10006f950",
+            "offset": 457040,
+            "bytes": "fbc2889a",
+            "op": "csel",
+            "args": "x27, x23, x8, gt"
+          },
+          {
+            "address": "0x10006f954",
+            "offset": 457044,
+            "bytes": "39f37dd3",
+            "op": "lsl",
+            "args": "x25, x25, #3"
+          },
+          {
+            "address": "0x10006f958",
+            "offset": 457048,
+            "bytes": "7f0317eb",
+            "op": "cmp",
+            "args": "x27, x23"
+          },
+          {
+            "address": "0x10006f95c",
+            "offset": 457052,
+            "bytes": "80010054",
+            "op": "b.eq",
+            "args": "#0x10006f98c"
+          },
+          {
+            "address": "0x10006f960",
+            "offset": 457056,
+            "bytes": "006b7cf8",
+            "op": "ldr",
+            "args": "x0, [x24, x28]"
+          },
+          {
+            "address": "0x10006f964",
+            "offset": 457060,
+            "bytes": "010080d2",
+            "op": "mov",
+            "args": "x1, #0"
+          },
+          {
+            "address": "0x10006f968",
+            "offset": 457064,
+            "bytes": "42018052",
+            "op": "mov",
+            "args": "w2, #0xa"
+          },
+          {
+            "address": "0x10006f96c",
+            "offset": 457068,
+            "bytes": "849a0294",
+            "op": "bl",
+            "args": "#0x10011637c"
+          },
+          {
+            "address": "0x10006f970",
+            "offset": 457072,
+            "bytes": "e8060091",
+            "op": "add",
+            "args": "x8, x23, #1"
+          },
+          {
+            "address": "0x10006f974",
+            "offset": 457076,
+            "bytes": "407b37b8",
+            "op": "str",
+            "args": "w0, [x26, x23, lsl #2]"
+          },
+          {
+            "address": "0x10006f978",
+            "offset": 457080,
+            "bytes": "9c230091",
+            "op": "add",
+            "args": "x28, x28, #8"
+          },
+          {
+            "address": "0x10006f97c",
+            "offset": 457084,
+            "bytes": "f70308aa",
+            "op": "mov",
+            "args": "x23, x8"
+          },
+          {
+            "address": "0x10006f980",
+            "offset": 457088,
+            "bytes": "3f031ceb",
+            "op": "cmp",
+            "args": "x25, x28"
+          },
+          {
+            "address": "0x10006f984",
+            "offset": 457092,
+            "bytes": "a1feff54",
+            "op": "b.ne",
+            "args": "#0x10006f958"
+          },
+          {
+            "address": "0x10006f988",
+            "offset": 457096,
+            "bytes": "02000014",
+            "op": "b",
+            "args": "#0x10006f990"
+          },
+          {
+            "address": "0x10006f98c",
+            "offset": 457100,
+            "bytes": "e80317aa",
+            "op": "mov",
+            "args": "x8, x23"
+          },
+          {
+            "address": "0x10006f990",
+            "offset": 457104,
+            "bytes": "fb0308aa",
+            "op": "mov",
+            "args": "x27, x8"
+          }
+        ]
+      },
+      {
+        "symbol": "_vt_part_cb",
+        "fileOffset": 884212,
+        "address": "0x1000d7df4",
+        "size": 76,
+        "sha256": "9137dac2615122d1263c8b989049893d4f54e4bcbda0a6557b6a5690ffaf595a",
+        "tag": "VTPART",
+        "instructions": [
+          {
+            "address": "0x1000d7e0c",
+            "offset": 884236,
+            "bytes": "540080b9",
+            "op": "ldrsw",
+            "args": "x20, [x2]"
+          },
+          {
+            "address": "0x1000d7e10",
+            "offset": 884240,
+            "bytes": "9f2a0071",
+            "op": "cmp",
+            "args": "w20, #0xa"
+          },
+          {
+            "address": "0x1000d7e14",
+            "offset": 884244,
+            "bytes": "0c010054",
+            "op": "b.gt",
+            "args": "#0x1000d7e34"
+          },
+          {
+            "address": "0x1000d7e18",
+            "offset": 884248,
+            "bytes": "000040f9",
+            "op": "ldr",
+            "args": "x0, [x0]"
+          },
+          {
+            "address": "0x1000d7e1c",
+            "offset": 884252,
+            "bytes": "28f90094",
+            "op": "bl",
+            "args": "#0x1001162bc"
+          },
+          {
+            "address": "0x1000d7e20",
+            "offset": 884256,
+            "bytes": "88060011",
+            "op": "add",
+            "args": "w8, w20, #1"
+          },
+          {
+            "address": "0x1000d7e24",
+            "offset": 884260,
+            "bytes": "680200b9",
+            "op": "str",
+            "args": "w8, [x19]"
+          },
+          {
+            "address": "0x1000d7e28",
+            "offset": 884264,
+            "bytes": "085600d0",
+            "op": "adrp",
+            "args": "x8, #0x100b99000"
+          },
+          {
+            "address": "0x1000d7e2c",
+            "offset": 884268,
+            "bytes": "08013b91",
+            "op": "add",
+            "args": "x8, x8, #0xec0"
+          },
+          {
+            "address": "0x1000d7e30",
+            "offset": 884272,
+            "bytes": "007934f8",
+            "op": "str",
+            "args": "x0, [x8, x20, lsl #3]"
+          },
+          {
+            "address": "0x1000d7e34",
+            "offset": 884276,
+            "bytes": "fd7b41a9",
+            "op": "ldp",
+            "args": "x29, x30, [sp, #0x10]"
+          }
+        ],
+        "completionInstructions": [
+          {
+            "address": "0x1000d7bc8",
+            "offset": 883656,
+            "bytes": "7f2e0071",
+            "op": "cmp",
+            "args": "w19, #0xb"
+          },
+          {
+            "address": "0x1000d7bcc",
+            "offset": 883660,
+            "bytes": "41feff54",
+            "op": "b.ne",
+            "args": "#0x1000d7b94"
+          }
+        ]
+      },
+      {
+        "symbol": "_vt_row_cb",
+        "fileOffset": 884288,
+        "address": "0x1000d7e40",
+        "size": 232,
+        "sha256": "43349e74b64e36b2a3788ef14ffb82360bf39b029f507dcfb2b27a205f4037ba",
+        "tag": "VTROW",
+        "instructions": [
+          {
+            "address": "0x1000d7e48",
+            "offset": 884296,
+            "bytes": "480080b9",
+            "op": "ldrsw",
+            "args": "x8, [x2]"
+          },
+          {
+            "address": "0x1000d7e4c",
+            "offset": 884300,
+            "bytes": "1fc50871",
+            "op": "cmp",
+            "args": "w8, #0x231"
+          },
+          {
+            "address": "0x1000d7e50",
+            "offset": 884304,
+            "bytes": "ac060054",
+            "op": "b.gt",
+            "args": "#0x1000d7f24"
+          },
+          {
+            "address": "0x1000d7e54",
+            "offset": 884308,
+            "bytes": "fc6fbaa9",
+            "op": "stp",
+            "args": "x28, x27, [sp, #-0x60]!"
+          },
+          {
+            "address": "0x1000d7e74",
+            "offset": 884340,
+            "bytes": "09050011",
+            "op": "add",
+            "args": "w9, w8, #1"
+          },
+          {
+            "address": "0x1000d7e78",
+            "offset": 884344,
+            "bytes": "490000b9",
+            "op": "str",
+            "args": "w9, [x2]"
+          },
+          {
+            "address": "0x1000d7e7c",
+            "offset": 884348,
+            "bytes": "095600f0",
+            "op": "adrp",
+            "args": "x9, #0x100b9a000"
+          },
+          {
+            "address": "0x1000d7e80",
+            "offset": 884352,
+            "bytes": "29c10091",
+            "op": "add",
+            "args": "x9, x9, #0x30"
+          },
+          {
+            "address": "0x1000d7e84",
+            "offset": 884356,
+            "bytes": "3b15088b",
+            "op": "add",
+            "args": "x27, x9, x8, lsl #5"
+          },
+          {
+            "address": "0x1000d7e88",
+            "offset": 884360,
+            "bytes": "000040f9",
+            "op": "ldr",
+            "args": "x0, [x0]"
+          }
+        ],
+        "completionInstructions": [
+          {
+            "address": "0x1000d7bd0",
+            "offset": 883664,
+            "bytes": "1fc90871",
+            "op": "cmp",
+            "args": "w8, #0x232"
+          },
+          {
+            "address": "0x1000d7bd4",
+            "offset": 883668,
+            "bytes": "01feff54",
+            "op": "b.ne",
+            "args": "#0x1000d7b94"
+          }
+        ]
+      },
+      {
+        "symbol": "_vt_set_cb",
+        "fileOffset": 884520,
+        "address": "0x1000d7f28",
+        "size": 76,
+        "sha256": "8e15c8c386d811974d2d9b9805339d28fec205c42faa49e753345d739aef6abd",
+        "tag": "VTSET",
+        "instructions": [
+          {
+            "address": "0x1000d7f40",
+            "offset": 884544,
+            "bytes": "540080b9",
+            "op": "ldrsw",
+            "args": "x20, [x2]"
+          },
+          {
+            "address": "0x1000d7f44",
+            "offset": 884548,
+            "bytes": "9f8a0071",
+            "op": "cmp",
+            "args": "w20, #0x22"
+          },
+          {
+            "address": "0x1000d7f48",
+            "offset": 884552,
+            "bytes": "0c010054",
+            "op": "b.gt",
+            "args": "#0x1000d7f68"
+          },
+          {
+            "address": "0x1000d7f4c",
+            "offset": 884556,
+            "bytes": "000040f9",
+            "op": "ldr",
+            "args": "x0, [x0]"
+          },
+          {
+            "address": "0x1000d7f50",
+            "offset": 884560,
+            "bytes": "dbf80094",
+            "op": "bl",
+            "args": "#0x1001162bc"
+          },
+          {
+            "address": "0x1000d7f54",
+            "offset": 884564,
+            "bytes": "88060011",
+            "op": "add",
+            "args": "w8, w20, #1"
+          },
+          {
+            "address": "0x1000d7f58",
+            "offset": 884568,
+            "bytes": "680200b9",
+            "op": "str",
+            "args": "w8, [x19]"
+          },
+          {
+            "address": "0x1000d7f5c",
+            "offset": 884572,
+            "bytes": "085600d0",
+            "op": "adrp",
+            "args": "x8, #0x100b99000"
+          },
+          {
+            "address": "0x1000d7f60",
+            "offset": 884576,
+            "bytes": "08613c91",
+            "op": "add",
+            "args": "x8, x8, #0xf18"
+          },
+          {
+            "address": "0x1000d7f64",
+            "offset": 884580,
+            "bytes": "007934f8",
+            "op": "str",
+            "args": "x0, [x8, x20, lsl #3]"
+          },
+          {
+            "address": "0x1000d7f68",
+            "offset": 884584,
+            "bytes": "fd7b41a9",
+            "op": "ldp",
+            "args": "x29, x30, [sp, #0x10]"
+          }
+        ],
+        "completionInstructions": [
+          {
+            "address": "0x1000d7bd8",
+            "offset": 883672,
+            "bytes": "9f8e0071",
+            "op": "cmp",
+            "args": "w20, #0x23"
+          },
+          {
+            "address": "0x1000d7bdc",
+            "offset": 883676,
+            "bytes": "c1fdff54",
+            "op": "b.ne",
+            "args": "#0x1000d7b94"
+          }
+        ]
+      },
+      {
+        "symbol": "_ta_load",
+        "fileOffset": 116820,
+        "address": "0x10001c854",
+        "size": 672,
+        "sha256": "24772b654ed1146d46ff4af6aef37d8a20613084cb9d1fd535407b22db062a36",
+        "tag": "TAROW",
+        "instructions": [
+          {
+            "address": "0x10001ca58",
+            "offset": 117336,
+            "bytes": "7f0b00f1",
+            "op": "cmp",
+            "args": "x27, #2"
+          },
+          {
+            "address": "0x10001ca5c",
+            "offset": 117340,
+            "bytes": "23020054",
+            "op": "b.lo",
+            "args": "#0x10001caa0"
+          },
+          {
+            "address": "0x10001ca60",
+            "offset": 117344,
+            "bytes": "ffb20671",
+            "op": "cmp",
+            "args": "w23, #0x1ac"
+          },
+          {
+            "address": "0x10001ca64",
+            "offset": 117348,
+            "bytes": "ec010054",
+            "op": "b.gt",
+            "args": "#0x10001caa0"
+          },
+          {
+            "address": "0x10001ca68",
+            "offset": 117352,
+            "bytes": "e01340f9",
+            "op": "ldr",
+            "args": "x0, [sp, #0x20]"
+          },
+          {
+            "address": "0x10001ca6c",
+            "offset": 117356,
+            "bytes": "010080d2",
+            "op": "mov",
+            "args": "x1, #0"
+          },
+          {
+            "address": "0x10001ca70",
+            "offset": 117360,
+            "bytes": "42018052",
+            "op": "mov",
+            "args": "w2, #0xa"
+          },
+          {
+            "address": "0x10001ca74",
+            "offset": 117364,
+            "bytes": "42e60394",
+            "op": "bl",
+            "args": "#0x10011637c"
+          },
+          {
+            "address": "0x10001ca78",
+            "offset": 117368,
+            "bytes": "88018052",
+            "op": "mov",
+            "args": "w8, #0xc"
+          },
+          {
+            "address": "0x10001ca7c",
+            "offset": 117372,
+            "bytes": "fb5a289b",
+            "op": "smaddl",
+            "args": "x27, w23, w8, x22"
+          },
+          {
+            "address": "0x10001ca80",
+            "offset": 117376,
+            "bytes": "600300b9",
+            "op": "str",
+            "args": "w0, [x27]"
+          },
+          {
+            "address": "0x10001ca84",
+            "offset": 117380,
+            "bytes": "e01740f9",
+            "op": "ldr",
+            "args": "x0, [sp, #0x28]"
+          },
+          {
+            "address": "0x10001ca88",
+            "offset": 117384,
+            "bytes": "31e30394",
+            "op": "bl",
+            "args": "#0x10011574c"
+          },
+          {
+            "address": "0x10001ca8c",
+            "offset": 117388,
+            "bytes": "600700b9",
+            "op": "str",
+            "args": "w0, [x27, #4]"
+          },
+          {
+            "address": "0x10001ca90",
+            "offset": 117392,
+            "bytes": "e01b40f9",
+            "op": "ldr",
+            "args": "x0, [sp, #0x30]"
+          },
+          {
+            "address": "0x10001ca94",
+            "offset": 117396,
+            "bytes": "2ee30394",
+            "op": "bl",
+            "args": "#0x10011574c"
+          },
+          {
+            "address": "0x10001ca98",
+            "offset": 117400,
+            "bytes": "600b00b9",
+            "op": "str",
+            "args": "w0, [x27, #8]"
+          },
+          {
+            "address": "0x10001ca9c",
+            "offset": 117404,
+            "bytes": "f7060011",
+            "op": "add",
+            "args": "w23, w23, #1"
+          },
+          {
+            "address": "0x10001caa0",
+            "offset": 117408,
+            "bytes": "e00314aa",
+            "op": "mov",
+            "args": "x0, x20"
+          },
+          {
+            "address": "0x10001cabc",
+            "offset": 117436,
+            "bytes": "ffb60671",
+            "op": "cmp",
+            "args": "w23, #0x1ad"
+          },
+          {
+            "address": "0x10001cac0",
+            "offset": 117440,
+            "bytes": "2bf0ff54",
+            "op": "b.lt",
+            "args": "#0x10001c8c4"
+          },
+          {
+            "address": "0x10001cac4",
+            "offset": 117444,
+            "bytes": "c1f1ff54",
+            "op": "b.ne",
+            "args": "#0x10001c8fc"
+          },
+          {
+            "address": "0x10001cac8",
+            "offset": 117448,
+            "bytes": "93ffff17",
+            "op": "b",
+            "args": "#0x10001c914"
+          }
+        ]
+      }
+    ],
+    "interpretation": {
+      "EXP": "Running scalar count capped at 100 by compare/select/equality branch; indexed 32-bit write increments count. No final exact-count equality in this function. Browser must retain explicit exact generated-count gate.",
+      "VTPART": "Callback rejects indices >10 before write; vt_load compares final count with11.",
+      "VTROW": "Callback rejects indices >561 before write; vt_load compares final count with562.",
+      "VTSET": "Callback rejects indices >34 before write; vt_load compares final count with35.",
+      "TAROW": "TAROW line prefix checked; rejects indices >428 before three-field write; final count compared with429; missing rows filled/diagnosed."
+    }
+  }
+}

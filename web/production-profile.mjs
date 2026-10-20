@@ -1,23 +1,23 @@
 // 依据仓库中的外壳发布证据、资源来源记录及着色器目录加载可信生产配置。
 // Load trusted production profiles from repository shell-release evidence, asset provenance and shader catalogs.
-import { SHELL_DERIVED_CAPACITIES } from "./toolchain/shell-release-evidence/v1.0.18-derived-capacities.mjs";
+import { resolveShellProfile } from "./shell-profiles.mjs";
 import { loadShaderCatalog } from "./shader-catalog-adapter.mjs";
 import { createShellLoader } from "./shell-loader.mjs";
 import { createShellTargetInspector } from "./shell-target.mjs";
-import evidence from "./toolchain/shell-release-evidence/v1.0.18.json" with { type: "json" };
 import artPins from "./toolchain/asset-generation-spike/native-art-provenance.json" with { type: "json" };
 import hudPins from "./toolchain/asset-generation-spike/hud-provenance.json" with { type: "json" };
 const text = (bytes) => new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-export async function loadProductionProfile(runtime, { signal } = {}) {
+export async function loadProductionProfile(runtime, { signal, profileId } = {}) {
+  const selected = resolveShellProfile(profileId);
+  const { evidence, capacities, contentPin, guestTarget, releaseId } = selected;
   if (
-    SHELL_DERIVED_CAPACITIES.shellSha256 !== evidence.sha256 ||
-    evidence.entries.find(
-      (entry) => entry.path === SHELL_DERIVED_CAPACITIES.evidence.executablePath,
-    )?.sha256 !== SHELL_DERIVED_CAPACITIES.evidence.executableSha256
+    capacities.shellSha256 !== evidence.sha256 ||
+    evidence.entries.find((entry) => entry.path === capacities.evidence.executablePath)?.sha256 !==
+      capacities.evidence.executableSha256
   )
     throw new Error("SHELL_CAPACITY_BINDING");
   const read = (path) => runtime.readPublicAsset(path);
-  let shellBytes = read("profile/shell.zip");
+  let shellBytes = read(selected.archivePath);
   const sha = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", shellBytes)), (x) =>
     x.toString(16).padStart(2, "0"),
   ).join("");
@@ -42,7 +42,7 @@ export async function loadProductionProfile(runtime, { signal } = {}) {
   };
   const trustedShell = {
     verified: true,
-    releaseId: evidence.release,
+    releaseId,
     trustedRecipe,
     files: evidence.entries,
   };
@@ -54,9 +54,9 @@ export async function loadProductionProfile(runtime, { signal } = {}) {
         return shellBytes.slice(offset, offset + length);
       },
     },
-    releaseId: evidence.release,
+    releaseId,
     resolveTrustedRelease: async () => trustedShell,
-    inspectTargetOS: createShellTargetInspector({ executablePath: "DmIOS" }),
+    inspectTargetOS: createShellTargetInspector({ executablePath: contentPin.executablePath }),
   });
   const shell = await loadShell({ signal });
   function metadata(names, pins) {
@@ -86,8 +86,11 @@ export async function loadProductionProfile(runtime, { signal } = {}) {
     hudPins,
   );
   return {
+    profileId: selected.id,
+    guestTarget,
+    contentPin,
     contentMode: "optional-warlock",
-    derivedCounts: SHELL_DERIVED_CAPACITIES.counts,
+    derivedCounts: capacities.counts,
     catalog,
     trustedShell,
     shell,

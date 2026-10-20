@@ -32,6 +32,8 @@
  * is observed between digests; an in-flight WebCrypto digest cannot be stopped.
  * No filesystem, dependencies, network, or executable game data required.
  */
+import { resolveShellProfile } from "./shell-profiles.mjs";
+
 export const PAGE_SIZE = 0x4000;
 export const MAX_IMAGE_BYTES = 128 * 1024 * 1024;
 export const MAX_MODULES = 48;
@@ -110,11 +112,19 @@ export function planGuestFramework(modules) {
 // Avoid referencing an absent browser global while still rejecting shared buffers.
 const SharedArrayBufferSafe = globalThis.SharedArrayBuffer ?? class UnavailableSharedBuffer {};
 
-export async function buildGuestFramework(modules, { crypto = globalThis.crypto, signal } = {}) {
+export async function buildGuestFramework(
+  modules,
+  { crypto = globalThis.crypto, signal, profileId } = {},
+) {
   const checkAbort = () => {
     if (signal?.aborted) throw new DOMException("Guest framework build aborted", "AbortError");
   };
   checkAbort();
+  const { guestTarget } = resolveShellProfile(profileId);
+  const packedVersion = (version) =>
+    version
+      .split(".")
+      .reduce((value, component, i) => value + Number(component) * [65536, 256, 1][i], 0);
   const p = planGuestFramework(modules);
   if (!crypto?.subtle?.digest)
     throw new Error("SHA-256 WebCrypto is required (use a secure browser context)");
@@ -216,8 +226,8 @@ export async function buildGuestFramework(modules, { crypto = globalThis.crypto,
   out.set(bodyHash.subarray(0, 16), o + 8);
   o = command(0x32, 24);
   u32(o + 8, 2);
-  u32(o + 12, 26 << 16);
-  u32(o + 16, 26 << 16);
+  u32(o + 12, packedVersion(guestTarget.minimumVersion));
+  u32(o + 16, packedVersion(guestTarget.sdkVersion));
   dylib(0xc, SYSTEM);
   o = command(0x1d, 16);
   u32(o + 8, p.signatureOffset);
@@ -247,7 +257,9 @@ export async function buildGuestFramework(modules, { crypto = globalThis.crypto,
   return out;
 }
 
-export function guestInfoPlist(bundleId = "local.guest") {
+export function guestInfoPlist(bundleId = "local.guest", { profileId } = {}) {
+  const { guestTarget } = resolveShellProfile(profileId);
+  const minimumVersion = guestTarget.minimumVersion.replace(/\.0$/, "");
   if (
     typeof bundleId !== "string" ||
     !/^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/.test(bundleId) ||
@@ -264,7 +276,7 @@ export function guestInfoPlist(bundleId = "local.guest") {
 <key>CFBundlePackageType</key><string>FMWK</string>
 <key>CFBundleShortVersionString</key><string>1.0</string>
 <key>CFBundleVersion</key><string>1</string>
-<key>MinimumOSVersion</key><string>26.0</string>
+<key>MinimumOSVersion</key><string>${minimumVersion}</string>
 <key>CFBundleSupportedPlatforms</key><array><string>iPhoneOS</string></array>
 </dict></plist>
 `;

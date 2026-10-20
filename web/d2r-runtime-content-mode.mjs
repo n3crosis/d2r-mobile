@@ -7,16 +7,9 @@
  * 准确的 v1.0.18 外壳仅数据派生。不是指令或授权补丁。
  * Exact v1.0.18 shell data-only derivation. Not an instruction or entitlement patch.
  */
-export const D2R_RUNTIME_CONTENT_PIN = Object.freeze({
-  release: "v1.0.18",
-  executablePath: "DmIOS",
-  size: 2327536,
-  originalSha256: "2d4b0299ff5d4856e12e14948da369ca35c27d2d0afd78dfed44cf4f6442b9ba",
-  noDlcSha256: "0d6bae055ea5ee0571ff592ece73b90e9f3e7399fa8c59216f70a8f3707988fa",
-  symbol: "_aoc_owned.v",
-  address: 0x10018ef78n,
-  fileOffset: 0x18ef78,
-});
+import { DEFAULT_SHELL_PROFILE_ID, resolveShellProfile } from "./shell-profiles.mjs";
+
+export const D2R_RUNTIME_CONTENT_PIN = resolveShellProfile().contentPin;
 const fail = () => {
   throw new Error("D2R_RUNTIME_CONTENT_BINDING");
 };
@@ -25,7 +18,7 @@ const digest = async (bytes) =>
     b.toString(16).padStart(2, "0"),
   ).join("");
 
-function cacheOffset(bytes) {
+function cacheOffset(bytes, pin) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const range = (offset, size) => {
     if (
@@ -100,10 +93,7 @@ function cacheOffset(bytes) {
       index = u32(p);
     if (type & 0xe0) continue; // STAB/调试重复项不属于定义。 | STAB/debug duplicates are not definitions.
     if (index >= symbols.stringSize) fail();
-    if (
-      string(symbols.strings + index, symbols.stringSize - index) !== D2R_RUNTIME_CONTENT_PIN.symbol
-    )
-      continue;
+    if (string(symbols.strings + index, symbols.stringSize - index) !== pin.symbol) continue;
     if ((type & 0x0e) !== 0x0e || bytes[p + 5] === 0) fail();
     const section = sections[bytes[p + 5] - 1],
       address = u64(p + 8);
@@ -112,14 +102,14 @@ function cacheOffset(bytes) {
       section.name !== "__data" ||
       section.segment !== "__DATA" ||
       (section.flags & 0xff) !== 0 ||
-      address !== D2R_RUNTIME_CONTENT_PIN.address ||
+      address !== pin.address ||
       address < section.address ||
       address + 4n > section.address + section.size
     )
       fail();
     const offset = section.offset + Number(address - section.address);
     range(offset, 4);
-    if (offset !== D2R_RUNTIME_CONTENT_PIN.fileOffset || u32(offset) !== 0xffffffff) fail();
+    if (offset !== pin.fileOffset || u32(offset) !== 0xffffffff) fail();
     matches.push(offset);
   }
   if (matches.length !== 1) fail();
@@ -140,31 +130,34 @@ function cacheOffset(bytes) {
  * The four-byte mutation invalidates any existing signature; output is unsigned
  * and must be signed by the user after all packaging mutations.
  */
-export async function deriveD2rRuntimeContentMode(input, { contentMode } = {}) {
+export async function deriveD2rRuntimeContentMode(
+  input,
+  { contentMode, profileId = DEFAULT_SHELL_PROFILE_ID } = {},
+) {
+  const profile = resolveShellProfile(profileId),
+    pin = profile.contentPin;
   if (
     !(input instanceof Uint8Array) ||
-    input.length !== D2R_RUNTIME_CONTENT_PIN.size ||
+    input.length !== pin.size ||
     !["base-update-only", "warlock"].includes(contentMode)
   )
     fail();
   const bytes = input.slice();
-  if ((await digest(bytes)) !== D2R_RUNTIME_CONTENT_PIN.originalSha256) fail();
-  const offset = cacheOffset(bytes);
+  if ((await digest(bytes)) !== pin.originalSha256) fail();
+  const offset = cacheOffset(bytes, pin);
   if (contentMode === "base-update-only") bytes.fill(0, offset, offset + 4);
   const sha256 = await digest(bytes);
-  const expected =
-    contentMode === "base-update-only"
-      ? D2R_RUNTIME_CONTENT_PIN.noDlcSha256
-      : D2R_RUNTIME_CONTENT_PIN.originalSha256;
+  const expected = contentMode === "base-update-only" ? pin.noDlcSha256 : pin.originalSha256;
   if (sha256 !== expected) fail();
   return {
     bytes,
     receipt: Object.freeze({
       kind: "d2r-runtime-content-mode-v1",
-      release: D2R_RUNTIME_CONTENT_PIN.release,
-      path: D2R_RUNTIME_CONTENT_PIN.executablePath,
+      ...(profile.id === DEFAULT_SHELL_PROFILE_ID ? {} : { profileId: profile.id }),
+      release: pin.release,
+      path: pin.executablePath,
       contentMode,
-      originalSha256: D2R_RUNTIME_CONTENT_PIN.originalSha256,
+      originalSha256: pin.originalSha256,
       sha256,
       size: bytes.length,
       modifiedOffset: contentMode === "base-update-only" ? offset : null,

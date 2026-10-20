@@ -1,6 +1,7 @@
 // 依据受信任发布目录、提取来源证明和原始工作线程检查连接程序重写。
 // Wire program rewriting from trusted release catalogs, extraction provenance and original worker checks.
 import { buildGuestFramework, guestInfoPlist, planGuestFramework } from "./guest-framework.mjs";
+import { resolveShellProfile } from "./shell-profiles.mjs";
 
 import {
   PROGRAM_REWRITER_SOURCE,
@@ -162,10 +163,12 @@ function layout(bytes, imageSize) {
  */
 export function createProgramRewriterAdapter({
   trustedCatalog = REGISTERED_PROGRAM_CATALOG,
+  profileId,
   resolveInput,
   verifyProvenance,
   createWorker,
 } = {}) {
+  const shellProfile = resolveShellProfile(profileId);
   const versions = catalogFor(trustedCatalog);
   const registered = trustedCatalog === REGISTERED_PROGRAM_CATALOG;
   if (
@@ -352,8 +355,10 @@ export function createProgramRewriterAdapter({
         }
       }
       const plan = planGuestFramework(modules);
-      const guest = own(await race(() => buildGuestFramework(modules, { signal })));
-      const plist = own(encoder.encode(guestInfoPlist()));
+      const guest = own(
+        await race(() => buildGuestFramework(modules, { signal, profileId: shellProfile.id })),
+      );
+      const plist = own(encoder.encode(guestInfoPlist(undefined, { profileId: shellProfile.id })));
       if (
         !registered &&
         ((await race(() => sha256(guest))) !== version.guestSha256 ||

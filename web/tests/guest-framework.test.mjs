@@ -1,3 +1,5 @@
+// 根据仓库 Python 写入器验证合成 Guest 字节、签名和封闭目标配置。
+// Verify synthetic Guest bytes, signatures and closed target profiles against the repository Python writer.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { webcrypto, createHash } from "node:crypto";
@@ -13,6 +15,8 @@ import {
   MAX_IMAGE_BYTES,
   PAGE_SIZE,
 } from "../guest-framework.mjs";
+import { inspectGuestTarget } from "../guest-target-stream.mjs";
+import { DEFAULT_SHELL_PROFILE_ID } from "../shell-profiles.mjs";
 const source = fileURLToPath(new URL("../../dm/tools/guest_dylib.py", import.meta.url));
 const options = { crypto: webcrypto };
 const fixture = (name, size, textEnd, patchOff) => ({
@@ -219,6 +223,7 @@ test("AbortSignal rejects before validation/allocation and during UUID/page hash
     },
   });
   try {
+    // 无效元数据确保取消检查发生在验证之前。
     // Invalid metadata ensures cancellation is checked even before validation.
     await assert.rejects(buildGuestFramework(null, { ...options, signal: controller.signal }), {
       name: "AbortError",
@@ -245,5 +250,80 @@ test("AbortSignal rejects before validation/allocation and during UUID/page hash
       { name: "AbortError" },
     );
     assert.equal(calls, abortOnCall, "No further digests after cancellation");
+  }
+});
+
+test("closed profiles preserve default bytes and bind legacy minimum, SDK, plist and signature", async () => {
+  const modules = [fixture("a", PAGE_SIZE, 1, PAGE_SIZE)];
+  const baseline = await buildGuestFramework(modules, options);
+  assert.deepEqual(
+    await buildGuestFramework(modules, { ...options, profileId: DEFAULT_SHELL_PROFILE_ID }),
+    baseline,
+  );
+  assert.equal(
+    guestInfoPlist("local.guest", { profileId: DEFAULT_SHELL_PROFILE_ID }),
+    guestInfoPlist(),
+  );
+  for (const [profileId, minimum] of [
+    [DEFAULT_SHELL_PROFILE_ID, "26.0"],
+    ["v1.0.18-ios18", "18.0"],
+  ]) {
+    const bytes = await buildGuestFramework(modules, { ...options, profileId });
+    const plist = guestInfoPlist("local.guest", { profileId });
+    assert.ok(plist.includes(`<key>MinimumOSVersion</key><string>${minimum}</string>`));
+    const observed = await inspectGuestTarget(
+      {
+        size: bytes.length,
+        async *chunks() {
+          yield bytes;
+        },
+      },
+      {
+        expectedSdkVersion: "26.0.0",
+        minimumOSVersion: minimum,
+      },
+    );
+    assert.deepEqual(observed, {
+      platform: "ios",
+      minimumVersion: `${minimum}.0`,
+      sdkVersion: "26.0.0",
+    });
+    const p = planGuestFramework(modules);
+    const cd = p.signatureOffset + 20;
+    const view = new DataView(bytes.buffer);
+    for (let i = 0; i < view.getUint32(cd + 28); i++) {
+      assert.deepEqual(
+        Buffer.from(bytes.subarray(cd + 94 + i * 32, cd + 126 + i * 32)),
+        createHash("sha256")
+          .update(bytes.subarray(i * 4096, Math.min((i + 1) * 4096, p.signatureOffset)))
+          .digest(),
+      );
+    }
+    if (profileId !== DEFAULT_SHELL_PROFILE_ID) {
+      assert.notDeepEqual(bytes, baseline);
+      assert.deepEqual(
+        bytes.subarray(PAGE_SIZE, p.signatureOffset),
+        baseline.subarray(PAGE_SIZE, p.signatureOffset),
+      );
+    }
+  }
+});
+
+test("unknown profiles reject before hashing and cannot emit plist targets", async () => {
+  for (const profileId of ["legacy18", "18", "ios17", "", null, {}, { minimumVersion: "18.0.0" }]) {
+    await assert.rejects(
+      buildGuestFramework([fixture("a", 1, 1, PAGE_SIZE)], {
+        profileId,
+        crypto: {
+          subtle: {
+            digest() {
+              assert.fail("Unexpected hashing");
+            },
+          },
+        },
+      }),
+      /SHELL_PROFILE/,
+    );
+    assert.throws(() => guestInfoPlist("local.guest", { profileId }), /SHELL_PROFILE/);
   }
 });

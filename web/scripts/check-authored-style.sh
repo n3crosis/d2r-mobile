@@ -65,6 +65,8 @@ ruff check --no-cache --config web/toolchain/style/ruff.toml "${python_sources[@
 ruff format --check --no-cache --config web/toolchain/style/ruff.toml "${python_sources[@]}"
 
 clang-format --dry-run --Werror --style=file:web/toolchain/style/clang-format.yaml \
+  web/toolchain/astc-encoder-wasm/bridge.cpp \
+  web/toolchain/astc-encoder-wasm/native-smoke.cpp \
   web/toolchain/nsp-extract-spike/boundary.c \
   web/toolchain/nsp-extract-spike/bktr-reader.h \
   web/toolchain/nsp-extract-spike/crypto-fixture.c \
@@ -75,6 +77,8 @@ clang-format --dry-run --Werror --style=file:web/toolchain/style/clang-format.ya
   web/toolchain/png-codec-exact/src/generic_zlib.c \
   web/toolchain/png-codec-exact/src/png_codec.c
 
+bash -n web/toolchain/astc-encoder-wasm/build.sh
+bash -n web/toolchain/astc-encoder-wasm/native-smoke.sh
 bash -n web/toolchain/nsp-extract-spike/build-wasm.sh
 bash -n web/toolchain/synthetic-signed-nca/run-ci.sh
 bash -n web/toolchain/spirv-cross-spike/build.sh
