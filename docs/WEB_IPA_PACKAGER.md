@@ -171,7 +171,7 @@ Acceptance: actual signed-device smoke results are recorded. Until then the accu
 
 ## Implemented checkpoint
 
-The current checkpoint has 29 passing Node tests across preflight, deterministic Guest framework generation, streaming ZIP32 output, and synthetic archive export. The Guest writer matches the stdlib Python reference byte-for-byte on synthetic inputs, including 16 KiB layout, UUID and structural ad-hoc signature page hashes. Python zipfile verifies ZIP contents, CRCs, UTF-8 names, timestamps and Unix modes. These checks do not prove device acceptance or a completed IPA pipeline.
+The current checkpoint has 59 passing Node tests across preflight, deterministic Guest framework generation, streaming ZIP32 output, synthetic archive export, bounded native-record/BLTE reading, and legacy NSO segment validation. The Guest writer matches the stdlib Python reference byte-for-byte on synthetic inputs, including 16 KiB layout, UUID and structural ad-hoc signature page hashes. Python zipfile verifies ZIP contents, CRCs, UTF-8 names, timestamps and Unix modes. These checks do not prove device acceptance or a completed IPA pipeline.
 
 The React + TypeScript frontend uses Vite, Tailwind CSS 4 and official shadcn/ui Button, Card and Alert components. It offers a synthetic large-file header demo, optional read-only checks of ExeFS/main and ExeFS/sdk (the two modules required by the native IPA packager), and export of an unmistakably non-installable synthetic ZIP. The export generates tiny fixture inputs, contains no game data or Payload/app layout, streams bounded chunks to a selected local file, and reports generation, saving and commit status. Cancellation discards staged writes where possible; a save picker may leave an empty placeholder, and a committed save cannot be undone by late cancellation.
 
@@ -180,6 +180,10 @@ The ZIP core supports STORE only, not compression or ZIP64. Its initial policy c
 The initial React/shadcn preview successfully completed a private Sites remote build and deployment on 2026-10-20 without deleting old project artifacts. Subsequent changes must pass the new lint/format/build gates before publication. Independent browser interaction remains unverified because the supported browser runtime was unavailable; no Windows/macOS/device acceptance claim is made. Component provenance is recorded in `web/SHADCN_PROVENANCE.md`.
 
 Real game conversion, shell ZIP reading/validation, browser-compiled conversion dependencies and playable IPA generation remain unimplemented or unverified. The shader toolchain spike, when present, is exploratory and must not be treated as a successful browser translator until its build and differential gates pass. M0–M5 above describe intended acceptance milestones, not claims that all their gates are complete.
+
+The archive reader decodes native raw n/z and BLTE N/Z records through bounded range reads, including 40-bit archive locations. Encoded-block and final content MD5 checks are mandatory through an injected verifier; a production browser verifier is not integrated yet. MD5 here is a format checksum, not a claim of collision-resistant authenticity. Compressed input is submitted in 1 KiB slices with awaited backpressure and concurrent bounded output consumption, avoiding Chromium's whole-input-chunk expansion hazard. Transient native allocations and actual browser peak memory remain unmeasured. See `web/ARCHIVE_READER_SCOPE.md`.
+
+The NSO validator handles the documented legacy flag subset, raw LZ4 block materialization, optional format-required decoded-segment SHA-256 verification and bounded memory/reads. It never marks an unknown game build as supported and does not rewrite ARM64 instructions. LZ4 fixed vectors were independently checked with liblz4; timer yields are amortized across byte-work rather than every tiny sequence. See `web/NSO_VALIDATION_SCOPE.md`.
 
 ## Evidence and current limits
 
