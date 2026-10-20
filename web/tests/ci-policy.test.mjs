@@ -7,18 +7,23 @@ import { spawnSync } from "node:child_process";
 import { profiles, validateProfile, run } from "../verification/verify.mjs";
 const workflows = new URL("../../.github/workflows/", import.meta.url);
 
-test("one GitHub workflow has bounded quick defaults and explicit heavy profiles", async () => {
+test("one GitHub workflow runs only one Linux browser-build job", async () => {
   assert.deepEqual(
     (await readdir(workflows)).filter((name) => name.endsWith(".yml")),
     ["verify.yml"],
   );
   const text = await readFile(new URL("verify.yml", workflows), "utf8");
-  assert.match(text, /default: quick/);
-  assert.match(text, /max-parallel: 3/);
-  assert.match(text, /github\.event_name == 'workflow_dispatch'/);
-  assert.match(text, /!github\.event\.repository\.private/);
-  assert.match(text, /os: \[windows-2022, macos-14\]/);
-  assert.match(text, /needs\.desktop-build\.outputs\.digest/);
+  assert.deepEqual(
+    [...text.slice(text.indexOf("\njobs:")).matchAll(/^ {2}([a-z-]+):/gm)].map((match) => match[1]),
+    ["quick"],
+  );
+  assert.match(text, /runs-on: ubuntu-24\.04/);
+  assert.match(text, /run: node web\/verification\/verify\.mjs quick/);
+  assert.doesNotMatch(
+    text,
+    /matrix:|strategy:|inputs:|desktop-build:|windows-|macos-|setup-dotnet|download-artifact/,
+  );
+  assert.equal([...text.matchAll(/uses: actions\/upload-artifact@/g)].length, 1);
   assert.doesNotMatch(text, /pull_request_target:|self-hosted|secrets\./);
   for (const sha of text.matchAll(/uses: [^@]+@(\S+)/g)) assert.match(sha[1], /^[0-9a-f]{40}$/);
   assert.match(text, /name: web-preview\n\s+path: web\/dist\//);
@@ -39,6 +44,7 @@ test("profile selection rejects arbitrary shell, paths, and prototype names", ()
   for (const name of ["quick", "full", ...Object.keys(profiles)])
     assert.equal(validateProfile(name), name);
   assert.throws(() => run("assets", {}), /--provision/);
+  assert.throws(() => run("assets", { GITHUB_ACTIONS: "true" }), /local verification only/);
 });
 
 test("allowlisted metadata is emitted without executing a proof", async () => {

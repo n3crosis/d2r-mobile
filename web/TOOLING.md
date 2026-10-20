@@ -4,10 +4,10 @@ The frontend uses Bun **1.4.3**, Oxlint **1.89.0**, and Oxfmt **0.74.0**.
 These exact non-prerelease versions were checked against the official npm registry
 on 2026-10-20. Oxfmt remains a pre-1.0 package; its pin is intentional. Node
 **22.12+** remains required for the Node compatibility tests and JavaScript tool
-launchers. The unified Verify workflow defaults to Node 24; its explicit compatibility
-profile also checks Node 22. The existing synthetic tests keep Node's test runner. See
+launchers. The unified Verify workflow uses one Node 24 Linux job; additional Node
+versions and platform proofs are local developer checks, not CI jobs. The existing synthetic tests keep Node's test runner. See
 [local-first testing](TESTING.md) for the everyday check command and targeted
-manual browser/native proofs.
+local browser/native proofs.
 
 ```sh
 cd web

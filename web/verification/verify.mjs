@@ -15,6 +15,11 @@ export function validateProfile(profile) {
 }
 export function run(profile, environment = process.env, provision = false) {
   validateProfile(profile);
+  if (profile !== "quick" && environment.GITHUB_ACTIONS === "true") {
+    throw new Error(
+      "Heavy profiles are local verification only; GitHub verifies the browser build.",
+    );
+  }
   if (profile !== "quick" && environment.GITHUB_ACTIONS !== "true" && !provision) {
     throw new Error(
       "Heavy profiles install pinned SDKs/tools and may use sudo apt-get. Review the recipe and use --provision explicitly, or use manual CI.",

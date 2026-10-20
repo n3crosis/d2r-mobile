@@ -1,8 +1,9 @@
 # One verification entry point, local first
 
 The repository has one GitHub Actions workflow: **Verify**. Ordinary pushes/PRs
-run one quick Linux job. Expensive proofs are never automatic: choose one profile
-or `full` explicitly in Run workflow. The same recipes run locally through:
+run one quick Linux browser-build job, and manual dispatch runs that same job.
+There are no CI matrices, cross-platform jobs, or optional heavy CI profiles.
+The shared browser-build verification runs locally through:
 
 ```sh
 node web/verification/verify.mjs quick
@@ -29,10 +30,12 @@ During iteration use `cd web && bun run test` or a focused `node --test` file.
 full toolchain rebuild after each fix. Contributors install these tools; hosted
 packager users do not.
 
-## GitHub profiles
+## Local proof profiles
 
-- `quick`: one Node 24 job, including authored-language checks and webpage artifact.
-- `compatibility`: quick plus a separate Node 22 check.
+These remain available for explicit local development only. GitHub does not run
+them or upload their artifacts. The dispatcher rejects heavy profiles in Actions.
+
+- `quick`: the shared browser-build verification.
 - `extraction`: authenticated NSP boundary and actual Chromium Worker.
 - `signed-nca`: isolated synthetic signing-root proof; production trust unchanged.
 - `texture`: decode, BC3 encode, swizzle, and Chromium Worker parity.
@@ -44,17 +47,18 @@ packager users do not.
 - `offline-wasm`, `offline-pyodide`, `offline-dotnet`: respective sealed-network proofs.
 - `staged-output`: actual Chromium OPFS commit/cancel/integrity proof.
 - `zip64`: real >4 GiB synthetic CRC stream with bounded memory.
-- `desktop`: build public runtime once, verify its producer digest, then run actual
-  Windows/macOS Chromium checks on standard runners. Public repositories only.
-- `full`: quick, Node compatibility, all Linux proofs, and desktop platform checks.
-  Linux proof parallelism is capped at three; this is deliberately opt-in.
+- `desktop-build` / `desktop`: retained platform recipes for an appropriately
+  prepared local environment, not coordinated or run by GitHub.
+- `full`: quick and all Linux proof recipes, sequentially and explicitly opted in.
+  This does not include Windows/macOS checks or a Node-version matrix.
 
 ## Local heavyweight verification
 
 The concrete build/assertion commands live in `web/verification/recipes/*.sh`;
 `profiles.json` pins each proof's runtime, timeout and artifact boundaries. No
 workflow generator or hidden copy of old workflow files exists. One dispatcher
-validates profile names and executes the same recipes locally and in Actions.
+validates profile names. Only the quick recipe is shared with Actions; heavy
+recipes are local-only.
 Failures skip later normal steps, retain always-run diagnostics, and fail the
 profile. Source isolation, exact hashes, assertions, and private-input exclusions
 remain in the original proof commands.
@@ -72,15 +76,14 @@ node web/verification/verify.mjs full --provision
 Use a suitable Linux development environment for these Linux recipes. Local
 `full` explicitly excludes Windows/macOS and reports that boundary; it cannot
 claim desktop coverage on Linux. Desktop recipes require the matching OS and
-verified producer artifact/digest, which the GitHub workflow coordinates. If a
-sandbox cannot launch Chromium, do not retry around the restriction or report a
-pass. Use the relevant approved GitHub profile instead.
+verified producer artifact/digest supplied by the developer. They are not a
+GitHub pipeline. If a sandbox cannot launch Chromium, do not retry around the
+restriction or report a pass. Record the proof as blocked until a supported
+local environment is available.
 
-Manual dispatch may be unavailable until GitHub recognizes the workflow on the
-default branch. Do not merge the feature branch or restore automatic heavy
-fan-out solely to manufacture results; arrange reviewed workflow publication or
-use a supported local environment. Run proofs against the exact commit under
-review. Repository required-check settings are separate and can change.
+Run local proofs against the exact commit under review. Do not restore CI
+fan-out to manufacture results. Repository required-check settings are separate
+and can change.
 
 ## Downloadable webpage
 
