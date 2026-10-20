@@ -3,7 +3,7 @@ export const NSP_INPUT_LIMITS = Object.freeze({
   directoryEntries: 4096,
   packages: 128,
   keyBytes: 1024 * 1024,
-  keyLineBytes: 1024,
+  keyLineBytes: 4096, // Includes RSA-sized dump entries, not only AES keys.
   entries: 65536,
   indexBytes: 16 * 1024 * 1024,
   filenameBytes: 255,

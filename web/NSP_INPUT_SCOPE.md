@@ -49,8 +49,11 @@ Missing or empty `title.keys` is allowed because no assertion about title-key re
 can be made without inspecting NCA metadata. The Worker creates an empty memory-only input when the file is absent. Rights-free content can use `prod.keys` alone; a rights-managed encrypted section with no matching title key fails with the safe `TITLE_KEY_REQUIRED` diagnostic. This boundary does not import or derive keys from NSP ticket files. Empty production keys are rejected.
 Full-line `#` comments are a deliberately documented frontend convenience:
 hactool skips malformed lines rather than defining comment syntax. Inline
-comments and non-ASCII files are unsupported. Lines are capped at 1,024 bytes;
-this is an explicit frontend bound, not a recreation of hactool's truncation.
+comments and non-ASCII files are unsupported. Lines are capped at 4,096 content bytes (excluding CRLF), accommodating RSA-sized
+production-dump entries while retaining the 1 MiB file cap and strict known AES widths.
+Unrecognized names remain syntactically checked but are not proven usable. The pinned
+native parser uses the same 4,096-byte content bound plus CRLF/NUL room and drains an
+overlong physical line instead of interpreting its remainder as a new key record.
 
 ### Verified key subset
 

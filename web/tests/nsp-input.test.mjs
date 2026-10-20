@@ -289,7 +289,7 @@ test("key parser rejects malformed, odd, wrong-width, duplicate, nonASCII and ov
     "future = a5 # comment",
     "other = a5\u0000",
     "é = a5",
-    "future = " + "ab".repeat(1024),
+    "future = " + "ab".repeat(NSP_INPUT_LIMITS.keyLineBytes),
   ];
   for (const text of lines) {
     await assert.rejects(inspectKeyFile(localFile("prod.keys", text), "prod"), (error) => {
@@ -426,4 +426,33 @@ test("folder discovery and preflight accept absent optional title keys", async (
   assert.equal(inputs.titleKeys, undefined);
   const result = await preflightNspFolder([prod, nsp]);
   assert.equal(result.titleKeys.entries, 0);
+});
+
+test("RSA-sized production dump entries do not reject otherwise valid AES keys", async () => {
+  const result = await inspectKeyFile(
+    localFile(
+      "prod.keys",
+      `eticket_rsa_keypair = ${fakeHex(528)}\r\nheader_key = ${fakeHex(32)}\nmaster_key_00 = ${fakeHex(16)}\n`,
+    ),
+    "prod",
+  );
+  assert.equal(result.entries, 3);
+  assert.equal(result.verifiedEntries, 2);
+  assert.equal(result.unknownEntries, 1);
+  assert.equal(result.usableForDecryption, false);
+});
+
+test("key-line bound includes exact-length content but excludes CRLF and keeps AES widths strict", async () => {
+  const line = "extra = " + "ab".repeat((NSP_INPUT_LIMITS.keyLineBytes - 8) / 2);
+  assert.equal(line.length, NSP_INPUT_LIMITS.keyLineBytes);
+  for (const ending of ["", "\n", "\r\n"])
+    assert.equal((await inspectKeyFile(localFile("prod.keys", line + ending), "prod")).entries, 1);
+  await assert.rejects(
+    inspectKeyFile(localFile("prod.keys", line + "ab\n"), "prod"),
+    code("KEY_LINE"),
+  );
+  await assert.rejects(
+    inspectKeyFile(localFile("prod.keys", `header_key = ${fakeHex(528)}\n`), "prod"),
+    code("KEY_LINE"),
+  );
 });
