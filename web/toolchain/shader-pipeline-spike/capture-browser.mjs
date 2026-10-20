@@ -7,9 +7,7 @@ import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { spawnSync } from "node:child_process";
-import { code, job as originalJob } from "../shader-spike/synthetic-fixture.mjs";
-const key = "0000000000000001",
-  job = { ...originalJob, key };
+import { fixtures } from "./graphics-fixtures.mjs";
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const webRoot = join(root, "web");
 const [command, first, second, third] = process.argv.slice(2);
@@ -26,12 +24,13 @@ if (command === "prepare") {
   assert.ok(first);
   const directory = resolve(first);
   await mkdir(directory, { recursive: true });
-  const codePath = join(directory, "synthetic-exit.bin");
-  await writeFile(codePath, code);
-  await writeFile(
-    join(directory, "jobs.json"),
-    JSON.stringify([{ ...job, code: codePath }], null, 2),
-  );
+  const jobs = [];
+  for (const fixture of fixtures) {
+    const codePath = join(directory, `${fixture.name}.bin`);
+    await writeFile(codePath, fixture.code);
+    jobs.push({ ...fixture.job, code: codePath });
+  }
+  await writeFile(join(directory, "jobs.json"), JSON.stringify(jobs, null, 2));
 } else if (command === "capture") {
   assert.ok(
     first && second && third,
@@ -58,16 +57,19 @@ if (command === "prepare") {
   await discover(resolve(first));
   assert.equal(candidates.length, 1, "Expected exactly one complete translator publish");
   const translatorRoot = candidates[0],
-    native = resolve(second);
-  const nativeMsl = (await readFile(join(native, `${key}_b.metal`), "utf8")).replace(/\r\n/g, "\n");
-  const nativeSpirv = await readFile(join(native, `${key}.spv`));
-  const nativeResources = JSON.parse(await readFile(join(native, `${key}.res.json`), "utf8"));
-  const nativeReflection = JSON.parse(await readFile(join(native, `${key}.cross.json`), "utf8"));
-  const sourceDigest = createHash("sha256")
-    .update(`${key}_b.metal`)
-    .update(createHash("sha256").update(nativeMsl).digest())
-    .digest("hex")
-    .slice(0, 16);
+    native = resolve(second),
+    oracles = new Map(),
+    aggregate = createHash("sha256");
+  for (const fixture of [...fixtures].sort((a, b) => a.job.key.localeCompare(b.job.key))) {
+    const key = fixture.job.key;
+    const msl = (await readFile(join(native, `${key}_b.metal`), "utf8")).replace(/\r\n/g, "\n");
+    const spirv = await readFile(join(native, `${key}.spv`));
+    const resources = JSON.parse(await readFile(join(native, `${key}.res.json`), "utf8"));
+    const reflection = JSON.parse(await readFile(join(native, `${key}.cross.json`), "utf8"));
+    aggregate.update(`${key}_b.metal`).update(createHash("sha256").update(msl).digest());
+    oracles.set(key, { msl, spirv, resources, reflection });
+  }
+  const sourceDigest = aggregate.digest("hex").slice(0, 16);
   // Synthetic expected recipe originates from independent native fixture output,
   // never from browser output. It is not a real release-shell trust assertion.
   const chain = "000000000001",
@@ -90,7 +92,7 @@ if (command === "prepare") {
       shaderDigest: sourceDigest,
       targetOS,
       requiredPaths,
-      shaderKeys: [key],
+      shaderKeys: fixtures.map((f) => f.job.key),
       spirvCrossVersion: "1.4.357.0",
     },
   };
@@ -134,13 +136,54 @@ if (command === "prepare") {
     page.on("pageerror", (e) => pageErrors.push(e.message));
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
     const captured = await page.evaluate(
-      async ({ shell, job, code }) => {
+      async ({ shell, fixtures }) => {
         const { createShaderPipeline } = await import("/web/shader-pipeline.mjs");
         const options = {
           trustedShell: shell,
           translatorWorkerUrl: "/translator/worker.mjs",
           crossWorkerUrl: "/web/toolchain/spirv-cross-spike/wwwroot/worker.mjs",
         };
+        // Exercise the actual C# bridge too, not only adapter-side rejection.
+        const rawWorker = new Worker(options.translatorWorkerUrl, { type: "module" });
+        let rawId = 0;
+        async function mustReject(job, code, expected) {
+          const requestId = ++rawId;
+          const reply = await new Promise((resolve, reject) => {
+            const timer = setTimeout(() => {
+              rawWorker.removeEventListener("message", listener);
+              reject(new Error("Raw bridge rejection timed out"));
+            }, 60000);
+            const listener = ({ data }) => {
+              if (data.requestId !== requestId) return;
+              clearTimeout(timer);
+              rawWorker.removeEventListener("message", listener);
+              resolve(data);
+            };
+            rawWorker.addEventListener("message", listener);
+            rawWorker.postMessage({ requestId, job, code });
+          });
+          if (typeof reply.error !== "string" || !reply.error.includes(expected))
+            throw new Error(
+              `Actual bridge did not reject invalid graphics input: ${JSON.stringify(reply)}`,
+            );
+        }
+        try {
+          const vertex = fixtures.find((f) => f.job.stage === "vs");
+          await mustReject(vertex.job, new Uint8Array(16), "SPH");
+          await mustReject(vertex.job, new Uint8Array(vertex.code.length), "SPH stage");
+          await mustReject(
+            { ...vertex.job, attr: { 32: "float" } },
+            new Uint8Array(vertex.code),
+            "Invalid graphics",
+          );
+          await mustReject(
+            { ...vertex.job, stage: "gs" },
+            new Uint8Array(vertex.code),
+            "unsupported",
+          );
+        } finally {
+          rawWorker.terminate();
+        }
         const pipeline = createShaderPipeline(options);
         try {
           let incompleteRejected = false;
@@ -149,71 +192,116 @@ if (command === "prepare") {
           } catch {
             incompleteRejected = true;
           }
-          const result = await pipeline.translate({ job, code: new Uint8Array(code) });
+          const results = [];
+          for (const fixture of fixtures)
+            results.push(
+              await pipeline.translate({ job: fixture.job, code: new Uint8Array(fixture.code) }),
+            );
           const verified = await pipeline.verifyCompleteSourceSet();
-          return { result, verified, incompleteRejected };
+          return {
+            results,
+            verified,
+            incompleteRejected,
+            invalidGraphicsRejected: 3,
+            unsupportedStageRejected: true,
+          };
         } finally {
           pipeline.dispose();
         }
       },
-      { shell, job, code: [...code] },
+      { shell, fixtures: fixtures.map((f) => ({ ...f, code: [...f.code] })) },
     );
     assert.deepEqual(pageErrors, []);
     assert.equal(captured.incompleteRejected, true);
-    assert.equal(captured.result.msl, nativeMsl, "Linked browser MSL bytes differ");
-    assert.deepEqual(
-      captured.result.resources,
-      nativeResources,
-      "Linked translator resource sidecar differs",
-    );
-    assert.equal(
-      captured.result.provenance.inputSha256,
-      hash(nativeSpirv),
-      "Linked translator SPIR-V SHA differs",
-    );
-    assert.deepEqual(
-      captured.result.spirvReflection,
-      nativeReflection,
-      "Linked Cross reflection differs",
-    );
-    const oracle = spawnSync(
-      "python3",
-      [join(webRoot, "toolchain/spirv-cross-spike/native-oracle.py")],
-      {
-        input: JSON.stringify([{ stage: "cs", msl: nativeMsl, resources: nativeResources }]),
-        encoding: "utf8",
-      },
-    );
-    assert.equal(oracle.status, 0, oracle.stderr);
-    assert.deepEqual(captured.result.replay, JSON.parse(oracle.stdout)[0]);
+    assert.equal(captured.results.length, fixtures.length);
+    assert.equal(captured.invalidGraphicsRejected, 3);
+    assert.equal(captured.unsupportedStageRejected, true);
+    const evidence = [];
+    for (const fixture of fixtures) {
+      const key = fixture.job.key,
+        result = captured.results.find((r) => r.key === key),
+        expected = oracles.get(key);
+      assert.equal(result.stage, fixture.job.stage);
+      assert.equal(result.msl, expected.msl, `${fixture.name}: linked browser MSL bytes differ`);
+      assert.deepEqual(
+        result.resources,
+        expected.resources,
+        `${fixture.name}: translator resource sidecar differs`,
+      );
+      assert.equal(
+        result.provenance.inputSha256,
+        hash(expected.spirv),
+        `${fixture.name}: translator SPIR-V SHA differs`,
+      );
+      assert.deepEqual(
+        result.spirvReflection,
+        expected.reflection,
+        `${fixture.name}: Cross reflection differs`,
+      );
+      const oracle = spawnSync(
+        "python3",
+        [join(webRoot, "toolchain/spirv-cross-spike/native-oracle.py")],
+        {
+          input: JSON.stringify([
+            { stage: fixture.job.stage, msl: expected.msl, resources: expected.resources },
+          ]),
+          encoding: "utf8",
+        },
+      );
+      assert.equal(oracle.status, 0, oracle.stderr);
+      assert.deepEqual(result.replay, JSON.parse(oracle.stdout)[0]);
+      assert.equal(
+        result.replay.msl_entry_kind,
+        { cs: "kernel", vs: "vertex", ps: "fragment" }[fixture.job.stage],
+      );
+      if (fixture.job.stage === "vs") {
+        assert.ok(
+          result.replay.vertex_inputs.some((x) => x.location === 0),
+          "Authored vertex input0 disappeared",
+        );
+        assert.match(result.msl, /\[\[position\]\]/, "Authored vertex position output disappeared");
+      }
+      if (fixture.job.stage === "ps") {
+        assert.deepEqual(result.replay.raster.colors, [0], "Authored color0 output disappeared");
+        assert.equal(result.replay.raster.discard, 0);
+      }
+      await writeFile(join(output, `${key}.browser.metal`), result.msl);
+      evidence.push({
+        name: fixture.name,
+        stage: fixture.job.stage,
+        codeSha256: hash(fixture.code),
+        spirvSha256: hash(expected.spirv),
+        mslSha256: hash(expected.msl),
+        replay: result.replay,
+      });
+    }
     assert.equal(captured.verified.sourceDigest, sourceDigest);
+    assert.equal(captured.verified.shaderCount, fixtures.length);
     assert.equal(captured.verified.installable, false);
     assert.equal(captured.verified.chainRewritten, false);
     await writeFile(join(output, "linked-browser-result.json"), JSON.stringify(captured, null, 2));
-    await writeFile(join(output, "linked-browser.metal"), captured.result.msl);
     await writeFile(
       join(output, "report.json"),
       JSON.stringify(
         {
           commit: process.env.GITHUB_SHA ?? null,
           browser: browser.version(),
-          fixture: "authored Maxwell EXIT",
-          codeSha256: hash(code),
-          spirvSha256: hash(nativeSpirv),
-          mslSha256: hash(nativeMsl),
+          fixtures: evidence,
           sourceDigest,
           byteAndReflectionParity: true,
           realLinkedModuleWorkers: true,
+          invalidGraphicsRejected: captured.invalidGraphicsRejected,
+          unsupportedStageRejected: captured.unsupportedStageRejected,
           installable: false,
           scope:
-            "Synthetic compute only; no real release shell, game coverage or Metal compilation",
+            "Authored compute/vertex/fragment only; no real release shell, game coverage, readable-tile variants or Metal compilation",
         },
         null,
         2,
       ),
     );
     console.log(
-      "PASS: real browser translator -> SPIRV-Cross adapter matches native MSL/resources/SPIR-V hash/reflection and complete synthetic SHADER_SRC gate.",
+      "PASS: real browser compute/vertex/fragment translator -> SPIRV-Cross adapter matches native MSL/resources/SPIR-V hash/reflection and complete synthetic SHADER_SRC gate.",
     );
   } finally {
     await browser?.close();

@@ -7,6 +7,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { createShaderPipeline } from "../shader-pipeline.mjs";
 import { CROSS_COMMIT, MSL_ARGUMENTS } from "../toolchain/spirv-cross-spike/wwwroot/convert.mjs";
+import { fixtures as graphicsFixtures } from "../toolchain/shader-pipeline-spike/graphics-fixtures.mjs";
 import { replayFields } from "../toolchain/spirv-cross-spike/wwwroot/replay-reflection.mjs";
 const key = "0000000000000001",
   chain = "abcdef012345",
@@ -86,7 +87,7 @@ function setup({
             spirvBase64: Buffer.from(spv).toString("base64"),
             resources: {
               key: data.job.key,
-              stage: "cs",
+              stage: data.job.stage,
               notes: [],
               sbufs: [],
               cbufs: [],
@@ -98,16 +99,22 @@ function setup({
           if (wrongId) this.emit("message", { data: { requestId: -1, error: "unrelated" } });
           this.emit("message", { data: { requestId: data.requestId, result } });
         } else {
+          const stage = data.replayContext.stage;
+          const stageMsl = {
+            cs: msl,
+            vs: "vertex void main0() {}\n",
+            ps: "fragment void main0() {}\n",
+          }[stage];
           const result = {
             schema: "spirv-cross-browser-stage-v1",
-            msl,
-            reflection: { entryPoints: [] },
-            replay: replayFields("cs", msl, data.replayContext.resources),
+            msl: stageMsl,
+            reflection: { entryPoints: [{ mode: { cs: "comp", vs: "vert", ps: "frag" }[stage] }] },
+            replay: replayFields(stage, stageMsl, data.replayContext.resources),
             provenance: {
               spirvCrossCommit: CROSS_COMMIT,
               mslArguments: [...MSL_ARGUMENTS],
               inputSha256: sha(new Uint8Array(data.spirv)),
-              mslSha256: sha(msl),
+              mslSha256: sha(stageMsl),
               nativeChainClaimed: false,
               metalCompiled: false,
             },
@@ -215,10 +222,10 @@ test("trusted shell mismatch, missing catalog and off-origin assets fail before 
   ])
     assert.throws(() => createShaderPipeline({ ...options, crossWorkerUrl: url }), /self-hosted/);
 });
-test("graphics, unknown keys and implicit options remain unsupported", async () => {
+test("geometry/tessellation, unknown keys and implicit options remain unsupported", async () => {
   const { pipeline, workers } = setup();
   await assert.rejects(
-    pipeline.translate({ job: { ...job, stage: "vs" }, code: new Uint8Array(16) }),
+    pipeline.translate({ job: { ...job, stage: "gs" }, code: new Uint8Array(16) }),
     /Unsupported shader stage/,
   );
   await assert.rejects(
@@ -289,4 +296,43 @@ test("abort, disposal, worker crash and deadline terminate workers and release b
     pipeline.dispose();
     await assert.rejects(pipeline.verifyCompleteSourceSet(), /disposed/);
   }
+});
+
+test("graphics validates full SPH, explicit metadata and stage-specific wire/replay fields", async () => {
+  for (const f of graphicsFixtures.filter((f) => f.job.stage !== "cs")) {
+    const expectedMsl =
+      f.job.stage === "vs" ? "vertex void main0() {}\n" : "fragment void main0() {}\n";
+    const { pipeline, workers } = setup({
+      trustedShell: shell([f.job.key], sourceDigest([[f.job.key, expectedMsl]])),
+    });
+    const result = await pipeline.translate({ job: f.job, code: f.code });
+    assert.equal(result.stage, f.job.stage);
+    assert.equal(result.threadgroup_size, null);
+    assert.equal(workers[1].request.replayContext.stage, f.job.stage);
+    assert.equal(result.replay.msl_entry_kind, f.job.stage === "vs" ? "vertex" : "fragment");
+    await pipeline.verifyCompleteSourceSet();
+    pipeline.dispose();
+    for (const [badJob, badCode, pattern] of [
+      [f.job, new Uint8Array(16), /SPH/],
+      [f.job, new Uint8Array(f.code.length), /SPH stage/],
+      [{ ...f.job, attr: undefined }, f.code, /explicit attr/],
+      [{ ...f.job, attr: { 32: "float" } }, f.code, /Invalid graphics/],
+      [{ ...f.job, fout: { 0: "double" } }, f.code, /Invalid graphics/],
+    ]) {
+      const { pipeline, workers } = setup({ trustedShell: shell([f.job.key]) });
+      await assert.rejects(pipeline.translate({ job: badJob, code: badCode }), pattern);
+      assert.equal(workers.length, 0);
+      pipeline.dispose();
+    }
+  }
+});
+test("compiled stage mismatch is rejected even if hashes and replay are otherwise valid", async () => {
+  const { pipeline } = setup({
+    mutateCross: (r) => ({ ...r, reflection: { entryPoints: [{ mode: "frag" }] } }),
+  });
+  await assert.rejects(
+    pipeline.translate({ job, code: new Uint8Array(16) }),
+    /stage does not match/,
+  );
+  pipeline.dispose();
 });

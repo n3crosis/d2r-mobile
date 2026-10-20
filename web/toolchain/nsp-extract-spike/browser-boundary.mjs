@@ -135,11 +135,25 @@ export async function createBoundary(factory) {
     },
     // Reader lifetime is bound to this exact authenticated NCA. A later open,
     // inspect, key load, mount or input hash invalidates it even if that fails.
-    openRomfs(index) {
+    openPatchedRomfs(baseIndex, patchIndex) {
+      if (!Number.isSafeInteger(patchIndex) || patchIndex < 0)
+        throw new Error("Invalid patch index");
+      return this.openRomfs(baseIndex, patchIndex);
+    },
+    openRomfs(index, patchIndex) {
       return guard(() => {
         const current = ++generation;
         const size = withBuffer(8, (ptr) => {
-          check(module.ccall("nsp_open_romfs", "number", ["string", "number"], [path(index), ptr]));
+          check(
+            patchIndex === undefined
+              ? module.ccall("nsp_open_romfs", "number", ["string", "number"], [path(index), ptr])
+              : module.ccall(
+                  "nsp_open_patched_romfs",
+                  "number",
+                  ["string", "string", "number"],
+                  [path(index), path(patchIndex), ptr],
+                ),
+          );
           return new DataView(module.HEAPU8.buffer, ptr, 8).getBigUint64(0, true);
         });
         return Object.freeze({
@@ -255,6 +269,9 @@ export async function createBoundary(factory) {
     },
     cryptoFixture() {
       return guard(() => check(module._nsp_crypto_fixture()));
+    },
+    bktrFixture() {
+      return guard(() => check(module._nsp_bktr_fixture()));
     },
     ivfcFixture() {
       return guard(() => check(module._nsp_ivfc_fixture()));

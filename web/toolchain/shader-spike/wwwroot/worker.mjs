@@ -1,4 +1,4 @@
-// Developer spike, not wired into the React packager.
+// Developer compiler boundary; linked synthetic stages are tested in separate CI.
 import { dotnet } from "./_framework/dotnet.js";
 
 const ready = dotnet
@@ -11,8 +11,10 @@ const ready = dotnet
 globalThis.addEventListener("message", async ({ data }) => {
   const { requestId, job, code } = data ?? {};
   try {
-    if (!(code instanceof Uint8Array) || !job || job.stage !== "cs") {
-      throw new Error("Expected compute job and Uint8Array shader bytes.");
+    if (!(code instanceof Uint8Array) || !job || !["cs", "vs", "ps"].includes(job.stage)) {
+      throw new Error(
+        "Expected compute, vertex or fragment job and Uint8Array shader bytes; other stages are unsupported.",
+      );
     }
     const startup = await ready;
     if (startup.error) throw startup.error;

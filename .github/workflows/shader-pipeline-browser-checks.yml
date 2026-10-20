@@ -76,7 +76,9 @@ jobs:
           test "$actual" = "$expected"
           node capture-browser.mjs prepare "$RUNNER_TEMP/linked-shader/fixture"
           timeout --kill-after=5s 60s dotnet "$native_dll" "$RUNNER_TEMP/linked-shader/fixture/jobs.json" "$RUNNER_TEMP/linked-shader/native"
-          spirv-val --target-env vulkan1.1 "$RUNNER_TEMP/linked-shader/native/0000000000000001.spv"
+          for key in 0000000000000001 0000000000000002 0000000000000003; do
+            spirv-val --target-env vulkan1.1 "$RUNNER_TEMP/linked-shader/native/$key.spv"
+          done
       - name: Build pinned native and WASM SPIRV-Cross with existing recipe
         run: |
           git clone --depth 1 --branch vulkan-sdk-1.4.357.0 https://github.com/KhronosGroup/SPIRV-Cross.git "$RUNNER_TEMP/linked-cross"
@@ -91,12 +93,14 @@ jobs:
       - name: Independent native Metal and upstream reflection oracle
         run: |
           native="$RUNNER_TEMP/linked-shader/native"
-          "$RUNNER_TEMP/linked-cross-native/spirv-cross" --msl --msl-version 20300 --msl-argument-buffers --msl-texture-buffer-native --msl-pad-fragment-output "$native/0000000000000001.spv" --output "$native/0000000000000001_b.metal"
-          "$RUNNER_TEMP/linked-cross-native/spirv-cross" --reflect json "$native/0000000000000001.spv" --output "$native/0000000000000001.cross.json"
+          for key in 0000000000000001 0000000000000002 0000000000000003; do
+            "$RUNNER_TEMP/linked-cross-native/spirv-cross" --msl --msl-version 20300 --msl-argument-buffers --msl-texture-buffer-native --msl-pad-fragment-output "$native/$key.spv" --output "$native/${key}_b.metal"
+            "$RUNNER_TEMP/linked-cross-native/spirv-cross" --reflect json "$native/$key.spv" --output "$native/$key.cross.json"
+          done
       - name: Real Chromium linked pipeline versus original native outputs
         run: |
           timeout --kill-after=5s 180s node capture-browser.mjs capture ../shader-spike/bin/Release/net10.0/publish "$RUNNER_TEMP/linked-shader/native" "$RUNNER_TEMP/linked-shader/browser"
-          sha256sum ../../shader-pipeline.mjs ../shader-spike/ShaderBridge.cs ../spirv-cross-spike/wwwroot/*.mjs ../spirv-cross-spike/wwwroot/*.wasm "$RUNNER_TEMP/linked-shader/native/"* > "$RUNNER_TEMP/linked-shader/browser/source-chain.sha256"
+          sha256sum graphics-fixtures.mjs capture-browser.mjs ../../shader-pipeline.mjs ../shader-spike/ShaderBridge.cs ../spirv-cross-spike/wwwroot/*.mjs ../spirv-cross-spike/wwwroot/*.wasm "$RUNNER_TEMP/linked-shader/native/"* > "$RUNNER_TEMP/linked-shader/browser/source-chain.sha256"
       - name: Retain synthetic evidence only
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0

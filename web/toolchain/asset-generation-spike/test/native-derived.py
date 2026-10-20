@@ -4,6 +4,8 @@ import hashlib
 import json
 from pathlib import Path
 import runpy
+import sys
+import types
 
 HERE = Path(__file__).resolve().parents[1]
 ROOT = HERE.parents[2]
@@ -46,3 +48,42 @@ options = {
 (OUT / "sources.json").write_text(json.dumps(sources, ensure_ascii=False), encoding="utf-8")
 (OUT / "options.json").write_text(json.dumps(options), encoding="utf-8")
 print("Original shell_stubs.data produced full five-family synthetic derived.tsv oracle", counts)
+
+# Exercise the actual bounded sink without importing the generated NumPy/Pillow module.
+# Only its native parser binding is substituted, not the code under test.
+previous = sys.modules.get("native_functions")
+sys.modules["native_functions"] = types.ModuleType("native_functions")
+try:
+    bounded = runpy.run_path(str(HERE / "src/derived.py"))["BoundedOutput"]
+    sink = bounded(limit=6)
+    assert sink.write("测试") == 2
+    assert bytes(sink.buffer) == "测试".encode("utf-8")
+    try:
+        sink.write("x")
+    except ValueError as error:
+        assert str(error) == "DERIVED_OUTPUT_LIMIT"
+    else:
+        raise AssertionError("UTF-8 byte overflow accepted")
+    assert len(sink.buffer) == 6
+    sink.close()
+    sink.close()
+    try:
+        sink.write("")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("closed sink accepted write")
+    sink = bounded(limit=4097)
+    try:
+        sink.write("界" * 100_000)
+    except ValueError as error:
+        assert str(error) == "DERIVED_OUTPUT_LIMIT"
+    else:
+        raise AssertionError("large write accepted")
+    assert len(sink.buffer) <= 4097
+finally:
+    if previous is None:
+        del sys.modules["native_functions"]
+    else:
+        sys.modules["native_functions"] = previous
+print("Bounded UTF-8 sink rejects overflow during writes, including multibyte and large writes")

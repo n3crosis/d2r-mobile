@@ -101,8 +101,30 @@ public static partial class ShaderBridge
         var job = JsonNode.Parse(jobJson)?.AsObject() ?? throw new ArgumentException("Expected job object.");
         string key = (string)job["key"] ?? "synthetic";
         string stage = (string)job["stage"];
+        if (stage is not ("cs" or "vs" or "ps"))
+            throw new ArgumentException("Only compute, vertex and fragment are supported; geometry and tessellation are not integrated.");
         if (stage != "cs")
-            throw new ArgumentException("First spike accepts compute only; graphics SPH validation is not implemented.");
+        {
+            // Graphics input begins with the complete 0x50-byte SPH. Do not allow
+            // ShaderHeader's stage-zero fallback to silently reinterpret a job.
+            if (code.Length < 0x60)
+                throw new ArgumentException("Graphics input requires a 0x50-byte SPH plus instructions.");
+            int headerStage = (int)((BitConverter.ToUInt32(code, 0) >> 10) & 15);
+            if (headerStage != (stage == "vs" ? 1 : 5))
+                throw new ArgumentException("Declared graphics stage does not match SPH stage bits 10..13.");
+            foreach (var (table, count) in new[] { ("attr", 32), ("fout", 8) })
+            {
+                if (job[table] is not JsonObject types)
+                    throw new ArgumentException("Graphics jobs require explicit attr and fout type tables.");
+                foreach (var item in types)
+                {
+                    if (!int.TryParse(item.Key, out int slot) || slot < 0 || slot >= count || slot.ToString(System.Globalization.CultureInfo.InvariantCulture) != item.Key ||
+                        item.Value is not JsonValue value || !value.TryGetValue<string>(out var type) ||
+                        type is not ("float" or "sint" or "uint"))
+                        throw new ArgumentException("Invalid graphics attribute/output component type or slot.");
+                }
+            }
+        }
         var acc = new Accessor(code, job);
         // 作业 debug = false：关 DebugMode（DebugMode 会跳过 AST 优化器，产物满是临时变量；不改语义）
         // Job debug = false: turn off DebugMode (DebugMode skips the AST optimizer and the output is full of temporaries; semantics unchanged)

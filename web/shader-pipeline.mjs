@@ -1,4 +1,4 @@
-/** Compute-only browser translator -> SPIRV-Cross adapter. No package writer. */
+/** Browser compute/vertex/fragment translator -> SPIRV-Cross adapter. No package writer. */
 import { validateShellContract } from "./shell-contract.mjs";
 import {
   CROSS_COMMIT,
@@ -56,17 +56,17 @@ function metadata(value) {
     throw error("Oversized shader metadata");
   return JSON.parse(json);
 }
-function resourceFacts(value, key) {
+function resourceFacts(value, key, stage) {
   const r = metadata(value);
   if (
     !r ||
     r.key !== key ||
-    r.stage !== "cs" ||
+    r.stage !== stage ||
     !Array.isArray(r.notes) ||
     r.notes.some((x) => typeof x !== "string") ||
     !["sbufs", "cbufs", "textures", "images"].every((k) => Array.isArray(r[k]))
   )
-    throw error("Translator resource sidecar does not match compute job");
+    throw error("Translator resource sidecar does not match declared job stage");
   if (r.notes.length) throw error(`Unsupported translator query/defaults: ${r.notes.join("; ")}`);
   for (const b of r.sbufs)
     if (
@@ -181,9 +181,9 @@ export function createShaderPipeline({
       ensureOpen();
       if (active) throw error("Only one shader conversion may run at a time");
       const requestJob = metadata(job);
-      if (!requestJob || requestJob.stage !== "cs")
+      if (!requestJob || !["cs", "vs", "ps"].includes(requestJob.stage))
         throw error(
-          "Unsupported shader stage: browser translator currently supports compute only; graphics/SPH and readable-tile variants are not integrated",
+          "Unsupported shader stage: only compute, vertex and fragment are integrated; geometry and tessellation remain unsupported",
         );
       if (!allowed.has(requestJob.key))
         throw error("Shader key is outside trusted complete catalog");
@@ -197,6 +197,30 @@ export function createShaderPipeline({
         code.length % 8
       )
         throw error("Shader code must be 16 bytes to 1 MiB, 8-byte aligned");
+      if (requestJob.stage !== "cs") {
+        if (code.length < 0x60)
+          throw error("Graphics input requires a 0x50-byte SPH plus instructions");
+        const headerStage =
+          (new DataView(code.buffer, code.byteOffset, code.byteLength).getUint32(0, true) >>> 10) &
+          15;
+        if (headerStage !== (requestJob.stage === "vs" ? 1 : 5))
+          throw error("Declared graphics stage does not match SPH stage bits 10..13");
+        for (const [name, limit] of [
+          ["attr", 32],
+          ["fout", 8],
+        ]) {
+          const types = requestJob[name];
+          if (!types || typeof types !== "object" || Array.isArray(types))
+            throw error("Graphics jobs require explicit attr and fout type tables");
+          for (const [slot, type] of Object.entries(types))
+            if (
+              !/^(0|[1-9][0-9]*)$/.test(slot) ||
+              Number(slot) >= limit ||
+              !["float", "sint", "uint"].includes(type)
+            )
+              throw error("Invalid graphics attribute/output component type or slot");
+        }
+      }
       if (signal?.aborted) throw error("Shader conversion cancelled", "AbortError");
       const controller = new AbortController();
       active = controller;
@@ -223,7 +247,7 @@ export function createShaderPipeline({
             return { matched: true, result: data.result };
           },
         });
-        const resources = resourceFacts(translated.resources, requestJob.key),
+        const resources = resourceFacts(translated.resources, requestJob.key, requestJob.stage),
           spirv = decodeBase64(translated.spirvBase64),
           spirvSha256 = await hash(spirv);
         const converted = await rpc({
@@ -235,7 +259,7 @@ export function createShaderPipeline({
             id: requestId,
             type: "convert",
             spirv: spirv.buffer,
-            replayContext: { stage: "cs", resources },
+            replayContext: { stage: requestJob.stage, resources },
           },
           transfer: [spirv.buffer],
           decode(data) {
@@ -270,7 +294,14 @@ export function createShaderPipeline({
           provenance.metalCompiled !== false
         )
           throw error("SPIRV-Cross provenance mismatch");
-        const replay = replayFields("cs", converted.msl, resources);
+        const replay = replayFields(requestJob.stage, converted.msl, resources);
+        const mode = { cs: "comp", vs: "vert", ps: "frag" }[requestJob.stage];
+        if (
+          converted.reflection?.entryPoints?.length !== 1 ||
+          converted.reflection.entryPoints[0].mode !== mode ||
+          replay.msl_entry_kind !== { cs: "kernel", vs: "vertex", ps: "fragment" }[requestJob.stage]
+        )
+          throw error("Compiled SPIR-V/MSL stage does not match declared job");
         if (JSON.stringify(replay) !== JSON.stringify(converted.replay))
           throw error("SPIRV-Cross replay fields mismatch");
         if (controller.signal.aborted || disposed)
@@ -281,6 +312,8 @@ export function createShaderPipeline({
         return {
           status: "shader-source-candidate",
           key: requestJob.key,
+          stage: requestJob.stage,
+          threadgroup_size: requestJob.stage === "cs" ? (requestJob.local ?? null) : null,
           sourceName: `${requestJob.key}_b.metal`,
           msl: converted.msl,
           resources,

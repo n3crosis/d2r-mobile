@@ -78,6 +78,7 @@ jobs:
         run: |
           clang-format --dry-run --Werror --style=file:web/toolchain/style/clang-format.yaml \
             web/toolchain/nsp-extract-spike/boundary.c \
+            web/toolchain/nsp-extract-spike/bktr-reader.h \
             web/toolchain/nsp-extract-spike/crypto-fixture.c \
             web/toolchain/nsp-extract-spike/quiet.h \
             web/toolchain/program-rewrite-spike/bridge.c \

@@ -17,8 +17,10 @@ assembly by itself. There are no game bytes, keys, or generated binaries here.
 Compile the existing managed translator for `browser-wasm` with .NET 10.
 A module worker calls a `JSExport` taking job JSON and shader bytes, returning
 SPIR-V as base64 and the existing resource sidecar. File paths and CLI filesystem
-operations stay out of the bridge. First scope is a synthetic **compute-only**
-program; graphics headers are rejected until separately validated. Size caps
+operations stay out of the bridge. The original proven fixture is synthetic compute.
+The graphics extension now validates a full 0x50-byte SPH, declared-stage agreement
+and explicit attribute/output component maps for vertex and fragment; its new
+linked native differential corpus is pending CI. Other stages remain rejected. Size caps
 (1 MiB shader, 64 KiB metadata) and terminating the worker bound this test;
 they are not a complete hostile-input validator. The worker is single-threaded,
 not a shared-memory/pthread build. Do not expose this harness as a production API.
@@ -28,7 +30,9 @@ editing upstream. `upstream-source.sha256` records the source it was copied from
 The parity utility rejects source drift. It does not mechanically prove the copy
 is equivalent; review and parity tests remain required. Preserve c1 jump-table
 reads, resource binding allocation, debug/reduced flags and graphics-state defaults
-when extending it. The bridge currently accepts compute only, not all native jobs.
+when extending it. The bridge accepts compute, vertex and fragment with explicit
+metadata guards, not geometry/tessellation or all possible native jobs. See the
+separate shader-pipeline-spike for authored graphics fixtures and evidence.
 
 ### Dependency closure
 

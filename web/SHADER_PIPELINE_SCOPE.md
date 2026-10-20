@@ -27,7 +27,7 @@ metadata consistency is not proof of release authenticity or shell file contents
 There is no trusted production catalog or binary-authentication bypass supplied
 by this adapter.
 
-- `translate({job, code, signal?})` takes an original native-style compute job
+- `translate({job, code, signal?})` takes an original native-style compute, vertex or fragment job
   with explicit `debug`/`reduced` flags and returns an MSL candidate, unchanged
   resource facts, MSL-derived replay fields, upstream reflection and hashes.
 - `verifyCompleteSourceSet()` requires every trusted key to have successfully
@@ -49,12 +49,21 @@ adapter does not implement that packaging operation.
 
 ## Limits and explicit unsupported cases
 
-Only compute is currently implemented by the existing translator worker. Vertex,
-fragment, geometry and tessellation translation, graphics SPH processing,
-readable-tile variants, full per-game shader/facts extraction, control-key
-construction, c1 index generation and final replay metadata are not integrated.
-Such requests fail rather than falling back. Translator query/default notes
-also fail closed instead of silently accepting inferred resource types.
+The bridge now accepts compute, vertex and fragment jobs. Graphics inputs must
+contain the complete 0x50-byte SPH plus instructions, and SPH stage bits 10..13
+must agree with the declared job (vertex=1, fragment=5). Stage-zero fallback is
+rejected. Explicit attr/fout maps require canonical numeric slots (0..31/0..7)
+and float/sint/uint component types; these facts pass unchanged to the native
+Accessor. The adapter also verifies the emitted SPIR-V entry mode and MSL entry
+kind against that stage. Returned metadata includes stage and compute-only
+threadgroup_size; reflection uses the correct stage-specific storage offsets.
+
+Geometry/tessellation, readable-tile variants, full per-game shader/facts
+extraction, control-key construction, c1 index generation and final replay
+metadata remain unintegrated. Unsupported stages and translator query/default
+notes fail closed instead of falling back or silently inferring resource types.
+Graphics implementation is pending its own linked CI result; accepting its
+validated input layout does not prove all game graphics shaders compatible.
 
 One conversion runs at a time. Code is copied before transfer, so caller bytes
 remain intact. Each phase uses a new worker and terminates it after success,
@@ -66,18 +75,25 @@ These resource bounds do not certify all real shaders will fit or translate.
 
 ## Evidence
 
-Eight targeted Node tests cover both wire protocols, transfer behavior,
+Ten targeted Node tests cover both wire protocols, transfer behavior,
 independent native Python source-digest equivalence and ordering, incomplete
 catalogs, shell/digest mismatch, unsupported stages, missing query facts,
 malformed SPIR-V, compiler provenance/replay mismatch, timeout, cancellation,
-crash and disposal. They use simulated workers, not a claim that the linked
-browser pipeline passed end-to-end.
+crash/disposal, truncated or mismatched SPH, invalid graphics type maps and
+compiled-stage mismatches. These unit tests use simulated workers; separate actual
+browser integration evidence follows.
 
 The individual actual browser stages have separate native differential CI.
 SPIRV-Cross's [verified Chromium run](https://github.com/n3crosis/d2r-mobile/actions/runs/39394114125)
 passed compute, fragment and storage synthetic cases. The separate `shader-pipeline-browser-checks.yml` and
 `toolchain/shader-pipeline-spike/capture-browser.mjs` now define the linked real
-Chromium/native differential gate; its result is pending the next CI run. No game data, real-game shader coverage, Apple Metal compilation or working
+Chromium/native differential gate.
+[Linked run 39396249823](https://github.com/n3crosis/d2r-mobile/actions/runs/39396249823)
+passed on `582d586945db659a89094a0e8a4971196f330600` (2026-10-20): real
+translator -> Cross module workers, exact MSL, resource sidecar, SPIR-V hash,
+upstream/replay reflection and the complete synthetic SHADER_SRC gate all passed.
+Artifact `12251768859` contains bounded synthetic evidence (seven-day retention).
+No game data, real-game shader coverage, Apple Metal compilation or working
 IPA output is claimed.
 
 ## Observed release mismatch
@@ -93,3 +109,16 @@ was changed to make it pass. Compatibility requires a coherently matched
 release/source/toolchain and source-digest proof, not a label substitution.
 The mismatch alone is not evidence that any particular game shader renders
 incorrectly; real-game compatibility remains unestablished.
+
+## Authored graphics extension (CI pending)
+
+The new vertex fixture loads attribute0's four components with ALD, writes all
+four position components with AST, and exits. The fragment fixture writes four
+known float constants using MOV32I, enables RGBA output0 in SPH OmapTargets,
+and exits. Opcode fields, stage bits and scheduler placement are constructed
+from the vendored decoder, not game bytes. Native and browser pipelines must
+match exact MSL/resource/reflection outputs and SPIR-V hashes; additional checks
+require vertex input0 plus position and fragment color0 with no discard.
+Actual C# bridge rejection of invalid headers/type maps is exercised directly
+in Chromium, separately from the adapter guards. The earlier green linked run
+covers compute only; this expanded graphic corpus has not yet run.

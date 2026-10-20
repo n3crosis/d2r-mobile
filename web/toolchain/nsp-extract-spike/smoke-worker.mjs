@@ -48,6 +48,8 @@ try {
   assert(boundary.cryptoFixture() === 0);
   stage = "ivfc-hierarchy-fixture";
   assert(boundary.ivfcFixture() === 0);
+  stage = "bktr-merged-crypto-fixture";
+  assert(boundary.bktrFixture() === 0);
   const prod = new TextEncoder().encode(`header_key = ${"0123456789abcdef".repeat(4)}\n`);
   const title = new TextEncoder().encode(`${"11".repeat(16)} = ${"22".repeat(16)}\n`);
   stage = "explicit-key-loading";
@@ -157,6 +159,14 @@ try {
     rejected = true;
   }
   assert(rejected);
+  stage = "unsigned-patch-base-rejection";
+  rejected = false;
+  try {
+    boundary.openPatchedRomfs(0, 0);
+  } catch {
+    rejected = true;
+  }
+  assert(rejected);
   stage = "ambiguous-directory-rejection";
   for (const duplicate of [true, false]) {
     boundary.mount([ambiguousFixture(duplicate)]);
@@ -191,6 +201,8 @@ try {
     checks: [
       "WASM crypto fixture",
       "six-level IVFC padding/tamper/bounds fixture",
+      "BKTR counter/merged read/IVFC tamper fixture",
+      "unsigned patch base rejected",
       "unsigned RomFS header rejected",
       "explicit key paths and wiping",
       "WORKERFS synthetic PFS0",

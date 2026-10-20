@@ -21,6 +21,24 @@ def require(condition, code):
         raise ValueError(code)
 
 
+class BoundedOutput(io.TextIOBase):
+    """Append-only UTF-8 sink; reject overflow before retaining each bounded chunk."""
+
+    def __init__(self, limit=OUTPUT_LIMIT):
+        super().__init__()
+        self.limit = limit
+        self.buffer = bytearray()
+
+    def write(self, text):
+        if self.closed:
+            raise ValueError("write to closed output")
+        for offset in range(0, len(text), 1024):
+            chunk = text[offset : offset + 1024].encode("utf-8")
+            require(len(self.buffer) + len(chunk) <= self.limit, "DERIVED_OUTPUT_LIMIT")
+            self.buffer.extend(chunk)
+        return len(text)
+
+
 def generate(payload, options):
     require(len(payload) <= 8 * 1024 * 1024, "DERIVED_INPUT_LIMIT")
     sources = json.loads(payload.decode("utf-8"))
@@ -46,19 +64,13 @@ def generate(payload, options):
         require(hashes[name] == actual_hash, "DERIVED_SOURCE_HASH")
 
     source_paths = dict(zip(native.paths("/input"), (sources[name] for name in SOURCE_NAMES)))
-    output = io.StringIO()
-
-    class Capture(io.StringIO):
-        def close(self):
-            if not self.closed:
-                output.write(self.getvalue())
-                super().close()
+    output = BoundedOutput()
 
     def memory_open(path, mode="r", **_kwargs):
         if path in source_paths and mode == "r":
             return io.StringIO(source_paths[path])
         if path == "/output/derived.tsv" and mode == "w":
-            return Capture()
+            return output
         raise ValueError("DERIVED_IO_BOUNDARY")
 
     # This module is used only by the serial worker queue. No builtins monkeypatch.
@@ -95,7 +107,7 @@ def generate(payload, options):
         )
         emitted_counts = native.data("/input", "/output/derived.tsv")
         require(tuple(counts.values()) == emitted_counts, "DERIVED_EMISSION_COUNTS")
-        result = output.getvalue().encode("utf-8")
+        result = bytes(output.buffer)
         require(len(result) <= OUTPUT_LIMIT, "DERIVED_OUTPUT_LIMIT")
         require(
             all(len(line) <= 8190 for line in result.splitlines()), "DERIVED_RUNTIME_LINE_LIMIT"
