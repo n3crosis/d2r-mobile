@@ -23,9 +23,10 @@ uses its authenticated, immutable RomFS capability. A hand-created reader object
 is not authentication; the orchestration layer must obtain this capability from
 `readAuthenticatedAssets` rather than accepting arbitrary caller provenance.
 
-The output directory is selected and granted read/write access by the user
-before packaging. This module never opens a picker or asks for broader access.
-The calling flow rejects an output directory overlapping the private inputs.
+The production flow uses the single input directory, selected and granted
+read/write access by the user before packaging, as the resource parent. This
+module never opens a picker or asks for broader access. It never modifies
+existing NSPs or key files, and input discovery does not recurse into children.
 The exporter creates a fresh `D2R-resources-<UUID>` child and preserves every raw
 RomFS relative path beneath it, including `data/...`. It neither builds a ZIP32
 resource archive nor changes the native shell's layout. A collision is an error,

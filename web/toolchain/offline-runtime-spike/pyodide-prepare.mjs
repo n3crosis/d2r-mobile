@@ -1,6 +1,7 @@
 // Build-only, exact-source-locked internal loader adaptation. Never patches global fetch.
 import { readFile, writeFile, mkdir, cp, copyFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import "../asset-transforms-js/scripts/verify-source.mjs";
 const here = new URL("./", import.meta.url);
 const source = new URL("../asset-generation-spike/public/", here);
 const out = new URL("./pyodide-dist/", here);
@@ -45,9 +46,6 @@ for (const name of [
   "art_pixels.py",
   "native_functions.py",
   "core.py",
-  "derived.py",
-  "vault_original.py",
-  "vault.py",
   "native_art_original.py",
   "native_art.py",
   "hud_original.py",
@@ -72,6 +70,10 @@ for (const name of [
   await add(name, bytes);
 }
 await add("art-kernels.mjs", await readFile(new URL("../art-kernels/kernels.mjs", here)));
+await add(
+  "asset-transforms.mjs",
+  await readFile(new URL("../asset-transforms-js/transforms.mjs", here)),
+);
 await add("worker.mjs", await readFile(new URL("pyodide-worker.mjs", here)));
 async function add(path, bytes) {
   if (!bytes.length || bytes.length > 32 * 1024 * 1024)
@@ -126,5 +128,9 @@ await cp(
 await copyFile(
   new URL("../art-kernels/provenance.json", here),
   new URL("licenses/art-kernel-source-provenance.json", out),
+);
+await copyFile(
+  new URL("../asset-transforms-js/source-provenance.json", here),
+  new URL("licenses/asset-transform-source-provenance.json", out),
 );
 console.log(JSON.stringify({ assets, manifestSha256: hash(manifest) }));

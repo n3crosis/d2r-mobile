@@ -9,7 +9,7 @@ import {
 import { createProgramRewriterAdapter } from "./program-rewriter-adapter.mjs";
 import { createProductionAssetAdapter } from "./production-assets.mjs";
 import { createProductionShaderAdapter } from "./production-shaders.mjs";
-import { createBrowserStagedOutputAdapters } from "./browser-staged-output.mjs";
+import { createBrowserBlobOutputAdapters, IPA_DOWNLOAD_LIMITS } from "./browser-blob-output.mjs";
 import { planStagedZip } from "./staged-zip-validator.mjs";
 import { exportRomfsResources } from "./resource-folder-export.mjs";
 import { deriveD2rRuntimeContentMode } from "./d2r-runtime-content-mode.mjs";
@@ -89,22 +89,18 @@ export async function prepareBrowserPackager({ manifestSha256, signal, onProgres
     return Object.freeze({
       ready: true,
       realGameVerified: false,
-      async generate({ input, outputDirectoryHandle, signal, onProgress }) {
+      async generate({ input, signal, onProgress }) {
         if (used) throw new Error("RELOAD_REQUIRED");
         if (
           input?.kind !== "directory" ||
-          outputDirectoryHandle?.kind !== "directory" ||
-          (await input.resolve(outputDirectoryHandle)) !== null ||
-          (await outputDirectoryHandle.resolve(input)) !== null ||
-          (await outputDirectoryHandle.queryPermission({ mode: "readwrite" })) !== "granted"
+          typeof input.queryPermission !== "function" ||
+          (await input.queryPermission({ mode: "readwrite" })) !== "granted"
         )
-          throw new Error("OUTPUT_DIRECTORY_UNSAFE");
-        // An empty user-chosen output folder prevents accidental replacement.
-        for await (const _entry of outputDirectoryHandle.values())
-          throw new Error("OUTPUT_DIRECTORY_NOT_EMPTY");
+          throw new Error("INPUT_FOLDER_WRITE_PERMISSION_REQUIRED");
         used = true;
         let authenticated, selected, output, resources;
         const archiveFormat = "zip32";
+        const maxOutputBytes = IPA_DOWNLOAD_LIMITS.maxOutputBytes;
         const adapters = {
           ...extraction,
           async extractSelected(context) {
@@ -113,11 +109,13 @@ export async function prepareBrowserPackager({ manifestSha256, signal, onProgres
             return authenticated;
           },
           async createOutput(context) {
-            planStagedZip(context.manifest, { archiveFormat });
+            planStagedZip(context.manifest, { archiveFormat, maxOutputBytes });
             const { romfs } = readAuthenticatedAssets(authenticated, selected, { signal });
             resources = await exportRomfsResources({
               romfs,
-              outputDirectoryHandle,
+              // Root-only discovery never traverses generated resource folders.
+              // Export writes only to a fresh UUID child, never the source files.
+              outputDirectoryHandle: input,
               signal,
               onProgress: () =>
                 onProgress?.({
@@ -126,33 +124,7 @@ export async function prepareBrowserPackager({ manifestSha256, signal, onProgres
                   label: "Saving game resources locally",
                 }),
             });
-            // No existing output is ever deliberately replaced.
-            try {
-              await outputDirectoryHandle.getFileHandle("D2RMobile-unsigned.ipa");
-              throw new Error("OUTPUT_EXISTS");
-            } catch (error) {
-              if (error?.name !== "NotFoundError") throw error;
-            }
-            // Defer the named IPA until staged bytes have passed validation and
-            // the coordinator reaches its commit boundary. No empty IPA on an
-            // earlier conversion failure. Recheck collisions at that boundary.
-            const destinationHandle = {
-              kind: "file",
-              queryPermission: (options) => outputDirectoryHandle.queryPermission(options),
-              async createWritable(options) {
-                try {
-                  await outputDirectoryHandle.getFileHandle("D2RMobile-unsigned.ipa");
-                  throw new Error("OUTPUT_EXISTS");
-                } catch (error) {
-                  if (error?.name !== "NotFoundError") throw error;
-                }
-                const file = await outputDirectoryHandle.getFileHandle("D2RMobile-unsigned.ipa", {
-                  create: true,
-                });
-                return file.createWritable(options);
-              },
-            };
-            output = createBrowserStagedOutputAdapters({ destinationHandle, archiveFormat });
+            output = createBrowserBlobOutputAdapters({ archiveFormat, maxOutputBytes });
             return output.createOutput(context);
           },
           validateArchive: (context) => output.validateArchive(context),
@@ -261,11 +233,12 @@ export async function prepareBrowserPackager({ manifestSha256, signal, onProgres
           signal,
           onProgress,
           archiveFormat,
+          maxOutputBytes,
           selectionOptions: { contentMode: profile.contentMode },
           secretLifetime: "archive",
           concurrency: 1,
         });
-        return { ...result, resources };
+        return { ...result, resources, download: output.getDownload() };
       },
       close,
     });

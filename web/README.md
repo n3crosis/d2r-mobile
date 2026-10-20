@@ -2,9 +2,10 @@
 
 A local-input packager for desktop Chromium on Windows/macOS. Select one folder
 containing the base NSP, compatible update NSP(s), `prod.keys` and `title.keys`.
-Compatible known DLC is optional and accepted when present. Select a separate,
-empty output folder, then generate an unsigned IPA and a separate game-resource
-folder. End users do not install a compiler, Python, .NET, Xcode or Bun.
+Compatible known DLC is optional and accepted when present. Grant read/write
+access to this one folder, then generate a downloadable unsigned IPA and a fresh
+game-resource subfolder inside the selected folder. End users do not install a
+compiler, Python, .NET, Xcode or Bun.
 
 The production conversion flow is implemented and the complete public runtime
 build passed [Verify at 158d6cf](https://github.com/n3crosis/d2r-mobile/actions/runs/39415236827).
@@ -23,8 +24,10 @@ A successful build is not proof that a particular game input completes or plays.
   Guest.framework, native art/HUD, tables, overlays and the full shader catalog.
 - Validate the pinned prebuilt iOS app template, output inventory and complete
   normalized shader-source digest. The template is not a command-line shell.
-- Stream bulk game resources to a fresh folder, then commit the staged unsigned
-  IPA. Progress, cancellation and incomplete-resource markers are included.
+- Stream bulk game resources to a fresh `D2R-resources-<UUID>` child of the input
+  folder, then offer the validated unsigned IPA as a normal browser download.
+  A visible Download IPA link supports retry if automatic download is blocked.
+  Progress, cancellation and incomplete-resource markers are included.
 
 No game content or keys are bundled or uploaded. Public dependencies load before
 private data is read; there is no remote conversion service or runtime CDN fallback.
@@ -83,7 +86,9 @@ as a current implementation percentage.
   unproven. No real game files or keys were used for development.
 - Required browser APIs are checked, not assumed from the Windows/macOS label.
 - Staged IPA output uses ZIP32 and explicit memory/size limits, including a
-  512 MiB archive cap. Bulk resource export is separate and streamed; it is not
+  512 MiB archive cap. The completed IPA Blob may occupy memory up to that cap;
+  its download destination is controlled by browser settings. Bulk resource
+  export is separate and streamed; it is not
   subject to that IPA cap. Storage quota and other adapter limits can still reject
   a genuine build rather than truncate it.
 - A completed resource folder may remain if the later IPA stage fails. An

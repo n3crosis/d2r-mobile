@@ -17,6 +17,7 @@ const RUNTIME_ORIGIN = "https://offline.invalid";
 let initialized = false;
 let starting = false;
 let py;
+let transforms;
 let phase = "validate";
 let queue = Promise.resolve();
 const objectUrls = [];
@@ -102,6 +103,8 @@ async function initialize(data) {
     objectUrls.push(url);
     return url;
   }
+  phase = "import-table-transforms";
+  transforms = await import(moduleUrl("asset-transforms.mjs"));
   phase = "import-runtime";
   await import(moduleUrl("pyodide.asm.js"));
   const { loadPyodide } = await import(moduleUrl("pyodide.mjs"));
@@ -134,9 +137,6 @@ async function initialize(data) {
     "art_pixels.py",
     "native_functions.py",
     "core.py",
-    "derived.py",
-    "vault_original.py",
-    "vault.py",
     "native_art_original.py",
     "native_art.py",
     "hud_original.py",
@@ -162,8 +162,6 @@ async function initialize(data) {
   for (const [stage, code] of [
     ["import-pillow", "from PIL import Image"],
     ["import-native-functions", "import native_functions"],
-    ["import-derived", "import derived"],
-    ["import-vault", "import vault_original, vault"],
     ["import-native-art", "import native_art_original, native_art"],
     ["import-hud", "import hud_original, hud_design_original, hud_support_original, hud"],
     ["import-map-goal", "import map_goal_original, map_goal"],
@@ -205,6 +203,16 @@ async function run(data) {
     JSON.stringify(data.options).length > limits[1]
   )
     throw new Error("Invalid bounded asset request");
+  // 表格/路径工作不再进入 Python；保留同一队列和传输边界。 | Table/path jobs bypass Python in the same serial transfer boundary.
+  if (transforms.hasAssetTransform(data.operation)) {
+    const result = await transforms.executeAssetTransform(
+      data.operation,
+      data.payload,
+      data.options,
+    );
+    postResult(data.id, result);
+    return;
+  }
   py.globals.set("_op", data.operation);
   py.globals.set("_payload", new Uint8Array(data.payload));
   py.globals.set("_options_json", JSON.stringify(data.options));
@@ -212,19 +220,22 @@ async function run(data) {
   try {
     proxy = py.runPython('execute(_op, bytes(_payload), __import__("json").loads(_options_json))');
     const result = proxy.toJs({ dict_converter: Object.fromEntries });
-    const transfers = [];
-    for (const [name, bytes] of Object.entries(result.files)) {
-      const copy = new Uint8Array(bytes);
-      result.files[name] = copy.buffer;
-      transfers.push(copy.buffer);
-    }
-    self.postMessage({ id: data.id, ok: true, result }, transfers);
+    postResult(data.id, result);
   } finally {
     proxy?.destroy();
     py.globals.delete("_op");
     py.globals.delete("_payload");
     py.globals.delete("_options_json");
   }
+}
+function postResult(id, result) {
+  const transfers = [];
+  for (const [name, bytes] of Object.entries(result.files)) {
+    const copy = new Uint8Array(bytes);
+    result.files[name] = copy.buffer;
+    transfers.push(copy.buffer);
+  }
+  self.postMessage({ id, ok: true, result }, transfers);
 }
 self.onmessage = ({ data }) => {
   // Do not queue jobs arriving while initialization is network-unproven.

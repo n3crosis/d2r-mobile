@@ -89,7 +89,7 @@ function addName(seen, name) {
   return folded;
 }
 /** Enumerates only root entries. Does not recurse or open unrelated files. */
-export async function discoverNspFolder(directory, { signal } = {}) {
+export async function discoverNspFolder(directory, { signal, onProgress } = {}) {
   const checkAbort = () => {
     if (signal?.aborted) throw new DOMException("Folder check cancelled.", "AbortError");
   };
@@ -99,6 +99,19 @@ export async function discoverNspFolder(directory, { signal } = {}) {
   const seen = new Set();
   const records = new Map();
   let count = 0;
+  const progress = () => {
+    try {
+      onProgress?.({
+        scannedEntries: count,
+        nspCount: [...records.keys()].filter((name) => name.endsWith(".nsp")).length,
+        prodKeysFound: records.has("prod.keys"),
+        titleKeysFound: records.has("title.keys"),
+      });
+    } catch {
+      /* Read-only progress observers must not change input validation. */
+    }
+  };
+  progress();
   for await (const [name, handle] of directory.entries()) {
     checkAbort();
     if (++count > NSP_INPUT_LIMITS.directoryEntries)
@@ -111,6 +124,7 @@ export async function discoverNspFolder(directory, { signal } = {}) {
       records.set(folded, await handle.getFile());
       checkAbort();
     }
+    progress();
   }
   checkAbort();
   return finishDiscovery(records);

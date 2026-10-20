@@ -1,5 +1,6 @@
 import { loadPyodide } from "./vendor/pyodide/pyodide.mjs";
 import * as kernels from "./generated/art-kernels.mjs";
+import { hasAssetTransform, executeAssetTransform } from "../../asset-transforms-js/transforms.mjs";
 let runtime;
 async function initialize() {
   const py = await loadPyodide({ indexURL: new URL("./vendor/pyodide/", import.meta.url).href });
@@ -9,9 +10,6 @@ async function initialize() {
     "art_pixels.py",
     "native_functions.py",
     "core.py",
-    "derived.py",
-    "vault_original.py",
-    "vault.py",
     "native_art_original.py",
     "native_art.py",
     "hud_original.py",
@@ -36,6 +34,15 @@ async function initialize() {
   }
   await py.runPythonAsync("from core import execute");
   return py;
+}
+function postResult(id, result) {
+  const transfers = [];
+  for (const [name, bytes] of Object.entries(result.files)) {
+    const copy = new Uint8Array(bytes);
+    result.files[name] = copy.buffer;
+    transfers.push(copy.buffer);
+  }
+  self.postMessage({ id, ok: true, result }, transfers);
 }
 // Serial queue avoids concurrent Python globals and double initialization.
 let queue = Promise.resolve();
@@ -62,6 +69,11 @@ self.onmessage = ({ data }) => {
           1024
       )
         throw new Error("Input exceeds operation byte limit");
+      if (hasAssetTransform(operation)) {
+        const result = await executeAssetTransform(operation, payload, options);
+        postResult(id, result);
+        return;
+      }
       const py = await (runtime ??= initialize());
       py.globals.set("_op", operation);
       py.globals.set("_payload", new Uint8Array(payload));
@@ -72,13 +84,7 @@ self.onmessage = ({ data }) => {
           'execute(_op, bytes(_payload), __import__("json").loads(_options_json))',
         );
         const result = proxy.toJs({ dict_converter: Object.fromEntries });
-        const transfers = [];
-        for (const [name, bytes] of Object.entries(result.files)) {
-          const copy = new Uint8Array(bytes);
-          result.files[name] = copy.buffer;
-          transfers.push(copy.buffer);
-        }
-        self.postMessage({ id, ok: true, result }, transfers);
+        postResult(id, result);
       } finally {
         proxy?.destroy();
         py.globals.delete("_op");

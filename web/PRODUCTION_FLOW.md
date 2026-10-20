@@ -21,11 +21,18 @@ chain, provided the complete normalized shader-source digest matches SHADER_SRC.
 The browser preserves that digest gate, pinned shell hash, and target checks.
 Relabeling cannot accept differing shader sources.
 
-Bulk RomFS is exported directly into a fresh resource folder alongside the IPA,
-streaming authenticated chunks while the isolated extraction session is alive.
-The user chooses a separate empty output folder before keys are read. Export runs
+Bulk RomFS is exported directly into a fresh `D2R-resources-<UUID>` child of the
+selected input folder, streaming authenticated chunks while the isolated
+extraction session is alive. The single folder picker requests read/write
+permission; original NSPs and key files are never written. Root-only input
+discovery ignores generated subtrees, and subsequent runs create new children.
+Export runs
 only after generated-content and assembly validation, and completes before IPA
-commit. The resource exporter marks incomplete transfers; a later IPA failure
+commit. The validated IPA is published as a bounded Blob for a normal browser
+download, not written to the input directory. Its destination follows browser
+settings; a visible Download IPA link retains its object URL for retries until
+the page is disposed or the URL is replaced. The resource exporter marks
+incomplete transfers; a later IPA failure
 does not invalidate an independently completed resource folder. Users copy the
 resource folder into the installed app’s Files folder. This preserves the native
 shell layout without requiring external extraction tools or bundling huge game

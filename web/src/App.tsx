@@ -21,6 +21,13 @@ type LoadingProgress = {
   totalFiles: number;
   label: string;
 };
+type FolderProgress = {
+  nspCount: number;
+  prodKeysFound: boolean;
+  titleKeysFound: boolean;
+};
+const folderSummary = (progress: FolderProgress) =>
+  `${progress.nspCount} NSP file(s); prod.keys ${progress.prodKeysFound ? "found" : "missing"}; title.keys ${progress.titleKeysFound ? "found" : "missing"}.`;
 const megabytes = (bytes: number) => `${(bytes / 1_000_000).toFixed(1)} MB`;
 export default function App() {
   const [loading, setLoading] = useState<LoadingProgress | null>(null);
@@ -29,10 +36,14 @@ export default function App() {
   const [ready, setReady] = useState(false),
     [busy, setBusy] = useState(false);
   const [folder, setFolder] = useState<FileSystemDirectoryHandle | null>(null);
-  const [outputFolder, setOutputFolder] = useState<FileSystemDirectoryHandle | null>(null);
+  const [download, setDownload] = useState<{ url: string; fileName: string } | null>(null);
+  const [finished, setFinished] = useState(false);
+  const downloadUrl = useRef<string | null>(null);
+  const mounted = useRef(true);
   const packager = useRef<Packager | null>(null),
     cancellation = useRef<AbortController | null>(null);
   useEffect(() => {
+    mounted.current = true;
     const controller = new AbortController();
     cancellation.current = controller;
     const digest = document.querySelector<HTMLMetaElement>(
@@ -73,43 +84,66 @@ export default function App() {
         }
       });
     return () => {
+      mounted.current = false;
       controller.abort();
+      cancellation.current?.abort();
       packager.current?.close();
+      if (downloadUrl.current) URL.revokeObjectURL(downloadUrl.current);
     };
   }, []);
   async function choose() {
-    if (!ready || !browser.showDirectoryPicker) return;
+    if (!ready || busy || !browser.showDirectoryPicker) return;
+    const previousStatus = status;
+    const controller = new AbortController();
+    cancellation.current = controller;
+    let selectedName = "";
+    let progress: FolderProgress = {
+      nspCount: 0,
+      prodKeysFound: false,
+      titleKeysFound: false,
+    };
+    setBusy(true);
+    setStatus("Waiting for folder selection…");
     try {
-      const selected = await browser.showDirectoryPicker({ mode: "read" });
-      setBusy(true);
-      const inputs = await discoverNspFolder(selected, { signal: cancellation.current?.signal });
+      const selected = await browser.showDirectoryPicker({ mode: "readwrite" });
+      controller.signal.throwIfAborted();
+      selectedName = selected.name;
+      setFolder(null);
+      setStatus(`Checking ${selected.name}…`);
+      await discoverNspFolder(selected, {
+        signal: controller.signal,
+        onProgress: (event: FolderProgress) => {
+          progress = event;
+          setStatus(`Checking ${selected.name}… ${folderSummary(event)}`);
+        },
+      });
       setFolder(selected);
-      setStatus(`${inputs.nsps.length} NSP file(s) found with both key files.`);
+      setStatus(`${selected.name}: ${folderSummary(progress)} Ready to generate.`);
     } catch (error) {
-      if (!(error instanceof DOMException && error.name === "AbortError"))
-        setStatus("Choose one folder containing the NSP files, prod.keys and title.keys.");
+      if (error instanceof DOMException && error.name === "AbortError") {
+        if (!controller.signal.aborted) setStatus(previousStatus);
+      } else {
+        setFolder(null);
+        const code = (error as { code?: string })?.code;
+        const permissionError =
+          error instanceof DOMException &&
+          ["NotAllowedError", "SecurityError"].includes(error.name);
+        const reason =
+          code === "MISSING_INPUT"
+            ? "Put the missing files directly inside this folder, not in a subfolder."
+            : permissionError
+              ? "Choose the folder again and allow access to read inputs and save the resource subfolder."
+              : code && error instanceof Error
+                ? error.message
+                : "The folder could not be read. Check access and choose it again.";
+        setStatus(`${selectedName ? `${selectedName}: ${folderSummary(progress)} ` : ""}${reason}`);
+      }
     } finally {
       setBusy(false);
     }
   }
-  async function chooseOutput() {
-    if (!ready || !browser.showDirectoryPicker) return;
-    try {
-      const selected = await browser.showDirectoryPicker({ mode: "readwrite" });
-      if (
-        folder &&
-        ((await folder.resolve(selected)) !== null || (await selected.resolve(folder)) !== null)
-      )
-        throw new Error("OUTPUT_OVERLAP");
-      setOutputFolder(selected);
-      setStatus("Output folder selected. Use an empty folder with enough free space for the game.");
-    } catch (error) {
-      if (!(error instanceof DOMException && error.name === "AbortError"))
-        setStatus("Choose a separate empty output folder, outside the input folder.");
-    }
-  }
   async function generate() {
-    if (!folder || !outputFolder || !packager.current) return;
+    if (!folder || !packager.current) return;
     setBusy(true);
     setReady(false);
     try {
@@ -117,22 +151,40 @@ export default function App() {
       cancellation.current = controller;
       const result = await packager.current.generate({
         input: folder,
-        outputDirectoryHandle: outputFolder,
         signal: controller.signal,
         onProgress: (event: { label: string }) => setStatus(event.label),
       });
+      if (!mounted.current) return;
+      const url = URL.createObjectURL(result.download.blob);
+      if (downloadUrl.current) URL.revokeObjectURL(downloadUrl.current);
+      downloadUrl.current = url;
+      setDownload({ url, fileName: result.download.fileName });
       setStatus(
-        `Unsigned IPA and game resources saved. Copy ${result.resources.directoryName} into the app’s Files folder after signing and installing the IPA. Game compatibility is not yet verified.`,
+        `IPA ready to download. Resources saved in ${folder.name}/${result.resources.directoryName}. Copy that resource folder into the app’s Files folder after signing and installing the IPA. Game compatibility is not yet verified.`,
       );
+      // Some browsers suppress downloads initiated after lengthy async work.
+      // Keep the same URL available in the visible Download IPA link for retry.
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = result.download.fileName;
+      try {
+        document.body.append(link);
+        link.click();
+      } catch {
+        // The visible link remains usable even if automatic initiation fails.
+      } finally {
+        link.remove();
+      }
     } catch (error) {
       const report = (error as { report?: { stage?: string; code?: string } })?.report;
       setStatus(
         report?.code === "CANCELLED"
           ? "Cancelled. Reload to start again."
-          : `Could not finish${report?.stage ? ` (${report.stage})` : ""}. No completed IPA was saved. Resources may already have been exported; check the output folder. Reload to try again.`,
+          : `Could not finish${report?.stage ? ` (${report.stage})` : ""}. No completed IPA is available. Resources may already have been exported; check for a D2R-resources subfolder inside ${folder.name}. Reload to try again.`,
       );
     } finally {
       setBusy(false);
+      setFinished(true);
     }
   }
   return (
@@ -150,13 +202,7 @@ export default function App() {
             <Button variant="outline" onClick={() => void choose()} disabled={!ready || busy}>
               Choose folder
             </Button>
-            <Button variant="outline" onClick={() => void chooseOutput()} disabled={!ready || busy}>
-              Choose output folder
-            </Button>
-            <Button
-              onClick={() => void generate()}
-              disabled={!ready || !folder || !outputFolder || busy}
-            >
+            <Button onClick={() => void generate()} disabled={!ready || !folder || busy}>
               Generate unsigned IPA
             </Button>
             {busy && (
@@ -172,6 +218,19 @@ export default function App() {
               </Button>
             )}
           </div>
+          {download && (
+            <div className="space-y-2">
+              <Button asChild>
+                <a href={download.url} download={download.fileName}>
+                  Download IPA
+                </a>
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Your browser controls where the IPA is saved. If the download did not start, use
+                this button.
+              </p>
+            </div>
+          )}
           <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
             {status}
           </p>
@@ -201,13 +260,14 @@ export default function App() {
               )}
             </div>
           )}
-          {loadFailed && (
+          {(loadFailed || finished) && (
             <Button variant="outline" onClick={() => window.location.reload()}>
-              Reload and retry
+              {loadFailed ? "Reload and retry" : "Reload to start again"}
             </Button>
           )}
           <p className="text-xs text-muted-foreground">
-            Unsigned IPA plus a separate game-resource folder. Files never leave this device.
+            The IPA downloads normally. Large game resources stream to a new subfolder inside your
+            selected folder. Existing NSPs and keys are not changed. Files never leave this device.
           </p>
         </CardContent>
       </Card>

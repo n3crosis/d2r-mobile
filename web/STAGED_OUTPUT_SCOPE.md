@@ -1,8 +1,9 @@
 # Browser staged output scope
 
 `browser-staged-output.mjs` supplies only the coordinator's `createOutput` and
-`validateArchive` adapters. It is not connected to production UI and does not
-establish working NSP-to-IPA conversion, signing, installability or iOS support.
+`validateArchive` adapters. Production uses `browser-blob-output.mjs` to wrap
+this transaction with a bounded IPA Blob destination. This does not establish
+working NSP-to-IPA conversion, signing, installability or iOS support.
 
 ## Caller contract
 
@@ -45,7 +46,11 @@ establish working NSP-to-IPA conversion, signing, installability or iOS support.
    browser close cannot promise OS-level rollback.
 
 Reads and writes are bounded to 4 MiB; metadata and entry counts have independent
-limits. No whole archive is retained in memory. Cancellation is checked around
+limits. The direct file adapter does not retain a whole archive in memory.
+The production Blob wrapper is capped at 512 MiB, snapshots bounded chunks into
+immutable Blobs, and publishes a completed download only after validation and
+owned-stage cleanup. It may retain the whole IPA in browser memory, never bulk
+game resources. Cancellation is checked around
 I/O and bounded reads. `abort()` requests cancellation and drains pending work
 before disposal; it cannot interrupt an already-started browser commit.
 
