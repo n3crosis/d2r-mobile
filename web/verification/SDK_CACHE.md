@@ -31,3 +31,8 @@ replace the existing compiler/source checks or manifest-verified staging.
 Local checks: workflow formatting, YAML parsing, Bash syntax of every `run` block,
 and `node --test web/tests/ci-policy.test.mjs`. These do not execute the hosted
 cache service, install SDKs or demonstrate browser/device behavior.
+
+Hosted evidence: [run 39492925067](https://github.com/n3crosis/d2r-mobile/actions/runs/39492925067)
+passed on 2026-10-20. The exact SDK download key initially missed and was saved
+successfully after the build. A later cache hit and timing savings are not yet
+established by that first run.

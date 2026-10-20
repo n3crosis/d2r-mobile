@@ -305,3 +305,12 @@ test("authenticated facade obtains config/TVFS itself and emits the same synthet
   await producer.dispose();
   await extraction.adapter.cleanup();
 });
+
+// 兼容重导出必须指向同一内核，而非包装或复制父级认证实现。
+// Compatibility reexports must identify the same core, not wrap or duplicate parent authentication.
+test("facade reexports the standalone core and cleanup limit unchanged", async () => {
+  const facade = await import("../astc-pack-jobs.mjs");
+  const core = await import("../astc-pack-jobs-core.mjs");
+  assert.equal(facade.createAstcPackJobsCore, core.createAstcPackJobsCore);
+  assert.equal(facade.ASTC_JOB_CLEANUP_WAIT_MS, core.ASTC_JOB_CLEANUP_WAIT_MS);
+});

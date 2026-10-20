@@ -4,6 +4,11 @@ import test, { mock } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { OPTIONAL_RUNTIME_ASSET_GROUPS } from "../../runtime-asset-groups.mjs";
+import {
+  RUNTIME_DIRECT_ASSETS,
+  RUNTIME_SEALED_WORKERS,
+  SOURCE_ONLY_RUNTIME_ASSETS,
+} from "../../runtime-build/payload-policy.mjs";
 const encode = (text) => new TextEncoder().encode(text),
   sha = (bytes) => createHash("sha256").update(bytes).digest("hex"),
   shell = encode("synthetic pinned shell");
@@ -55,6 +60,7 @@ class Worker {
   postMessage(message, transfers) {
     const cloned = structuredClone(message, { transfer: transfers });
     assert.equal(cloned.type, "initialize");
+    this.assetNames = cloned.assets.map(([name]) => name);
     queueMicrotask(() =>
       this.onmessage({ data: { id: 0, ok: true, result: { initialized: true } } }),
     );
@@ -73,7 +79,7 @@ globalThis.caches = {
   },
 };
 let serial = 0;
-async function setup({ enabled = false, absent = false } = {}) {
+async function setup({ enabled = false, absent = false, full = false } = {}) {
   state = {
     fetches: [],
     workers: [],
@@ -91,6 +97,32 @@ async function setup({ enabled = false, absent = false } = {}) {
     ],
     ["toolchain/asset-runtime-js/dist/png-codec.wasm", encode("synthetic public PNG wasm")],
   ]);
+  if (full) {
+    for (const path of [...RUNTIME_DIRECT_ASSETS, ...RUNTIME_SEALED_WORKERS])
+      if (!data.has(path)) data.set(path, encode(`synthetic ${path}`));
+    const closure = (directory, names) => {
+      const assets = names.map((path) => {
+        const bytes = encode(`synthetic ${directory}/${path}`);
+        data.set(`${directory}/${path}`, bytes);
+        return { path, bytes: bytes.length, sha256: sha(bytes) };
+      });
+      data.set(`${directory}/manifest.json`, encode(JSON.stringify({ version: 1, assets })));
+    };
+    closure("toolchain/asset-runtime-js/dist", [
+      "worker.mjs",
+      "image-kernels.wasm",
+      "png-codec.wasm",
+      "font-rasterizer.wasm",
+    ]);
+    closure("toolchain/offline-runtime-spike/dotnet-dist", [
+      "worker.mjs",
+      "dotnet.boot.js",
+      "dotnet.js",
+      "dotnet.native.synthetic.js",
+      "dotnet.runtime.synthetic.js",
+      "runtime.wasm",
+    ]);
+  }
   if (!absent)
     for (const path of OPTIONAL_RUNTIME_ASSET_GROUPS["legacy-astc"])
       data.set(path, encode(`synthetic ${path}`));
@@ -109,8 +141,7 @@ async function setup({ enabled = false, absent = false } = {}) {
     },
     raw = encode(JSON.stringify(manifest));
   data.set("runtime-manifest.json", raw);
-  state.expectedFetches =
-    5 + (enabled && !absent ? OPTIONAL_RUNTIME_ASSET_GROUPS["legacy-astc"].length : 0);
+  state.expectedFetches = 1 + assets.filter((asset) => enabled || !asset.optionalGroup).length;
   globalThis.fetch = async (url) => {
     const path = new URL(url).pathname.slice("/runtime/".length);
     state.fetches.push(path);
@@ -124,7 +155,7 @@ async function setup({ enabled = false, absent = false } = {}) {
     options: {
       baseUrl: "https://example.test/runtime/",
       manifestSha256: sha(raw),
-      components: ["program"],
+      ...(full ? {} : { components: ["program"] }),
       signal: state.signal,
       ...(enabled ? { optionalGroups: ["legacy-astc"] } : {}),
     },
@@ -195,4 +226,50 @@ test("cleanup failure remains awaitable while runtime identity is revoked", asyn
   assert.throws(() => assertSealedRuntime(runtime), /live verified/);
   assert.throws(() => runtime.createAstcProducerClient(), /unavailable/);
   await assert.rejects(closing, /synthetic cleanup failure/);
+});
+test("every production plan initializes from retained assembly paths without raw client sources", async () => {
+  const { prepareSealedRuntime, options, data } = await setup({ enabled: true, full: true });
+  assert.ok(SOURCE_ONLY_RUNTIME_ASSETS.every((path) => !data.has(path)));
+  const runtime = await prepareSealedRuntime(options);
+  assert.deepEqual(Object.keys(runtime.initialized), [
+    "assets",
+    "translator",
+    "texture",
+    "extraction",
+    "spirvCross",
+    "program",
+    "astcProducer",
+  ]);
+  assert.equal(state.workers.length, 7);
+  assert.equal(state.fetches.length, state.expectedFetches);
+  assert.equal(state.helperCalls, 1);
+  assert.deepEqual(
+    state.workers.slice(0, 6).map((worker) => worker.assetNames),
+    [
+      ["image-kernels.wasm", "png-codec.wasm", "font-rasterizer.wasm"],
+      [
+        "dotnet.boot.js",
+        "dotnet.js",
+        "dotnet.native.synthetic.js",
+        "dotnet.runtime.synthetic.js",
+        "runtime.wasm",
+      ],
+      [
+        "texture.mjs",
+        "texture.wasm",
+        "bc3.wasm",
+        "browser-texture.mjs",
+        "browser-texture-encoder.mjs",
+      ],
+      ["hactool-boundary.wasm"],
+      ["spirv-cross.wasm"],
+      ["capstone-lz4.wasm"],
+    ],
+  );
+  for (const path of SOURCE_ONLY_RUNTIME_ASSETS)
+    assert.throws(() => runtime.readPublicAsset(path), /Missing verified runtime asset/);
+  for (const path of [...RUNTIME_DIRECT_ASSETS, ...RUNTIME_SEALED_WORKERS])
+    assert.deepEqual(runtime.readPublicAsset(path), data.get(path));
+  await runtime.close();
+  assert.ok(state.workers.every((worker) => worker.terminated));
 });

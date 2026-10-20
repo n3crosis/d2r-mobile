@@ -1,7 +1,7 @@
 // 从预验证公开字节初始化固定编码器，然后串行生成私有补充包；仅供已密封加载器使用。
 // Initialize fixed codecs from preverified public bytes, then serially produce a private pack for the sealed loader.
 import { createArchiveReadRpcClient } from "../archive-read-rpc.mjs";
-import { createAstcPackJobsCore } from "../astc-pack-jobs.mjs";
+import { createAstcPackJobsCore } from "../astc-pack-jobs-core.mjs";
 import { createRawFileStage } from "../raw-file-stage.mjs";
 import { writeCascPack } from "../casc-pack-writer.mjs";
 import { encodeWithModule } from "../toolchain/astc-encoder-wasm/contract.mjs";

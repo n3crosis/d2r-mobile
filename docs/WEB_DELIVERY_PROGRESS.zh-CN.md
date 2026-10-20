@@ -4,20 +4,23 @@ English: [WEB_DELIVERY_PROGRESS.md](WEB_DELIVERY_PROGRESS.md)
 
 ## 最近一次已验证的发布
 
-[提交 4b2fdc7](https://github.com/n3crosis/d2r-mobile/commit/4b2fdc76715e8d698484016502de37f3c9d2243e)
-通过[完整 Verify 构建](https://github.com/n3crosis/d2r-mobile/actions/runs/39490038879)，
-并于 2026-10-20 20:21 UTC 发布到既有的私有
+[提交 c49368d](https://github.com/n3crosis/d2r-mobile/commit/c49368daae14b8874e4211892b46dbd1a4aafc4b)
+通过[完整 Verify 构建](https://github.com/n3crosis/d2r-mobile/actions/runs/39492925067)，
+并于 2026-10-20 20:39 UTC 发布到既有的私有
 [预览站点](https://d2r-ipa-packager.nicekrill34.chatgpt.site)。
-已验证产物为 22,202,166 字节（压缩 ZIP 约 21.2 MiB，包含两种外壳目标），包含 .NET，
+已验证产物为 22,206,196 字节（压缩 ZIP 约 21.2 MiB，包含两种外壳目标），包含 .NET，
 不含 Python 运行时、包或脚本。这是归档大小，不是浏览器内存测量。
 
 该版本实现单目录本体/更新/可选 DLC 转换、可选 `title.keys` 与内嵌通用票据处理、
 资源子目录输出和有上限的 Blob IPA 下载。目标为 Windows/macOS 桌面 Chromium。
 页面可选择 iOS 26 或 iOS 18；默认路径仍要求 BC 纹理支持。
 较旧 GPU 实验选项须在选择私有文件前启用；它生成 ASTC 覆盖层并单独导出 Legacy Device Pack。
-每次仅下载所选外壳及通用运行时：iOS 26 为 17,026,376 字节，iOS 18 为
-17,022,459 字节（约 16.24 MiB，不含前端文件）。实验选项额外下载 121,268 字节（约 118 KiB），
-iOS 26 合计 17,147,644 字节，iOS 18 合计 17,143,727 字节。
+显式跳过资源导出选项可避免为同一游戏/更新/DLC 重复写入原始资源；
+它不验证设备文件，也不跳过 Legacy Device Pack。浏览器存储估计仅供参考，
+不代表所选输出磁盘的可用空间。
+每次仅下载所选外壳及通用运行时：iOS 26 为 17,029,181 字节，iOS 18 为
+17,025,264 字节（约 16.24 MiB，不含前端文件）。实验选项额外下载 121,607 字节（约 119 KiB），
+iOS 26 合计 17,150,788 字节，iOS 18 合计 17,146,871 字节。
 CI 已通过不透明模块 URL 完成真实 WASM 编码的 16 个合成夹具 / 32 次调用；
 这不等于浏览器、真实游戏或设备验证。
 见[实现与验收](WEB_IPA_PACKAGER.zh-CN.md)。

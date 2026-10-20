@@ -31,16 +31,17 @@ JSON 保留已有 16 MiB 输入、32 MiB 输出上限；输入输出缓冲用后
 
 ## 工作线程边界
 
-`createAstcPackJobsCore({ selected, vfs, openRecord, ...options }, dependencies)`
-是内部、不授予认证的内核。selected 包含有界纹理和最后描述缓存句柄；openRecord
+`astc-pack-jobs-core.mjs` 持有
+`createAstcPackJobsCore({ selected, vfs, openRecord, ...options }, dependencies)`，
+它是内部、不授予认证的内核。selected 包含有界纹理和最后描述缓存句柄；openRecord
 仅解析受信任父级签发句柄，返回 `{ source, record }`。在线程中，源必须是绑定的
 反向读取 RPC 能力；记录元数据来自父级初始化，不来自用户 EKey 或线程路径请求。
 内核接管 VFS 字节，完成、取消或释放后清零；它本身不建立来源证明，不能把合成
 执行成功称为提取认证。
 
-固定公开外观目前可同步用于测试。重型 CFT、解码、纹理及描述缓存处理最终必须
-在独立线程中执行；原始 WeakMap 令牌留在父级，不可克隆。暂存和转换依赖注入仅
-供受信任代码。模块尚不实现该线程生命周期或 UI 集成。
+`astc-pack-jobs-core.mjs` 持有原有内核与清理常量。`astc-pack-jobs.mjs` 保留固定认证导入，并重导出同一个内核函数与常量以兼容既有 API。生成器线程直接导入内核，不克隆父级 WeakMap 身份，也不携带 UI 或认证依赖图。现有 Bun 工作线程构建会在加载时拒绝这些禁止依赖，不使用 PURE 注解，也不改变运行语义。父级加载器及原始发布模块依赖不变。生命周期接线见 [ASTC_PRODUCER.zh-CN.md](ASTC_PRODUCER.zh-CN.md)。
+
+以 c49368d 产物为基线，Bun 1.4.3 的线程大小从 89,189 降至 55,837 字节，减少 33,352 字节（37.4%）；Node gzip 级别 9 从 31,096 降至 19,342 字节。结果没有未解析字面量导入，也没有加载父级认证或 UI 图。这是当前源码的本地构建测量，不是已部署产物或已测量的浏览器内存降幅。编码器字节、固定版本与收据未变化。
 
 `node --test web/tests/astc-pack-jobs.test.mjs` 使用合成 RomFS/config/TVFS、
 真实记录校验和转换结构，搭配模拟 ASTC 编码器及内存暂存。覆盖单暂存峰值、每条

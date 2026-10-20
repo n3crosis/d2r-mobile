@@ -9,6 +9,29 @@ for (const name of ["nsp-worker", "cross-worker", "program-worker", "astc-produc
   const source = name === "astc-producer-worker" ? `../sealed-runtime/${name}.mjs` : `${name}.mjs`;
   const result = await globalThis.Bun.build({
     entrypoints: [fileURLToPath(new URL(source, import.meta.url))],
+    // ASTC 工作者不能意外携带认证门面或 UI 图；在加载阶段拒绝，而非用 PURE 注解隐藏副作用。
+    // Reject auth facade/UI graph loads in the ASTC worker rather than hiding side effects with PURE annotations.
+    plugins:
+      name === "astc-producer-worker"
+        ? [
+            {
+              name: "astc-core-boundary",
+              setup(build) {
+                build.onLoad(
+                  {
+                    filter:
+                      /\/(?:astc-pack-jobs|extraction-job-adapter|extraction-worker-client|extraction-errors|i18n|i18n-catalog|casc-overlay-writer)\.mjs$/,
+                  },
+                  () => {
+                    throw new Error(
+                      "ASTC worker must not load parent authentication or UI modules",
+                    );
+                  },
+                );
+              },
+            },
+          ]
+        : [],
     outdir,
     naming: `${name}.mjs`,
     target: "browser",

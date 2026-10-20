@@ -5,7 +5,7 @@ English: [WEB_PR_READINESS.md](WEB_PR_READINESS.md)
 本清单补充但不替代或放宽[参与开发要求](../CONTRIBUTING.zh-CN.md)
 与 [PR 模板](../.github/PULL_REQUEST_TEMPLATE.md)，不代表已经可以提交 PR。
 只有在检查准确的改动并记录版本、平台和实际输出后才能勾选。仅下文明示记录的源码检查报告为已执行。
-4b2fdc7 的完整浏览器构建与发布已通过；后续修改仍需各自检查。
+c49368d 的完整浏览器构建与发布已通过；后续修改仍需各自检查。
 游戏/设备测试和截图仍待补充。本次工作没有创建 PR。
 
 ## 改了什么 / 为什么

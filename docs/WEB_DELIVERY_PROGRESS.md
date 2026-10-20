@@ -4,11 +4,11 @@
 
 ## Latest verified publication
 
-[Commit 4b2fdc7](https://github.com/n3crosis/d2r-mobile/commit/4b2fdc76715e8d698484016502de37f3c9d2243e)
-passed the [full Verify build](https://github.com/n3crosis/d2r-mobile/actions/runs/39490038879)
-and was published on 2026-10-20 at 20:21 UTC to the existing private
+[Commit c49368d](https://github.com/n3crosis/d2r-mobile/commit/c49368daae14b8874e4211892b46dbd1a4aafc4b)
+passed the [full Verify build](https://github.com/n3crosis/d2r-mobile/actions/runs/39492925067)
+and was published on 2026-10-20 at 20:39 UTC to the existing private
 [preview Site](https://d2r-ipa-packager.nicekrill34.chatgpt.site).
-The verified artifact is 22,202,166 bytes (about 21.2 MiB compressed ZIP, containing both shell targets), includes
+The verified artifact is 22,206,196 bytes (about 21.2 MiB compressed ZIP, containing both shell targets), includes
 .NET, and contains no Python runtime, packages or scripts. This is archive size,
 not a browser RAM measurement.
 
@@ -17,11 +17,14 @@ optional `title.keys` with embedded common-ticket handling, a resource child
 folder and bounded Blob IPA download. Desktop Chromium on Windows/macOS is the
 target. The page selects iOS 26 or iOS 18; the default path still requires BC texture support.
 The experimental older-GPU option must be selected before private files; it generates
-ASTC overlays and exports a separate Legacy Device Pack.
-Each selection downloads only its own shell and common runtime assets: 17,026,376
-bytes for iOS 26, or 17,022,459 bytes for iOS 18 (about 16.24 MiB, excluding
-frontend files). Selecting the experimental option adds 121,268 bytes (about 118 KiB), for
-17,147,644 bytes on iOS 26 or 17,143,727 on iOS 18. Actual WASM encoding
+ASTC overlays and exports a separate Legacy Device Pack. An explicit resource-export
+skip avoids rewriting original resources for the same game/update/DLC; it does not
+verify device files or skip the Legacy Device Pack. Browser storage estimates are
+advisory only and do not report free space on the selected output disk.
+Each selection downloads only its own shell and common runtime assets: 17,029,181
+bytes for iOS 26, or 17,025,264 bytes for iOS 18 (about 16.24 MiB, excluding
+frontend files). Selecting the experimental option adds 121,607 bytes (about 119 KiB), for
+17,150,788 bytes on iOS 26 or 17,146,871 on iOS 18. Actual WASM encoding
 passed 16 synthetic fixtures / 32 calls through an opaque module URL in CI;
 this is not browser, real-game or device proof. See [implementation and acceptance](WEB_IPA_PACKAGER.md).
 

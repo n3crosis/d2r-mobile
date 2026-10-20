@@ -52,12 +52,12 @@ its File lease alive until packaging and final output commit finish. Await clien
 and session cleanup; `session.close()` invalidates the session and terminates
 workers immediately, while returning an observable cleanup promise.
 
-The raw producer client and its exact relative-import closure remain common
-bootstrap JavaScript. They contain no codec binaries and do not start the
-producer. They are not independently bundled with authentication modules: doing
-so would duplicate the private provenance registries. Only the isolated worker
-is bundled into the optional group. Assembly validates compiler/source receipts
-and SHA local source hashes before including the complete group.
+The producer client and its authentication dependencies share the common
+frontend bundle, preserving one set of private provenance registries. Their raw
+source copies are not runtime byte dependencies and are omitted from transport;
+the source modules remain in the repository. Only the isolated worker is bundled
+into the optional group. Assembly validates compiler/source receipts and SHA
+local source hashes before including the complete group.
 
 Focused tests use synthetic records/bytes and isolated bootstrap mocks. They
 establish inventory closure, default-download isolation, deduplication,
@@ -76,6 +76,10 @@ Two isolated frontend builds differed only by substituting a measurement-only
 stub for the producer client. The real client adds 15,880 minified bytes and
 5,318 gzip bytes to the common frontend. Both builds emit one JavaScript bundle;
 ASTC/WASM codecs remain outside it. This measures shared client/ownership logic,
-not optional binary transfer size or a deployed release total. The complete raw
-`clients.mjs` dependency graph was also audited with Bun's import scanner: all
-30 exact source/JSON paths are included in the package allowlist.
+not optional binary transfer size or a deployed release total. The earlier raw
+`clients.mjs` import-closure audit established dependency completeness, not a
+production consumer for those transported sources. Production imports that
+client at frontend build time; its runtime plans consume only verified worker,
+codec and data bytes. The current assembly omits 48 audited source-only copies,
+while retaining every component-submanifest asset, license, WASM and provenance
+record. See `runtime-build/payload-policy.mjs` for the exact build-only policy.

@@ -76,18 +76,19 @@ public assets are still verified before initialization.
 
 ## Packaging contract and unresolved evidence
 
-The assembly inventory preserves `web`-relative paths under `runtime/`. These
-integration sources and `native-art-texture.mjs` must be inventoried alongside
-existing texture adapters. NSP, program and Cross are supplied by the remaining
-runtime worker owner as `sealed-workers/{nsp,program,cross}-worker.mjs`. Their init
+The inventory uses logical `web`-relative paths, transported in verified
+content-addressed payloads. Integration clients and `native-art-texture.mjs` are
+compiled into the frontend, not loaded from raw runtime source copies. The
+texture worker still consumes its factory and decoder/encoder adapter bytes;
+those exact dynamic dependencies remain inventoried. NSP, program and Cross use
+`sealed-workers/{nsp,program,cross}-worker.mjs`. Their init
 uses `{id:0,type:'initialize',assets:[[name,ArrayBuffer],...]}` and returns a real
 `{id:0,ok:true,result:{initialized:true}}` after initialization. Missing bundles
 or dependencies fail before initialization; there are no substitute implementations.
 
-Program uses the adapted, verified offline Pyodide runtime bytes plus
-capstone-lz4.wasm, patch_nso.py and python-adapters.py. Its fixture-only manifest
-must not be loaded after initialization. NSP/Cross use their explicitly supplied WASM
-bytes. The exact complete-title catalog, shell recipe and shader metadata remain
+Program uses its bundled JavaScript rewrite closure plus explicitly supplied
+`capstone-lz4.wasm`; no Python runtime is loaded. NSP/Cross likewise use their
+bundled JavaScript and explicitly supplied WASM bytes. The exact complete-title catalog, shell recipe and shader metadata remain
 separate authenticated inputs; these factories do not fabricate them.
 
 The earlier texture/Pyodide isolation proofs do not verify this unified factory.

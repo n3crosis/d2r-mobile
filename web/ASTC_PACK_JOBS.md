@@ -39,7 +39,7 @@ not a verified final artifact.
 
 ## Worker boundary
 
-`createAstcPackJobsCore({ selected, vfs, openRecord, ...options }, dependencies)` is
+`astc-pack-jobs-core.mjs` owns `createAstcPackJobsCore({ selected, vfs, openRecord, ...options }, dependencies)`, which is
 an internal non-authenticating core. `selected` contains bounded texture and
 last-descriptor handles. `openRecord` resolves only handles issued by the trusted
 parent and returns `{ source, record }`. For a worker, sources must be bound
@@ -49,11 +49,20 @@ VFS bytes and wipes them on completion/cancel/disposal. It does not establish
 provenance itself. Never present its successful synthetic execution as extraction
 authentication.
 
-The fixed public facade remains usable synchronously for testing. Heavy CFT,
-decode, texture and descriptor work must eventually run in a dedicated worker;
-original WeakMap tokens stay in the parent and cannot be cloned. Dependency seams
-for staging, texture conversion and descriptor conversion are trusted code only.
-The module does not implement that worker lifecycle or UI integration yet.
+The fixed public facade in `astc-pack-jobs.mjs` retains its original authenticated
+imports and reexports the same core function and cleanup constant for compatibility.
+The producer worker imports the core module directly. This keeps parent WeakMap
+identity unchanged and prevents UI/authentication dependencies from entering the
+worker. The existing Bun worker build rejects those forbidden module loads before
+bundling; it does not use PURE annotations or change runtime semantics. Parent
+loader/raw package dependencies are unchanged. Lifecycle wiring is documented in
+[ASTC_PRODUCER.md](ASTC_PRODUCER.md).
+
+Bun 1.4.3 measurement against the c49368d artifact: 89,189 to 55,837 worker bytes
+(33,352 fewer, 37.4%); Node gzip level 9: 31,096 to 19,342 bytes. The resulting
+worker has zero unresolved literal imports and no loaded parent-auth/UI graph.
+These are local current-source build measurements, not a deployed artifact or a
+measured browser-memory reduction. Codec bytes, pins and receipts are unchanged.
 
 `node --test web/tests/astc-pack-jobs.test.mjs` uses synthetic RomFS/config/TVFS,
 real record verification and conversion structure with a fake ASTC encoder and

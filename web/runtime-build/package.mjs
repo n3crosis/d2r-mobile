@@ -6,6 +6,11 @@ import {
   validateAssetRuntimeInventory,
 } from "../toolchain/asset-runtime-js/payload-policy.mjs";
 import { createRuntimeTransport } from "./transport.mjs";
+import {
+  RUNTIME_DIRECT_ASSETS,
+  RUNTIME_SEALED_WORKERS,
+  assertNoSourceOnlyRuntimeAsset,
+} from "./payload-policy.mjs";
 import { resolveShellProfile } from "../shell-profiles.mjs";
 import { SHADER_CATALOG_SOURCES } from "../shader-catalog-adapter.mjs";
 import { OPTIONAL_RUNTIME_ASSET_GROUPS } from "../runtime-asset-groups.mjs";
@@ -66,10 +71,9 @@ export const SHELL_BUILD_INPUTS = Object.freeze(
     });
   }),
 );
-// 原始客户端和独立适配器保留相对导入；两处都携带同一份公开配置闭包。
-// Raw clients and standalone adapters retain relative imports; both carry the same public registry closure.
+// 保留两处已发布的外壳来源证据；前端和封闭工作线程已包含配置模块，不再传输其原始副本。
+// Retain both published shell-provenance layouts; registry modules are already bundled into the frontend and closed workers.
 const shellProfileSources = [
-  "shell-profiles.mjs",
   "toolchain/shell-release-evidence/v1.0.18.json",
   "toolchain/shell-release-evidence/v1.0.18-derived-capacities.mjs",
   "toolchain/shell-release-evidence/v1.0.18-ios18.json",
@@ -136,6 +140,7 @@ export async function assembleRuntime({ build } = {}) {
   async function add(path, bytes, source, optionalGroup) {
     safe(path);
     assertNoPythonRuntimeAsset(path);
+    assertNoSourceOnlyRuntimeAsset(path);
     const key = path.toLowerCase();
     if (
       seen.has(key) ||
@@ -200,65 +205,15 @@ export async function assembleRuntime({ build } = {}) {
   }
   try {
     const offline = "toolchain/offline-runtime-spike";
-    await sealed(`${offline}/dist`);
+    await sealed(`${offline}/dist`, { bootstrap: false });
     await sealed(ASSET_RUNTIME_DIRECTORY, {
       bootstrap: false,
       validate: validateAssetRuntimeInventory,
     });
-    await sealed(`${offline}/dotnet-dist`);
-    // 保留生产 worker 入口原有的相对 URL 布局。
-    // 不复制合成测试数据、验证 HTML、浏览器测试工具、原生二进制、构建缓存、密钥文件或用户选择的资源。
-    // Include production worker entry points with their original relative URL
-    // layout. Do not copy synthetic fixtures, proof HTML, browser harnesses,
-    // native binaries, build caches, key files or user-selected resources.
-    for (const path of [
-      "sealed-runtime/clients.mjs",
-      "astc-producer-client.mjs",
-      "astc-job-directory.mjs",
-      "archive-read-rpc.mjs",
-      "archive-reader.mjs",
-      "casc-logical-reader.mjs",
-      "casc-overlay-writer.mjs",
-      "checksum-verifier.mjs",
-      "extraction-job-adapter.mjs",
-      "extraction-worker-client.mjs",
-      "romfs-tree.mjs",
-      "toolchain/casc-overlay-js/overlay.mjs",
-      "vendor/spark-md5-3.0.2/spark-md5.mjs",
-      "runtime-asset-groups.mjs",
-      "toolchain/asset-runtime-js/payload-policy.mjs",
-      "toolchain/asset-runtime-js/contract.mjs",
-      "sealed-runtime/texture-worker.mjs",
-      "sealed-runtime/dotnet-worker.mjs",
-      "native-art-texture.mjs",
-      "nsp-input.mjs",
-      "extraction-errors.mjs",
-      "i18n.mjs",
-      "i18n-catalog.mjs",
-      "preflight.mjs",
-      "content-selection.mjs",
-      "d2r-expansion-policy.mjs",
-      "toolchain/nsp-extract-spike/extraction-worker.mjs",
-      "toolchain/nsp-extract-spike/extraction-engine.mjs",
-      "toolchain/nsp-extract-spike/browser-boundary.mjs",
-      "toolchain/nsp-extract-spike/dist/hactool-boundary.mjs",
-      "toolchain/nsp-extract-spike/dist/hactool-boundary.wasm",
-      "toolchain/nsp-extract-spike/dist/UPSTREAM_COMMIT",
-      "toolchain/texture-spike/browser-texture.mjs",
-      "toolchain/texture-spike/browser-texture-encoder.mjs",
-      "toolchain/texture-spike/dist/texture.mjs",
-      "toolchain/texture-spike/dist/texture.wasm",
-      "toolchain/texture-spike/dist/bc3.wasm",
-      "toolchain/texture-spike/dist/encoder-provenance.json",
-      "toolchain/spirv-cross-spike/wwwroot/worker.mjs",
-      "toolchain/spirv-cross-spike/wwwroot/convert.mjs",
-      "toolchain/spirv-cross-spike/wwwroot/spirv-contract.mjs",
-      "toolchain/spirv-cross-spike/wwwroot/replay-reflection.mjs",
-      "toolchain/spirv-cross-spike/wwwroot/spirv-cross.mjs",
-      "toolchain/spirv-cross-spike/wwwroot/spirv-cross.wasm",
-      "toolchain/spirv-cross-spike/wwwroot/SPIRV-Cross-LICENSE.txt",
-    ])
-      await copy(path);
+    await sealed(`${offline}/dotnet-dist`, { bootstrap: false });
+    // 直接复制真实字节加载依赖和来源记录；其余 JS 已在前端或封闭工作线程中打包。
+    // Copy actual byte-loader dependencies and provenance; other JS is bundled into the frontend or closed workers.
+    for (const path of RUNTIME_DIRECT_ASSETS) await copy(path);
     try {
       await copy("toolchain/spirv-cross-spike/wwwroot/SPIRV-Cross-NOTICE.txt");
     } catch (error) {
@@ -285,27 +240,6 @@ export async function assembleRuntime({ build } = {}) {
         sha256: hash(sourceBytes),
       });
     }
-    for (const name of [
-      "capstone-lz4.mjs",
-      "capstone-lz4.wasm",
-      "rewrite-core.mjs",
-      "worker.mjs",
-      "program-rewriter-adapter.mjs",
-      "program-release-catalog.mjs",
-      "guest-framework.mjs",
-      "toolchain-lock.json",
-    ])
-      await copy(`${program}/${name}`);
-    for (const name of [
-      "binary.mjs",
-      "arm64.mjs",
-      "relocations.mjs",
-      "rewrite.mjs",
-      "rules.mjs",
-      "rule-data.mjs",
-      "outputs.mjs",
-    ])
-      await copy(`${program}/js/${name}`);
     const asset = "toolchain/asset-generation-spike/public";
     // 生产只使用闭合 JS/WASM 资产运行时；旧 Python worker/vendor/generated 仅供手动参考。
     // Production uses only the closed JS/WASM asset runtime; legacy Python worker/vendor/generated mirrors are reference-only.
@@ -348,13 +282,8 @@ export async function assembleRuntime({ build } = {}) {
         throw new Error(`Public profile source drift: ${source}`);
       await add(`profile/${source.split("/").at(-1)}`, bytes, `repository/${source}`);
     }
-    for (const name of ["nsp-worker.mjs", "cross-worker.mjs", "program-worker.mjs"]) {
-      await copy(
-        `runtime-build/.build/sealed-workers/${name}`,
-        undefined,
-        `sealed-workers/${name}`,
-      );
-    }
+    for (const path of RUNTIME_SEALED_WORKERS)
+      await copy(`runtime-build/.build/${path}`, undefined, path);
     const astc = "toolchain/astc-encoder-wasm/dist",
       sha = "toolchain/sha256-stream-wasm",
       shaSourcePin = JSON.parse(await readFile(resolve(web, `${sha}/source-pin.json`), "utf8")),
@@ -400,7 +329,7 @@ export async function assembleRuntime({ build } = {}) {
       components: {
         extraction: {
           sealedEntry: "sealed-workers/nsp-worker.mjs",
-          entry: "toolchain/nsp-extract-spike/extraction-worker.mjs",
+          entry: "sealed-workers/nsp-worker.mjs",
           sealedJobAdapter: false,
         },
         texture: {
@@ -422,18 +351,18 @@ export async function assembleRuntime({ build } = {}) {
         },
         program: {
           sealedEntry: "sealed-workers/program-worker.mjs",
-          entry: `${program}/worker.mjs`,
+          entry: "sealed-workers/program-worker.mjs",
           sealedJobAdapter: false,
         },
         translator: {
           sealedEntry: "sealed-runtime/dotnet-worker.mjs",
-          entry: `${offline}/dotnet-dist/worker.mjs`,
+          entry: "sealed-runtime/dotnet-worker.mjs",
           sealedProof: `${offline}/dotnet-dist/manifest.json`,
           sealedJobAdapter: false,
         },
         spirvCross: {
           sealedEntry: "sealed-workers/cross-worker.mjs",
-          entry: "toolchain/spirv-cross-spike/wwwroot/worker.mjs",
+          entry: "sealed-workers/cross-worker.mjs",
           sealedJobAdapter: false,
         },
         astcProducer: {

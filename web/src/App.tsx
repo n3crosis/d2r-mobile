@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { prepareBrowserPackager } from "../browser-packager.mjs";
 import { DEFAULT_SHELL_PROFILE_ID } from "../shell-profiles.mjs";
 import { discoverNspFolder } from "../nsp-input.mjs";
+import { selectDefaultNspNames } from "../nsp-default-selection.mjs";
 import { readOpfsStorageAdvisory } from "../opfs-storage-advisory.mjs";
 import {
   packagingActivity,
@@ -254,9 +255,7 @@ export default function App() {
         },
       });
       const names = files.nsps.map((file) => file.name);
-      const base = names.filter((name) => /\[0100726014352000\]/iu.test(name));
-      const updates = names.filter((name) => /\[0100726014352800\]/iu.test(name));
-      const selectedNames = base.length === 1 && updates.length > 0 ? [...base, ...updates] : names;
+      const selectedNames = selectDefaultNspNames(names);
       setNspNames(names);
       setSelectedNsps(new Set(selectedNames));
       setFolder(selected);

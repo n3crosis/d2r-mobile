@@ -26,3 +26,7 @@ Action 固定为
 本地检查：工作流格式、YAML 解析、每个 `run` 块的 Bash 语法，以及
 `node --test web/tests/ci-policy.test.mjs`。这些检查不会执行托管缓存服务、安装 SDK，
 也不证明浏览器或设备行为。
+
+托管证据：[运行 39492925067](https://github.com/n3crosis/d2r-mobile/actions/runs/39492925067)
+于 2026-10-20 通过。准确的 SDK 下载缓存键首次未命中，构建后成功保存。
+该首次运行尚不能证明后续缓存命中或耗时收益。
