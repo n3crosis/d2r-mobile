@@ -149,7 +149,12 @@ export function createExtractionEngine(boundary, { newToken = () => crypto.rando
       }
       if (operation === "select") {
         requireState("inspected");
-        fields(payload.options ?? {}, ["baseVersion", "patchVersion", "dlcVersions"]);
+        fields(payload.options ?? {}, [
+          "baseVersion",
+          "patchVersion",
+          "dlcVersions",
+          "contentMode",
+        ]);
         selection = resolveD2rExpansionSelection(records, inventory, payload.options);
         // Require the known add-on's full measured NCA evidence and signed Data
         // header. This is package-input validation, not entitlement/ownership.

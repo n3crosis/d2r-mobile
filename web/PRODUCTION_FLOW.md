@@ -34,3 +34,14 @@ has validated this browser flow. ZIP32, in-memory stage budgets, OPFS quota and
 adapter limits can reject a genuine large build rather than silently truncate it.
 Production runtime compilation and initialization must still succeed in the
 published artifact; a successful source bundle is not game-compatibility proof.
+
+DLC is optional. The trusted production policy accepts base plus update packages,
+and accepts only the authenticated known DLC when supplied. The effective runtime
+mode comes from the authenticated selection, not a UI checkbox. For a no-DLC
+selection the original pinned shell executable is reverified and its unique
+source-identified ownership-cache initializer changes from -1 to 0. Exact SHA,
+symbol, section, preimage and deterministic result checks remain mandatory. The
+output records this bounded variant in `dm/content_mode.json`; all other shell
+bytes stay unchanged. The existing executable signature becomes stale and the
+IPA must be re-signed before installation, as with any unsigned output. This is
+source-backed behavior, not proof of base-only gameplay or runtime loading.

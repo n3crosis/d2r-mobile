@@ -12,6 +12,7 @@ import { createProductionShaderAdapter } from "./production-shaders.mjs";
 import { createBrowserStagedOutputAdapters } from "./browser-staged-output.mjs";
 import { planStagedZip } from "./staged-zip-validator.mjs";
 import { exportRomfsResources } from "./resource-folder-export.mjs";
+import { deriveD2rRuntimeContentMode } from "./d2r-runtime-content-mode.mjs";
 import { runPackagingJob } from "./packaging-job.mjs";
 
 function guestTarget(bytes) {
@@ -50,17 +51,21 @@ export async function prepareBrowserPackager({ manifestSha256, signal } = {}) {
   )
     throw new Error("BROWSER_UNSUPPORTED");
   const runtime = await prepareSealedRuntime({ baseUrl: "./runtime/", manifestSha256, signal });
-  let profile, program, assets, shaders;
+  let profile, program, assets, shaders, shellVariantBytes;
   const close = () => {
     program?.dispose();
     assets?.dispose();
     shaders?.dispose();
     profile?.close();
     runtime.close();
+    shellVariantBytes?.fill(0);
   };
   try {
     profile = await loadProductionProfile(runtime, { signal });
-    const extraction = createExtractionJobAdapter({ createWorker: runtime.createExtractionWorker });
+    const extraction = createExtractionJobAdapter({
+      createWorker: runtime.createExtractionWorker,
+      contentMode: profile.contentMode,
+    });
     program = createProgramRewriterAdapter({
       verifyProvenance: readAuthenticatedProgramModules,
       createWorker: runtime.createProgramWorker,
@@ -151,9 +156,59 @@ export async function prepareBrowserPackager({ manifestSha256, signal } = {}) {
           generateAssets: async (context) =>
             (await assets.generateAssets(context)).filter((e) => allowed(e.path)),
           generateShaders: (context) => shaders.generateShaders(context),
-          loadShell: async () => profile.shell,
-          async validateGenerated({ generatedEntries, signal }) {
+          async loadShell({ signal }) {
+            // Selection came from the independently authenticated extraction boundary.
+            readAuthenticatedAssets(authenticated, selected, { signal });
+            const path = "Payload/DmIOS.app/DmIOS";
+            const original = profile.shell.entries.find((entry) => entry.path === path);
+            if (!original) throw new Error("SHELL_EXECUTABLE_MISSING");
+            const bytes = new Uint8Array(original.size);
+            let offset = 0;
+            try {
+              for await (const chunk of original.chunks()) {
+                if (offset + chunk.length > bytes.length) throw new Error("SHELL_SIZE");
+                bytes.set(chunk, offset);
+                offset += chunk.length;
+              }
+              if (offset !== bytes.length) throw new Error("SHELL_SIZE");
+              const variant = await deriveD2rRuntimeContentMode(bytes, {
+                contentMode: selected.dlc.length === 0 ? "base-update-only" : "warlock",
+              });
+              shellVariantBytes = variant.bytes;
+              return {
+                ...profile.shell,
+                contentModeReceipt: variant.receipt,
+                entries: profile.shell.entries.map((entry) =>
+                  entry.path !== path
+                    ? entry
+                    : {
+                        ...entry,
+                        sha256: variant.receipt.sha256,
+                        async *chunks() {
+                          signal.throwIfAborted();
+                          yield shellVariantBytes;
+                        },
+                      },
+                ),
+              };
+            } finally {
+              bytes.fill(0);
+            }
+          },
+          async validateGenerated({ generatedEntries, shell, signal }) {
             signal.throwIfAborted();
+            if (!shell.contentModeReceipt) throw new Error("SHELL_CONTENT_MODE_UNBOUND");
+            const receiptBytes = new TextEncoder().encode(
+              JSON.stringify(shell.contentModeReceipt) + "\n",
+            );
+            generatedEntries.push({
+              path: "dm/content_mode.json",
+              size: receiptBytes.length,
+              mode: 0o644,
+              async *chunks() {
+                yield receiptBytes;
+              },
+            });
             const guest = generatedEntries.find(
               (e) => e.path === "Frameworks/Guest.framework/Guest",
             );
@@ -201,6 +256,7 @@ export async function prepareBrowserPackager({ manifestSha256, signal } = {}) {
           signal,
           onProgress,
           archiveFormat,
+          selectionOptions: { contentMode: profile.contentMode },
           secretLifetime: "archive",
           concurrency: 1,
         });

@@ -114,7 +114,8 @@ export default function App() {
         <CardHeader>
           <CardTitle>D2R Mobile</CardTitle>
           <CardDescription>
-            Put all NSP files, prod.keys and title.keys in one folder.
+            Put the base NSP, update NSP(s), prod.keys and title.keys in one folder. DLC is
+            optional.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

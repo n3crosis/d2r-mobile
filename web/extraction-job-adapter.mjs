@@ -5,7 +5,7 @@ import {
 import { indexRomfs } from "./romfs-tree.mjs";
 import { createCascLogicalAssets } from "./casc-logical-reader.mjs";
 import { REQUIRED_NSO_MODULES } from "./preflight.mjs";
-import { resolveD2rExpansionSelection } from "./d2r-expansion-policy.mjs";
+import { resolveD2rExpansionSelection, D2R_CONTENT_MODES } from "./d2r-expansion-policy.mjs";
 
 export const EXTRACTION_ADAPTER_CAPABILITIES = Object.freeze({
   authenticatedSelection: true,
@@ -71,6 +71,7 @@ export function readAuthenticatedAssets(extracted, selection, { signal } = {}) {
  */
 export function createExtractionJobAdapter({
   createWorker,
+  contentMode = "warlock",
   maxProgramBytes = 32 * 1024 * 1024,
   timeoutMs,
   operationTimeoutMs,
@@ -78,6 +79,7 @@ export function createExtractionJobAdapter({
 } = {}) {
   if (
     typeof createWorker !== "function" ||
+    !D2R_CONTENT_MODES.includes(contentMode) ||
     !Number.isSafeInteger(maxProgramBytes) ||
     maxProgramBytes < 1 ||
     maxProgramBytes > 64 * 1024 * 1024
@@ -163,6 +165,7 @@ export function createExtractionJobAdapter({
           fail("EXTRACTION_SELECTION_REJECTED");
         state.extracted = true;
         const options = {
+          contentMode,
           baseVersion: selection.base.version,
           patchVersion: selection.patch?.version,
           dlcVersions: Object.fromEntries(

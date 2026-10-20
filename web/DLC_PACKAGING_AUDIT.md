@@ -1,5 +1,9 @@
 # D2R expansion input audit
 
+Historical audit: the later user-directed optional-DLC policy and bounded
+no-DLC runtime derivation supersede the mandatory expansion requirements below.
+See [D2R_RUNTIME_CONTENT_MODE.md](D2R_RUNTIME_CONTENT_MODE.md) for current behavior.
+
 Repository inspection: 2026-10-20. This is a requirements audit, not enabled DLC
 support. No game packages, keys, tickets, or executable dumps were inspected.
 

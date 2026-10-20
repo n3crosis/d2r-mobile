@@ -3,6 +3,7 @@ import { ContentSelectionError, resolveContentSelection } from "./content-select
 export const D2R_APPLICATION_ID = 0x0100726014352000n;
 export const D2R_PATCH_ID = 0x0100726014352800n;
 export const D2R_WARLOCK_ID = 0x0100726014353001n;
+export const D2R_CONTENT_MODES = Object.freeze(["optional-warlock", "base-update-only", "warlock"]);
 
 /**
  * Local package-input policy, not legal ownership or ticket verification.
@@ -13,6 +14,9 @@ export const D2R_WARLOCK_ID = 0x0100726014353001n;
  * never a Program RomFS overlay. Exact executable allowlisting remains mandatory.
  */
 export function resolveD2rExpansionSelection(records, inventory, options = {}) {
+  const contentMode = options?.contentMode ?? "warlock";
+  if (!D2R_CONTENT_MODES.includes(contentMode))
+    throw new ContentSelectionError("D2R_CONTENT_MODE_INVALID", "Unsupported content mode.");
   const selection = resolveContentSelection(records, inventory, options);
   const reject = (code, message) => {
     throw new ContentSelectionError(code, message);
@@ -21,6 +25,16 @@ export function resolveD2rExpansionSelection(records, inventory, options = {}) {
     reject("D2R_APPLICATION_REQUIRED", "The supported D2R application is required.");
   if (!selection.patch || selection.patch.titleId !== D2R_PATCH_ID)
     reject("D2R_UPDATE_REQUIRED", "The supported D2R update input is required.");
+  if (
+    contentMode === "base-update-only" ||
+    (contentMode === "optional-warlock" && selection.dlc.length === 0)
+  ) {
+    if (selection.dlc.length)
+      reject("D2R_UNEXPECTED_EXPANSION", "This mode accepts only your base and update packages.");
+    // This selects input content only. The output shell must independently be
+    // configured to report zero add-ons; this does not change its native HLE.
+    return selection;
+  }
   if (!selection.dlc.length)
     reject("D2R_EXPANSION_REQUIRED", "Your Reign of the Warlock package input is required.");
   if (selection.dlc.length !== 1 || selection.dlc[0].titleId !== D2R_WARLOCK_ID)

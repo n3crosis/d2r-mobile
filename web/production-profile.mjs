@@ -36,7 +36,7 @@ export async function loadProductionProfile(runtime, { signal } = {}) {
     shaderKeys: catalog.keys,
     targetOS: { platform: "ios", minimumVersion: evidence.machOBuildVersions[0].minimumVersion },
     requiredPaths: evidence.requiredPaths,
-    extraFiles: ["dm/pack_info.txt"],
+    extraFiles: ["dm/pack_info.txt", "dm/content_mode.json"],
   };
   const trustedShell = {
     verified: true,
@@ -81,6 +81,7 @@ export async function loadProductionProfile(runtime, { signal } = {}) {
     hudPins,
   );
   return {
+    contentMode: "optional-warlock",
     derivedCounts: SHELL_DERIVED_CAPACITIES.counts,
     catalog,
     trustedShell,
