@@ -84,8 +84,18 @@ from the sibling shader-spike's committed exact dependency lockfile. Upstream
 SPIRV-Cross is Apache-2.0; its LICENSE (and NOTICE if present) is copied beside
 redistributed compiler output. Preserve those notices when hosting the bundle.
 
-Current local evidence: three Node tests pass, including the native Python
-reflection differential. The first CI run successfully built native and WASM compilers, then exposed an
-upstream CLI parsing detail: `--reflect` consumes an optional format argument.
-Both invocations now explicitly pass `--reflect json` with a regression assertion.
-Actual browser parity still awaits the corrected CI run; no local SDK was installed.
+## Verified run
+
+[CI run 39394114125](https://github.com/n3crosis/d2r-mobile/actions/runs/39394114125)
+passed on commit `212ce3aa756f963e5c3221ba0d2cc250329f178a` (2026-10-20).
+Native and WASM compiler builds, validated compute/fragment/storage fixtures,
+real Chromium worker MSL/upstream-reflection/native replay-field differential,
+invalid-input recovery and repeat-call determinism all passed. The synthetic
+bundle and evidence are in artifact `12251830112` (seven-day retention).
+Three local Node tests, including the original Python reflection differential,
+also pass. No local SDK was installed.
+
+The first run caught upstream CLI parsing behavior: `--reflect` consumes an
+optional format argument. Both paths now explicitly use `--reflect json` with a
+regression assertion. This successful synthetic check does not resolve the full
+production shell/source-chain conditions above or prove real-game compatibility.

@@ -1,7 +1,8 @@
 # Opt-in large-output foundation
 
-`zip64-writer.mjs` is a separate bounded streaming STORE ZIP64 writer. It is **not
-wired into the browser packager, resource export UI or IPA path**. Existing ZIP32
+`zip64-writer.mjs` is a bounded streaming STORE ZIP64 writer, available through
+explicit opt-in in the packaging coordinator with a required archive budget. It
+is **not wired into the UI or a complete IPA conversion path**. Default ZIP32
 limits and APIs are unchanged. This does not establish large-IPA installation
 compatibility, game conversion, device memory viability or a full export workflow.
 

@@ -1,14 +1,14 @@
-import { loadPyodide } from './vendor/pyodide/pyodide.mjs';
+import { loadPyodide } from "./vendor/pyodide/pyodide.mjs";
 let runtime;
 async function initialize() {
-  const py = await loadPyodide({ indexURL: new URL('./vendor/pyodide/', import.meta.url).href });
-  await py.loadPackage(['pillow', 'numpy'], { checkIntegrity: true });
-  for (const name of ['native_functions.py', 'core.py']) {
+  const py = await loadPyodide({ indexURL: new URL("./vendor/pyodide/", import.meta.url).href });
+  await py.loadPackage(["pillow", "numpy"], { checkIntegrity: true });
+  for (const name of ["native_functions.py", "core.py"]) {
     const response = await fetch(new URL(`./generated/${name}`, import.meta.url));
     if (!response.ok) throw new Error(`Missing packaged core: ${name}`);
     py.FS.writeFile(`/home/pyodide/${name}`, await response.text());
   }
-  await py.runPythonAsync('from core import execute');
+  await py.runPythonAsync("from core import execute");
   return py;
 }
 // Serial queue avoids concurrent Python globals and double initialization.
@@ -17,15 +17,23 @@ self.onmessage = ({ data }) => {
   queue = queue.then(async () => {
     const { id, operation, payload, options = {} } = data ?? {};
     try {
-      if (!Number.isSafeInteger(id) || typeof operation !== 'string' || !(payload instanceof ArrayBuffer)) throw new Error('Invalid worker request');
-      if (payload.byteLength > 20 * 1024 * 1024) throw new Error('Input exceeds 20 MiB spike limit');
+      if (
+        !Number.isSafeInteger(id) ||
+        typeof operation !== "string" ||
+        !(payload instanceof ArrayBuffer)
+      )
+        throw new Error("Invalid worker request");
+      if (payload.byteLength > 20 * 1024 * 1024)
+        throw new Error("Input exceeds 20 MiB spike limit");
       const py = await (runtime ??= initialize());
-      py.globals.set('_op', operation);
-      py.globals.set('_payload', new Uint8Array(payload));
-      py.globals.set('_options_json', JSON.stringify(options));
+      py.globals.set("_op", operation);
+      py.globals.set("_payload", new Uint8Array(payload));
+      py.globals.set("_options_json", JSON.stringify(options));
       let proxy;
       try {
-        proxy = py.runPython('execute(_op, bytes(_payload), __import__("json").loads(_options_json))');
+        proxy = py.runPython(
+          'execute(_op, bytes(_payload), __import__("json").loads(_options_json))',
+        );
         const result = proxy.toJs({ dict_converter: Object.fromEntries });
         const transfers = [];
         for (const [name, bytes] of Object.entries(result.files)) {
@@ -36,9 +44,9 @@ self.onmessage = ({ data }) => {
         self.postMessage({ id, ok: true, result }, transfers);
       } finally {
         proxy?.destroy();
-        py.globals.delete('_op');
-        py.globals.delete('_payload');
-        py.globals.delete('_options_json');
+        py.globals.delete("_op");
+        py.globals.delete("_payload");
+        py.globals.delete("_options_json");
       }
     } catch (error) {
       self.postMessage({ id, ok: false, error: String(error.message ?? error) });

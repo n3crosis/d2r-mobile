@@ -36,10 +36,15 @@ provider rolled back. Abort must discard partial staging; cleanup failures are
 reported as fixed codes. Cancellation after close begins cannot undo a successful
 commit. Resource cleanup must not invalidate the staged output before close.
 
-The current STORE-only ZIP32 writer retains its existing 512 MiB archive and
-256 MiB file ceilings and rejects explicit directory entries; larger real games
-and directory-bearing shells need an independently validated writer upgrade.
-No ZIP64, compression, runtime support, signing or installation claim is made.
+The default STORE-only ZIP32 writer retains its existing 512 MiB archive and
+256 MiB file ceilings. An explicit `archiveFormat: "zip64"` selects the bounded
+ZIP64 writer and requires a positive safe-integer `maxOutputBytes` archive budget.
+Its layout and budget are checked before destination creation; the same staged
+validation, cleanup and close boundary applies. ZIP64 byte counts are BigInt.
+Both writers reject explicit directory entries. ZIP64 streaming has an independent
+synthetic >4 GiB CI gate, but browser destination quotas and iOS installer ZIP64
+compatibility remain unverified. No compression, runtime, signing or installation
+claim is made. The UI still cannot generate an IPA.
 
 Progress contains only fixed stage/state/label strings, never adapter error text,
 paths or key data. Observer exceptions are ignored. `PackagingJobError.report`

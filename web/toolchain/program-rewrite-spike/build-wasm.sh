@@ -27,7 +27,7 @@ emcc --no-entry -O2 -I deps/capstone/include bridge.c \
   -sMODULARIZE=1 -sEXPORT_ES6=1 -sENVIRONMENT=web,worker \
   -sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=536870912 \
   -sEXPORTED_FUNCTIONS='["_decode_word","_LZ4_decompress_safe","_malloc","_free"]' \
-  -sEXPORTED_RUNTIME_METHODS='["ccall","UTF8ToString"]' \
+  -sEXPORTED_RUNTIME_METHODS='["ccall","UTF8ToString","HEAPU8"]' \
   -o dist/capstone-lz4.mjs
 (cd ../../.. && sha256sum -c web/toolchain/program-rewrite-spike/upstream-source.sha256)
 cp ../../../dm/tools/patch_nso.py dist/patch_nso.py

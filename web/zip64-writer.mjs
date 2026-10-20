@@ -1,6 +1,6 @@
 import { indexFiles } from "./preflight.mjs";
 
-/** Opt-in, STORE-only, single-disk ZIP64. Not wired to the ZIP32 packager.
+/** Opt-in, STORE-only, single-disk ZIP64. Explicitly selectable by the packaging coordinator.
  * Sizes and output accounting use BigInt. maxTotalBytes is REQUIRED and includes
  * every archive byte. Sink write promises provide backpressure; sinks must not
  * retain buffers after resolving. Producers must not mutate a yielded buffer

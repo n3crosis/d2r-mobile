@@ -2,6 +2,7 @@ import { discoverNspFiles, discoverNspFolder } from "./nsp-input.mjs";
 import { resolveContentSelection } from "./content-selection.mjs";
 import { validateShellContract, validateAssemblyInventory } from "./shell-contract.mjs";
 import { writeZip } from "./zip-writer.mjs";
+import { writeZip64, planZip64 } from "./zip64-writer.mjs";
 
 /** Explicit capabilities, not implementations or evidence of real conversion support. */
 export const REQUIRED_PACKAGING_ADAPTERS = Object.freeze([
@@ -64,6 +65,8 @@ const labels = Object.freeze({
  * @property {PackagingAdapters} adapters
  * @property {AbortSignal} [signal]
  * @property {object} [selectionOptions]
+ * @property {"zip32"|"zip64"} [archiveFormat] ZIP64 is explicit opt-in, not an iOS compatibility claim.
+ * @property {number} [maxOutputBytes] Required positive safe-integer archive budget for ZIP64.
  * @property {number} [concurrency] Maximum concurrent generators (1–3; default 2).
  * @property {(progress:PackagingProgress)=>void} [onProgress] Observer only; exceptions ignored.
  */
@@ -163,6 +166,13 @@ export async function runPackagingJob(options) {
           options.concurrency >= 1 &&
           options.concurrency <= 3),
     );
+    assertion(
+      options.archiveFormat === undefined || ["zip32", "zip64"].includes(options.archiveFormat),
+    );
+    assertion(
+      options.archiveFormat !== "zip64" ||
+        (Number.isSafeInteger(options.maxOutputBytes) && options.maxOutputBytes > 0),
+    );
     capabilitiesReady = true;
     const inputs = await step("discovery", () =>
       options.input?.kind === "directory"
@@ -246,13 +256,17 @@ export async function runPackagingJob(options) {
       list.map(({ path, size, mode }) => ({ path, size, mode })).sort(comparePaths);
     assertion(JSON.stringify(metadata(entries)) === JSON.stringify(metadata(assembly.entries)));
     const manifest = Object.freeze(metadata(entries).map(Object.freeze));
+    const archiveEntries = entries.map((entry) => ({ ...entry, mode: entry.mode & 0o777 }));
+    const zip64 = options.archiveFormat === "zip64";
+    // Reject over-budget ZIP64 metadata before opening any staged destination.
+    if (zip64) planZip64(archiveEntries, { maxTotalBytes: options.maxOutputBytes });
     const result = await step("output", async () => {
       output = await adapters.createOutput({ manifest, signal });
       assertion(
         output && ["write", "close", "abort"].every((key) => typeof output[key] === "function"),
       );
-      return writeZip(
-        entries.map((entry) => ({ ...entry, mode: entry.mode & 0o777 })),
+      return (zip64 ? writeZip64 : writeZip)(
+        archiveEntries,
         {
           write: (bytes) => output.write(bytes),
           abort: abortOutput,
@@ -272,7 +286,7 @@ export async function runPackagingJob(options) {
             emit("commit", "complete");
           },
         },
-        { signal },
+        { signal, maxTotalBytes: options.maxOutputBytes },
       );
     });
     return Object.freeze({

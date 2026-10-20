@@ -7,18 +7,19 @@ export class AssetWorker {
   #next = 1;
   #pending = new Map();
   constructor() {
-    this.#worker = new Worker(new URL('./worker.mjs', import.meta.url), { type: 'module' });
+    this.#worker = new Worker(new URL("./worker.mjs", import.meta.url), { type: "module" });
     this.#worker.onmessage = ({ data }) => {
       const pending = this.#pending.get(data.id);
       if (!pending) return;
       this.#pending.delete(data.id);
       data.ok ? pending.resolve(data.result) : pending.reject(new Error(data.error));
     };
-    this.#worker.onerror = event => this.close(new Error(event.message));
+    this.#worker.onerror = (event) => this.close(new Error(event.message));
   }
   run(operation, bytes, options = {}) {
-    if (!(bytes instanceof Uint8Array) || bytes.byteLength > 20 * 1024 * 1024) return Promise.reject(new Error('Expected <=20 MiB Uint8Array'));
-    if (!this.#worker) return Promise.reject(new Error('Worker closed'));
+    if (!(bytes instanceof Uint8Array) || bytes.byteLength > 20 * 1024 * 1024)
+      return Promise.reject(new Error("Expected <=20 MiB Uint8Array"));
+    if (!this.#worker) return Promise.reject(new Error("Worker closed"));
     const payload = bytes.slice().buffer; // Never detach caller-owned extraction data.
     const id = this.#next++;
     return new Promise((resolve, reject) => {
@@ -30,7 +31,7 @@ export class AssetWorker {
     const bytes = await reader.read(path, { maxBytes: 20 * 1024 * 1024, signal: options.signal });
     return this.run(operation, bytes, { frame: options.frame ?? 0 });
   }
-  close(reason = new Error('Asset generation cancelled')) {
+  close(reason = new Error("Asset generation cancelled")) {
     this.#worker?.terminate();
     this.#worker = null;
     for (const pending of this.#pending.values()) pending.reject(reason);

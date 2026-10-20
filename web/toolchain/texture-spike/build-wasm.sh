@@ -11,6 +11,7 @@ emcc -O2 -std=c11 -I"$ROOT/dm/gfx/nvn" -I"$ROOT/dm/gfx/tex" \
   --no-entry -sMODULARIZE=1 -sEXPORT_ES6=1 -sENVIRONMENT=worker,node \
   -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=16777216 -sMAXIMUM_MEMORY=268435456 \
   -sSTACK_SIZE=1048576 -sFILESYSTEM=0 -sABORTING_MALLOC=0 \
+  '-sEXPORTED_RUNTIME_METHODS=["HEAPU8","HEAPU32"]' \
   '-sEXPORTED_FUNCTIONS=["_malloc","_free","_texture_info","_texture_decode"]' \
   -o "$OUT/texture.mjs"
 cp "$ROOT/LICENSE" "$OUT/licenses/repository-LICENSE.txt"

@@ -338,3 +338,28 @@ test("cancellation during writes aborts once, keeps abort failures sanitized, an
   });
   assert.equal(aborts, 1);
 });
+
+test("ZIP64 opt-in requires a bounded budget before input or secrets", async () => {
+  for (const maxOutputBytes of [undefined, 0, -1, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+    const f = fixture();
+    await assert.rejects(runPackagingJob({ ...f, archiveFormat: "zip64", maxOutputBytes }));
+    assert.deepEqual(f.calls, []);
+  }
+});
+test("ZIP64 keeps staged validation and cleanup before commit", async () => {
+  const f = fixture();
+  const result = await runPackagingJob({
+    ...f,
+    archiveFormat: "zip64",
+    maxOutputBytes: 1024 * 1024,
+  });
+  assert.equal(result.committed, true);
+  assert.equal(typeof result.bytesWritten, "bigint");
+  assert.ok(f.calls.indexOf("archive") < f.calls.indexOf("close"));
+  assert.ok(f.calls.indexOf("cleanup") < f.calls.indexOf("close"));
+});
+test("ZIP64 rejects an insufficient output budget before destination creation", async () => {
+  const f = fixture();
+  await assert.rejects(runPackagingJob({ ...f, archiveFormat: "zip64", maxOutputBytes: 1 }));
+  assert.equal(f.calls.includes("create"), false);
+});
