@@ -181,10 +181,11 @@ export function createShaderPipeline({
       ensureOpen();
       if (active) throw error("Only one shader conversion may run at a time");
       const requestJob = metadata(job);
-      if (!requestJob || !["cs", "vs", "ps"].includes(requestJob.stage))
-        throw error(
-          "Unsupported shader stage: only compute, vertex and fragment are integrated; geometry and tessellation remain unsupported",
-        );
+      if (!requestJob || !["cs", "vs", "ps", "hs", "ds"].includes(requestJob.stage))
+        throw error("Unsupported shader stage: geometry remains unsupported");
+      const tessellation = ["hs", "ds"].includes(requestJob.stage);
+      if (tessellation && requestJob.allowUnverifiedTessellation !== true)
+        throw error("Tessellation requires explicit unverified-source-port opt-in");
       if (!allowed.has(requestJob.key))
         throw error("Shader key is outside trusted complete catalog");
       if (completed.has(requestJob.key)) throw error("Shader already converted in this pipeline");
@@ -197,14 +198,20 @@ export function createShaderPipeline({
         code.length % 8
       )
         throw error("Shader code must be 16 bytes to 1 MiB, 8-byte aligned");
+      let hullOutputVertices = null;
       if (requestJob.stage !== "cs") {
         if (code.length < 0x60)
           throw error("Graphics input requires a 0x50-byte SPH plus instructions");
         const headerStage =
           (new DataView(code.buffer, code.byteOffset, code.byteLength).getUint32(0, true) >>> 10) &
           15;
-        if (headerStage !== (requestJob.stage === "vs" ? 1 : 5))
+        if (headerStage !== { vs: 1, hs: 2, ds: 3, ps: 5 }[requestJob.stage])
           throw error("Declared graphics stage does not match SPH stage bits 10..13");
+        if (requestJob.stage === "hs")
+          hullOutputVertices =
+            new DataView(code.buffer, code.byteOffset, code.byteLength).getUint32(8, true) >>> 24;
+        if (requestJob.stage === "hs" && hullOutputVertices === 0)
+          throw error("Hull SPH requires nonzero threads per input primitive");
         for (const [name, limit] of [
           ["attr", 32],
           ["fout", 8],
@@ -295,13 +302,23 @@ export function createShaderPipeline({
         )
           throw error("SPIRV-Cross provenance mismatch");
         const replay = replayFields(requestJob.stage, converted.msl, resources);
-        const mode = { cs: "comp", vs: "vert", ps: "frag" }[requestJob.stage];
+        const mode = { cs: "comp", vs: "vert", ps: "frag", hs: "tesc", ds: "tese" }[
+          requestJob.stage
+        ];
         if (
           converted.reflection?.entryPoints?.length !== 1 ||
           converted.reflection.entryPoints[0].mode !== mode ||
-          replay.msl_entry_kind !== { cs: "kernel", vs: "vertex", ps: "fragment" }[requestJob.stage]
+          replay.msl_entry_kind !==
+            { cs: "kernel", vs: "vertex", ps: "fragment", hs: "kernel", ds: "vertex" }[
+              requestJob.stage
+            ]
         )
           throw error("Compiled SPIR-V/MSL stage does not match declared job");
+        if (
+          requestJob.stage === "ds" &&
+          !/\[\[\s*patch\(\s*triangle(?:\s*,\s*\d+)?\s*\)\s*\]\]/.test(converted.msl)
+        )
+          throw error("Domain MSL must preserve the original triangle patch contract");
         if (JSON.stringify(replay) !== JSON.stringify(converted.replay))
           throw error("SPIRV-Cross replay fields mismatch");
         if (controller.signal.aborted || disposed)
@@ -313,6 +330,16 @@ export function createShaderPipeline({
           status: "shader-source-candidate",
           key: requestJob.key,
           stage: requestJob.stage,
+          stageSupport: tessellation ? "source-ported-unverified" : "synthetic-parity-verified",
+          tessellation: tessellation
+            ? {
+                nativeParityVerified: false,
+                outputVertices: hullOutputVertices,
+                domain: requestJob.stage === "ds" ? "triangles" : null,
+                spacing: requestJob.stage === "ds" ? "equal" : null,
+                stageLinkageVerified: false,
+              }
+            : null,
           threadgroup_size: requestJob.stage === "cs" ? (requestJob.local ?? null) : null,
           sourceName: `${requestJob.key}_b.metal`,
           msl: converted.msl,

@@ -11,9 +11,13 @@ const ready = dotnet
 globalThis.addEventListener("message", async ({ data }) => {
   const { requestId, job, code } = data ?? {};
   try {
-    if (!(code instanceof Uint8Array) || !job || !["cs", "vs", "ps"].includes(job.stage)) {
+    if (
+      !(code instanceof Uint8Array) ||
+      !job ||
+      !["cs", "vs", "ps", "hs", "ds"].includes(job.stage)
+    ) {
       throw new Error(
-        "Expected compute, vertex or fragment job and Uint8Array shader bytes; other stages are unsupported.",
+        "Expected supported stage job and Uint8Array shader bytes; other stages are unsupported.",
       );
     }
     const startup = await ready;

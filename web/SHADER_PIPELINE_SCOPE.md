@@ -148,3 +148,21 @@ synthetic catalog checks all passed. Artifact `12256012556` retains bounded
 synthetic evidence for seven days. The full production digest
 `be59c864f087b377`, authenticated release recipe and remaining native asset/
 metadata requirements are not established by this regression.
+
+## Explicitly gated tessellation source port
+
+Hull/domain plumbing now exists behind per-job `allowUnverifiedTessellation: true`.
+Default calls still reject these stages. The catalog's default unsupported list
+retains both records rather than reducing complete-catalog requirements. SPH2/3
+must match hs/ds; hs SPH word2 bits24..31 must provide a nonzero OutputVertices.
+Existing native accessor semantics and Cross options are unchanged. The adapter
+requires tesc/tese reflection, kernel/vertex MSL entry kinds and a triangle patch
+attribute for ds. Results label this `source-ported-unverified`, retain
+`installable: false`, and report `stageLinkageVerified: false`. Source-derived
+hull count/domain facts are not a new native replay schema.
+
+No native/WASM tessellation execution parity or actual game output is claimed.
+The known hs/ds storage-buffer base and Cross stage-linkage conditions are
+recorded in `SHADER_CATALOG_SCOPE.md`. No compiler options, native labels or full
+source digest gates changed. Earlier unsupported-stage statements refer to
+verified/default support, not this opt-in implementation.

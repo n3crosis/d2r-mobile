@@ -101,8 +101,11 @@ public static partial class ShaderBridge
         var job = JsonNode.Parse(jobJson)?.AsObject() ?? throw new ArgumentException("Expected job object.");
         string key = (string)job["key"] ?? "synthetic";
         string stage = (string)job["stage"];
-        if (stage is not ("cs" or "vs" or "ps"))
-            throw new ArgumentException("Only compute, vertex and fragment are supported; geometry and tessellation are not integrated.");
+        if (stage is not ("cs" or "vs" or "ps" or "hs" or "ds"))
+            throw new ArgumentException("Unsupported shader stage; geometry is not integrated.");
+        if ((stage is "hs" or "ds") &&
+            (job["allowUnverifiedTessellation"] is not JsonValue opt || !opt.TryGetValue<bool>(out var enabled) || !enabled))
+            throw new ArgumentException("Tessellation requires explicit unverified-source-port opt-in.");
         if (stage != "cs")
         {
             // Graphics input begins with the complete 0x50-byte SPH. Do not allow
@@ -110,8 +113,12 @@ public static partial class ShaderBridge
             if (code.Length < 0x60)
                 throw new ArgumentException("Graphics input requires a 0x50-byte SPH plus instructions.");
             int headerStage = (int)((BitConverter.ToUInt32(code, 0) >> 10) & 15);
-            if (headerStage != (stage == "vs" ? 1 : 5))
+            if (headerStage != (stage switch { "vs" => 1, "hs" => 2, "ds" => 3, _ => 5 }))
                 throw new ArgumentException("Declared graphics stage does not match SPH stage bits 10..13.");
+            // Original translator derives hs OutputVertices from this exact SPH field.
+            // Reject absent data, never guess a patch count from an unrelated stage.
+            if (stage == "hs" && (BitConverter.ToUInt32(code, 8) >> 24) == 0)
+                throw new ArgumentException("Hull SPH requires nonzero threads per input primitive.");
             foreach (var (table, count) in new[] { ("attr", 32), ("fout", 8) })
             {
                 if (job[table] is not JsonObject types)

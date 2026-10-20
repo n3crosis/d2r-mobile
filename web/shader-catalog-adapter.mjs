@@ -1,0 +1,204 @@
+/** Source-pinned catalog mapping only. No fetch, translation, release attestation or packaging. */
+export const SHADER_CATALOG_SOURCES = Object.freeze({
+  map: "419dae7adddbaba455045b1d121a01671fcb3bc82fc5d7d193593255df23c628",
+  facts: "5f50b1d9934b2f4e85ebddbd62114c6f5acb94ae42b8509fcfc3486e7953f490",
+  conflicts: "5e554c11cf2732d90539eb334e84a744ef88f527bc280b9256f3d72185f25501",
+});
+const HEX = /^[a-f0-9]{16}$/;
+const control = new Uint8Array([0x34, 0x12, 0x76, 0x98]);
+const codeMarker = new Uint8Array([0x78, 0x56, 0x34, 0x12]);
+const recordMarker = new TextEncoder().encode("BTCDBTCD");
+const sha = async (bytes) =>
+  [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))]
+    .map((x) => x.toString(16).padStart(2, "0"))
+    .join("");
+function bytes(value, max, name) {
+  if (!(value instanceof Uint8Array) || !value.length || value.length > max)
+    throw new Error(`Invalid bounded ${name} bytes`);
+  return value;
+}
+function match(data, at, marker) {
+  return marker.every((v, i) => data[at + i] === v);
+}
+function find(data, marker, start = 0, end = data.length) {
+  for (let i = start; i <= end - marker.length; i++) if (match(data, i, marker)) return i;
+  return -1;
+}
+function supported(stage, optIn = false) {
+  if (!["cs", "vs", "ps"].includes(stage) && !(optIn === true && ["hs", "ds"].includes(stage)))
+    throw new Error(`Unsupported catalog stage ${stage}; record retained, full catalog incomplete`);
+}
+function options({ debug, reduced }) {
+  if (typeof debug !== "boolean" || typeof reduced !== "boolean")
+    throw new Error("Explicit debug/reduced options required");
+}
+/** Independently callable record decoder; descriptor is NOT a release recipe. */
+export async function decodeShaderRecord(descriptor, input, flags) {
+  supported(descriptor.stage, flags.allowUnverifiedTessellation);
+  options(flags);
+  if (!HEX.test(descriptor.key)) throw new Error("Invalid control key");
+  // Snapshot before awaiting the hash, so a caller cannot mutate checked bytes.
+  const rec = bytes(input, 2 * 1024 * 1024, "shader record").slice();
+  const ci = find(rec, control);
+  if (ci < 0x38 || ci + 0x880 > rec.length)
+    throw new Error("Missing/truncated shader control segment");
+  if ((await sha(rec.subarray(ci, ci + 0x880))).slice(0, 16) !== descriptor.key)
+    throw new Error("Control hash does not match catalog key");
+  const view = new DataView(rec.buffer);
+  const c1o = view.getUint32(ci + 0x700, true),
+    c1t = view.getUint32(ci + 0x704, true);
+  if (c1o > c1t || c1t > ci - 0x38 || ![0, 256, 512, 768].includes(c1t - c1o))
+    throw new Error("Invalid c1 range");
+  const start = 0x38 + (descriptor.stage === "cs" ? 0 : 0x30);
+  const code = rec.slice(start, ci);
+  if (
+    code.length < (descriptor.stage === "cs" ? 16 : 0x60) ||
+    code.length > 1024 * 1024 ||
+    code.length % 8
+  )
+    throw new Error("Invalid shader code bounds");
+  if (descriptor.stage !== "cs") {
+    const stage = (new DataView(code.buffer).getUint32(0, true) >>> 10) & 15;
+    if (stage !== { vs: 1, hs: 2, ds: 3, ps: 5 }[descriptor.stage])
+      throw new Error("SPH stage disagrees with catalog");
+  }
+  if (descriptor.stage === "hs" && new DataView(code.buffer).getUint32(8, true) >>> 24 === 0)
+    throw new Error("Hull SPH requires nonzero threads per input primitive");
+  const facts = structuredClone(descriptor.facts);
+  if (
+    !facts ||
+    ["attr", "fout", "img", "tex"].some(
+      (k) => !facts[k] || typeof facts[k] !== "object" || Array.isArray(facts[k]),
+    )
+  )
+    throw new Error("Missing explicit facts");
+  if (
+    Object.keys(facts).some((k) => !["attr", "fout", "img", "tex", "local", "shared"].includes(k))
+  )
+    throw new Error("Unexpected fact field");
+  return {
+    job: {
+      key: descriptor.key,
+      stage: descriptor.stage,
+      tex: {},
+      img: {},
+      attr: {},
+      fout: {},
+      c1: [...rec.subarray(0x38 + c1o, 0x38 + c1t)]
+        .map((x) => x.toString(16).padStart(2, "0"))
+        .join(""),
+      debug: flags.debug,
+      reduced: flags.reduced,
+      ...(["hs", "ds"].includes(descriptor.stage) ? { allowUnverifiedTessellation: true } : {}),
+      ...facts,
+    },
+    code,
+    source: {
+      name: descriptor.name,
+      index: descriptor.index,
+      pcPaired: descriptor.pcPaired,
+      controlVerified: true,
+    },
+    installable: false,
+  };
+}
+export async function loadShaderCatalog(input) {
+  const texts = {};
+  for (const [name, expected] of Object.entries(SHADER_CATALOG_SOURCES)) {
+    const data = bytes(input[name], 8 * 1024 * 1024, name).slice();
+    if ((await sha(data)) !== expected) throw new Error(`Pinned ${name} source digest mismatch`);
+    texts[name] = new TextDecoder("utf-8", { fatal: true }).decode(data);
+  }
+  const facts = new Map();
+  for (const line of texts.facts.split("\n")) {
+    if (!line || line.startsWith("#")) continue;
+    const [key, json] = line.split("\t");
+    if (!HEX.test(key) || facts.has(key)) throw new Error("Invalid/duplicate fact key");
+    facts.set(key, JSON.parse(json));
+  }
+  const entries = new Map();
+  const stages = { 计算: "cs", 顶点: "vs", 像素: "ps", 域: "ds", 外壳: "hs" };
+  for (const line of texts.map.split("\n")) {
+    if (!line || line.startsWith("#") || line.startsWith("package\t")) continue;
+    const [name, indexText, label, key, pcPaired] = line.split("\t");
+    const embedded = /^main\.rodata@[a-f0-9]+$/.test(name);
+    if (!embedded && !/^[a-zA-Z0-9_]+\.bin$/.test(name))
+      throw new Error("Unsafe catalog source name");
+    const index = embedded ? Number.parseInt(name.split("@")[1], 16) : Number(indexText);
+    const stage = embedded ? stages[label] : name.slice(0, 2);
+    if (
+      !Number.isSafeInteger(index) ||
+      index < 0 ||
+      !HEX.test(key) ||
+      !HEX.test(pcPaired) ||
+      stage !== stages[label] ||
+      !facts.has(key)
+    )
+      throw new Error("Invalid catalog row/facts");
+    // Original loc/pc_of use setdefault: first physical source wins.
+    if (!entries.has(key))
+      entries.set(key, { key, name, index, stage, pcPaired, embedded, facts: facts.get(key) });
+  }
+  for (const line of texts.conflicts.split("\n")) {
+    if (!line || line.startsWith("#") || line.startsWith("dm_")) continue;
+    const [key, pc] = line.split("\t");
+    if (!HEX.test(pc) || !entries.has(key)) throw new Error("Invalid conflict override");
+    entries.get(key).pcPaired = pc;
+  }
+  if (entries.size !== 6927 || facts.size !== entries.size)
+    throw new Error("Incomplete pinned catalog");
+  return Object.freeze({
+    keys: Object.freeze([...entries.keys()]),
+    unsupported: Object.freeze(
+      [...entries.values()]
+        .filter((e) => !["cs", "vs", "ps"].includes(e.stage))
+        .map((e) => Object.freeze({ key: e.key, stage: e.stage, name: e.name })),
+    ),
+    describe(key) {
+      const e = entries.get(key);
+      if (!e) throw new Error("Unknown catalog key");
+      return structuredClone(e);
+    },
+    async prepare(
+      key,
+      { packBytes, mainImage, debug, reduced, allowUnverifiedTessellation = false } = {},
+    ) {
+      const e = entries.get(key);
+      if (!e) throw new Error("Unknown catalog key");
+      supported(e.stage, allowUnverifiedTessellation);
+      options({ debug, reduced });
+      let rec;
+      if (e.embedded) {
+        // mainImage must already be the native nsoimg.load memory-image layout, NOT raw NSO.
+        const image = bytes(mainImage, 512 * 1024 * 1024, "decompressed main image");
+        const o = e.index;
+        if (o < 0x1000 || o + 0x880 > image.length || !match(image, o, control))
+          throw new Error("Invalid embedded control location");
+        let g = -1;
+        for (let i = o - 0x1000; i <= o - 4; i++) if (match(image, i, codeMarker)) g = i;
+        if (g < 0) throw new Error("Embedded code marker missing");
+        rec = new Uint8Array(0x38 + o + 0x880 - g);
+        rec.set(image.subarray(g, o + 0x880), 0x38);
+      } else {
+        const pack = bytes(packBytes, 256 * 1024 * 1024, "shader pack");
+        let count = 0,
+          begin = -1,
+          end = pack.length;
+        for (let i = 0; i <= pack.length - 8; i++)
+          if (match(pack, i, recordMarker)) {
+            if (count === e.index) begin = i;
+            if (count === e.index + 1) {
+              end = i;
+              break;
+            }
+            count++;
+            i += 7; // Python re.finditer uses non-overlapping matches.
+          }
+        if (begin < 0) throw new Error("Catalog record absent from pack");
+        rec = pack.subarray(begin, end);
+      }
+      return decodeShaderRecord(e, rec, { debug, reduced, allowUnverifiedTessellation });
+    },
+    productionEquivalent: false,
+  });
+}
