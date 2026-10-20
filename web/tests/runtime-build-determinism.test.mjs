@@ -90,7 +90,7 @@ test("invalid upstream epoch fails before configure or build", async (t) => {
   assert.deepEqual(calls, []);
 });
 
-test("assembly version opt-out retains external release provenance and debug defaults", async () => {
+test("project-only revision opt-outs retain portable debug symbols and external provenance", async () => {
   const [project, build] = await Promise.all([
     source("../toolchain/shader-spike/ShaderSpike.csproj"),
     source("../runtime-build/build.mjs"),
@@ -99,7 +99,10 @@ test("assembly version opt-out retains external release provenance and debug def
     project,
     /<IncludeSourceRevisionInInformationalVersion>false<\/IncludeSourceRevisionInInformationalVersion>/,
   );
-  assert.doesNotMatch(project, /<(?:DebugType|DebugSymbols|EnableSourceLink)>/);
+  assert.match(project, /<EnableSourceLink>false<\/EnableSourceLink>/);
+  assert.match(project, /<DebugType>portable<\/DebugType>/);
+  assert.match(project, /<DebugSymbols>true<\/DebugSymbols>/);
+  assert.doesNotMatch(project, /<(?:EnableSourceControlManagerQueries|SourceRevisionId)>/);
   for (const field of ["sourceRevision", "sourceDirty", "crossCommit", "emscripten", "dotnet"])
     assert.match(build, new RegExp(`\\b${field}(?:\\s*:|,)`));
 });

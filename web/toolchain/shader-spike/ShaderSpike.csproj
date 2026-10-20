@@ -11,6 +11,11 @@
     <!-- 外层运行时清单保留源码修订；无关仓库提交不再改变程序集的信息版本。 -->
     <!-- The outer runtime manifest retains source provenance; unrelated commits do not alter the assembly informational version. -->
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <!-- 仅此项目禁用远程源码映射，保留可移植调试符号与外层清单中的真实源码修订。 -->
+    <!-- Disable remote source mappings only here; retain portable debug symbols and real source provenance in the outer manifest. -->
+    <EnableSourceLink>false</EnableSourceLink>
+    <DebugType>portable</DebugType>
+    <DebugSymbols>true</DebugSymbols>
     <WasmEnableHotReload>false</WasmEnableHotReload>
     <PublishTrimmed>false</PublishTrimmed>
     <RunAOTCompilation>false</RunAOTCompilation>

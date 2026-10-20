@@ -33,7 +33,7 @@ export async function generateMercenaryArt({
   textureEncoder,
   signal,
 }) {
-  const owned = [],
+  const owned = createMercenaryOwnedBytes(),
     output = [];
   const check = () => {
     if (signal?.aborted) fail("MERCENARY_CANCELLED");
@@ -41,7 +41,7 @@ export async function generateMercenaryArt({
   const own = (value) => {
     const b = bytes(value);
     if (!b) fail("MERCENARY_BYTES");
-    owned.push(b);
+    owned.add(b);
     return b;
   };
   try {
@@ -89,11 +89,26 @@ export async function generateMercenaryArt({
         fail("MERCENARY_ATLAS_GEOMETRY");
       images[name] = { header: base64(header), rgba: base64(rgba) };
       if (name.startsWith("hireling")) template = header;
+      // 字符串快照已独立；只保留之后编码所需的 40 字节模板。
+      // String snapshots are independent; retain only the 40-byte template needed by later encoding.
+      owned.release(source);
+      owned.release(rgba);
+      if (header !== template) owned.release(header);
     }
     const payload = own(new TextEncoder().encode(JSON.stringify(images)));
+    // 序列化后解除字符串引用，不声称擦除字符串或控制垃圾回收时间。
+    // Drop string references after serialization; this neither zeroes strings nor controls collection timing.
+    for (const name of Object.keys(images)) delete images[name];
     if (payload.length > 20 * 1024 * 1024) fail("MERCENARY_PAYLOAD_LIMIT");
     check();
-    const result = await assetWorker.run("mercenary-art", payload, {});
+    let result;
+    try {
+      result = await assetWorker.run("mercenary-art", payload, {});
+    } finally {
+      // 等待工作线程使用结束之后才释放请求字节，包括失败路径。
+      // Release request bytes only after worker consumption settles, including failure paths.
+      owned.release(payload);
+    }
     if (
       Object.keys(result.files ?? {})
         .sort()
@@ -136,6 +151,31 @@ export async function generateMercenaryArt({
     for (const value of output) value.fill(0);
     throw error;
   } finally {
-    for (const value of owned) value.fill(0);
+    owned.dispose();
   }
+}
+
+// 同一底层缓冲区的多个自有视图一并释放，重复释放无操作。
+// Release all owned aliases of a backing buffer together; repeated release is a no-op.
+export function createMercenaryOwnedBytes() {
+  const values = new Set();
+  return Object.freeze({
+    add(value) {
+      values.add(value);
+    },
+    release(value) {
+      for (const owned of values) {
+        if (owned.buffer !== value.buffer) continue;
+        owned.fill(0);
+        values.delete(owned);
+      }
+    },
+    dispose() {
+      for (const value of values) value.fill(0);
+      values.clear();
+    },
+    get size() {
+      return values.size;
+    },
+  });
 }

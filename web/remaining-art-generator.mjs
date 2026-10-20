@@ -93,7 +93,7 @@ export async function generateRemainingArt({
   textureEncoder,
   signal,
 }) {
-  const owned = new Set(),
+  const owned = createRemainingArtOwnedBytes(),
     files = {};
   let inputBytes = 0,
     outputBytes = 0,
@@ -164,8 +164,7 @@ export async function generateRemainingArt({
     try {
       result = await assetWorker.run("remaining-art", payload, { kind, name });
     } finally {
-      payload.fill(0);
-      owned.delete(payload);
+      owned.release(payload);
     }
     const rgba = own(result.files?.["image.rgba"]);
     for (const bytes of Object.values(result.files ?? {})) own(bytes);
@@ -214,19 +213,25 @@ export async function generateRemainingArt({
       check,
     );
     sourcePaths = new Map(names.map((name, index) => [name, paths[index]]));
-    const main = own(await source("mainpanelbg"));
-    const wide = widenMainPanelBlocks(main);
-    own(wide.templateHeader);
-    own(wide.linearBC3);
-    const packed = await textureEncoder.packLinearBC3(wide, { signal });
-    const wideSprite = own(packed.sprite);
-    check();
-    new DataView(wideSprite.buffer, wideSprite.byteOffset, wideSprite.length).setUint16(
-      6,
-      wide.frameWidth,
-      true,
-    );
-    keep("NativeHUD/widestash/MainPanelBG_Wide.sprite", wideSprite);
+    {
+      const before = owned.snapshot();
+      const main = own(await source("mainpanelbg"));
+      const wide = widenMainPanelBlocks(main);
+      own(wide.templateHeader);
+      own(wide.linearBC3);
+      const packed = await textureEncoder.packLinearBC3(wide, { signal });
+      const wideSprite = own(packed.sprite);
+      check();
+      new DataView(wideSprite.buffer, wideSprite.byteOffset, wideSprite.length).setUint16(
+        6,
+        wide.frameWidth,
+        true,
+      );
+      keep("NativeHUD/widestash/MainPanelBG_Wide.sprite", wideSprite);
+      // keep 已复制输出，主面板来源及中间结果不再使用。
+      // keep copied the output; main-panel sources and intermediates have no remaining consumers.
+      owned.releaseSince(before);
+    }
     const sources = {},
       images = {};
     for (const [name, rel] of Object.entries({ ...BG, ...ADV })) {
@@ -255,26 +260,72 @@ export async function generateRemainingArt({
                 character,
               }
             : { image: images[name] };
+      const before = owned.snapshot();
       const result = await transform(kind, name, inputs);
       const sprite = await encode(sources[name], result);
       keep(`NativeHUD/widestash/${name}_wide.sprite`, sprite);
       if (name === "StashPanelBGPersonal") personal = sprite;
+      // 保留个人仓库的有损精灵供封面往返，其他新中间缓冲区已使用完毕。
+      // Preserve the lossy personal-stash sprite for the cover round trip; other new intermediates are consumed.
+      owned.releaseSince(before, personal ? [personal] : []);
     }
     // 原生封面来自有损编码后的 widestash 结果，而非
     // 编码前的 RGBA。保留这次往返及其原始金框保护检查。
     // Native cover is derived from the lossy encoded widestash result, not the
     // pre-encoding RGBA. Keep this round trip and its original gold-box guard.
-    const vault = await transform("vault", "VaultBottom", { image: await decode(personal) });
-    keep("NativeHUD/widestash/VaultBottom.sprite", await encode(personal, vault));
-    keep("NativeHUD/widestash/VaultBottom.png", vault.files["VaultBottom.png"]);
-    const inventory = await source("inventorypanel/v2/inventorybg_classic");
-    const pouch = await transform("pouch", "PouchBox", { image: await decode(inventory) });
-    keep("NativeHUD/pouch/PouchBox.sprite", await encode(inventory, pouch));
+    {
+      const before = owned.snapshot();
+      const vault = await transform("vault", "VaultBottom", { image: await decode(personal) });
+      keep("NativeHUD/widestash/VaultBottom.sprite", await encode(personal, vault));
+      keep("NativeHUD/widestash/VaultBottom.png", vault.files["VaultBottom.png"]);
+      owned.releaseSince(before);
+      owned.release(personal);
+      personal = undefined;
+    }
+    {
+      const before = owned.snapshot();
+      const inventory = await source("inventorypanel/v2/inventorybg_classic");
+      const pouch = await transform("pouch", "PouchBox", { image: await decode(inventory) });
+      keep("NativeHUD/pouch/PouchBox.sprite", await encode(inventory, pouch));
+      owned.releaseSince(before);
+    }
     check();
     success = true;
     return { files };
   } finally {
-    for (const bytes of owned) bytes.fill(0);
+    owned.dispose();
     if (!success) for (const bytes of Object.values(files)) bytes.fill(0);
   }
+}
+
+// 用底层缓冲区识别别名；阶段清理不触碰先前仍被共享的模板/图像。
+// Identify aliases by backing buffer; stage cleanup never touches earlier shared templates/images.
+export function createRemainingArtOwnedBytes() {
+  const values = new Set();
+  const release = (buffer) => {
+    for (const value of values)
+      if (value.buffer === buffer) {
+        value.fill(0);
+        values.delete(value);
+      }
+  };
+  return Object.freeze({
+    add(value) {
+      values.add(value);
+    },
+    snapshot() {
+      return new Set([...values].map((value) => value.buffer));
+    },
+    release(value) {
+      release(value.buffer);
+    },
+    releaseSince(before, preserve = []) {
+      const protectedBuffers = new Set([...before, ...preserve.map((value) => value.buffer)]);
+      for (const value of values) if (!protectedBuffers.has(value.buffer)) release(value.buffer);
+    },
+    dispose() {
+      for (const value of values) value.fill(0);
+      values.clear();
+    },
+  });
 }
