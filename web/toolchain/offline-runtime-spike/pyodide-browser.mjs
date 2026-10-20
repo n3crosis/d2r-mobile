@@ -140,6 +140,7 @@ try {
     } else {
       assert.equal(outcome.result?.initialized, true, outcome.error);
       assert.equal(outcome.result.version, "0.27.7");
+      assert.deepEqual(outcome.result.packages, { numpy: true, pillow: true });
       assert.equal(outcome.result.reads, 5);
       assert.equal(outcome.result.blocked, 8);
       assert.equal(outcome.result.documentBlocked, 4);

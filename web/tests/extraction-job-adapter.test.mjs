@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createExtractionJobAdapter } from "../extraction-job-adapter.mjs";
+import {
+  createExtractionJobAdapter,
+  readAuthenticatedProgramModules,
+} from "../extraction-job-adapter.mjs";
 import { MockWorker } from "./helpers/extraction-worker.mjs";
 // One root directory and a data directory containing only a synthetic CASC manifest.
 function romfsFixture() {
@@ -196,5 +199,37 @@ test("per-read cancellation terminates an in-flight bounded RomFS read", async (
   controller.abort("PRIVATE-CANARY");
   await assert.rejects(pending, /^ExtractionClientError: EXTRACTION_DISPOSED$/);
   assert.equal(f.worker.terminated, true);
+  await f.adapter.cleanup();
+});
+
+test("program provenance binds exact extracted identity, selection and live session", async () => {
+  const f = fixture(),
+    session = await open(f);
+  const extracted = await f.adapter.extractSelected({ session, selection });
+  assert.equal(readAuthenticatedProgramModules(extracted, selection), extracted.programModules);
+  assert.equal(
+    readAuthenticatedProgramModules(extracted, structuredClone(selection)),
+    extracted.programModules,
+  );
+  for (const candidate of [{ ...extracted }, { programModules: extracted.programModules }, null])
+    assert.throws(
+      () => readAuthenticatedProgramModules(candidate, selection),
+      /EXTRACTION_PROVENANCE_REJECTED/,
+    );
+  assert.throws(
+    () => readAuthenticatedProgramModules(extracted, { ...selection, effectiveVersion: 999 }),
+    /EXTRACTION_PROVENANCE_REJECTED/,
+  );
+  const controller = new AbortController();
+  controller.abort("PRIVATE-CANARY");
+  assert.throws(
+    () => readAuthenticatedProgramModules(extracted, selection, { signal: controller.signal }),
+    /^ExtractionClientError: EXTRACTION_CANCELLED$/,
+  );
+  await session.dispose();
+  assert.throws(
+    () => readAuthenticatedProgramModules(extracted, selection),
+    /EXTRACTION_PROVENANCE_REJECTED/,
+  );
   await f.adapter.cleanup();
 });

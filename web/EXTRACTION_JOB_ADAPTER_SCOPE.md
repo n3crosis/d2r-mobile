@@ -38,6 +38,22 @@ DLC overlay, signing, upload or network fallback is added.
   arbitrary request method, metadata row enumeration or native boundary is exposed.
   Reader closures are revoked on disposal, including zero-byte/cached operations.
 
+## Program provenance verification
+
+`readAuthenticatedProgramModules(extracted, selection, {signal})` is a synchronous
+verifier for trusted generator wiring. A private WeakMap registers only completed
+extraction results. The verifier requires exact result object identity, canonical
+full-selection equality, and a still-live session. Cloned results, caller boolean
+flags, changed selections, cancellation and disposed sessions reject. No registration
+helper is exported. This identity guard assumes the application supplies a trusted
+extraction Worker factory; it cannot authenticate hostile application code.
+
+The returned main/sdk arrays are borrowed. A program generator must immediately
+snapshot both and verify exact trusted full-file hashes before processing them.
+Provenance identifies the extraction boundary, not a supported program version.
+Inject the verifier into a program adapter rather than importing extraction modules
+into a separately sealed program runtime.
+
 ## Coordinator integration
 
 Call `runPackagingJob` with explicit `secretLifetime: "archive"` so isolated keys

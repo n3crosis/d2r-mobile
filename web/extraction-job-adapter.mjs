@@ -28,6 +28,25 @@ const canonical = (value) =>
       );
     return child;
   });
+// Registration is private to completed authenticated extraction. A copied result,
+// a caller boolean, or caller-supplied metadata can never create provenance.
+const authenticatedPrograms = new WeakMap();
+/** Trusted generator wiring injects this verifier; no extraction imports are
+ * required in a separately sealed program runtime. Borrowed bytes MUST be copied
+ * and verified against an exact trusted full-file digest before rewriting.
+ */
+export function readAuthenticatedProgramModules(extracted, selection, { signal } = {}) {
+  if (signal?.aborted) fail("EXTRACTION_CANCELLED");
+  try {
+    const proof = authenticatedPrograms.get(extracted);
+    if (!proof || proof.selection !== canonical(selection)) fail("EXTRACTION_PROVENANCE_REJECTED");
+    proof.check();
+    return proof.modules;
+  } catch {
+    fail("EXTRACTION_PROVENANCE_REJECTED");
+  }
+}
+
 /** Only trusted application code supplies createWorker. Combine these three job
  * methods with independently trusted generators/output adapters, compose cleanup,
  * and explicitly runPackagingJob({secretLifetime:"archive", ...}).
@@ -242,11 +261,17 @@ export function createExtractionJobAdapter({
             return bytes;
           },
         });
-        return Object.freeze({
+        const extracted = Object.freeze({
           programModules: Object.freeze(programModules),
           romfs,
           logicalAssets,
         });
+        authenticatedPrograms.set(extracted, {
+          selection: canonical(selected.selection),
+          modules: extracted.programModules,
+          check: () => check(),
+        });
+        return extracted;
       } catch {
         try {
           await session.dispose();

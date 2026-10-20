@@ -29,6 +29,25 @@ all four action definitions use Node 24 internally. The download action is
 `actions/download-artifact` v7.0.0, commit
 `37930b1c2abaa49bbe596cd826c3c89aef350131`.
 
+## Verified desktop CI evidence
+
+Run [39400065058](https://github.com/n3crosis/d2r-mobile/actions/runs/39400065058)
+passed on commit `ff42f2fcdeeed47a15f1d38d3a469b354e75bb73` (2026-10-20).
+Linux built and sealed the runtime; both consumers verified all 12 exact public
+files before execution. Both used Chromium `156.0.8078.4`:
+
+- `windows-2022`: Windows kernel `10.0.20348`, x64, Node `24.21.0`,
+  [job 118552530720](https://github.com/n3crosis/d2r-mobile/actions/runs/39400065058/job/118552530720).
+- `macos-14`: Darwin `23.6.0`, arm64, Node `24.20.0`,
+  [job 118552530677](https://github.com/n3crosis/d2r-mobile/actions/runs/39400065058/job/118552530677).
+
+Both passed ZIP32/ZIP64 commit and validator reread, cancellation during a real
+OPFS destination write preserving the original and removing the stage, and
+insufficient-estimated-quota rejection. Sealed Emscripten conversion passed with
+no post-seal HTTP receipts; invalid manifest, corrupted asset, oversized asset,
+missing asset and redirect cases failed closed before Worker execution.
+No portability fix or relaxed assertion was necessary.
+
 ## Evidence limits
 
 The workflow definition alone is not Windows/macOS execution evidence. A passing

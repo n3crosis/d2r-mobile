@@ -97,11 +97,22 @@ async function initialize(data) {
     stderr() {},
   });
   phase = "load-packages";
+  const packageErrors = [];
   await py.loadPackage(["pillow", "numpy"], {
     checkIntegrity: true,
     messageCallback() {},
-    errorCallback() {},
+    errorCallback(message) {
+      if (packageErrors.length < 4) packageErrors.push(String(message).slice(0, 1000));
+    },
   });
+  const packages = {
+    numpy: Object.hasOwn(py.loadedPackages, "numpy"),
+    pillow: Object.hasOwn(py.loadedPackages, "pillow"),
+  };
+  if (py.version !== "0.27.7" || !packages.numpy || !packages.pillow)
+    throw new Error(
+      `Runtime package initialization incomplete ${JSON.stringify(packages)}: ${packageErrors.join("; ")}`,
+    );
   for (const name of [
     "native_functions.py",
     "core.py",
@@ -113,10 +124,17 @@ async function initialize(data) {
     if (!bytes) throw new Error("Missing packaged Python source");
     py.FS.writeFile(`/home/pyodide/${name}`, bytes);
   }
-  phase = "import-core";
-  await py.runPythonAsync("from core import execute\nimport numpy, PIL.Image, derived, native_art");
-  if (py.version !== "0.27.7" || !py.loadedPackages.numpy || !py.loadedPackages.pillow)
-    throw new Error("Runtime package initialization incomplete");
+  for (const [stage, code] of [
+    ["import-numpy", "import numpy"],
+    ["import-pillow", "from PIL import Image"],
+    ["import-native-functions", "import native_functions"],
+    ["import-derived", "import derived"],
+    ["import-native-art", "import native_art"],
+    ["import-core", "from core import execute"],
+  ]) {
+    phase = stage;
+    await py.runPythonAsync(code);
+  }
   const after = await probe(data.probes);
   // Unknown/missing dependencies never fall back to network.
   let missingRejected = false;
@@ -128,7 +146,7 @@ async function initialize(data) {
   if (!missingRejected) throw new Error("Unknown resource accepted");
   initialized = true;
   phase = "ready";
-  return { initialized: true, blocked: before + after, reads, version: py.version };
+  return { initialized: true, blocked: before + after, reads, version: py.version, packages };
 }
 async function run(data) {
   if (
@@ -175,11 +193,17 @@ self.onmessage = ({ data }) => {
       if (data?.type === "initialize")
         self.postMessage({ id: 0, ok: true, result: await initialize(data) });
       else await run(data);
-    } catch {
+    } catch (error) {
+      // Initialization cannot receive job input. Its bounded diagnostics contain
+      // only public runtime/source information; job failures remain sanitized.
+      const detail =
+        !initialized && data?.type === "initialize"
+          ? `: ${String(error?.message ?? error).slice(0, 4000)}`
+          : "";
       self.postMessage({
         id: data?.id ?? 0,
         ok: false,
-        error: `Offline Pyodide operation failed (${phase})`,
+        error: `Offline Pyodide operation failed (${phase})${detail}`,
       });
     }
   });
