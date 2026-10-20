@@ -100,3 +100,12 @@ The hosted synthetic-export preview subsequently passed ESLint, Prettier,
 TypeScript and the Vite production build. Its save-picker interaction still needs
 independent desktop Chromium testing. The experimental shader compile job is
 separate and has not yet established browser translation parity.
+
+## Current input flow
+
+Put all NSP inputs, `prod.keys`, and `title.keys` in the same folder. The primary
+folder picker currently checks layout and file metadata only; it does not read key
+contents or decrypt packages. Separate core inspection APIs perform bounded NSP
+index and key-syntax checks. The IPA action remains disabled until the complete
+conversion pipeline is implemented. Synthetic export and extracted ExeFS checks
+remain secondary developer tools, not the promised final workflow.

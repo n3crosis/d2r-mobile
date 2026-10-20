@@ -7,3 +7,7 @@ coverage/
 package-lock.json
 # License and upstream provenance remain verbatim.
 SHADCN_LICENSE.md
+
+# Preserve upstream SparkMD5 formatting; only its module wrapper is adapted.
+vendor/spark-md5-3.0.2/spark-md5.mjs
+vendor/spark-md5-3.0.2/LICENSE2

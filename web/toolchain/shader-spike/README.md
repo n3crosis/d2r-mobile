@@ -1,13 +1,14 @@
-# Browser shader translator spike (compiled; runtime parity pending)
+# Browser shader translator spike (synthetic EXIT parity verified)
 
 This is isolated developer scaffolding, **not a working translator release**.
 GitHub Actions run `39387602517` passed C# restore, authored-source format,
 Release build/analyzers (zero warnings/errors), and static publish using the
-pinned .NET SDK/workload set `10.0.402`. The compiler gate does not prove browser
-execution or native parity. The first runtime run `39388812968` passed native restore/build, verified the original
-CLI embedded-source hash, and translated the synthetic EXIT fixture successfully.
-It then failed deployment-layout discovery before Chromium launched; parity and
-SPIR-V validation remain pending.
+pinned .NET SDK/workload set `10.0.402`. After repairing static-asset deployment,
+[runtime run `39389720867`](https://github.com/n3crosis/d2r-mobile/actions/runs/39389720867)
+on commit `454f84865acfc740883b879b9b509698a96f20a7` passed actual Chromium worker
+execution, independent original native CLI execution, exact SPIR-V bytes and
+complete sidecar parity, and both Vulkan 1.1 SPIR-V validation checks. This proves
+only the tiny authored EXIT case on Linux Chromium, not game compatibility.
 The React/shadcn preview does not load this directory. It does not unblock IPA
 assembly by itself. There are no game bytes, keys, or generated binaries here.
 
@@ -50,7 +51,7 @@ its project also references MsgPack, Humanizer and Gommon and includes unrelated
 platform code. Source-linking avoids those dependencies rather than hoping the
 browser linker removes them. This closure is **compiler-confirmed by run `39387602517`**, not runtime-confirmed.
 Generic integer operations, span layout, thread-static caches, unsafe code and
-all browser runtime behavior still require tests. The single-assembly arrangement
+browser behavior beyond the synthetic EXIT smoke test still require tests. The single-assembly arrangement
 is deliberate; named GLSL resources retain their original logical names.
 
 Keep `dm/third_party/ryujinx/LICENSE.txt` and the vendored provenance README with
@@ -108,8 +109,9 @@ it for the native verifier): a scheduling word at byte 0, then
 little-endian `0xe30000000007000f` at byte 8. This is derived from this repository's
 `InstTable` EXIT pattern, `InstExit` predicate/condition fields (`PT=7`, `Ccc.T=15`),
 and `Decoder.FillBlock` skipping a control word each 32 bytes. It is an intentionally
-minimal valid-encoding candidate, **not yet confirmed by a native translation**.
-No shader header is needed for compute. This is not a GPU execution correctness test.
+minimal encoding, now confirmed by native translation for this bounded fixture.
+No shader header is needed for compute. Native translation and browser parity for this fixture passed in run `39389720867`.
+This is not a GPU execution correctness test.
 
 1. Prepare generated fixture files outside tracked source:
 
@@ -227,3 +229,24 @@ visible without uploading any binaries.
 
 SDK source: [WebAssembly imports](https://github.com/dotnet/sdk/blob/v10.0.402/src/WasmSdk/Sdk/Sdk.props)
 and [default static content](https://github.com/dotnet/sdk/blob/v10.0.402/src/StaticWebAssetsSdk/Sdk/Sdk.StaticWebAssets.StaticAssets.ProjectSystem.props).
+
+### Verified runtime evidence
+
+The repaired gate passed in run `39389720867` with no browser diagnostic events:
+
+- Official Playwright `1.64.1`, Chromium `156.0.8078.4`, Ubuntu 24.04.
+- Actual deployable root: `bin/Release/net10.0/publish/wwwroot/`.
+- Native original-source check: `d760b2f173ee5e0c`; original native build emitted
+  zero warnings/errors and translated one fixture successfully.
+- Browser worker observed; actual downloaded result was 1,138 bytes. Capture took
+  2,542 ms including browser startup and page interaction, **not** isolated shader
+  translation time or a performance benchmark.
+- Exact 676-byte SPIR-V match, SHA-256
+  `7925f3ad17929801226064aa3fd504a268c5ca4d1a50b3f62d50541a4fd274ae`.
+- Complete JSON sidecar equality passed, with no field filtering.
+- Installed validator reported SPIRV-Tools `v2025.1`; native and decoded browser
+  bytes both passed `--target-env vulkan1.1` without relaxing the target.
+
+Windows/macOS Chromium, nontrivial arithmetic/resources/branches, graphics,
+rendering, game compatibility, Metal conversion, and working IPA assembly remain
+unverified. Nothing from this job was deployed or uploaded as a binary artifact.

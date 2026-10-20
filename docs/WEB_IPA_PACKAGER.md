@@ -2,13 +2,15 @@
 
 ## Outcome and boundaries
 
-Build a guided website for desktop Chromium-based browsers on Windows and macOS. The user selects their own extracted Switch game folder and a compatible prebuilt application shell; the browser processes the files locally and saves an IPA for subsequent signing and installation. The user should not install Python, .NET, a C compiler, SPIRV-Cross, Xcode, or use a terminal.
+Build a guided website for desktop Chromium-based browsers on Windows and macOS. The user places all of their NSP inputs, prod.keys and title.keys in one folder and selects that folder once. The browser processes those local inputs, selects compatible content and a matching prebuilt application shell, and saves an IPA for subsequent signing and installation. NSP extraction/decryption and content selection are required stages, not an assumption that ExeFS/RomFS were prepared externally. The user should not install Python, .NET, a C compiler, SPIRV-Cross, Xcode, or use a terminal.
 
 This is **not** a browser port of the game. The resulting program still runs natively on a supported Apple device. WebGPU, a browser ARM64 game emulator, and replacement of the native Metal rendering backend are not prerequisites for this packaging task.
 
 “Unsigned IPA” means no user's Apple/developer certificate, provisioning profile, or installation authorization is applied by the website. A linker-style **ad-hoc structural signature** on Guest.framework may be required for compatibility with later re-signers. Do not strip it merely to claim the file contains no signatures. Signing credentials, signing, installation, and device trust are outside this project.
 
 No game files are required for the initial implementation. Synthetic tests can establish parsing, transformations, archive correctness and failure handling; they cannot establish that a real generated IPA launches or plays correctly. Never label an unfinished or synthetic package “ready to play.”
+
+The latest input requirement is one folder containing all NSP files and both key files. The UI must guide that arrangement explicitly. Folder discovery is metadata-only; deeper key parsing and decryption stay in the browser, with no key contents in logs, uploads, URLs or persistent caches. JavaScript memory cleanup is best-effort, not guaranteed cryptographic erasure. No real key files have been supplied for development.
 
 ## Source baseline and scope changes
 
@@ -53,7 +55,7 @@ Older A16-and-earlier devices additionally require an ASTC texture pack and matc
 ### User experience
 
 1. Explain local processing, output/signing separation, supported device/shell combinations, and estimated storage requirements.
-2. Select the matching shell build input and extracted game directory. Do not require account login or upload.
+2. Select the single NSP/key input folder; obtain the matching content-free shell separately through a pinned release mechanism. Do not require account login or upload. Resolve base/update/DLC association from verified metadata, never filenames.
 3. Perform a read-only preflight: browser capabilities, file presence, ZIP structure, build identity, recipe compatibility, and available working storage.
 4. Show a stage checklist with real counts, elapsed time, cancellation and recoverable failure messages. Do not report completion from a marker file alone.
 5. Save the finished IPA only after all validators pass. Include a local report with tool versions, output hash, stage status and limitations. Keep game-derived content and personal filesystem paths out of telemetry.

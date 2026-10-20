@@ -108,7 +108,7 @@ async function inflateInto(encoded, output, start, size, signal) {
  * verifyMd5(bytes, expectedHex, {kind, index?, signal}) MUST resolve exactly true.
  * Supply a trusted MD5 implementation; WebCrypto does not supply MD5. No bypass.
  * record: {offset, encodedSize, decodedSize, encoding: 'n'|'z'|'b:...', ckey}.
- * Only the returned buffer is authenticated; no partial output is published.
+ * Only the returned buffer is checksum-verified; no partial output is published.
  */
 export async function decodeArchiveRecord(source, record, { verifyMd5, signal } = {}) {
   signal?.throwIfAborted();

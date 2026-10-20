@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { exportSyntheticArchive, SYNTHETIC_FILENAME } from "../synthetic-export.mjs";
 import { inspectNso, fileSource, REQUIRED_NSO_MODULES } from "../preflight.mjs";
+import { discoverNspFolder } from "../nsp-input.mjs";
 
 type DirectoryPicker = (options: { mode: "read" }) => Promise<FileSystemDirectoryHandle>;
 const picker = (
@@ -44,6 +45,28 @@ async function syntheticDemo(signal: AbortSignal) {
     signal,
   );
   return `SYNTHETIC DEMO ONLY\nVirtual input: 6 GiB (not allocated)\nBytes requested: ${read}\nSegments described: ${result.segments.length}\nNo game data, uploads or output files.\nHeader structure passes. Supported game version: NOT verified.\nIPA generation: NOT implemented.`;
+}
+
+async function localInputs(signal: AbortSignal) {
+  if (!picker) throw new Error("Directory selection is unavailable in this browser.");
+  // The picker is invoked directly from the click-triggered task, before any await.
+  const root = await picker({ mode: "read" });
+  signal.throwIfAborted();
+  const files = await discoverNspFolder(root, { signal });
+  signal.throwIfAborted();
+  const totalNspBytes = files.nsps.reduce(
+    (total: bigint, file: File) => total + BigInt(file.size),
+    0n,
+  );
+  return [
+    "FOLDER LAYOUT CHECK ONLY",
+    `Found ${files.nsps.length} NSP file(s) at the folder root (${totalNspBytes.toLocaleString()} bytes total).`,
+    "Found prod.keys and title.keys at the folder root.",
+    "Expected filenames are present. No file contents were read or validated.",
+    "Base/update/DLC roles, key validity and supported game version: NOT verified.",
+    "Conversion pipeline not ready. No IPA or other output was created.",
+    "No uploads. This app does not store folder handles. Re-select the folder to check again.",
+  ].join("\n");
 }
 
 async function localHeaders(signal: AbortSignal) {
@@ -143,64 +166,97 @@ export default function App() {
           D2R MOBILE · DEVELOPMENT PREVIEW
         </p>
         <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
-          Prepare locally.
+          One folder.
           <br />
-          Keep your files yours.
+          Your files stay local.
         </h1>
         <p className="max-w-2xl text-lg text-muted-foreground">
-          A browser-based unsigned IPA packager for Windows and Mac is the goal. This preview checks
-          local headers and exports a synthetic test ZIP only.
+          Put your NSP files, prod.keys and title.keys together, then select that folder once. This
+          preview checks the folder layout only. An unsigned IPA is the goal, not an available
+          output yet.
         </p>
       </header>
       <Alert>
-        <AlertTitle>Synthetic prototype, not an IPA builder yet</AlertTitle>
+        <AlertTitle>Conversion pipeline not ready</AlertTitle>
         <AlertDescription>
-          The test ZIP is NOT INSTALLABLE and contains no game content. This preview does not
-          convert game files, verify a supported game version, create an IPA, or prove the game
-          works.
+          Finding the expected filenames does not validate keys, identify base/update/DLC content,
+          confirm a supported game version or prove compatibility. This preview cannot decrypt or
+          convert your NSPs, create an IPA, or run the game.
         </AlertDescription>
       </Alert>
       <Card>
         <CardHeader>
-          <CardTitle>Start without game data</CardTitle>
+          <CardTitle>1. Put everything in one folder</CardTitle>
           <CardDescription>
-            The synthetic demo uses a tiny generated header and a virtual 6 GiB file. No game
-            content is included or downloaded.
+            Use files you own and are authorized to use. Keep the original files unchanged.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <ol className="list-decimal space-y-3 pl-5 text-sm">
+            <li>Create a folder on your computer, for example “D2R input”.</li>
+            <li>
+              Put your base-game .nsp directly inside it. If you have separate update or DLC NSPs,
+              put those in the same folder too. You can include multiple NSPs; do not unpack them or
+              put them in nested folders for this check.
+            </li>
+            <li>
+              Add both key files directly inside that folder, named exactly prod.keys and
+              title.keys. Make sure hidden extensions have not changed the names to prod.keys.txt or
+              title.keys.txt. Do not paste key contents here or upload them to a chat.
+            </li>
+            <li>
+              Choose “Select input folder” below and select the folder itself, not an individual
+              file. The browser asks for read-only access to that folder.
+            </li>
+          </ol>
+          <div
+            className="rounded-md bg-muted p-4 font-mono text-sm"
+            aria-label="Example folder contents"
+          >
+            <p>D2R input/</p>
+            <ul className="space-y-1 pl-4">
+              <li>base-game.nsp</li>
+              <li>update.nsp (if you have one)</li>
+              <li>dlc.nsp (if you have one)</li>
+              <li>prod.keys</li>
+              <li>title.keys</li>
+            </ul>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            NSP names above are examples, not required names. Base, update and DLC roles cannot be
+            determined from filenames alone. An update or DLC does not replace the base game; this
+            preview cannot confirm that a base game is present or which titles are supported.
+          </p>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>2. Check your folder</CardTitle>
+          <CardDescription>
+            One selection, a metadata-only check. No file contents are read, uploaded or saved by
+            this check.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-3">
-            <Button disabled={busy} onClick={() => void run(syntheticDemo)}>
-              Run synthetic demo
-            </Button>
-            <Button variant="outline" disabled={busy || !canSave} onClick={startExport}>
-              Export synthetic test ZIP
-            </Button>
-            <Button
-              variant="outline"
-              disabled={busy || !canPick}
-              onClick={() => void run(localHeaders)}
-            >
-              Select local game folder
+            <Button disabled={busy || !canPick} onClick={() => void run(localInputs)}>
+              Select input folder
             </Button>
             <Button variant="secondary" disabled={!busy} onClick={() => active.current?.abort()}>
               Cancel
             </Button>
+            <Button variant="outline" disabled title="The conversion pipeline is not implemented.">
+              Generate unsigned IPA · not available
+            </Button>
           </div>
           <p className="text-sm text-muted-foreground">
             {canPick
-              ? "Local folder access available. IPA output is planned, not implemented."
-              : "Folder selection needs a supporting desktop Chromium browser and HTTPS or localhost. The synthetic demo is still available."}
+              ? "Select the folder containing your NSP(s), prod.keys and title.keys. Close the folder dialog to cancel selection; Cancel stops the subsequent check."
+              : "Folder selection needs a supporting desktop Chromium browser and HTTPS or localhost. Open this page in a recent Chrome or Edge desktop browser; the synthetic preview below is still available without any files."}
           </p>
           <p className="text-sm text-muted-foreground">
-            {canSave
-              ? "Test export: choose a .zip destination, then generate tiny synthetic modules and stream a Guest framework archive to disk. No game folder is read. Close the save dialog to cancel selection; Cancel stops generation or staged writes before commit."
-              : "Test ZIP export needs the File System Access save API in a supporting desktop Chromium browser over HTTPS or localhost."}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Optional folder check: select the folder containing ExeFS. Only 256 bytes each from main
-            and sdk are read. Bulk RomFS archives are not opened. Close the browser’s folder dialog
-            to cancel selection; Cancel stops subsequent reads.
+            No ExeFS extraction, shell selection or separate file-by-file picking is required for
+            this folder check. Re-select the folder to check again after changing its contents.
           </p>
         </CardContent>
       </Card>
@@ -220,24 +276,63 @@ export default function App() {
           </pre>
         </CardContent>
       </Card>
-      <section className="space-y-3 text-sm text-muted-foreground" aria-labelledby="workflow">
-        <h2 id="workflow" className="text-lg font-semibold text-foreground">
-          The intended finished workflow
-        </h2>
-        <ol className="list-decimal space-y-2 pl-5">
-          <li>Select your own game folder and a compatible shell.</li>
-          <li>
-            Validate versions and generate the missing program, art, data and shaders locally.
-          </li>
-          <li>Save an IPA to disk, then sign and install it with your chosen tool.</li>
-          <li>Copy the large resource archives to the installed app separately.</li>
-        </ol>
+      <Card>
+        <CardHeader>
+          <CardTitle>Explore without NSPs</CardTitle>
+          <CardDescription>
+            Optional developer checks. Synthetic samples contain no game data and are not part of
+            the NSP-to-IPA conversion pipeline.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-3">
+            <Button variant="outline" disabled={busy} onClick={() => void run(syntheticDemo)}>
+              Run synthetic header demo
+            </Button>
+            <Button variant="outline" disabled={busy || !canSave} onClick={startExport}>
+              Export synthetic test ZIP
+            </Button>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            The header demo uses a tiny generated header and a virtual 6 GiB file. The export
+            generates tiny synthetic modules and streams a test Guest framework ZIP to disk. It is
+            NOT INSTALLABLE and is not an IPA. Neither reads your selected input folder.
+          </p>
+          {!canSave && (
+            <p className="text-sm text-muted-foreground">
+              Test ZIP export needs the File System Access save API in a supporting desktop Chromium
+              browser over HTTPS or localhost.
+            </p>
+          )}
+          <details className="space-y-3 text-sm">
+            <summary className="cursor-pointer font-medium">
+              Advanced: extracted ExeFS header check
+            </summary>
+            <p className="text-muted-foreground">
+              Separate from the main folder check. Select a folder containing ExeFS/main and
+              ExeFS/sdk. This reads 256 bytes from each module, not bulk RomFS archives. Header
+              structure alone does not verify game version, hashes or patch compatibility.
+            </p>
+            <Button
+              variant="outline"
+              disabled={busy || !canPick}
+              onClick={() => void run(localHeaders)}
+            >
+              Select extracted ExeFS parent folder
+            </Button>
+          </details>
+        </CardContent>
+      </Card>
+      <footer className="space-y-2 text-sm text-muted-foreground">
         <p>
-          No account credentials, signing keys or uploads. The production preview blocks network
-          connections after loading its own assets. Desktop Chromium on Windows/macOS is the initial
-          target; API availability is checked rather than assumed.
+          Current stage: local input preparation and developer checks. Real NSP processing,
+          supported-version verification, conversion and unsigned IPA packaging are not implemented.
         </p>
-      </section>
+        <p>
+          No uploads, accounts or signing credentials. The production preview blocks network
+          connections after loading its own assets. Folder and file handles are not persisted.
+        </p>
+      </footer>
     </main>
   );
 }

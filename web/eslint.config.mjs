@@ -7,6 +7,7 @@ export default tseslint.config(
   {
     ignores: [
       "dist/**",
+      "vendor/spark-md5-3.0.2/spark-md5.mjs",
       "node_modules/**",
       "coverage/**",
       "**/bin/**",
