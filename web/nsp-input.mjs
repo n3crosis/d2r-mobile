@@ -66,15 +66,15 @@ function finishDiscovery(records) {
   const nsps = [...records.entries()]
     .filter(([name]) => name.endsWith(".nsp"))
     .map(([, file]) => file);
-  if (!prodKeys || !titleKeys || nsps.length === 0) {
+  if (!prodKeys || nsps.length === 0) {
     fail(
       "MISSING_INPUT",
-      "Place prod.keys, title.keys, and at least one .nsp directly in the selected folder.",
+      "Place prod.keys and at least one .nsp directly in the selected folder. title.keys is optional.",
     );
   }
   if (nsps.length > NSP_INPUT_LIMITS.packages)
     fail("PACKAGE_LIMIT", "Too many NSP files in the selected folder.");
-  for (const file of [prodKeys, titleKeys]) {
+  for (const file of [prodKeys, titleKeys].filter(Boolean)) {
     if (fileSize(file) > BigInt(NSP_INPUT_LIMITS.keyBytes))
       fail("KEY_SIZE", "A key file exceeds the size limit.");
   }
@@ -249,6 +249,19 @@ export async function inspectKeyFile(file, kind) {
   if (size > BigInt(NSP_INPUT_LIMITS.keyBytes))
     fail("KEY_SIZE", "A key file exceeds the size limit.");
   const bytes = await readRange(file, 0n, Number(size));
+  try {
+    return inspectKeyBytes(bytes, kind);
+  } finally {
+    bytes.fill(0);
+  }
+}
+/** Validate an owned key buffer inside the isolated Worker without another file read.
+ * Returns metadata only; the caller MUST wipe bytes after native key loading.
+ */
+export function inspectKeyBytes(bytes, kind) {
+  if (kind !== "prod" && kind !== "title") fail("KEY_KIND", "Unsupported key-file kind.");
+  if (!(bytes instanceof Uint8Array) || bytes.length > NSP_INPUT_LIMITS.keyBytes)
+    fail("KEY_SIZE", "A key file exceeds the size limit.");
   const seen = new Set();
   let entries = 0;
   let verifiedEntries = 0;
@@ -295,7 +308,6 @@ export async function inspectKeyFile(file, kind) {
       usableForDecryption: false,
     };
   } finally {
-    bytes.fill(0);
     seen.clear();
   }
 }
@@ -305,7 +317,9 @@ export async function preflightNspFolder(input) {
   const files =
     input?.kind === "directory" ? await discoverNspFolder(input) : discoverNspFiles(input);
   const prodKeys = await inspectKeyFile(files.prodKeys, "prod");
-  const titleKeys = await inspectKeyFile(files.titleKeys, "title");
+  const titleKeys = files.titleKeys
+    ? await inspectKeyFile(files.titleKeys, "title")
+    : inspectKeyBytes(new Uint8Array(), "title");
   const packages = [];
   for (const file of files.nsps) packages.push({ name: file.name, ...(await inspectNsp(file)) });
   return { packages, prodKeys, titleKeys, stage: "metadata-only", canBuildIpa: false };

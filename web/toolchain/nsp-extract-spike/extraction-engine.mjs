@@ -1,4 +1,5 @@
-import { inspectNsp, NSP_INPUT_LIMITS } from "../../nsp-input.mjs";
+import { inspectNsp, inspectKeyBytes, NSP_INPUT_LIMITS } from "../../nsp-input.mjs";
+import { extractionDiagnosticError } from "../../extraction-errors.mjs";
 import { parseCnmt } from "../../content-selection.mjs";
 import { resolveD2rExpansionSelection } from "../../d2r-expansion-policy.mjs";
 const CHUNK = 65536,
@@ -7,6 +8,37 @@ const CHUNK = 65536,
 const fail = () => {
   throw new Error("EXTRACTION_REQUEST_REJECTED");
 };
+const diagnostic = (code) => {
+  throw extractionDiagnosticError(code);
+};
+const checked = (code, operation) => {
+  try {
+    return operation();
+  } catch (error) {
+    diagnostic(error?.code === "TITLE_KEY_REQUIRED" ? "TITLE_KEY_REQUIRED" : code);
+  }
+};
+async function readKeys(file, kind) {
+  if (kind === "title" && file == null) return new Uint8Array();
+  const prefix = kind === "prod" ? "PROD_KEYS" : "TITLE_KEYS";
+  if (!(file instanceof Blob)) diagnostic(`${prefix}_MISSING`);
+  if (file.size > NSP_INPUT_LIMITS.keyBytes) diagnostic(`${prefix}_TOO_LARGE`);
+  let bytes;
+  try {
+    bytes = new Uint8Array(await file.arrayBuffer());
+    if (bytes.length !== file.size) diagnostic(`${prefix}_UNREADABLE`);
+  } catch {
+    bytes?.fill(0);
+    diagnostic(`${prefix}_UNREADABLE`);
+  }
+  try {
+    inspectKeyBytes(bytes, kind);
+    return bytes;
+  } catch (error) {
+    bytes.fill(0);
+    diagnostic(error?.code === "KEY_EMPTY" ? "PROD_KEYS_EMPTY" : `${prefix}_MALFORMED`);
+  }
+}
 const bounded = (offset, count, size) => {
   if (
     typeof offset !== "bigint" ||
@@ -30,7 +62,17 @@ function fields(value, allowed) {
 }
 /** Dedicated-Worker engine. Native boundary is a trusted capability, never RPC input.
  * Only read capabilities leave this object. Real-content coverage remains unproven. */
-export function createExtractionEngine(boundary, { newToken = () => crypto.randomUUID() } = {}) {
+export function createExtractionEngine(
+  boundary,
+  { newToken = () => crypto.randomUUID(), onProgress = () => {} } = {},
+) {
+  const progress = (stage, completed = 0, total = 0, bytes = 0) => {
+    try {
+      onProgress(Object.freeze({ stage, completed, total, bytes }));
+    } catch {
+      // Diagnostics cannot change the extraction result.
+    }
+  };
   let state = "new",
     token,
     contents = new Map(),
@@ -95,55 +137,70 @@ export function createExtractionEngine(boundary, { newToken = () => crypto.rando
           payload.nsps.some((file) => !(file instanceof Blob))
         )
           fail();
-        for (const file of [payload.prodKeys, payload.titleKeys])
-          if (!(file instanceof Blob) || file.size > NSP_INPUT_LIMITS.keyBytes || !file.size)
-            fail();
         let prod, title;
         try {
-          prod = new Uint8Array(await payload.prodKeys.arrayBuffer());
-          title = new Uint8Array(await payload.titleKeys.arrayBuffer());
-          boundary.loadKeys(prod, title);
+          progress("prod-keys-read");
+          prod = await readKeys(payload.prodKeys, "prod");
+          progress("title-keys-read");
+          title = await readKeys(payload.titleKeys, "title");
+          progress("keys-load");
+          checked("KEYS_RUNTIME_FAILED", () => boundary.loadKeys(prod, title));
         } finally {
           prod?.fill(0);
           title?.fill(0);
         }
         const blobs = [],
           ids = [];
-        for (const file of payload.nsps) {
-          const catalog = await inspectNsp(file);
+        for (const [index, file] of payload.nsps.entries()) {
+          progress("package-index", index, payload.nsps.length);
+          let catalog;
+          try {
+            catalog = await inspectNsp(file);
+          } catch {
+            diagnostic("PACKAGE_INDEX_INVALID");
+          }
           for (const entry of catalog.entries) {
             const match = /^([0-9a-f]{32})(?:\.cnmt)?\.nca$/iu.exec(entry.name);
             if (!match) {
-              if (/\.(?:nca|ncz)$/iu.test(entry.name)) fail();
+              if (/\.(?:nca|ncz)$/iu.test(entry.name)) diagnostic("PACKAGE_INDEX_INVALID");
               continue;
             }
-            if (blobs.length >= MAX_CONTENTS) fail();
+            if (blobs.length >= MAX_CONTENTS) diagnostic("PACKAGE_INDEX_INVALID");
             blobs.push(file.slice(Number(entry.offset), Number(entry.offset + entry.size)));
             ids.push(match[1].toLowerCase());
           }
         }
-        if (!blobs.length) fail();
-        boundary.mount(blobs);
+        if (!blobs.length) diagnostic("PACKAGE_INDEX_INVALID");
+        checked("CONTENT_READ_FAILED", () => boundary.mount(blobs));
         for (let i = 0; i < blobs.length; i++) {
-          const sha256 = boundary.hashInput(i),
-            header = boundary.inspect(i);
-          if (!header.fixedSignatureValid || header.size !== BigInt(blobs[i].size)) fail();
+          progress("content-hash", i, blobs.length, blobs[i].size);
+          const sha256 = checked("CONTENT_READ_FAILED", () => boundary.hashInput(i));
+          progress("content-header", i, blobs.length);
+          const header = checked("CONTENT_AUTHENTICATION_FAILED", () => boundary.inspect(i));
+          if (!header.fixedSignatureValid || header.size !== BigInt(blobs[i].size))
+            diagnostic("CONTENT_AUTHENTICATION_FAILED");
           const record = { contentId: ids[i], sha256, size: header.size, hashVerified: true };
           const old = contents.get(ids[i]);
-          if (old && (old.sha256 !== sha256 || old.size !== record.size)) fail();
+          if (old && (old.sha256 !== sha256 || old.size !== record.size))
+            diagnostic("CONTENT_METADATA_INVALID");
           if (old) continue;
           contents.set(ids[i], { ...record, index: i, ncaType: header.contentType });
           inventory.push(record);
           if (header.contentType === 1) {
-            const count = boundary.open(i, "meta");
-            const candidates = [];
-            for (let j = 0; j < count; j++)
-              if (boundary.entry(j).name.endsWith(".cnmt")) candidates.push(j);
-            if (candidates.length !== 1) fail();
-            records.push(await member(candidates[0]));
+            progress("content-metadata", i, blobs.length);
+            const count = checked("CONTENT_AUTHENTICATION_FAILED", () => boundary.open(i, "meta"));
+            try {
+              const candidates = [];
+              for (let j = 0; j < count; j++)
+                if (boundary.entry(j).name.endsWith(".cnmt")) candidates.push(j);
+              if (candidates.length !== 1) fail();
+              records.push(await member(candidates[0]));
+            } catch {
+              diagnostic("CONTENT_METADATA_INVALID");
+            }
           }
         }
-        if (!records.length) fail();
+        if (!records.length) diagnostic("CONTENT_METADATA_INVALID");
         state = "inspected";
         return { records, inventory };
       }

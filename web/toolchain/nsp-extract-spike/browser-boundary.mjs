@@ -1,3 +1,4 @@
+import { extractionDiagnosticError } from "../../extraction-errors.mjs";
 // Must run in a fresh dedicated Worker. This is a metadata-first bridge, not
 // the application's production NSP input validator or an IPA builder.
 const MAX_KEYS = 1024 * 1024;
@@ -10,6 +11,7 @@ const messages = new Map([
   [-5, "Local file read failed"],
 ]);
 const check = (result) => {
+  if (result === -6) throw extractionDiagnosticError("TITLE_KEY_REQUIRED");
   if (result < 0) throw new Error(messages.get(result) || "Extraction failed");
   return result;
 };
@@ -27,7 +29,9 @@ export async function createBoundary(factory) {
     if (disposed) throw new Error("Extractor has been disposed");
     try {
       return fn();
-    } catch {
+    } catch (error) {
+      if (error?.code === "TITLE_KEY_REQUIRED")
+        throw extractionDiagnosticError("TITLE_KEY_REQUIRED");
       throw new Error("Local extraction operation failed");
     }
   };
@@ -84,8 +88,7 @@ export async function createBoundary(factory) {
             !(title instanceof Uint8Array) ||
             prod.length > MAX_KEYS ||
             title.length > MAX_KEYS ||
-            !prod.length ||
-            !title.length
+            !prod.length
           )
             throw new Error("Invalid key input");
           generation++;

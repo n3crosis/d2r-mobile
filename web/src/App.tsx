@@ -1,8 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { prepareBrowserPackager } from "../browser-packager.mjs";
 import { discoverNspFolder } from "../nsp-input.mjs";
+import {
+  packagingActivity,
+  packagingFailureMessage,
+  packagingFailureSummary,
+} from "../packaging-diagnostics.mjs";
 
 type LocalPickers = typeof globalThis & {
   showDirectoryPicker?: (options: {
@@ -27,9 +32,28 @@ type FolderProgress = {
   titleKeysFound: boolean;
 };
 const folderSummary = (progress: FolderProgress) =>
-  `${progress.nspCount} NSP file(s); prod.keys ${progress.prodKeysFound ? "found" : "missing"}; title.keys ${progress.titleKeysFound ? "found" : "missing"}.`;
+  `${progress.nspCount} NSP file(s); prod.keys ${progress.prodKeysFound ? "found" : "missing"}; title.keys ${progress.titleKeysFound ? "found (optional)" : "not provided (optional)"}.`;
 const megabytes = (bytes: number) => `${(bytes / 1_000_000).toFixed(1)} MB`;
 export default function App() {
+  const [activity, setActivity] = useState<string[]>([]);
+  const [copyStatus, setCopyStatus] = useState("");
+  const lastActivity = useRef({ text: "", time: 0 });
+  const pendingActivity = useRef<string | null>(null);
+  const appendActivity = useCallback((text: string | null, force = false) => {
+    if (!text) return;
+    const now = Date.now();
+    if (!force && text === lastActivity.current.text) return;
+    const line = `${new Date(now).toISOString()} ${text}`;
+    if (!force && now - lastActivity.current.time < 250) {
+      pendingActivity.current = line;
+      return;
+    }
+    lastActivity.current = { text, time: now };
+    // Preserve the most recent substage when a rapid failure follows it.
+    const additions = pendingActivity.current ? [pendingActivity.current, line] : [line];
+    pendingActivity.current = null;
+    setActivity((previous) => [...previous, ...additions].slice(-200));
+  }, []);
   const [loading, setLoading] = useState<LoadingProgress | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [status, setStatus] = useState("Loading application files…");
@@ -55,6 +79,9 @@ export default function App() {
       );
       return;
     }
+    appendActivity("Loading verified application files", true);
+    appendActivity(`Runtime manifest: ${digest}`, true);
+    let previousPhase = "";
     void prepareBrowserPackager({
       manifestSha256: digest,
       signal: controller.signal,
@@ -62,6 +89,15 @@ export default function App() {
         if (!controller.signal.aborted) {
           setLoading(event);
           setStatus(event.label);
+          if (event.phase !== previousPhase) {
+            previousPhase = event.phase;
+            appendActivity(
+              event.phase === "download"
+                ? "Downloading application files"
+                : "Preparing isolated application runtimes",
+              true,
+            );
+          }
         }
       },
     })
@@ -74,10 +110,12 @@ export default function App() {
         setLoading(null);
         setReady(true);
         setStatus("Ready. Files stay on this device.");
+        appendActivity("Application ready", true);
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
           setLoadFailed(true);
+          appendActivity("Application setup failed before local inputs were opened", true);
           setStatus(
             `Application setup failed: ${String(error instanceof Error ? error.message : error).slice(0, 1400)}. Reload to retry. No game files have been opened.`,
           );
@@ -90,7 +128,7 @@ export default function App() {
       packager.current?.close();
       if (downloadUrl.current) URL.revokeObjectURL(downloadUrl.current);
     };
-  }, []);
+  }, [appendActivity]);
   async function choose() {
     if (!ready || busy || !browser.showDirectoryPicker) return;
     const previousStatus = status;
@@ -118,12 +156,17 @@ export default function App() {
         },
       });
       setFolder(selected);
+      appendActivity(
+        `Folder checked: ${progress.nspCount} NSP files; prod.keys found; title.keys ${progress.titleKeysFound ? "provided" : "not provided (optional)"}`,
+        true,
+      );
       setStatus(`${selected.name}: ${folderSummary(progress)} Ready to generate.`);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         if (!controller.signal.aborted) setStatus(previousStatus);
       } else {
         setFolder(null);
+        appendActivity("Folder check failed; check the status message", true);
         const code = (error as { code?: string })?.code;
         const permissionError =
           error instanceof DOMException &&
@@ -146,19 +189,24 @@ export default function App() {
     if (!folder || !packager.current) return;
     setBusy(true);
     setReady(false);
+    appendActivity("Generation started; private inputs remain local", true);
     try {
       const controller = new AbortController();
       cancellation.current = controller;
       const result = await packager.current.generate({
         input: folder,
         signal: controller.signal,
-        onProgress: (event: { label: string }) => setStatus(event.label),
+        onProgress: (event: { label: string; stage?: string; state?: string }) => {
+          setStatus(event.label);
+          appendActivity(packagingActivity(event), event.state === "failed");
+        },
       });
       if (!mounted.current) return;
       const url = URL.createObjectURL(result.download.blob);
       if (downloadUrl.current) URL.revokeObjectURL(downloadUrl.current);
       downloadUrl.current = url;
       setDownload({ url, fileName: result.download.fileName });
+      appendActivity("Unsigned IPA ready; resources saved locally", true);
       setStatus(
         `IPA ready to download. Resources saved in ${folder.name}/${result.resources.directoryName}. Copy that resource folder into the app’s Files folder after signing and installing the IPA. Game compatibility is not yet verified.`,
       );
@@ -176,12 +224,13 @@ export default function App() {
         link.remove();
       }
     } catch (error) {
-      const report = (error as { report?: { stage?: string; code?: string } })?.report;
-      setStatus(
-        report?.code === "CANCELLED"
-          ? "Cancelled. Reload to start again."
-          : `Could not finish${report?.stage ? ` (${report.stage})` : ""}. No completed IPA is available. Resources may already have been exported; check for a D2R-resources subfolder inside ${folder.name}. Reload to try again.`,
-      );
+      const report = (
+        error as {
+          report?: { stage?: string; code?: string; detailCode?: string; outputStarted?: boolean };
+        }
+      )?.report;
+      appendActivity(packagingFailureSummary(report), true);
+      setStatus(packagingFailureMessage(report));
     } finally {
       setBusy(false);
       setFinished(true);
@@ -193,8 +242,8 @@ export default function App() {
         <CardHeader>
           <CardTitle>D2R Mobile</CardTitle>
           <CardDescription>
-            Put the base NSP, update NSP(s), prod.keys and title.keys in one folder. DLC is
-            optional.
+            Put the base NSP, update NSP(s), and prod.keys in one folder. DLC and title.keys are
+            optional; some rights-managed packages need matching title keys.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -212,6 +261,7 @@ export default function App() {
                   setReady(false);
                   cancellation.current?.abort();
                   setStatus("Cancelled. Reload to start again.");
+                  appendActivity("Cancellation requested", true);
                 }}
               >
                 Cancel
@@ -234,6 +284,31 @@ export default function App() {
           <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
             {status}
           </p>
+          <details className="space-y-2 text-xs text-muted-foreground">
+            <summary className="cursor-pointer">Activity log ({activity.length})</summary>
+            <p>
+              Only stages, counts and safe error codes. No key contents or selected filenames. Kept
+              in this tab, not uploaded.
+            </p>
+            <ol className="max-h-64 overflow-auto break-words space-y-1" aria-label="Activity log">
+              {activity.map((line, index) => (
+                <li key={`${index}-${line}`}>{line}</li>
+              ))}
+            </ol>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                void navigator.clipboard.writeText(activity.join("\n")).then(
+                  () => setCopyStatus("Log copied."),
+                  () => setCopyStatus("Copy failed. Select the log text and copy it manually."),
+                );
+              }}
+            >
+              Copy log
+            </Button>
+            {copyStatus && <p role="status">{copyStatus}</p>}
+          </details>
           {loading && !loadFailed && (
             <div className="space-y-2 text-xs text-muted-foreground">
               {loading.phase === "download" && loading.totalBytes > 0 ? (

@@ -1,3 +1,4 @@
+import { isExtractionWorkerErrorCode, isExtractionProgress } from "./extraction-errors.mjs";
 /** Strict, single-flight transport for the isolated extraction Worker.
  * createWorker is trusted application wiring; no URL/source/RPC is accepted here.
  */
@@ -117,6 +118,19 @@ export function createExtractionWorkerClient({
   function message(event) {
     const data = event.data;
     if (
+      active?.operation === "initialize" &&
+      data?.id === active.id &&
+      keys(data, ["id", "progress"]) &&
+      isExtractionProgress(data.progress)
+    ) {
+      try {
+        active.onProgress?.(Object.freeze({ ...data.progress }));
+      } catch {
+        // Observers do not alter the request or renew its deadline.
+      }
+      return;
+    }
+    if (
       !active ||
       !data ||
       data.id !== active.id ||
@@ -124,13 +138,13 @@ export function createExtractionWorkerClient({
         ? keys(data, ["id", "ok", "result"])
         : data.ok === false &&
           keys(data, ["id", "ok", "error"]) &&
-          data.error === "EXTRACTION_FAILED")
+          isExtractionWorkerErrorCode(data.error))
     ) {
       close("EXTRACTION_PROTOCOL_FAILED");
       return;
     }
     if (!data.ok) {
-      close("EXTRACTION_FAILED");
+      close(data.error);
       return;
     }
     const task = active;
@@ -156,7 +170,7 @@ export function createExtractionWorkerClient({
   worker.addEventListener("message", message);
   worker.addEventListener("error", crashed);
   worker.addEventListener("messageerror", crashed);
-  function request(operation, payload, validate, { signal } = {}) {
+  function request(operation, payload, validate, { signal, onProgress } = {}) {
     if (closed) return Promise.reject(error("EXTRACTION_DISPOSED"));
     if (signal?.aborted) {
       close("EXTRACTION_CANCELLED");
@@ -164,7 +178,16 @@ export function createExtractionWorkerClient({
     }
     if (queue.length >= maxQueue) return Promise.reject(error("EXTRACTION_QUEUE_LIMIT"));
     return new Promise((resolve, reject) => {
-      const task = { id: ++nextId, operation, payload, validate, resolve, reject, signal };
+      const task = {
+        id: ++nextId,
+        operation,
+        payload,
+        validate,
+        resolve,
+        reject,
+        signal,
+        onProgress,
+      };
       task.abort = () => close("EXTRACTION_CANCELLED");
       // Includes time spent queued, bounding total request lifetime.
       task.timer = setTimeout(() => close("EXTRACTION_TIMEOUT"), deadlines[operation]);

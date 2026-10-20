@@ -1,12 +1,18 @@
+import { extractionWorkerErrorCode } from "../../extraction-errors.mjs";
 import factory from "./dist/hactool-boundary.mjs";
 import { createBoundary } from "./browser-boundary.mjs";
 import { createExtractionEngine } from "./extraction-engine.mjs";
 // No caller-supplied module URLs, source code, native names or filesystem paths.
-const ready = createBoundary(factory).then((boundary) => createExtractionEngine(boundary));
+const ready = createBoundary(factory).then((boundary) =>
+  createExtractionEngine(boundary, {
+    onProgress: (progress) => self.postMessage({ id: lastId, progress }),
+  }),
+);
 let busy = false,
   closed = false,
   lastId = 0;
-const reject = (id) => self.postMessage({ id, ok: false, error: "EXTRACTION_FAILED" });
+const reject = (id, error) =>
+  self.postMessage({ id, ok: false, error: extractionWorkerErrorCode(error) });
 self.onmessage = async ({ data }) => {
   const id = data?.id;
   if (
@@ -32,14 +38,14 @@ self.onmessage = async ({ data }) => {
       closed = true;
       self.close();
     }
-  } catch {
+  } catch (error) {
     // An error is terminal. Never serialize parser/native text or key-bearing state.
     try {
       await (await ready).execute("dispose");
     } catch {
       /* terminate regardless */
     }
-    reject(id);
+    reject(id, error);
     closed = true;
     self.close();
   } finally {

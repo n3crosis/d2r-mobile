@@ -8,7 +8,7 @@ Public shell bytes and metadata are included in that inventory. The shell ZIP
 additionally matches the independently bundled release SHA-256 and per-entry
 inventory; its actual Mach-O target is inspected.
 
-One folder supplies all NSP files, prod.keys, and title.keys. Isolated extraction
+One folder supplies all NSP files, prod.keys, and optional title.keys. Isolated extraction
 owns keys through the last authenticated lazy read. The callable sequence is
 program rewriting, native art, HUD, generated tables, frontend/remaining art and
 CASC overlays, full shader conversion, inventory checks, then local staged IPA

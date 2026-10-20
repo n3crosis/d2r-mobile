@@ -1,3 +1,4 @@
+import { isExtractionDiagnosticCode, extractionProgressLabel } from "./extraction-errors.mjs";
 import { discoverNspFiles, discoverNspFolder } from "./nsp-input.mjs";
 import { resolveContentSelection } from "./content-selection.mjs";
 import { validateShellContract, validateAssemblyInventory } from "./shell-contract.mjs";
@@ -21,7 +22,7 @@ export const REQUIRED_PACKAGING_ADAPTERS = Object.freeze([
 const labels = Object.freeze({
   capabilities: "Checking local conversion capabilities",
   discovery: "Finding local package and key files",
-  secrets: "Opening an isolated key session",
+  secrets: "Reading local keys and verifying package contents",
   inspection: "Inspecting package content identities",
   selection: "Selecting base, update and additional content",
   extraction: "Extracting selected content locally",
@@ -99,7 +100,8 @@ export async function runPackagingJob(options) {
     session,
     output,
     committed = false,
-    commitStarted = false;
+    commitStarted = false,
+    outputStarted = false;
   let cleanupDone = false,
     outputAborted = false;
   const cleanupCodes = [];
@@ -186,7 +188,25 @@ export async function runPackagingJob(options) {
     );
     const context = { inputs, signal };
     await step("secrets", async () => {
-      session = await adapters.openSecretSession(context);
+      session = await adapters.openSecretSession({
+        ...context,
+        onDiagnostic(diagnostic) {
+          const label = extractionProgressLabel(diagnostic);
+          if (!label) return;
+          try {
+            options.onProgress?.(
+              Object.freeze({
+                stage: "secrets",
+                state: "running",
+                label,
+                diagnostic,
+              }),
+            );
+          } catch {
+            // Read-only progress observers cannot affect the job.
+          }
+        },
+      });
       assertion(session && typeof session.dispose === "function");
     });
     const inspected = await step("inspection", () =>
@@ -268,6 +288,7 @@ export async function runPackagingJob(options) {
     // Reject over-budget ZIP64 metadata before opening any staged destination.
     if (zip64) planZip64(archiveEntries, { maxTotalBytes: options.maxOutputBytes });
     const result = await step("output", async () => {
+      outputStarted = true;
       output = await adapters.createOutput({ manifest, signal });
       assertion(
         output && ["write", "close", "abort"].every((key) => typeof output[key] === "function"),
@@ -335,6 +356,8 @@ export async function runPackagingJob(options) {
               ? "CANCELLED"
               : "STAGE_FAILED",
         stage: failedStage,
+        detailCode: isExtractionDiagnosticCode(cause?.code) ? cause.code : null,
+        outputStarted,
         committed,
         commitStarted,
         cleanupCodes: Object.freeze([...cleanupCodes]),

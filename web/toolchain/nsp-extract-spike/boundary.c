@@ -1,7 +1,7 @@
 /* Bounded pull API. No upstream CLI main, auto key search, extraction paths,
  * stdout/stderr, network calls or persistent key files are reachable here.
  * Return codes: 0 OK; -1 state/input; -2 format/bounds; -3 crypto/integrity;
- * -4 unsupported; -5 I/O. Negative failures never include user input.
+ * -4 unsupported; -5 I/O; -6 required title key is unavailable. Negative failures never include user input.
  */
 #include "extkeys.h"
 #include "nca.h"
@@ -374,7 +374,7 @@ static int open_authenticated_section(const char *path, int mode) {
         if (nca.has_rights_id) {
             titlekey_entry_t *entry = settings_get_titlekey(&tool.settings, nca.header.rights_id);
             if (!entry)
-                return -3;
+                return -6;
             aes_ctx_t *aes =
                 new_aes_ctx(tool.settings.keyset.titlekeks[nca.crypto_type], 16, AES_MODE_ECB);
             aes_decrypt(aes, key, entry->titlekey, 16);

@@ -82,6 +82,7 @@ export function fixture({
   entries,
   selected = selection,
   maxProgramBytes,
+  contentMode,
   failRead = false,
   inspected = inspectedFixture(),
   romfs = romfsFixture(),
@@ -120,7 +121,11 @@ export function fixture({
     }
     throw new Error("unknown request");
   });
-  const adapter = createExtractionJobAdapter({ createWorker: () => worker, maxProgramBytes });
+  const adapter = createExtractionJobAdapter({
+    createWorker: () => worker,
+    maxProgramBytes,
+    contentMode,
+  });
   return {
     adapter,
     worker,

@@ -1,7 +1,7 @@
 # Browser IPA packager
 
 A local-input packager for desktop Chromium on Windows/macOS. Select one folder
-containing the base NSP, compatible update NSP(s), `prod.keys` and `title.keys`.
+containing the base NSP, compatible update NSP(s), `prod.keys`, and optional `title.keys`.
 Compatible known DLC is optional and accepted when present. Grant read/write
 access to this one folder, then generate a downloadable unsigned IPA and a fresh
 game-resource subfolder inside the selected folder. End users do not install a

@@ -218,6 +218,7 @@ test("forwards explicit DLC version and retains exact evidence in provenance", a
     session = await open(f);
   const extracted = await f.adapter.extractSelected({ session, selection: chosen });
   assert.deepEqual(f.worker.requests.find((r) => r.operation === "select").payload.options, {
+    contentMode: "warlock",
     baseVersion: 0n,
     patchVersion: 65536n,
     dlcVersions,
@@ -230,4 +231,38 @@ test("forwards explicit DLC version and retains exact evidence in provenance", a
   assert.equal(chosen.requiredContents.length, 3);
   assert.equal("owned" in chosen, false);
   await f.adapter.cleanup();
+});
+
+test("safe initialization diagnosis survives adapter cleanup", async () => {
+  let worker;
+  worker = new MockWorker((request) => {
+    worker.emit({ id: request.id, ok: false, error: "PROD_KEYS_UNREADABLE" });
+  });
+  const adapter = createExtractionJobAdapter({ createWorker: () => worker });
+  await assert.rejects(
+    adapter.openSecretSession({ inputs: {} }),
+    /^ExtractionClientError: PROD_KEYS_UNREADABLE$/,
+  );
+  assert.equal(worker.terminated, true);
+});
+
+test("authenticated base and update without DLC work in both permitted content modes", async () => {
+  for (const contentMode of ["base-update-only", "optional-warlock"]) {
+    const inspected = inspectedFixture();
+    inspected.records = inspected.records.slice(0, 2);
+    inspected.inventory = inspected.inventory.slice(0, 2);
+    const chosen = resolveD2rExpansionSelection(inspected.records, inspected.inventory, {
+      contentMode,
+    });
+    const f = fixture({ inspected, selected: chosen, contentMode });
+    const session = await open(f);
+    const extracted = await f.adapter.extractSelected({ session, selection: chosen });
+    assert.equal(chosen.dlc.length, 0);
+    assert.equal(readAuthenticatedProgramModules(extracted, chosen), extracted.programModules);
+    assert.equal(
+      f.worker.requests.find((r) => r.operation === "select").payload.options.contentMode,
+      contentMode,
+    );
+    await f.adapter.cleanup();
+  }
 });

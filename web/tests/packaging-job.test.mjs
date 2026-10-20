@@ -438,3 +438,18 @@ test("lazy mode still disposes when generation or writing fails", async () => {
     assert.equal(f.calls.filter((x) => x === "dispose").length, 1);
   }
 });
+
+test("safe input diagnoses survive packaging without exposing raw causes or implying output", async () => {
+  const f = fixture();
+  f.adapters.openSecretSession = async () => {
+    const error = new Error("PRIVATE-KEY-PATH-CANARY");
+    error.code = "PROD_KEYS_UNREADABLE";
+    throw error;
+  };
+  await assert.rejects(runPackagingJob(f), (error) => {
+    assert.equal(error.report.detailCode, "PROD_KEYS_UNREADABLE");
+    assert.equal(error.report.outputStarted, false);
+    assert.doesNotMatch(JSON.stringify(error.report), /PRIVATE/);
+    return true;
+  });
+});

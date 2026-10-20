@@ -121,8 +121,8 @@ function setup({
 const initialize = (engine) =>
   engine.execute("initialize", {
     nsps: [fixture()],
-    prodKeys: new Blob(["synthetic-prod"]),
-    titleKeys: new Blob(["synthetic-title"]),
+    prodKeys: new Blob([`header_key = ${"12".repeat(32)}\n`]),
+    titleKeys: new Blob([`${"34".repeat(16)} = ${"56".repeat(16)}\n`]),
   });
 test("engine uses catalog, independent inventory and internal selection; tokens revoke ExeFS", async () => {
   const env = setup(),
@@ -178,4 +178,52 @@ test("known DLC requires authenticated Meta evidence and actual signed Data NCA 
   const { engine } = setup({ unsignedDlc: true });
   await assert.rejects(initialize(engine));
   await engine.execute("dispose");
+});
+
+test("empty title keys reach the native loader, while key failures are safely distinguished", async () => {
+  const valid = new Blob([`header_key = ${"12".repeat(32)}\n`]);
+  const env = setup();
+  await env.engine.execute("initialize", {
+    nsps: [fixture()],
+    prodKeys: valid,
+    titleKeys: new Blob(),
+  });
+  assert.equal(env.keys()[1].length, 0);
+  for (const [prodKeys, titleKeys, expected] of [
+    [undefined, new Blob(), "PROD_KEYS_MISSING"],
+    [new Blob(), new Blob(), "PROD_KEYS_EMPTY"],
+    [new Blob(["PRIVATE-KEY-CANARY"]), new Blob(), "PROD_KEYS_MALFORMED"],
+    [valid, new Blob(["PRIVATE-RIGHTS-CANARY"]), "TITLE_KEYS_MALFORMED"],
+  ]) {
+    const { engine } = setup();
+    await assert.rejects(
+      engine.execute("initialize", { nsps: [fixture()], prodKeys, titleKeys }),
+      (error) => {
+        assert.equal(error.code, expected);
+        assert.equal(error.message, expected);
+        return true;
+      },
+    );
+  }
+  const unreadable = new Blob(["private"]);
+  unreadable.arrayBuffer = async () => {
+    throw new Error("PRIVATE-PATH-CANARY");
+  };
+  await assert.rejects(
+    setup().engine.execute("initialize", {
+      nsps: [fixture()],
+      prodKeys: unreadable,
+      titleKeys: new Blob(),
+    }),
+    /^Error: PROD_KEYS_UNREADABLE$/,
+  );
+});
+
+test("absent optional title file becomes an empty in-worker buffer", async () => {
+  const env = setup();
+  await env.engine.execute("initialize", {
+    nsps: [fixture()],
+    prodKeys: new Blob([`header_key = ${"12".repeat(32)}\n`]),
+  });
+  assert.equal(env.keys()[1].length, 0);
 });

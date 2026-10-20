@@ -214,3 +214,21 @@ test("successful slow verification clears its timer before later bounded reads",
   assert.deepEqual(await bytes, new Uint8Array([1, 2]));
   client.close();
 });
+
+test("allowlisted initialization progress and diagnoses expose no arbitrary worker text", async () => {
+  const { worker, client } = make();
+  const events = [];
+  const pending = client.initialize(
+    { nsps: [], prodKeys: new Blob(), titleKeys: new Blob() },
+    {
+      onProgress: (event) => events.push(event),
+    },
+  );
+  const progress = { stage: "content-hash", completed: 0, total: 3, bytes: 1234 };
+  worker.emit({ id: 1, progress });
+  assert.deepEqual(events, [progress]);
+  assert.equal(worker.terminated, false);
+  worker.emit({ id: 1, ok: false, error: "PROD_KEYS_MALFORMED" });
+  await assert.rejects(pending, /^ExtractionClientError: PROD_KEYS_MALFORMED$/);
+  assert.equal(worker.terminated, true);
+});

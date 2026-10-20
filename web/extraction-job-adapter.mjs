@@ -1,3 +1,4 @@
+import { isExtractionDiagnosticCode } from "./extraction-errors.mjs";
 import {
   createExtractionWorkerClient,
   ExtractionClientError,
@@ -104,7 +105,7 @@ export function createExtractionJobAdapter({
     }
   }
   return Object.freeze({
-    async openSecretSession({ inputs, signal } = {}) {
+    async openSecretSession({ inputs, signal, onDiagnostic } = {}) {
       if (used || cleaned) fail("EXTRACTION_SINGLE_USE");
       used = true;
       signal?.throwIfAborted();
@@ -138,12 +139,22 @@ export function createExtractionJobAdapter({
       sessions.set(session, state);
       signal?.addEventListener("abort", abort, { once: true });
       try {
-        state.inspected = await client.initialize(inputs, { signal });
+        state.inspected = await client.initialize(inputs, { signal, onProgress: onDiagnostic });
         if (signal?.aborted) fail("EXTRACTION_CANCELLED");
         return session;
-      } catch {
-        await session.dispose();
-        fail(signal?.aborted ? "EXTRACTION_CANCELLED" : "EXTRACTION_FAILED");
+      } catch (error) {
+        try {
+          await session.dispose();
+        } catch {
+          // Preserve the safe primary diagnosis even if teardown also fails.
+        }
+        fail(
+          signal?.aborted
+            ? "EXTRACTION_CANCELLED"
+            : isExtractionDiagnosticCode(error?.code)
+              ? error.code
+              : "EXTRACTION_FAILED",
+        );
       }
     },
     async inspectContents({ session, signal } = {}) {
@@ -160,7 +171,7 @@ export function createExtractionJobAdapter({
           state.extracted ||
           !selection ||
           !Array.isArray(selection.dlc) ||
-          selection.dlc.length !== 1
+          selection.dlc.length > 1
         )
           fail("EXTRACTION_SELECTION_REJECTED");
         state.extracted = true;
@@ -358,14 +369,20 @@ export function createExtractionJobAdapter({
           check: () => check(),
         });
         return extracted;
-      } catch {
+      } catch (error) {
         try {
           await session.dispose();
         } catch {
           /* Preserve sanitized extraction failure. */
         }
         for (const bytes of owned.splice(0)) bytes.fill(0);
-        fail(signal?.aborted ? "EXTRACTION_CANCELLED" : "EXTRACTION_FAILED");
+        fail(
+          signal?.aborted
+            ? "EXTRACTION_CANCELLED"
+            : isExtractionDiagnosticCode(error?.code)
+              ? error.code
+              : "EXTRACTION_FAILED",
+        );
       }
     },
     cleanup,

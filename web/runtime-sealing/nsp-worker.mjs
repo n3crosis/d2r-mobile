@@ -1,3 +1,4 @@
+import { extractionWorkerErrorCode } from "../extraction-errors.mjs";
 import factory from "../toolchain/nsp-extract-spike/dist/hactool-boundary.mjs";
 import { byteFactory, initializationWasm } from "./wasm-factory.mjs";
 import { createBoundary } from "../toolchain/nsp-extract-spike/browser-boundary.mjs";
@@ -9,7 +10,8 @@ let initialized = false;
 let busy = false,
   closed = false,
   lastId = 0;
-const reject = (id) => self.postMessage({ id, ok: false, error: "EXTRACTION_FAILED" });
+const reject = (id, error) =>
+  self.postMessage({ id, ok: false, error: extractionWorkerErrorCode(error) });
 self.onmessage = async ({ data }) => {
   if (data?.type === "initialize") {
     if (
@@ -26,7 +28,11 @@ self.onmessage = async ({ data }) => {
     try {
       ready = createBoundary(
         byteFactory(factory, initializationWasm(data.assets, "hactool-boundary.wasm")),
-      ).then(createExtractionEngine);
+      ).then((boundary) =>
+        createExtractionEngine(boundary, {
+          onProgress: (progress) => self.postMessage({ id: lastId, progress }),
+        }),
+      );
       await ready;
       initialized = true;
       self.postMessage({ id: 0, ok: true, result: { initialized: true } });
@@ -65,14 +71,14 @@ self.onmessage = async ({ data }) => {
       closed = true;
       self.close();
     }
-  } catch {
+  } catch (error) {
     // An error is terminal. Never serialize parser/native text or key-bearing state.
     try {
       await (await ready).execute("dispose");
     } catch {
       /* terminate regardless */
     }
-    reject(id);
+    reject(id, error);
     closed = true;
     self.close();
   } finally {

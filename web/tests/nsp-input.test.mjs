@@ -413,3 +413,17 @@ test("package count and key-size caps apply without reading contents", async () 
     code("KEY_SIZE"),
   );
 });
+
+test("folder discovery and preflight accept absent optional title keys", async () => {
+  const [prod] = keys();
+  const nsp = fixture().file;
+  const inputs = await discoverNspFolder(
+    folder([
+      ["prod.keys", handle(prod)],
+      ["game.nsp", handle(nsp)],
+    ]),
+  );
+  assert.equal(inputs.titleKeys, undefined);
+  const result = await preflightNspFolder([prod, nsp]);
+  assert.equal(result.titleKeys.entries, 0);
+});

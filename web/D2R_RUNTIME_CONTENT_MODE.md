@@ -1,6 +1,6 @@
 # Optional expansion and pinned runtime data policy
 
-Current first-run input policy: put base NSP, update NSP(s), `prod.keys`, and
+Current first-run input policy: put base NSP, update NSP(s), `prod.keys`, and optional
 `title.keys` in one folder. The known Warlock DLC is optional; if present it must
 pass the same authenticated metadata and independently measured content checks.
 No DLC metadata is synthesized. No legal ownership claim follows from package

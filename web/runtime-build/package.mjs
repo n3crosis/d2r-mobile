@@ -116,6 +116,7 @@ export async function assembleRuntime({ build } = {}) {
       "sealed-runtime/dotnet-worker.mjs",
       "native-art-texture.mjs",
       "nsp-input.mjs",
+      "extraction-errors.mjs",
       "preflight.mjs",
       "content-selection.mjs",
       "d2r-expansion-policy.mjs",
