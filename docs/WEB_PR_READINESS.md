@@ -38,7 +38,7 @@ coverage for every historical browser spike, comment or document.
 No game files needed:
 
 - [x] `python3 dm/i18n/scan_literals.py` — `I18N OK：中文字面量 459 条全在白名单（105 行），其余走中英表`
-- [x] `python3 dm/ios/tools/dm_i18n.py --check` — `dm_i18n OK 547 条`
+- [x] `python3 dm/ios/tools/dm_i18n.py --check` — `dm_i18n OK 553 条`
 
 Game files and a workspace prepared by `./setup.sh` needed:
 

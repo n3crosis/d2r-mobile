@@ -32,7 +32,7 @@ python3 dm/ios/tools/dm_i18n.py --header > dm/host/dm_i18n_tab.h
 不需要游戏文件：
 
 - [x] `python3 dm/i18n/scan_literals.py` — `I18N OK：中文字面量 459 条全在白名单（105 行），其余走中英表`
-- [x] `python3 dm/ios/tools/dm_i18n.py --check` — `dm_i18n OK 547 条`
+- [x] `python3 dm/ios/tools/dm_i18n.py --check` — `dm_i18n OK 553 条`
 
 需要游戏文件与经 `./setup.sh` 准备的工作区：
 

@@ -140,7 +140,13 @@ export async function prepareBrowserPackager({
     return Object.freeze({
       ready: true,
       realGameVerified: false,
-      async generate({ input, selectedNspNames, signal, onProgress }) {
+      /**
+       * 仅允许明确跳过原始资源导出；验证及补充包导出保持不变。
+       * Allow only explicit original-resource export skipping; validation and supplemental export stay unchanged.
+       * @param {{input: any, selectedNspNames: any, signal?: AbortSignal, onProgress?: (event: any) => void, exportResources?: boolean}} options
+       */
+      async generate({ input, selectedNspNames, signal, onProgress, exportResources = true }) {
+        validateResourceExportOption(exportResources);
         if (closed || used) throw new Error("RELOAD_REQUIRED");
         if (
           input?.kind !== "directory" ||
@@ -157,6 +163,7 @@ export async function prepareBrowserPackager({
           finalizedPack,
           legacyPack,
           legacyPackOutcome;
+        if (!exportResources) resources = resourceOutcome = RESOURCE_EXPORT_SKIPPED;
         const producer = legacyAstc ? runtime.createAstcProducerClient() : undefined;
         deferRuntimeClose = legacyAstc;
         const producerLease = producer
@@ -191,31 +198,33 @@ export async function prepareBrowserPackager({
             planStagedZip(context.manifest, { archiveFormat, maxOutputBytes });
             const { romfs } = readAuthenticatedAssets(authenticated, selected, { signal });
             try {
-              resources = await exportRomfsResources({
-                romfs,
-                // 仅根目录发现绝不遍历生成的资源文件夹。
-                // 导出只写入新的 UUID 子目录，绝不写入源文件。
-                // Root-only discovery never traverses generated resource folders.
-                // Export writes only to a fresh UUID child, never the source files.
-                outputDirectoryHandle: input,
-                signal,
-                onProgress: (progress) => {
-                  const event = {
-                    stage: "resources",
-                    // 只有导出器完成标记写入后才报告完成，不能仅依据字节计数。
-                    // Completion follows the exporter's marker write, not merely the byte count.
-                    state: progress.state === "complete" ? "complete" : "running",
-                    resourceProgress: sanitizeResourceProgress(progress),
-                  };
-                  return onProgress?.(
-                    Object.freeze({
-                      ...event,
-                      label: resourceProgressLabel(event) ?? packagingActivity(event),
-                    }),
-                  );
-                },
-              });
-              resourceOutcome = sanitizeResourceOutcome(resources);
+              resources = await runOptionalResourceExport(exportResources, () =>
+                exportRomfsResources({
+                  romfs,
+                  // 仅根目录发现绝不遍历生成的资源文件夹。
+                  // 导出只写入新的 UUID 子目录，绝不写入源文件。
+                  // Root-only discovery never traverses generated resource folders.
+                  // Export writes only to a fresh UUID child, never the source files.
+                  outputDirectoryHandle: input,
+                  signal,
+                  onProgress: (progress) => {
+                    const event = {
+                      stage: "resources",
+                      // 只有导出器完成标记写入后才报告完成，不能仅依据字节计数。
+                      // Completion follows the exporter's marker write, not merely the byte count.
+                      state: progress.state === "complete" ? "complete" : "running",
+                      resourceProgress: sanitizeResourceProgress(progress),
+                    };
+                    return onProgress?.(
+                      Object.freeze({
+                        ...event,
+                        label: resourceProgressLabel(event) ?? packagingActivity(event),
+                      }),
+                    );
+                  },
+                }),
+              );
+              resourceOutcome = exportResources ? sanitizeResourceOutcome(resources) : resources;
             } catch (error) {
               if (error instanceof ResourceExportError)
                 resourceOutcome = sanitizeResourceOutcome(error.report);
@@ -547,4 +556,15 @@ export function legacyAstcFailureDetailCode(error) {
   return error instanceof PackagingJobError && isLegacyAstcDiagnosticCode(error.cause?.detailCode)
     ? error.cause.detailCode
     : undefined;
+}
+
+// 跳过不表示已有资源经过验证，也不表示本次导出完成。
+// Skipping neither verifies existing resources nor claims an export completed this run.
+const RESOURCE_EXPORT_SKIPPED = Object.freeze({ status: "skipped", reason: "user-requested" });
+function validateResourceExportOption(value) {
+  if (typeof value !== "boolean") throw new Error("RESOURCE_EXPORT_OPTION");
+}
+export async function runOptionalResourceExport(exportResources = true, exportOriginalResources) {
+  validateResourceExportOption(exportResources);
+  return exportResources ? await exportOriginalResources() : RESOURCE_EXPORT_SKIPPED;
 }

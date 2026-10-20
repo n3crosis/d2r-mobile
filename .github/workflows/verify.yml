@@ -56,19 +56,28 @@ jobs:
       - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         with:
           dotnet-version: "10.0.402"
+      - name: Prepare pinned Emscripten SDK source
+        run: |
+          git clone --depth 1 --branch 4.0.20 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/browser-emsdk"
+          test "$(git -C "$RUNNER_TEMP/browser-emsdk" rev-parse HEAD)" = e4fe26ef59168ff44f4c23c466e497bf60b3411e
+      - name: Cache only public Emscripten SDK downloads
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/browser-emsdk/downloads
+          key: public-emsdk-downloads-v1-${{ runner.os }}-${{ runner.arch }}-ubuntu-24.04-4.0.20-e4fe26ef59168ff44f4c23c466e497bf60b3411e
       - name: Build pinned public browser runtimes
         id: runtime
         env:
+          EMSDK_KEEP_DOWNLOADS: "1"
           DOTNET_CLI_TELEMETRY_OPTOUT: "1"
           DOTNET_NOLOGO: "1"
           DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE: "true"
         run: |
           df -h .
-          git clone --depth 1 --branch 4.0.20 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/browser-emsdk"
-          test "$(git -C "$RUNNER_TEMP/browser-emsdk" rev-parse HEAD)" = e4fe26ef59168ff44f4c23c466e497bf60b3411e
           "$RUNNER_TEMP/browser-emsdk/emsdk" install 4.0.20
           "$RUNNER_TEMP/browser-emsdk/emsdk" activate 4.0.20
           source "$RUNNER_TEMP/browser-emsdk/emsdk_env.sh"
+          emcc --version | grep -E '^emcc .* 4[.]0[.]20([[:space:]]|$)'
           rustup toolchain install 1.99.1 --profile minimal --target wasm32-unknown-unknown --component rustfmt --component clippy
           printf '{"sdk":{"version":"10.0.402","rollForward":"disable","allowPrerelease":false,"workloadVersion":"10.0.402"}}\n' > web/toolchain/shader-spike/global.json
           (cd web/toolchain/shader-spike && dotnet workload install wasm-tools)

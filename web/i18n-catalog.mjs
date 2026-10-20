@@ -644,5 +644,29 @@ export const catalog = Object.freeze({
   "dmWebLegacyConverting": [
     "Legacy Device Pack: processed %d blocks; %s MB of work (multiple passes).",
     "Legacy Device Pack：已处理 %d 个块；处理工作量 %s MB（含多轮处理）。"
+  ],
+  "dmWebSkipResources": [
+    "Skip resource export (already on device)",
+    "跳过资源导出（设备上已有）"
+  ],
+  "dmWebSkipResourcesHelp": [
+    "Only for the same game, update and DLC. Existing device files are not verified.",
+    "仅适用于相同的游戏、更新和 DLC。不会验证设备上已有的文件。"
+  ],
+  "dmWebSkipKeepsLegacy": [
+    "Legacy Device Pack still exports.",
+    "仍会导出 Legacy Device Pack。"
+  ],
+  "dmWebResourcesSkipped": [
+    "Game resource export skipped; device files were not checked.",
+    "已跳过游戏资源导出；未检查设备上的文件。"
+  ],
+  "dmWebStorageEstimate": [
+    "Estimated browser staging space available: %s. Not destination disk space or a reservation.",
+    "浏览器暂存空间估计：可用 %s；不是目标磁盘空间，也不是预留空间。"
+  ],
+  "dmWebStorageUnknown": [
+    "Browser staging space estimate unavailable; you can continue. Destination disk space was not checked.",
+    "浏览器暂存空间估计不可用；仍可继续。目标磁盘空间未检查。"
   ]
 });

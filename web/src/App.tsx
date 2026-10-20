@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { prepareBrowserPackager } from "../browser-packager.mjs";
 import { DEFAULT_SHELL_PROFILE_ID } from "../shell-profiles.mjs";
 import { discoverNspFolder } from "../nsp-input.mjs";
+import { readOpfsStorageAdvisory } from "../opfs-storage-advisory.mjs";
 import {
   packagingActivity,
   packagingFailureMessage,
@@ -55,6 +56,9 @@ export default function App() {
     () => new URLSearchParams(window.location.search).get("legacyAstc") === "1",
   );
   const [legacyStatus, setLegacyStatus] = useState("");
+  const [skipResources, setSkipResources] = useState(false);
+  const [resourceOutcome, setResourceOutcome] = useState("");
+  const [storageAdvisory, setStorageAdvisory] = useState("");
   const profileId = target === "ios18" ? "v1.0.18-ios18" : DEFAULT_SHELL_PROFILE_ID;
   const [hasSelectedFolder, setHasSelectedFolder] = useState(false);
   useEffect(() => {
@@ -183,6 +187,17 @@ export default function App() {
         packager.current = value;
         setLoading(null);
         setReady(true);
+        // 空间估计不预留空间，也不阻止继续；忽略取消或卸载后的结果。
+        // Estimates neither reserve space nor block continuation; ignore cancelled or unmounted results.
+        void readOpfsStorageAdvisory({ signal: controller.signal }).then((estimate) => {
+          if (controller.signal.aborted || !mounted.current || estimate.status === "cancelled")
+            return;
+          setStorageAdvisory(
+            estimate.status === "estimated" && estimate.availableBytes !== null
+              ? t("dmWebStorageEstimate", megabytes(estimate.availableBytes))
+              : t("dmWebStorageUnknown"),
+          );
+        });
         setStatus(t("dmWebReady"));
         appendActivity(t("dmWebApplicationReady"), true);
       })
@@ -224,6 +239,7 @@ export default function App() {
       const selected = await browser.showDirectoryPicker({ mode: "readwrite" });
       controller.signal.throwIfAborted();
       setHasSelectedFolder(true);
+      setSkipResources(false);
       selectedName = selected.name;
       setFolder(null);
       setNspNames([]);
@@ -283,6 +299,7 @@ export default function App() {
     if (!ready || busy || !folder || !packager.current || !selectedNsps.size) return;
     setBusy(true);
     setGenerating(true);
+    setResourceOutcome("");
     setCancelling(false);
     pendingRomfsProgress.current = undefined;
     setRomfsProgress(null);
@@ -298,6 +315,7 @@ export default function App() {
       const result = await packager.current.generate({
         input: folder,
         selectedNspNames: [...selectedNsps],
+        exportResources: !skipResources,
         signal: controller.signal,
         onProgress: (event: {
           label?: string;
@@ -375,7 +393,12 @@ export default function App() {
       downloadUrl.current = url;
       setDownload({ url, fileName: result.download.fileName });
       appendActivity(t("dmWebUnsignedReady"), true);
-      setStatus(t("dmWebDownloadReady", folder.name, result.resources.directoryName));
+      if (result.resources.status === "skipped") {
+        setResourceOutcome(t("dmWebResourcesSkipped"));
+        setStatus(t("dmWebUnsignedReady"));
+      } else {
+        setStatus(t("dmWebDownloadReady", folder.name, result.resources.directoryName));
+      }
       // 某些浏览器会阻止长时间异步操作后发起的下载。
       // 在可见的下载 IPA 链接中保留相同 URL 以供重试。
       // Some browsers suppress downloads initiated after lengthy async work.
@@ -401,9 +424,11 @@ export default function App() {
             detailCode?: string;
             outputStarted?: boolean;
             legacyPack?: { status?: string; directoryName?: string };
+            resources?: { status?: string };
           };
         }
       )?.report;
+      if (report?.resources?.status === "skipped") setResourceOutcome(t("dmWebResourcesSkipped"));
       if (legacyAstc)
         setLegacyStatus(
           report?.legacyPack?.status === "complete"
@@ -494,6 +519,7 @@ export default function App() {
               {t("dmWebLegacyHelp")}
             </p>
           </div>
+          {storageAdvisory && <p className="text-xs text-muted-foreground">{storageAdvisory}</p>}
           <div className="flex flex-wrap gap-3">
             <Button variant="outline" onClick={() => void choose()} disabled={!ready || busy}>
               {t("dmWebChoose")}
@@ -544,6 +570,7 @@ export default function App() {
                     aria-describedby="package-selection-help package-selection-count"
                     checked={selectedNsps.has(name)}
                     onChange={(event) => {
+                      setSkipResources(false);
                       const checked = event.target.checked;
                       setSelectedNsps((current) => {
                         const next = new Set(current);
@@ -565,6 +592,32 @@ export default function App() {
                 {selectedNsps.size === 0 ? t("dmWebSelectOne") : ""}
               </p>
             </fieldset>
+          )}
+          {folder && (
+            <div className="space-y-2">
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={skipResources}
+                  disabled={!ready || busy}
+                  aria-describedby={skipResources ? "skip-resources-help" : undefined}
+                  onChange={(event) => setSkipResources(event.target.checked)}
+                />
+                {t("dmWebSkipResources")}
+              </label>
+              {skipResources && (
+                <p id="skip-resources-help" className="text-xs text-muted-foreground">
+                  {t("dmWebSkipResourcesHelp")}
+                  {legacyAstc ? ` ${t("dmWebSkipKeepsLegacy")}` : ""}
+                </p>
+              )}
+            </div>
+          )}
+          {resourceOutcome && (
+            <p className="text-sm text-muted-foreground" role="status">
+              {resourceOutcome}
+            </p>
           )}
           {download && (
             <div className="space-y-2">
