@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>preview</LangVersion>
+    <AssemblyName>Dmsh.Browser.Spike</AssemblyName>
+    <WasmEnableHotReload>false</WasmEnableHotReload>
+    <PublishTrimmed>false</PublishTrimmed>
+    <RunAOTCompilation>false</RunAOTCompilation>
+    <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <RyuSrc>$(MSBuildThisFileDirectory)../../../dm/third_party/ryujinx/src</RyuSrc>
+  </PropertyGroup>
+  <!-- Source links deliberately bypass desktop Common project/NuGet closure. -->
+  <ItemGroup>
+    <Compile Include="ShaderBridge.cs;EmbeddedResources.cs" />
+    <Compile Include="$(RyuSrc)/Ryujinx.Graphics.Shader/**/*.cs" Exclude="$(RyuSrc)/Ryujinx.Graphics.Shader/**/obj/**;$(RyuSrc)/Ryujinx.Graphics.Shader/**/bin/**" />
+    <Compile Include="$(RyuSrc)/Spv.Generator/**/*.cs" Exclude="$(RyuSrc)/Spv.Generator/**/obj/**;$(RyuSrc)/Spv.Generator/**/bin/**" />
+    <Compile Include="$(RyuSrc)/Ryujinx.Common/Memory/IArray.cs;$(RyuSrc)/Ryujinx.Common/Memory/StructArrayHelpers.cs;$(RyuSrc)/Ryujinx.Common/Utilities/BitUtils.cs;$(RyuSrc)/Ryujinx.Common/Utilities/BitfieldExtensions.cs" />
+    <EmbeddedResource Include="$(RyuSrc)/Ryujinx.Graphics.Shader/CodeGen/Glsl/HelperFunctions/*.glsl" LogicalName="Ryujinx.Graphics.Shader.CodeGen.Glsl.HelperFunctions.%(Filename)%(Extension)" />
+    <WasmExtraFilesToDeploy Include="wwwroot/index.html" TargetPath="index.html" />
+    <WasmExtraFilesToDeploy Include="wwwroot/worker.mjs" TargetPath="worker.mjs" />
+    <WasmExtraFilesToDeploy Include="synthetic-fixture.mjs" TargetPath="synthetic-fixture.mjs" />
+  </ItemGroup>
+</Project>

@@ -227,6 +227,7 @@ test("write and producer failures clean up iterator and preserve original error"
         path: "a",
         size: 0,
         chunks: async function* () {
+          yield* [];
           throw new Error("producer failure");
         },
       },

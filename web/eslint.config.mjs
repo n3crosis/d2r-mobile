@@ -24,7 +24,7 @@ export default tseslint.config(
     extends: [tseslint.configs.recommended],
   },
   {
-    files: ["src/**/*.{ts,tsx}", "*.mjs"],
+    files: ["src/**/*.{ts,tsx}", "*.mjs", "toolchain/**/wwwroot/*.mjs"],
     ignores: ["eslint.config.mjs"],
     languageOptions: { globals: globals.browser },
   },

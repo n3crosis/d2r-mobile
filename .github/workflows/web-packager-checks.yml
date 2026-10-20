@@ -1,0 +1,164 @@
+name: Web packager checks
+
+on:
+  push:
+    branches: [feature/web-ipa-packager]
+    paths:
+      - "web/**"
+      - "dm/gfx/tools/dmsh_xlate/**"
+      - "dm/third_party/ryujinx/**"
+      - "dm/tools/guest_dylib.py"
+      - "dm/tools/d2rm_pack.py"
+      - ".github/workflows/web-packager-checks.yml"
+  pull_request:
+    paths:
+      - "web/**"
+      - "dm/gfx/tools/dmsh_xlate/**"
+      - "dm/third_party/ryujinx/**"
+      - "dm/tools/guest_dylib.py"
+      - "dm/tools/d2rm_pack.py"
+      - ".github/workflows/web-packager-checks.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-packager-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# Official action tag refs verified with git ls-remote on 2026-10-20.
+# No secrets, deployments, self-hosted runners, or uploaded game/runtime artifacts.
+# Only the small frontend dependency lockfile is uploaded for reproducibility.
+jobs:
+  frontend:
+    name: Frontend lint, format, synthetic tests and build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+        working-directory: web
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+      - name: Confirm Python oracle prerequisite
+        run: python3 --version
+      # Bootstrap only until the generated lock is reviewed and committed.
+      # Subsequent runs use npm ci against the committed lock without resolving anew.
+      - name: Resolve missing lockfile, then install locked dependencies
+        run: |
+          if [ ! -f package-lock.json ]; then
+            npm install --package-lock-only --ignore-scripts
+          fi
+          npm ci
+      - name: Preserve exact dependency lock for review (no build/game artifacts)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: web-package-lock
+          path: web/package-lock.json
+          if-no-files-found: error
+          retention-days: 3
+      - name: Workflow YAML formatting
+        run: npx --no-install prettier --check ../.github/workflows/web-packager-checks.yml
+      - name: Synthetic tests (no game inputs)
+        run: npm test
+      - name: Lint, format, TypeScript and production build
+        run: npm run build
+      - name: Packager documentation format
+        run: npm run format:docs:check
+      - name: Fixture encoding and upstream source drift gate (not translator parity)
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import { code, job } from './toolchain/shader-spike/synthetic-fixture.mjs';
+          assert.equal(code.byteLength, 16);
+          const view = new DataView(code.buffer, code.byteOffset, code.byteLength);
+          assert.equal(view.getBigUint64(0, true), 0n);
+          assert.equal(view.getBigUint64(8, true), 0xe30000000007000fn);
+          assert.equal(job.stage, 'cs');
+          assert.deepEqual(job.local, [1, 1, 1]);
+          assert.equal(job.shared, 0);
+          assert.equal(job.debug, true);
+          assert.equal(job.reduced, false);
+          console.log('Synthetic encoding assertions passed; native/browser translation NOT tested.');
+          JS
+          node toolchain/shader-spike/verify-parity.mjs prepare "$RUNNER_TEMP/shader-fixture"
+
+  shader-spike:
+    name: Experimental shader C# compile (NOT browser/native parity)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+        working-directory: web/toolchain/shader-spike
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+      DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE: "true"
+      # Stable SDK verified in official release metadata on 2026-10-20:
+      # https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json
+      # Matching stable SDK/workload-set versions are documented at:
+      # https://learn.microsoft.com/en-us/dotnet/core/tools/dotnet-workload-sets
+      SDK_VERSION: "10.0.402"
+      WORKLOAD_VERSION: "10.0.402"
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: "10.0.402"
+      - name: Pin isolated SDK and workload set
+        run: |
+          printf '{"sdk":{"version":"%s","rollForward":"disable","allowPrerelease":false,"workloadVersion":"%s"}}\n' "$SDK_VERSION" "$WORKLOAD_VERSION" > global.json
+          test "$(dotnet --version)" = "$SDK_VERSION"
+          dotnet --info
+          git rev-parse HEAD
+      - name: Install pinned wasm-tools workload
+        run: dotnet workload install wasm-tools --skip-manifest-update
+      - name: Record workload diagnostics
+        if: ${{ !cancelled() }}
+        run: |
+          dotnet workload --version
+          dotnet workload list
+          df -h .
+      - name: Restore isolated browser project
+        id: restore
+        run: dotnet restore ShaderSpike.csproj
+      - name: Check only authored C# formatting (never rewrite vendored source)
+        id: format
+        continue-on-error: true
+        run: dotnet format ShaderSpike.csproj --no-restore --verify-no-changes --include ShaderBridge.cs EmbeddedResources.cs --verbosity normal
+      - name: Compile with platform and .NET analyzers despite format failures
+        id: build
+        if: ${{ !cancelled() && steps.restore.outcome == 'success' }}
+        continue-on-error: true
+        run: dotnet build ShaderSpike.csproj -c Release --no-restore -p:EnableNETAnalyzers=true -p:AnalysisLevel=latest -p:TreatWarningsAsErrors=true
+      - name: Publish experimental static bundle (not deployed or uploaded)
+        id: publish
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        continue-on-error: true
+        run: dotnet publish ShaderSpike.csproj -c Release --no-restore -p:EnableNETAnalyzers=true -p:AnalysisLevel=latest -p:TreatWarningsAsErrors=true
+      - name: Enforce diagnostic outcomes and record validation boundary
+        if: ${{ !cancelled() }}
+        env:
+          RESTORE_OUTCOME: ${{ steps.restore.outcome }}
+          FORMAT_OUTCOME: ${{ steps.format.outcome }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+        run: |
+          {
+            echo '### Experimental shader compile gate'
+            echo "Restore: $RESTORE_OUTCOME; format: $FORMAT_OUTCOME; build/analyzers: $BUILD_OUTCOME; publish: $PUBLISH_OUTCOME."
+            echo 'This checks compilation only. Browser execution, independent native oracle parity, SPIR-V validation, Windows/macOS browser testing, game compatibility, Metal conversion and working IPA output remain unverified.'
+            echo 'SDK/workload versions and diagnostics are in the job logs. No binary, game data or runtime artifact is uploaded.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          test "$RESTORE_OUTCOME" = success
+          test "$FORMAT_OUTCOME" = success
+          test "$BUILD_OUTCOME" = success
+          test "$PUBLISH_OUTCOME" = success
