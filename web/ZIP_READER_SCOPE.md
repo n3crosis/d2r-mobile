@@ -48,6 +48,13 @@ or extraction tree is made: indexing reads a maximum 65,557-byte tail plus small
 records, and a read allocates only its declared bounded output entry. Callers
 should consume and release entries sequentially rather than retain all outputs.
 
+A separate bounded RFC 1951 structure scanner verifies stored/fixed/dynamic
+blocks, Huffman tables, decoded counts and back-reference distances, and requires
+the final block to end at the exact compressed-byte boundary. This rejects
+trailing junk even on native runtimes that silently accept it (observed in Node
+22). The scanner retains at most 8 KiB of incomplete framing and never creates
+decoded payloads. The native decompressor still produces and validates output.
+
 DEFLATE input uses 1 KiB reads, awaits each write's backpressure, and drains output
 concurrently, checking every chunk against declared decoded size. Small input
 slices matter because Chromium may expand an entire input chunk before JavaScript

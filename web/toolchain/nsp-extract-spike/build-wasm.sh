@@ -35,7 +35,7 @@ emcc -O2 -std=gnu11 -D_FILE_OFFSET_BITS=64 -D_DEFAULT_SOURCE \
   -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=33554432 -sMAXIMUM_MEMORY=268435456 \
   -sSTACK_SIZE=1048576 -sFORCE_FILESYSTEM=1 -sEXIT_RUNTIME=0 \
   '-sEXPORTED_RUNTIME_METHODS=["FS","WORKERFS","ccall","HEAPU8"]' \
-  '-sEXPORTED_FUNCTIONS=["_malloc","_free","_nsp_zero","_nsp_load_keys","_nsp_reset","_nsp_close","_nsp_open_pfs0","_nsp_inspect_nca","_nsp_open_meta","_nsp_entry_count","_nsp_entry_info","_nsp_read_entry","_nsp_crypto_fixture"]' \
+  '-sEXPORTED_FUNCTIONS=["_malloc","_free","_nsp_zero","_nsp_load_keys","_nsp_reset","_nsp_close","_nsp_open_pfs0","_nsp_inspect_nca","_nsp_open_meta","_nsp_open_exefs","_nsp_hash_input","_nsp_hash_entry","_nsp_entry_count","_nsp_entry_info","_nsp_read_entry","_nsp_crypto_fixture"]' \
   -o "$OUT/hactool-boundary.mjs"
 mkdir -p "$OUT/licenses"
 cp "$SRC/LICENSE" "$OUT/licenses/hactool-ISC.txt"

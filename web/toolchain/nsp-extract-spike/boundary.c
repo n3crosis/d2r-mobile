@@ -3,13 +3,13 @@
  * Return codes: 0 OK; -1 state/input; -2 format/bounds; -3 crypto/integrity;
  * -4 unsupported; -5 I/O. Negative failures never include user input.
  */
-#include <stdint.h>
-#include <limits.h>
+#include "extkeys.h"
 #include "nca.h"
 #include "pki.h"
-#include "extkeys.h"
-#include "sha.h"
 #include "rsa.h"
+#include "sha.h"
+#include <limits.h>
+#include <stdint.h>
 #define META_LIMIT (16u * 1024u * 1024u)
 #define CHUNK_LIMIT (64u * 1024u)
 static hactool_ctx_t tool;
@@ -106,6 +106,44 @@ static int read_at(uint64_t offset, void *out, size_t size) {
         return -5;
     return fread(out, 1, size, raw) == size ? 0 : -5;
 }
+/* The same bounded reader serves authenticated hash hierarchies and public
+ * input/entry digests. No complete executable or section is allocated. */
+static int hash_range(uint64_t offset, uint64_t size, unsigned char digest[32]) {
+    if (!within(offset, size, extent))
+        return -2;
+    unsigned char *chunk = malloc(CHUNK_LIMIT);
+    if (!chunk)
+        return -1;
+    sha_ctx_t *hash = new_sha_ctx(HASH_TYPE_SHA256, 0);
+    int rc = 0;
+    for (uint64_t done = 0; done < size;) {
+        size_t count = size - done > CHUNK_LIMIT ? CHUNK_LIMIT : (size_t)(size - done);
+        rc = read_at(offset + done, chunk, count);
+        if (rc)
+            break;
+        sha_update(hash, chunk, count);
+        done += count;
+    }
+    if (!rc)
+        sha_get_hash(hash, digest);
+    free_sha_ctx(hash);
+    nsp_zero(chunk, CHUNK_LIMIT);
+    free(chunk);
+    return rc;
+}
+static int compare_names(const void *a, const void *b) {
+    const pfs0_file_entry_t *left = *(const pfs0_file_entry_t *const *)a;
+    const pfs0_file_entry_t *right = *(const pfs0_file_entry_t *const *)b;
+    const char *strings = pfs0_get_string_table(directory);
+    return strcmp(strings + left->string_table_offset, strings + right->string_table_offset);
+}
+static int compare_offsets(const void *a, const void *b) {
+    const pfs0_file_entry_t *left = *(const pfs0_file_entry_t *const *)a;
+    const pfs0_file_entry_t *right = *(const pfs0_file_entry_t *const *)b;
+    if (left->offset != right->offset)
+        return left->offset < right->offset ? -1 : 1;
+    return left->size < right->size ? -1 : left->size > right->size ? 1 : 0;
+}
 static int load_directory(void) {
     pfs0_header_t head;
     if (read_at(pfs_offset, &head, sizeof head))
@@ -134,13 +172,37 @@ static int load_directory(void) {
         if (!end || end == name || !strcmp(name, ".") || !strcmp(name, ".."))
             return -2;
         for (const char *p = name; p < end; p++)
-            if ((unsigned char)*p < 32 || *p == '/' || *p == '\\' || *p == ':')
+            if ((unsigned char)*p < 32 || (unsigned char)*p == 127 || *p == '/' || *p == '\\' ||
+                *p == ':')
                 return -2;
         if (!within(pfs_offset + bytes, e->offset, extent) ||
             !within(pfs_offset + bytes + e->offset, e->size, extent))
             return -2;
-        /* Quadratic comparisons deliberately avoided: caller catalog performs
-         * cross-entry duplicate/overlap policy. Reads remain independently bounded. */
+    }
+    if (head.num_files > 1) {
+        pfs0_file_entry_t **sorted = malloc(head.num_files * sizeof(*sorted));
+        if (!sorted)
+            return -1;
+        for (uint32_t i = 0; i < head.num_files; i++)
+            sorted[i] = pfs0_get_file_entry(directory, i);
+        qsort(sorted, head.num_files, sizeof(*sorted), compare_names);
+        int rc = 0;
+        for (uint32_t i = 1; i < head.num_files; i++)
+            if (!compare_names(&sorted[i - 1], &sorted[i])) {
+                rc = -2;
+                break;
+            }
+        qsort(sorted, head.num_files, sizeof(*sorted), compare_offsets);
+        uint64_t prior_end = 0;
+        for (uint32_t i = 0; !rc && i < head.num_files; i++) {
+            if (sorted[i]->size && sorted[i]->offset < prior_end)
+                rc = -2;
+            if (sorted[i]->size)
+                prior_end = sorted[i]->offset + sorted[i]->size;
+        }
+        free(sorted);
+        if (rc)
+            return rc;
     }
     return 0;
 }
@@ -193,7 +255,8 @@ static int open_header(const char *path) {
     return 0;
 }
 /* Public fields only, 24 bytes: u64 title ID, u64 size, u32 content type,
- * u32 fixed-signature-valid. Header inspection is NOT content authentication. */
+ * u32 fixed-signature-valid. Header inspection is NOT content authentication.
+ */
 int nsp_inspect_nca(const char *path, unsigned char *out) {
     int rc = open_header(path);
     if (rc)
@@ -211,9 +274,9 @@ int nsp_inspect_nca(const char *path, unsigned char *out) {
     memcpy(out + 20, &valid, 4);
     return 0;
 }
-/* Meta NCA only: authenticated header, PFS0 SHA256 hierarchy, CTR/none.
- * No Program RomFS/BKTR activation until separately fixture-tested. */
-int nsp_open_meta(const char *path) {
+/* Shared authenticated PFS0 opener. Program mode selects only non-BKTR
+ * ExeFS; no RomFS, patch overlay or unsupported crypto fallback is exposed. */
+static int open_authenticated_pfs0(const char *path, int program) {
     unsigned char public_info[24];
     int rc = nsp_inspect_nca(path, public_info);
     if (rc)
@@ -222,17 +285,46 @@ int nsp_open_meta(const char *path) {
     memcpy(&valid, public_info + 20, 4);
     if (!valid)
         return -3;
-    if (nca.header.content_type != NCACONTENTTYPE_META)
+    if (nca.header.content_type != (program ? NCACONTENTTYPE_PROGRAM : NCACONTENTTYPE_META))
         return -4;
     if (!nca.has_rights_id)
         nca_decrypt_key_area(&nca);
-    unsigned found = 4;
-    for (unsigned i = 0; i < 4; i++)
-        if (nca.header.section_entries[i].media_start_offset) {
+    unsigned found = 4, present = 0;
+    for (unsigned i = 0; i < 4; i++) {
+        if (!nca.header.section_entries[i].media_start_offset)
+            continue;
+        present++;
+        nca_fs_header_t *candidate = &nca.header.fs_headers[i];
+        unsigned char digest[32];
+        sha256_hash_buffer(digest, candidate, sizeof(*candidate));
+        if (memcmp(digest, nca.header.section_hashes[i], 32))
+            return -3;
+        uint64_t start = (uint64_t)nca.header.section_entries[i].media_start_offset * 512;
+        uint64_t end = (uint64_t)nca.header.section_entries[i].media_end_offset * 512;
+        if (start < 0xC00 || end <= start || end > extent)
+            return -2;
+        for (unsigned j = 0; j < i; j++) {
+            if (!nca.header.section_entries[j].media_start_offset)
+                continue;
+            uint64_t other_start = (uint64_t)nca.header.section_entries[j].media_start_offset * 512;
+            uint64_t other_end = (uint64_t)nca.header.section_entries[j].media_end_offset * 512;
+            if (start < other_end && other_start < end)
+                return -2;
+        }
+        if (candidate->crypt_type != CRYPT_NONE && candidate->crypt_type != CRYPT_CTR &&
+            candidate->crypt_type != CRYPT_XTS)
+            return -4;
+        if (candidate->partition_type == PARTITION_PFS0 && candidate->fs_type == FS_TYPE_PFS0) {
             if (found != 4)
                 return -4;
             found = i;
+        } else if (!program || candidate->partition_type != PARTITION_ROMFS ||
+                   candidate->fs_type != FS_TYPE_ROMFS) {
+            return -4;
         }
+    }
+    if (!program && present != 1)
+        return -4;
     if (found == 4)
         return -2;
     nca_fs_header_t *h = &nca.header.fs_headers[found];
@@ -274,20 +366,21 @@ int nsp_open_meta(const char *path) {
     }
     extent = section->size;
     pfs0_superblock_t *sb = &h->pfs0_superblock;
-    if (sb->pfs0_size > META_LIMIT || sb->hash_table_size > META_LIMIT || !sb->block_size ||
-        sb->block_size > META_LIMIT ||
+    if ((!program && sb->pfs0_size > META_LIMIT) || sb->hash_table_size > META_LIMIT ||
+        !sb->block_size || sb->block_size > META_LIMIT ||
         !within(sb->hash_table_offset, sb->hash_table_size, extent) ||
         !within(sb->pfs0_offset, sb->pfs0_size, extent))
         return -2;
-    uint64_t blocks = (sb->pfs0_size + sb->block_size - 1) / sb->block_size;
-    if (blocks * 32 > sb->hash_table_size)
+    uint64_t blocks = sb->pfs0_size / sb->block_size + (sb->pfs0_size % sb->block_size != 0);
+    if (!blocks || blocks > sb->hash_table_size / 32)
         return -2;
-    unsigned char *hashes = malloc((size_t)sb->hash_table_size), *block = malloc(sb->block_size);
-    if (!hashes || !block) {
-        free(hashes);
-        free(block);
+    /* Reject a hash table overlapping the data it authenticates. */
+    if (sb->hash_table_offset < sb->pfs0_offset + sb->pfs0_size &&
+        sb->pfs0_offset < sb->hash_table_offset + sb->hash_table_size)
+        return -2;
+    unsigned char *hashes = malloc((size_t)sb->hash_table_size);
+    if (!hashes)
         return -1;
-    }
     rc = read_at(sb->hash_table_offset, hashes, (size_t)sb->hash_table_size);
     if (!rc) {
         sha256_hash_buffer(digest, hashes, (size_t)sb->hash_table_size);
@@ -295,28 +388,87 @@ int nsp_open_meta(const char *path) {
             rc = -3;
     }
     for (uint64_t i = 0; !rc && i < blocks; i++) {
-        size_t bytes = sb->block_size;
+        uint64_t bytes = sb->block_size;
         if (bytes > sb->pfs0_size - i * sb->block_size)
-            bytes = (size_t)(sb->pfs0_size - i * sb->block_size);
-        rc = read_at(sb->pfs0_offset + i * sb->block_size, block, bytes);
-        if (!rc) {
-            sha256_hash_buffer(digest, block, bytes);
-            if (memcmp(digest, hashes + i * 32, 32))
-                rc = -3;
-        }
+            bytes = sb->pfs0_size - i * sb->block_size;
+        rc = hash_range(sb->pfs0_offset + i * sb->block_size, bytes, digest);
+        if (!rc && memcmp(digest, hashes + i * 32, 32))
+            rc = -3;
     }
     free(hashes);
-    free(block);
     if (rc)
         return rc;
     /* Restrict directory reads and members to the verified PFS0 region. */
     pfs_offset = sb->pfs0_offset;
     extent = pfs_offset + sb->pfs0_size;
     rc = load_directory();
+    if (!rc && program) {
+        int main_found = 0, npdm_found = 0;
+        for (uint32_t i = 0; i < directory->num_files; i++) {
+            const char *name = pfs0_get_file_name(directory, i);
+            uint32_t expected = !strcmp(name, "main")        ? 0x304F534E
+                                : !strcmp(name, "main.npdm") ? 0x4154454D
+                                                             : 0;
+            if (!expected)
+                continue;
+            pfs0_file_entry_t *entry = pfs0_get_file_entry(directory, i);
+            uint32_t magic = 0;
+            if (entry->size < sizeof(magic) ||
+                read_at(pfs_offset + directory_size + entry->offset, &magic, sizeof(magic)) ||
+                magic != expected) {
+                rc = -2;
+                break;
+            }
+            if (expected == 0x304F534E)
+                main_found = 1;
+            else
+                npdm_found = 1;
+        }
+        if (!main_found || !npdm_found)
+            rc = -2;
+    }
     if (rc)
         nsp_close();
     return rc;
 }
+int nsp_open_meta(const char *path) {
+    int rc = open_authenticated_pfs0(path, 0);
+    if (rc)
+        nsp_close();
+    return rc;
+}
+int nsp_open_exefs(const char *path) {
+    int rc = open_authenticated_pfs0(path, 1);
+    if (rc)
+        nsp_close();
+    return rc;
+}
+int nsp_hash_input(const char *path, unsigned char *out) {
+    nsp_close();
+    raw = fopen(path, "rb");
+    if (!raw)
+        return -5;
+    if (fseeko(raw, 0, SEEK_END)) {
+        nsp_close();
+        return -5;
+    }
+    off_t size = ftello(raw);
+    if (size < 0) {
+        nsp_close();
+        return -5;
+    }
+    extent = (uint64_t)size;
+    int rc = hash_range(0, extent, out);
+    nsp_close();
+    return rc;
+}
+int nsp_hash_entry(uint32_t index, unsigned char *out) {
+    if (!directory || index >= directory->num_files)
+        return -1;
+    pfs0_file_entry_t *entry = pfs0_get_file_entry(directory, index);
+    return hash_range(pfs_offset + directory_size + entry->offset, entry->size, out);
+}
+
 int nsp_entry_count(void) { return directory ? (int)directory->num_files : -1; }
 int nsp_entry_info(uint32_t index, unsigned char *out, uint32_t capacity) {
     if (!directory || index >= directory->num_files || capacity < 17)

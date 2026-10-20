@@ -305,3 +305,35 @@ test("trailing compressed junk is not silently accepted", async () => {
   const zip = await openShellZip(source(b));
   await assert.rejects(zip.readEntry(zip.entries[0].path));
 });
+
+test("trailing junk rejection does not depend on native DEFLATE strictness", async () => {
+  const original = fixture("deflate"),
+    c = central(original);
+  const b = new Uint8Array(original.length + 1);
+  b.set(original.subarray(0, c));
+  b[c] = 0xff;
+  b.set(original.subarray(c), c + 1);
+  const size = dv(original).getUint32(c + 20, true) + 1;
+  put32(b, 18, size);
+  put32(b, c + 1 + 20, size);
+  put32(b, b.length - 6, c + 1);
+  const Native = globalThis.DecompressionStream;
+  globalThis.DecompressionStream = class {
+    constructor() {
+      // Deliberately permissive runtime: ignores every encoded byte and would
+      // return matching decoded bytes/CRC even when compressed junk is present.
+      return new TransformStream({
+        transform() {},
+        flush(controller) {
+          controller.enqueue(new TextEncoder().encode("public synthetic shell\n".repeat(400)));
+        },
+      });
+    }
+  };
+  try {
+    const zip = await openShellZip(source(b));
+    await assert.rejects(zip.readEntry(zip.entries[0].path));
+  } finally {
+    globalThis.DecompressionStream = Native;
+  }
+});

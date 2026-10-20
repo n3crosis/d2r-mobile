@@ -1,4 +1,5 @@
 /** Bounded ZIP32 shell input. CRC detects corruption, not cryptographic authenticity. */
+import { createDeflateBoundary } from "./deflate-boundary.mjs";
 import { MAX_READ_BYTES, readRange, safeRelativePath } from "./preflight.mjs";
 
 export const ZIP_LIMITS = Object.freeze({
@@ -310,6 +311,7 @@ async function decodeEntry(source, entry, signal) {
         ),
       );
   } else {
+    const boundary = createDeflateBoundary(entry.size);
     let stream;
     try {
       stream = new DecompressionStream("deflate-raw");
@@ -344,9 +346,11 @@ async function decodeEntry(source, entry, signal) {
           active();
           // Chromium expands an entire input chunk before JS can inspect output.
           // Keep input tiny, await backpressure and drain capped output concurrently.
+          boundary.push(bytes);
           await writer.write(bytes);
         }
         active();
+        boundary.finish();
         await writer.close();
       } catch {
         stop();

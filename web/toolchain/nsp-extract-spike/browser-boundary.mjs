@@ -115,17 +115,42 @@ export async function createBoundary(factory) {
     },
     open(index, kind = "meta") {
       return guard(() => {
-        if (kind !== "meta" && kind !== "synthetic-pfs0") throw new Error("Unsupported operation");
-        check(
-          module.ccall(
-            kind === "meta" ? "nsp_open_meta" : "nsp_open_pfs0",
-            "number",
-            ["string"],
-            [path(index)],
-          ),
-        );
+        const operation =
+          kind === "meta"
+            ? "nsp_open_meta"
+            : kind === "program-exefs"
+              ? "nsp_open_exefs"
+              : kind === "synthetic-pfs0"
+                ? "nsp_open_pfs0"
+                : null;
+        if (!operation) throw new Error("Unsupported operation");
+        check(module.ccall(operation, "number", ["string"], [path(index)]));
         return check(module._nsp_entry_count());
       });
+    },
+    // Whole-NCA input digest is independent of header/CNMT declarations.
+    // Hashing an input closes the current member directory; reopen afterward.
+    hashInput(index) {
+      return guard(() =>
+        withBuffer(32, (ptr) => {
+          check(module.ccall("nsp_hash_input", "number", ["string", "number"], [path(index), ptr]));
+          return Array.from(module.HEAPU8.subarray(ptr, ptr + 32), (byte) =>
+            byte.toString(16).padStart(2, "0"),
+          ).join("");
+        }),
+      );
+    },
+    hashEntry(index) {
+      if (!Number.isInteger(index) || index < 0 || index > 0xffffffff)
+        throw new Error("Invalid entry index");
+      return guard(() =>
+        withBuffer(32, (ptr) => {
+          check(module._nsp_hash_entry(index, ptr));
+          return Array.from(module.HEAPU8.subarray(ptr, ptr + 32), (byte) =>
+            byte.toString(16).padStart(2, "0"),
+          ).join("");
+        }),
+      );
     },
     entry(index) {
       if (!Number.isInteger(index) || index < 0 || index > 0xffffffff)

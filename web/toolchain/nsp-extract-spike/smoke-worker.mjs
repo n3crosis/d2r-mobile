@@ -14,6 +14,25 @@ function fixture(name, payload) {
   header.set(names, 40);
   return new Blob([header, payload]);
 }
+function ambiguousFixture(duplicate) {
+  const names = new TextEncoder().encode(duplicate ? "a\0a\0" : "a\0b\0");
+  const bytes = new Uint8Array(16 + 48 + names.length + 6);
+  bytes.set([80, 70, 83, 48]);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(4, 2, true);
+  view.setUint32(8, names.length, true);
+  view.setBigUint64(24, 3n, true);
+  view.setBigUint64(40, duplicate ? 3n : 1n, true);
+  view.setBigUint64(48, 3n, true);
+  view.setUint32(56, 2, true);
+  bytes.set(names, 64);
+  return new Blob([bytes]);
+}
+async function independentDigest(bytes) {
+  return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
 let stage = "module-initialization";
 try {
   let wasm;
@@ -36,8 +55,15 @@ try {
   stage = "blob-pfs0-mount";
   const payload = new Uint8Array(3 * 65536 + 17);
   for (let i = 0; i < payload.length; i++) payload[i] = i % 251;
-  boundary.mount([fixture("synthetic.cnmt", payload)]);
+  const syntheticContainer = fixture("synthetic.cnmt", payload);
+  boundary.mount([syntheticContainer]);
+  stage = "bounded-input-sha256";
+  assert(
+    boundary.hashInput(0) === (await independentDigest(await syntheticContainer.arrayBuffer())),
+  );
   assert(boundary.open(0, "synthetic-pfs0") === 1);
+  stage = "bounded-entry-sha256";
+  assert(boundary.hashEntry(0) === (await independentDigest(payload)));
   assert(boundary.entry(0).size === BigInt(payload.length));
   stage = "bounded-output";
   let received = 0,
@@ -111,6 +137,34 @@ try {
     rejected = true;
   }
   assert(rejected);
+  stage = "unsigned-program-rejection";
+  unsignedHeader[0x205] = 0;
+  boundary.mount([new Blob([unsignedHeader])]);
+  rejected = false;
+  try {
+    boundary.open(0, "program-exefs");
+  } catch {
+    rejected = true;
+  }
+  assert(rejected);
+  stage = "ambiguous-directory-rejection";
+  for (const duplicate of [true, false]) {
+    boundary.mount([ambiguousFixture(duplicate)]);
+    rejected = false;
+    try {
+      boundary.open(0, "synthetic-pfs0");
+    } catch {
+      rejected = true;
+    }
+    assert(rejected);
+    rejected = false;
+    try {
+      boundary.entry(0);
+    } catch {
+      rejected = true;
+    }
+    assert(rejected);
+  }
   stage = "path-rejection";
   boundary.mount([fixture("../unsafe", new Uint8Array(1))]);
   rejected = false;
@@ -131,6 +185,9 @@ try {
       "bounded output/backpressure",
       "WASM sparse >4GiB seek",
       "unsigned Meta header rejected",
+      "unsigned Program header rejected",
+      "independent input/entry SHA256 parity",
+      "duplicate/overlapping members rejected",
       "bounds/traversal/cancellation",
     ],
   });
