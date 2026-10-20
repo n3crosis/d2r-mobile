@@ -90,3 +90,15 @@ is added to the formatter's scope.
 - [Bun configuration](https://bun.sh/docs/runtime/bunfig)
 - [Bun installation](https://bun.sh/docs/installation)
 - [Bun lockfile and migration](https://bun.sh/docs/pm/lockfile)
+
+The single Linux browser-build job now assembles pinned public runtime binaries
+with the existing source build scripts and validates their complete artifact
+inventory. These are build steps, not additional CI test jobs. Local contributors
+can inspect the prerequisite/command plan with
+`node web/runtime-build/build.mjs --plan`; actual runtime builds need the pinned
+Emscripten and .NET toolchains described in `runtime-build/README.md`.
+
+Default CI is build-focused: synthetic unit/regression suites and fixture/oracle
+preparation are deferred and are not invoked by the quick recipe. Existing
+manual test commands remain available. Runtime integrity checks and manifest
+validation are production behavior, not substitute test-pass claims.

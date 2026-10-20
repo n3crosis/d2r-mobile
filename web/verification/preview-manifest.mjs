@@ -3,15 +3,21 @@ import { readdir, readFile, writeFile, lstat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
+import { verifyRuntimeInventory } from "../runtime-build/inventory.mjs";
 import { validateStaticBuild } from "../scripts/build-policy.mjs";
 
-export async function createPreviewManifest(directory, commit = null) {
+export async function createPreviewManifest(directory, commit = null, runtimeDigest = null) {
   const files = [];
   const assets = new Map();
   let html;
+  let runtime = null;
   for (const name of await readdir(directory)) {
     const url = new URL(name, directory);
     const info = await lstat(url);
+    if (name === "runtime") {
+      runtime = await verifyRuntimeInventory(new URL("runtime/", directory), runtimeDigest, commit);
+      continue;
+    }
     if (!info.isFile() || info.isSymbolicLink())
       throw new Error("Preview must contain regular files only");
     if (name === "build-manifest.json") continue;
@@ -40,7 +46,11 @@ export async function createPreviewManifest(directory, commit = null) {
     schema: 1,
     commit: /^[0-9a-f]{40}$/.test(commit || "") ? commit : null,
     scope: "Static preview only; not a working game IPA",
-    files: files.sort((a, b) => a.path.localeCompare(b.path)),
+    runtimeManifestSha256: runtime?.sha256 ?? null,
+    files: [
+      ...files,
+      ...(runtime?.files ?? []).map((file) => ({ ...file, path: `runtime/${file.path}` })),
+    ].sort((a, b) => a.path.localeCompare(b.path)),
   };
   await writeFile(
     new URL("build-manifest.json", directory),
@@ -49,5 +59,9 @@ export async function createPreviewManifest(directory, commit = null) {
   return manifest;
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  await createPreviewManifest(new URL("../dist/", import.meta.url), process.env.GITHUB_SHA);
+  await createPreviewManifest(
+    new URL("../dist/", import.meta.url),
+    process.env.GITHUB_SHA,
+    process.env.EXPECTED_RUNTIME_MANIFEST_SHA256,
+  );
 }

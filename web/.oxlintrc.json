@@ -17,7 +17,9 @@
     "coverage/**",
     "**/bin/**",
     "**/obj/**",
-    "**/_framework/**"
+    "**/_framework/**",
+    "runtime-build/.build/**",
+    "runtime-build/out/**"
   ],
   "env": {
     "es2022": true

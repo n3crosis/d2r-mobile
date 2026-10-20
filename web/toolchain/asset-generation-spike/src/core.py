@@ -46,9 +46,12 @@ def encode_v31(im):
 
 def execute(operation, payload, options):
     limit = (
-        {"overlay-recipe": 128, "hud-v4": 64, "casc-overlay": 64, "encode-linear-bc3": 16}.get(
-            operation, 20
-        )
+        {
+            "overlay-recipe": 128,
+            "hud-v4": 64,
+            "casc-overlay": 64,
+            "encode-linear-bc3": 16,
+        }.get(operation, 20)
         * 1024
         * 1024
     )
@@ -65,6 +68,10 @@ def execute(operation, payload, options):
             "height": height,
             "files": {"linear.bc3": encode_rgba(payload, width, height)},
         }
+    if operation == "vault-table":
+        from vault import generate
+
+        return generate(payload, options)
     if operation == "remaining-art":
         from remaining_art import generate
 
@@ -146,5 +153,9 @@ def execute(operation, payload, options):
                 raise ValueError("Unsafe logical path")
             path = path.lower()
             result.append({"source": path, "target": native.touch_path(path)})
-        return {"files": {"overlay-paths.json": json.dumps(result, separators=(",", ":")).encode()}}
+        return {
+            "files": {
+                "overlay-paths.json": json.dumps(result, separators=(",", ":")).encode()
+            }
+        }
     raise ValueError("Unsupported asset operation")

@@ -3,6 +3,7 @@ const OPERATION_LIMITS = Object.freeze({
   "experience-table": [20, 4096],
   "overlay-paths": [20, 4096],
   "derived-tables": [20, 4096],
+  "vault-table": [20, 4096],
   "native-art": [20, 4096],
   "hud-v4": [64, 4096],
   "map-goal": [20, 4096],

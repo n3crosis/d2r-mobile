@@ -8,7 +8,7 @@
   },
   "scripts": {
     "prepare:runtime": "node scripts/vendor-runtime.mjs",
-    "prepare:core": "python3 scripts/package-core.py && python3 scripts/package-native-art.py && python3 scripts/package-hud.py && python3 scripts/package-map-goal.py && python3 scripts/package-casc-overlay.py && python3 scripts/package-mercenary.py && python3 scripts/package-overlay-recipe.py && python3 scripts/package-remaining-art.py && python3 scripts/package-bc3.py",
+    "prepare:core": "python3 scripts/package-core.py && python3 scripts/package-native-art.py && python3 scripts/package-hud.py && python3 scripts/package-map-goal.py && python3 scripts/package-casc-overlay.py && python3 scripts/package-mercenary.py && python3 scripts/package-overlay-recipe.py && python3 scripts/package-remaining-art.py && python3 scripts/package-bc3.py && python3 scripts/package-vault.py",
     "test:browser": "node test/browser.mjs"
   },
   "devDependencies": {

@@ -45,6 +45,8 @@ for (const name of [
   "native_functions.py",
   "core.py",
   "derived.py",
+  "vault_original.py",
+  "vault.py",
   "native_art_original.py",
   "native_art.py",
   "hud_original.py",

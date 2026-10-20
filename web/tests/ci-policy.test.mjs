@@ -21,8 +21,10 @@ test("one GitHub workflow runs only one Linux browser-build job", async () => {
   assert.match(text, /run: node web\/verification\/verify\.mjs quick/);
   assert.doesNotMatch(
     text,
-    /matrix:|strategy:|inputs:|desktop-build:|windows-|macos-|setup-dotnet|download-artifact/,
+    /matrix:|strategy:|inputs:|desktop-build:|windows-|macos-|download-artifact/,
   );
+  assert.match(text, /node web\/runtime-build\/build\.mjs/);
+  assert.match(text, /node web\/runtime-build\/stage-preview\.mjs/);
   assert.equal([...text.matchAll(/uses: actions\/upload-artifact@/g)].length, 1);
   assert.doesNotMatch(text, /pull_request_target:|self-hosted|secrets\./);
   for (const sha of text.matchAll(/uses: [^@]+@(\S+)/g)) assert.match(sha[1], /^[0-9a-f]{40}$/);

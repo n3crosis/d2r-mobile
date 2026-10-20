@@ -301,6 +301,21 @@ export function createExtractionJobAdapter({
             check();
             return logical.lookup(path);
           },
+          itemSpriteManifest() {
+            check();
+            const lines = [];
+            let size = 0;
+            for (const row of logical.entries()) {
+              check();
+              const path = row[9].toLowerCase();
+              if (!/^data:data\/hd\/global\/ui\/items\/.*\.sprite$/.test(path)) continue;
+              const line = `${"|".repeat(9)}${path}|\n`;
+              size += new TextEncoder().encode(line).length;
+              if (size > 4 * 1024 * 1024) throw new Error("EXTRACTION_ITEM_MANIFEST_LIMIT");
+              lines.push(line);
+            }
+            return lines.join("");
+          },
           findUniquePathSuffix(suffix) {
             check();
             if (

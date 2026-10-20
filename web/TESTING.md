@@ -10,9 +10,12 @@ node web/verification/verify.mjs quick
 ```
 
 Prerequisites: Bun 1.4.3, Node 22.12+ (24 recommended), Python 3 with venv/pip,
-and Bash. Quick verification uses the frozen Bun lock, Oxlint/Oxfmt, TypeScript,
-production build, synthetic tests, three .NET startup regression tests that do
-not need .NET, the source-drift check, and authored Python/C/Bash formatting.
+and Bash. The default build uses the frozen Bun lock, Oxlint/Oxfmt, TypeScript,
+production frontend compilation, docs/workflow formatting and authored
+Python/C/Bash formatting. It deliberately does not run unit tests, synthetic
+regressions, fixture/oracle preparation, browser proofs or device matrices.
+Those commands remain available below for later verification.
+
 CI installs Ruff 0.14.0 and clang-format 21.1.2 into an isolated temporary
 venv. Local runs reuse those exact versions from PATH rather than reinstalling
 them each time. Set them up once if needed:
@@ -23,12 +26,10 @@ python3 -m venv /tmp/d2r-style-tools
 export PATH="/tmp/d2r-style-tools/bin:$PATH"
 ```
 
-No browser, game files, keys, or native SDK are needed.
-
-During iteration use `cd web && bun run test` or a focused `node --test` file.
-`bun scripts/check-local.mjs` is the frontend-only subset. There is no mandatory
-full toolchain rebuild after each fix. Contributors install these tools; hosted
-packager users do not.
+`bun scripts/check-local.mjs` and `bun run test` remain explicitly requested
+local verification commands, not automatic build prerequisites. No full proof
+suite is required after every source change. Contributors install these tools;
+hosted packager users do not.
 
 ## Local proof profiles
 
@@ -99,3 +100,9 @@ This artifact is the current webpage preview, **not a working real-game IPA**.
 It does not enable unfinished generation or publish to the private hosted Site.
 Synthetic component results do not prove complete game processing, shell/device
 compatibility, installation or execution; see the delivery checklist.
+
+The same single GitHub job also builds the pinned public WASM/Pyodide/.NET/Cross
+runtimes after frontend verification, then uploads the manifest-verified runtime
+inventory under `web-preview/runtime/`. It adds no browser proof suite, matrix or
+second job. See [runtime assembly](runtime-build/README.md) for exact prerequisites
+and the distinction between built runtime files and a verified usable game IPA.

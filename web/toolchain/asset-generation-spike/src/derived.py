@@ -1,6 +1,7 @@
 """Complete runtime table extraction through unchanged shell_stubs functions.
 
-Expected hashes/counts come from trusted caller metadata, never from the payload.
+Fixture mode checks independent expectations; generated mode binds source hashes and derives counts.
+Generated receipts are provenance, not independent parity or shell compatibility evidence.
 Only the audited parser sees input C as text; nothing is compiled or executed.
 """
 
@@ -42,20 +43,35 @@ class BoundedOutput(io.TextIOBase):
 def generate(payload, options):
     require(len(payload) <= 8 * 1024 * 1024, "DERIVED_INPUT_LIMIT")
     sources = json.loads(payload.decode("utf-8"))
-    require(isinstance(sources, dict) and set(sources) == set(SOURCE_NAMES), "DERIVED_SOURCE_SET")
+    require(
+        isinstance(sources, dict) and set(sources) == set(SOURCE_NAMES),
+        "DERIVED_SOURCE_SET",
+    )
+    generated = options.get("mode") == "generated"
+    if generated:
+        require(set(options) == {"mode", "expectedSourceSha256"}, "DERIVED_OPTIONS")
     expected = options.get("expectedCounts")
     hashes = options.get("expectedSourceSha256")
-    require(isinstance(expected, dict) and set(expected) == set(TAGS), "DERIVED_COUNTS_REQUIRED")
+    if not generated:
+        require(
+            isinstance(expected, dict) and set(expected) == set(TAGS),
+            "DERIVED_COUNTS_REQUIRED",
+        )
     require(
-        isinstance(hashes, dict) and set(hashes) == set(SOURCE_NAMES), "DERIVED_HASHES_REQUIRED"
+        isinstance(hashes, dict) and set(hashes) == set(SOURCE_NAMES),
+        "DERIVED_HASHES_REQUIRED",
     )
-    require(
-        all(type(v) is int and 0 < v <= 100_000 for v in expected.values()), "DERIVED_COUNTS_RANGE"
-    )
-    require(
-        expected["EXP"] == 100 and expected["VTPART"] <= 256 and expected["VTSET"] <= 32768,
-        "DERIVED_COUNTS_RANGE",
-    )
+    if not generated:
+        require(
+            all(type(v) is int and 0 < v <= 100_000 for v in expected.values()),
+            "DERIVED_COUNTS_RANGE",
+        )
+        require(
+            expected["EXP"] == 100
+            and expected["VTPART"] <= 256
+            and expected["VTSET"] <= 32768,
+            "DERIVED_COUNTS_RANGE",
+        )
     for name in SOURCE_NAMES:
         require(isinstance(sources[name], str), "DERIVED_SOURCE_TYPE")
         encoded = sources[name].encode("utf-8")
@@ -63,7 +79,9 @@ def generate(payload, options):
         actual_hash = hashlib.sha256(encoded).hexdigest()
         require(hashes[name] == actual_hash, "DERIVED_SOURCE_HASH")
 
-    source_paths = dict(zip(native.paths("/input"), (sources[name] for name in SOURCE_NAMES)))
+    source_paths = dict(
+        zip(native.paths("/input"), (sources[name] for name in SOURCE_NAMES))
+    )
     output = BoundedOutput()
 
     def memory_open(path, mode="r", **_kwargs):
@@ -78,7 +96,15 @@ def generate(payload, options):
     try:
         exp, parts, rows, sets, trows, _ = native.parse("/input")
         counts = dict(zip(TAGS, map(len, (exp, parts, rows, sets, trows))))
-        require(counts == expected, "DERIVED_COUNT_MISMATCH")
+        require(
+            all(0 < n <= 100_000 for n in counts.values())
+            and counts["EXP"] == 100
+            and counts["VTPART"] <= 256
+            and counts["VTSET"] <= 32768,
+            "DERIVED_COUNTS_RANGE",
+        )
+        if not generated:
+            require(counts == expected, "DERIVED_COUNT_MISMATCH")
         require(all(0 <= n <= 0xFFFFFFFF for n in exp), "DERIVED_EXP_RANGE")
         require(
             all(
@@ -94,7 +120,9 @@ def generate(payload, options):
         )
         require(
             all(
-                0 <= r[0] <= 0xFFFFFFFF and -1 <= r[1] <= 0x7FFFFFFF and -1 <= r[2] <= 0x7FFFFFFF
+                0 <= r[0] <= 0xFFFFFFFF
+                and -1 <= r[1] <= 0x7FFFFFFF
+                and -1 <= r[2] <= 0x7FFFFFFF
                 for r in trows
             ),
             "DERIVED_SKILL_RANGE",
@@ -110,8 +138,16 @@ def generate(payload, options):
         result = bytes(output.buffer)
         require(len(result) <= OUTPUT_LIMIT, "DERIVED_OUTPUT_LIMIT")
         require(
-            all(len(line) <= 8190 for line in result.splitlines()), "DERIVED_RUNTIME_LINE_LIMIT"
+            all(len(line) <= 8190 for line in result.splitlines()),
+            "DERIVED_RUNTIME_LINE_LIMIT",
         )
-        return {"files": {"derived.tsv": result}, "counts": counts, "sourceSha256": dict(hashes)}
+        return {
+            "files": {"derived.tsv": result},
+            "counts": counts,
+            "sourceSha256": dict(hashes),
+            "evidence": "generated-source-receipt"
+            if generated
+            else "expected-source-and-count-match",
+        }
     finally:
         del native.open

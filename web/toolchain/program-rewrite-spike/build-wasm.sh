@@ -32,6 +32,7 @@ emcc --no-entry -O2 -I deps/capstone/include bridge.c \
 (cd ../../.. && sha256sum -c web/toolchain/program-rewrite-spike/upstream-source.sha256)
 cp ../../../dm/tools/patch_nso.py dist/patch_nso.py
 cp python-adapters.py worker.mjs dist/
+sed 's@../../program-release-catalog.mjs@./program-release-catalog.mjs@' rewrite-core.mjs > dist/rewrite-core.mjs
 cp ../../program-rewriter-adapter.mjs ../../program-release-catalog.mjs ../../guest-framework.mjs dist/
 cp node_modules/pyodide/{pyodide.mjs,pyodide.asm.js,pyodide.asm.wasm,python_stdlib.zip,pyodide-lock.json} dist/runtime/
 cp deps/capstone/LICENSE.TXT dist/licenses/capstone.txt

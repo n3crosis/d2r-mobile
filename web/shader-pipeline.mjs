@@ -4,7 +4,7 @@ import {
   CROSS_COMMIT,
   MSL_ARGUMENTS,
   validateSpirv,
-} from "./toolchain/spirv-cross-spike/wwwroot/convert.mjs";
+} from "./toolchain/spirv-cross-spike/wwwroot/spirv-contract.mjs";
 import { replayFields } from "./toolchain/spirv-cross-spike/wwwroot/replay-reflection.mjs";
 export const SHADER_PIPELINE_LIMITS = Object.freeze({
   code: 1024 * 1024,

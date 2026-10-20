@@ -1,5 +1,5 @@
 export const productionCsp =
-  "default-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'";
+  "default-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; script-src 'self' blob: 'wasm-unsafe-eval'; worker-src blob:; style-src 'self'; img-src 'self'; font-src 'self'";
 
 export function validateStaticBuild(html, assets) {
   if (!html.includes(`content="${productionCsp}"`) || html.includes("__APP_CSP__")) {

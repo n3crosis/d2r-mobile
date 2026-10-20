@@ -23,6 +23,8 @@
     "toolchain/asset-generation-spike/public/vendor/",
     "toolchain/spirv-cross-spike/wwwroot/spirv-cross.mjs",
     "bun.lock",
-    "toolchain/**/package-lock.json"
+    "toolchain/**/package-lock.json",
+    "runtime-build/.build/**",
+    "runtime-build/out/**"
   ]
 }

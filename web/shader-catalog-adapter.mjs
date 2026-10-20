@@ -1,3 +1,7 @@
+const authenticatedCatalogs = new WeakSet();
+export function assertShaderCatalog(value) {
+  if (!authenticatedCatalogs.has(value)) throw new Error("Unauthenticated shader catalog");
+}
 /** Source-pinned catalog mapping only. No fetch, translation, release attestation or packaging. */
 export const SHADER_CATALOG_SOURCES = Object.freeze({
   map: "419dae7adddbaba455045b1d121a01671fcb3bc82fc5d7d193593255df23c628",
@@ -147,7 +151,16 @@ export async function loadShaderCatalog(input) {
   }
   if (entries.size !== 6927 || facts.size !== entries.size)
     throw new Error("Incomplete pinned catalog");
-  return Object.freeze({
+  // Current committed bf_want policy is an empty generated list. Optional runtime
+  // bytes must match the same exact source, never caller-provided additions.
+  const bfWant = input.bfWant ?? new TextEncoder().encode("# generated\n");
+  if (
+    (await sha(bytes(bfWant, 1024 * 1024, "bf_want"))) !==
+    "8e91845e3b2e8793a97b7a0e7c33c58ad92761e7d2ed7ffe60f8fb0e196649cf"
+  )
+    throw new Error("Pinned bf_want source digest mismatch");
+  const catalog = Object.freeze({
+    bfWant: Object.freeze([]),
     keys: Object.freeze([...entries.keys()]),
     unsupported: Object.freeze(
       [...entries.values()]
@@ -201,4 +214,6 @@ export async function loadShaderCatalog(input) {
     },
     productionEquivalent: false,
   });
+  authenticatedCatalogs.add(catalog);
+  return catalog;
 }
