@@ -359,11 +359,7 @@ export async function prepareBrowserPackager({
             };
           },
           async cleanup(context) {
-            try {
-              await extraction.cleanup(context);
-            } finally {
-              await close();
-            }
+            await cleanupPackagingAdapters(() => extraction.cleanup(context), close);
           },
         };
         const pack = new TextEncoder().encode(
@@ -570,4 +566,20 @@ function validateResourceExportOption(value) {
 export async function runOptionalResourceExport(exportResources = true, exportOriginalResources) {
   validateResourceExportOption(exportResources);
   return exportResources ? await exportOriginalResources() : RESOURCE_EXPORT_SKIPPED;
+}
+
+// 两项清理都必须尝试；保留首个原始错误，额外失败不能覆盖它。
+// Attempt both cleanup operations; preserve the first original error without hiding subsequent failures.
+export async function cleanupPackagingAdapters(cleanupExtraction, closeAdapters) {
+  const failures = [];
+  for (const release of [cleanupExtraction, closeAdapters]) {
+    try {
+      await release();
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1)
+    throw new AggregateError(failures, "PACKAGING_ADAPTER_CLEANUP_FAILED", { cause: failures[0] });
 }

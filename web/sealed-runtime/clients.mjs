@@ -495,9 +495,12 @@ export async function prepareSealedRuntime({
     () => downloads.abort(new Error("Application loading timed out. Reload to retry.")),
     300000,
   );
+  function checkDownloadCancellation() {
+    if (downloads.signal.aborted) throw downloads.signal.reason;
+  }
   async function download() {
     while (cursor < downloadFiles.length) {
-      if (downloads.signal.aborted) throw downloads.signal.reason;
+      checkDownloadCancellation();
       const record = downloadFiles[cursor++];
       const key = cacheKey(record);
       let bytes;
@@ -505,18 +508,23 @@ export async function prepareSealedRuntime({
         const publicCache = cache;
         const cached = await optionalStorage(async () => {
           const response = await publicCache.match(key);
+          checkDownloadCancellation();
           if (!response) return { value: undefined };
           try {
             const value = await responseBytes(response, record.bytes, undefined, true);
-            if (value.length === record.bytes && (await hash(value)) === record.sha256)
-              return { value };
+            checkDownloadCancellation();
+            const digest = await hash(value);
+            checkDownloadCancellation();
+            if (value.length === record.bytes && digest === record.sha256) return { value };
           } catch {
+            checkDownloadCancellation();
             // 截断或超大的缓存记录绝不会被信任或保留。
             // A truncated or oversized cache record is never trusted or retained.
           }
           await publicCache.delete(key);
           return { value: undefined };
         });
+        checkDownloadCancellation();
         if (!cached) cache = undefined;
         if (cached?.value) {
           bytes = cached.value;
@@ -530,15 +538,20 @@ export async function prepareSealedRuntime({
           record.bytes,
           downloads.signal,
           (size) => {
+            checkDownloadCancellation();
             downloadedBytes += size;
             update();
           },
           true,
         );
+        checkDownloadCancellation();
         if (bytes.length !== record.bytes || (await hash(bytes)) !== record.sha256)
           fail("Runtime asset integrity mismatch. Reload to retry.");
+        checkDownloadCancellation();
         if (cache) {
           const publicCache = cache;
+          // 不在取消后启动写入；已开始的 Cache.put 无法回滚，仍只包含验证过的公开字节。
+          // Do not start writes after cancellation; an already-started Cache.put may finish with verified public bytes.
           const stored = await optionalStorage(async () => {
             await publicCache.put(key, new Response(bytes));
             return true;
@@ -546,6 +559,7 @@ export async function prepareSealedRuntime({
           if (!stored) cache = undefined;
         }
       }
+      checkDownloadCancellation();
       downloadedAssets.set(record.path, bytes);
       completedFiles++;
       update();
@@ -565,6 +579,7 @@ export async function prepareSealedRuntime({
           if (!activeKeys.has(request.url)) await cache.delete(request);
       });
     }
+    checkDownloadCancellation();
   } catch (error) {
     downloads.abort(error);
     throw error;

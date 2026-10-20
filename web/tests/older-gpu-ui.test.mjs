@@ -26,7 +26,7 @@ test("pack progress and complete-on-later-failure outcome remain separate from I
   assert.match(app, /result\.legacyPack\?\.status === "complete"/);
   assert.match(app, /report\?\.legacyPack\?\.status === "complete"/);
   assert.match(app, /legacyAstc && legacyStatus/);
-  assert.match(app, /setDownload\(\{ url, fileName: result\.download\.fileName \}\)/);
+  assert.match(app, /setDownload\(\{ url: prepared\.url, fileName: prepared\.fileName \}\)/);
   for (const key of [
     "dmWebLegacyOption",
     "dmWebLegacyHelp",

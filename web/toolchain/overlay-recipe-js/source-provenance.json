@@ -13,7 +13,7 @@
   "dm/ios/tools/annot_drop.py": "c30b12df91cd9b7186481366c2012ece9098b344e8aad524d67ae7a8d0715368",
   "dm/ios/tools/gen_paths.py": "37bd6bdca36cbd9015ccc370e0492da26885c69c73dbfe21969f02efc59f1430",
   "dm/ios/tools/gen_trove_art.py": "d7c57fa5854fd845776b4a294d1198be3b902dc262c9dd35167589e42127f6c2",
-  "dm/i18n/ui_text.tsv": "8ec270ed8b42b24a86c4094d506c1add57952f56b43afdb35e20a65549bd38bb",
+  "dm/i18n/ui_text.tsv": "f1d79ed6147ae83b28496f5eb4d72b0ba6fafc58f2a74c4fa677beb748dfa881",
   "dm/host/dm_kills.c": "8a0de7a29ce473621dc94eee60fc397f14058309eb1e96ba394a54835d1bb436",
   "dm/ios/NativeHUD/touch/close.png": "52f0af458afde67fa4d1e46069e24f38a96aaa83cbbb880501cc778ff909545f",
   "web/toolchain/asset-generation-spike/src/overlay_recipe.py": "493f8829d9c0819b35ac7f27c72b0f385269eb3c853e09bb55edef27084f1e3c",

@@ -684,5 +684,13 @@ export const catalog = Object.freeze({
   "dmWebAstcPresetHelp": [
     "Fast takes less processing time but may reduce image quality. Changing this reloads the page; choose before selecting a folder.",
     "快速模式处理时间较短，但图像质量可能较低。切换会重新加载页面；请在选择文件夹前设置。"
+  ],
+  "dmWebDownloadPreparationFailed": [
+    "The IPA was generated, but its download link could not be prepared. Completed resource exports are unchanged; retry the download without converting again.",
+    "IPA 已生成，但无法准备下载链接。已完成的资源导出不受影响；请重试下载，无需重新转换。"
+  ],
+  "dmWebRetryDownloadPreparation": [
+    "Retry IPA download preparation",
+    "重试准备 IPA 下载"
   ]
 });

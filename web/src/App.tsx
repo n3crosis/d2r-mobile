@@ -8,6 +8,7 @@ import { prepareBrowserPackager } from "../browser-packager.mjs";
 import { DEFAULT_SHELL_PROFILE_ID } from "../shell-profiles.mjs";
 import { discoverNspFolder } from "../nsp-input.mjs";
 import { selectDefaultNspNames } from "../nsp-default-selection.mjs";
+import { createDownloadPreparation, attemptAutomaticDownload } from "../download-preparation.mjs";
 import { readOpfsStorageAdvisory } from "../opfs-storage-advisory.mjs";
 import {
   packagingActivity,
@@ -93,7 +94,8 @@ export default function App() {
   const [selectedNsps, setSelectedNsps] = useState<Set<string>>(() => new Set());
   const [download, setDownload] = useState<{ url: string; fileName: string } | null>(null);
   const [finished, setFinished] = useState(false);
-  const downloadUrl = useRef<string | null>(null);
+  const downloadPreparation = useRef(createDownloadPreparation());
+  const [downloadPreparationFailed, setDownloadPreparationFailed] = useState(false);
   const mounted = useRef(true);
   const flushActivity = useCallback(() => {
     if (activityTimer.current !== null) {
@@ -151,6 +153,7 @@ export default function App() {
   const packager = useRef<Packager | null>(null),
     cancellation = useRef<AbortController | null>(null);
   useEffect(() => {
+    const preparedDownload = downloadPreparation.current;
     mounted.current = true;
     const controller = new AbortController();
     cancellation.current = controller;
@@ -223,7 +226,7 @@ export default function App() {
       controller.abort();
       cancellation.current?.abort();
       packager.current?.close();
-      if (downloadUrl.current) URL.revokeObjectURL(downloadUrl.current);
+      preparedDownload.dispose();
     };
   }, [appendActivity, profileId, legacyAstc, astcPreset]);
   async function choose() {
@@ -298,6 +301,17 @@ export default function App() {
       if (controller.signal.aborted && mounted.current) setFinished(true);
     }
   }
+  function prepareDownload() {
+    const prepared = downloadPreparation.current.prepare();
+    if (prepared.status !== "ready") {
+      setDownloadPreparationFailed(true);
+      appendActivity(t("dmWebDownloadPreparationFailed"), true);
+      return;
+    }
+    setDownload({ url: prepared.url, fileName: prepared.fileName });
+    setDownloadPreparationFailed(false);
+    attemptAutomaticDownload(prepared);
+  }
   async function generate() {
     if (!ready || busy || !folder || !packager.current || !selectedNsps.size) return;
     setBusy(true);
@@ -312,6 +326,7 @@ export default function App() {
     appendActivity(t("dmWebGenerationStarted"), true);
     appendActivity(t("dmWebFastMode"), true);
     let acceptingProgress = true;
+    let generationCompleted = false;
     try {
       const controller = new AbortController();
       cancellation.current = controller;
@@ -389,12 +404,10 @@ export default function App() {
         },
       });
       if (!mounted.current) return;
+      generationCompleted = true;
       if (legacyAstc && result.legacyPack?.status === "complete")
         setLegacyStatus(t("dmWebLegacyComplete", result.legacyPack.directoryName));
-      const url = URL.createObjectURL(result.download.blob);
-      if (downloadUrl.current) URL.revokeObjectURL(downloadUrl.current);
-      downloadUrl.current = url;
-      setDownload({ url, fileName: result.download.fileName });
+      downloadPreparation.current.retain(result.download);
       appendActivity(t("dmWebUnsignedReady"), true);
       if (result.resources.status === "skipped") {
         setResourceOutcome(t("dmWebResourcesSkipped"));
@@ -402,23 +415,15 @@ export default function App() {
       } else {
         setStatus(t("dmWebDownloadReady", folder.name, result.resources.directoryName));
       }
-      // 某些浏览器会阻止长时间异步操作后发起的下载。
-      // 在可见的下载 IPA 链接中保留相同 URL 以供重试。
-      // Some browsers suppress downloads initiated after lengthy async work.
-      // Keep the same URL available in the visible Download IPA link for retry.
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = result.download.fileName;
-      try {
-        document.body.append(link);
-        link.click();
-      } catch {
-        // 即使自动启动失败，可见链接仍然可用。
-        // The visible link remains usable even if automatic initiation fails.
-      } finally {
-        link.remove();
-      }
+      // 下载准备失败只提供重试，不重新运行转换或覆盖已完成导出状态。
+      // Download preparation failures offer retry only, without rerunning conversion or overwriting completed exports.
+      prepareDownload();
     } catch (error) {
+      if (generationCompleted) {
+        setDownloadPreparationFailed(true);
+        appendActivity(t("dmWebDownloadPreparationFailed"), true);
+        return;
+      }
       const report = (
         error as {
           report?: {
@@ -650,6 +655,14 @@ export default function App() {
             <p className="text-sm text-muted-foreground" role="status">
               {resourceOutcome}
             </p>
+          )}
+          {downloadPreparationFailed && (
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground" role="status">
+                {t("dmWebDownloadPreparationFailed")}
+              </p>
+              <Button onClick={prepareDownload}>{t("dmWebRetryDownloadPreparation")}</Button>
+            </div>
           )}
           {download && (
             <div className="space-y-2">

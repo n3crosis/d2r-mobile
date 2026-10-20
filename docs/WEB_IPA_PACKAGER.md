@@ -38,9 +38,18 @@ Developer/native-reference tooling can still require Python and .NET.
    The validated IPA is offered as a bounded Blob browser download, not saved
    directly into that folder. A visible download link supports retry; the browser
    controls the download destination. The IPA does not contain all resources.
-6. Sign and install the IPA separately, then copy the completed resource folder
-   into the app's Files folder. Older-GPU ASTC pack generation is not implemented
-   by this browser flow. Real game and device compatibility remain unverified.
+6. Sign and install the IPA separately, then copy the completed
+   `D2R-resources-<UUID>` folder into **On My iPhone / D2R Mobile** (or the
+   corresponding app folder on iPad) in Files, keeping its `data` child intact.
+   The experimental **Older-GPU option** also generates a separate
+   `Legacy Device Pack-<UUID>` folder. When enabled, copy that completed folder
+   alongside the game-resource folder, keeping its `data` child and
+   `manifest.json` intact; it must match the IPA generated in the same run.
+   Neither resource set is bundled into the IPA. Do not copy incomplete outputs.
+   If you explicitly skipped original-resource export, keep the existing resources
+   for the same game, update and DLC; they have not been verified by the browser.
+   The newly generated Legacy Device Pack still needs copying when that option is
+   enabled. Real game and device compatibility remain unverified.
 
 ## Source-backed architecture
 
