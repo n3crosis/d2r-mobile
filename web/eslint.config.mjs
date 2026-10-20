@@ -36,6 +36,7 @@ export default tseslint.config(
     files: [
       "tests/**/*.mjs",
       "toolchain/**/verify-parity.mjs",
+      "toolchain/**/capture-browser.mjs",
       "eslint.config.mjs",
       "vite.config.ts",
     ],

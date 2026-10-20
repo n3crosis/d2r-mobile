@@ -1,0 +1,136 @@
+name: Synthetic browser shader runtime parity
+
+on:
+  push:
+    branches: [feature/web-ipa-packager]
+    paths:
+      - "web/toolchain/shader-spike/**"
+      - "dm/gfx/tools/dmsh_xlate/**"
+      - "dm/third_party/ryujinx/**"
+      - ".github/workflows/shader-runtime-parity.yml"
+  pull_request:
+    paths:
+      - "web/toolchain/shader-spike/**"
+      - "dm/gfx/tools/dmsh_xlate/**"
+      - "dm/third_party/ryujinx/**"
+      - ".github/workflows/shader-runtime-parity.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shader-runtime-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  synthetic-runtime:
+    name: Real Chromium WASM vs original native CLI (synthetic EXIT only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+        working-directory: web/toolchain/shader-spike
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+      DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE: "true"
+      SDK_VERSION: "10.0.402"
+      WORKLOAD_VERSION: "10.0.402"
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: "10.0.402"
+      - name: Pin SDK and workload (also applies to native commands from this cwd)
+        run: |
+          printf '{"sdk":{"version":"%s","rollForward":"disable","allowPrerelease":false,"workloadVersion":"%s"}}\n' "$SDK_VERSION" "$WORKLOAD_VERSION" > global.json
+          test "$(dotnet --version)" = "$SDK_VERSION"
+          dotnet --info
+          git rev-parse HEAD
+          mkdir -p "$RUNNER_TEMP/shader-parity"
+      - name: Install official developer prerequisites on CI only
+        run: |
+          dotnet workload install wasm-tools
+          dotnet workload --version
+          dotnet workload list
+          npm ci --ignore-scripts
+          npm audit --audit-level=high
+          npx --no-install playwright install --with-deps chromium
+          sudo apt-get update
+          apt-cache policy spirv-tools
+          sudo apt-get install --no-install-recommends -y spirv-tools
+          spirv-val --version
+          npx --no-install playwright --version
+          df -h .
+      - name: Publish actual browser WASM bundle
+        id: publish
+        run: |
+          dotnet restore ShaderSpike.csproj
+          dotnet build ShaderSpike.csproj -c Release --no-restore -p:EnableNETAnalyzers=true -p:AnalysisLevel=latest -p:TreatWarningsAsErrors=true
+          dotnet publish ShaderSpike.csproj -c Release --no-restore -p:EnableNETAnalyzers=true -p:AnalysisLevel=latest -p:TreatWarningsAsErrors=true
+      - name: Prepare tiny authored fixture and build independent original native oracle
+        id: native
+        run: |
+          node verify-parity.mjs prepare "$RUNNER_TEMP/shader-parity/fixture"
+          native_project="$GITHUB_WORKSPACE/dm/gfx/tools/dmsh_xlate/dmsh_xlate.csproj"
+          dotnet restore "$native_project"
+          dotnet build "$native_project" -c Release --no-restore
+          native_dll="$GITHUB_WORKSPACE/dm/gfx/tools/dmsh_xlate/bin/Release/net10.0/dmsh_xlate.dll"
+          test -f "$native_dll"
+          actual=$(dotnet "$native_dll" --source-sha)
+          expected=$(cat "$GITHUB_WORKSPACE/dm/gfx/tools/dmsh_xlate/Program.cs" "$native_project" | sha256sum | cut -c1-16)
+          test "$actual" = "$expected"
+          echo "Verified original native embedded source: $actual"
+          sha256sum "$GITHUB_WORKSPACE/dm/gfx/tools/dmsh_xlate/Program.cs" "$native_project" ShaderBridge.cs ShaderSpike.csproj EmbeddedResources.cs synthetic-fixture.mjs "$RUNNER_TEMP/shader-parity/fixture/synthetic-exit.bin" "$RUNNER_TEMP/shader-parity/fixture/jobs.json"
+          git rev-parse HEAD:dm/third_party/ryujinx
+          timeout --kill-after=5s 60s dotnet "$native_dll" "$RUNNER_TEMP/shader-parity/fixture/jobs.json" "$RUNNER_TEMP/shader-parity/native"
+          test -s "$RUNNER_TEMP/shader-parity/native/synthetic-exit.spv"
+          test -s "$RUNNER_TEMP/shader-parity/native/synthetic-exit.res.json"
+      - name: Execute published module worker in real Chromium and capture download
+        id: browser
+        run: |
+          timeout --kill-after=5s 120s node capture-browser.mjs bin/Release/net10.0/publish "$RUNNER_TEMP/shader-parity/browser"
+      - name: Require exact binary and complete sidecar parity
+        id: parity
+        run: |
+          node verify-parity.mjs compare "$RUNNER_TEMP/shader-parity/native" "$RUNNER_TEMP/shader-parity/browser/browser-result.json" | tee "$RUNNER_TEMP/shader-parity/parity.json"
+      - name: Validate both emitted SPIR-V files without target relaxation
+        id: validation
+        run: |
+          timeout --kill-after=5s 30s spirv-val --target-env vulkan1.1 "$RUNNER_TEMP/shader-parity/native/synthetic-exit.spv"
+          timeout --kill-after=5s 30s spirv-val --target-env vulkan1.1 "$RUNNER_TEMP/shader-parity/native/browser-synthetic-exit.spv"
+      - name: Record bounded evidence and scope (no artifacts uploaded)
+        if: ${{ !cancelled() }}
+        env:
+          PUBLISH: ${{ steps.publish.outcome }}
+          NATIVE: ${{ steps.native.outcome }}
+          BROWSER: ${{ steps.browser.outcome }}
+          PARITY: ${{ steps.parity.outcome }}
+          VALIDATION: ${{ steps.validation.outcome }}
+        run: |
+          {
+            echo '### Synthetic EXIT runtime gate'
+            echo "Publish: $PUBLISH; independent native: $NATIVE; Chromium worker: $BROWSER; exact parity: $PARITY; Vulkan 1.1 SPIR-V validation: $VALIDATION."
+            echo 'This is synthetic Linux Chromium translation evidence only. Windows/macOS browsers, resource/arithmetic fixtures, graphics, GPU execution, games, Metal conversion and working unsigned IPA output remain unverified.'
+            echo 'No credentials, game data, binary artifacts, runtime bundle or browser profile is uploaded.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          node --input-type=module <<'JS'
+          import { stat, readFile } from 'node:fs/promises';
+          import { join } from 'node:path';
+          for (const name of ['browser/browser-diagnostics.json', 'parity.json']) {
+            const path = join(process.env.RUNNER_TEMP, 'shader-parity', name);
+            try {
+              if ((await stat(path)).size > 128 * 1024) throw new Error('Diagnostic exceeds cap');
+              console.log(name, await readFile(path, 'utf8'));
+            } catch (error) {
+              if (error.code !== 'ENOENT') throw error;
+              console.log(name, 'not produced');
+            }
+          }
+          JS

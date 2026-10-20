@@ -1,9 +1,10 @@
-# Browser shader translator spike (not built or validated)
+# Browser shader translator spike (compiled; runtime parity pending)
 
 This is isolated developer scaffolding, **not a working translator release**.
-No .NET SDK is installed in the current workspace and its temporary disk is
-nearly full. No SDK/workload install, C# compilation, native oracle run,
-SPIR-V validation, browser runtime test, or game compatibility test was done.
+GitHub Actions run `39387602517` passed C# restore, authored-source format,
+Release build/analyzers (zero warnings/errors), and static publish using the
+pinned .NET SDK/workload set `10.0.402`. The compiler gate does not prove browser
+execution or native parity. The runtime gate described below has not run yet.
 The React/shadcn preview does not load this directory. It does not unblock IPA
 assembly by itself. There are no game bytes, keys, or generated binaries here.
 
@@ -44,7 +45,7 @@ original Common source is now linked too.
 The original Common resource helper drags in `StreamUtils` and recyclable streams;
 its project also references MsgPack, Humanizer and Gommon and includes unrelated
 platform code. Source-linking avoids those dependencies rather than hoping the
-browser linker removes them. This closure is **not yet compiler-confirmed**.
+browser linker removes them. This closure is **compiler-confirmed by run `39387602517`**, not runtime-confirmed.
 Generic integer operations, span layout, thread-static caches, unsafe code and
 all browser runtime behavior still require tests. The single-assembly arrangement
 is deliberate; named GLSL resources retain their original logical names.
@@ -69,7 +70,7 @@ The worker approach avoids blocking React:
 Use the .NET 10 manual-worker path, not the .NET 11 template shown alongside it.
 Start with interpretation, no trimming and no AOT; measure before optimizing.
 
-Developer commands, **not executed here** (run from repository root):
+Developer commands (the equivalent pinned CI compile/publish has passed; no local SDK install was performed):
 
 ```sh
 dotnet workload install wasm-tools
@@ -80,15 +81,14 @@ dotnet publish web/toolchain/shader-spike/ShaderSpike.csproj -c Release
 ```
 
 Resolve compiler/platform analyzer findings rather than suppressing them wholesale.
-`dotnet format` may initially fail because C# formatting has not been run here.
+The authored C# formatting gate passed in run `39387602517`.
 Prettier/ESLint checks cover only their supported web files, not C# compatibility.
 Do not include linked vendored sources in formatting changes. Keep build products
 under the spike's ignored `bin/`, `obj/` or `artifacts/` directories.
 
 Inspect the SDK's reported publish output; host the complete static bundle over
 HTTP(S), retaining `_framework`. Ensure `index.html`, `worker.mjs` and
-`synthetic-fixture.mjs` are siblings of `_framework` (the extra-file deploy items
-are intended to do this but have not been tested). Do not open via `file://`.
+`synthetic-fixture.mjs` are siblings of `_framework` (the automated capture discovers and requires this layout instead of assuming it). Do not open via `file://`.
 Use an already-approved static host/server with correct Wasm MIME type, no SPA
 fallback for missing assets, and a CSP permitting the .NET Wasm runtime. No COOP/
 COEP requirement is assumed for this single-threaded worker; verify actual hosting.
@@ -149,3 +149,62 @@ No shader header is needed for compute. This is not a GPU execution correctness 
 Stop on a build, runtime, parity or validation failure and diagnose it. No passing
 C# build, EXIT fixture or SPIR-V validation alone proves game compatibility, Metal
 conversion, metallib availability, correct rendering or a working unsigned IPA.
+
+## Automated runtime gate
+
+`.github/workflows/shader-runtime-parity.yml` runs a separate, bounded job on
+standard Ubuntu 24.04. It rebuilds the published bundle rather than transferring
+runtime binaries between jobs. All compiler, Python-equivalent fixture preparation,
+Playwright and validator tooling stays on developer infrastructure. End users
+install none of these tools.
+
+- `package.json` and its isolated lock pin official `playwright` **1.64.1**, verified
+  against the npm registry on 2026-10-20. Node 22 is used. `npm ci --ignore-scripts`
+  installs developer dependencies; the official Playwright CLI explicitly installs
+  Chromium with its Linux dependencies on the CI runner only.
+- The original native CLI and original Common/Shader project references remain
+  unchanged. Its embedded `--source-sha` is independently checked against the
+  original Program.cs and csproj. Commands run from the SDK-pinned spike directory,
+  including commands referring to the native project outside it.
+- `capture-browser.mjs` searches the actual reported
+  `bin/Release/net10.0/publish/` tree for exactly one complete deployment root
+  containing index.html, worker.mjs, synthetic-fixture.mjs and `_framework/dotnet.js`.
+  A loopback-only static server serves this root, with Wasm MIME and no SPA fallback.
+- Chromium opens the real harness and clicks its button. The existing module
+  worker executes the browser .NET runtime. Playwright captures the actual JSON
+  download, not a substituted Node result; it requires the expected worker URL,
+  filename and payload. Download bytes are streamed with a 256 KiB cap and saved
+  before closing the browser context. External HTTP requests are blocked.
+- Native output and browser capture must have exact SPIR-V byte equality and
+  complete parsed sidecar equality. Metadata arrays retain their order; no notes,
+  resource properties or unknown fields are discarded. The comparator rejects
+  noncanonical base64 and oversized outputs before comparing. It writes a decoded
+  browser SPIR-V file only after full parity passes.
+- Both native and browser SPIR-V are validated with `spirv-val --target-env vulkan1.1`.
+  The validator is installed from the runner's configured Ubuntu package repository;
+  its actual candidate and installed version are logged. No automatic target
+  relaxation or source modifications are allowed when validation fails.
+- The job allows 25 minutes overall, the native fixture 60 seconds, browser capture
+  120 seconds (harness worker limit 60 seconds), and each validator 30 seconds.
+  Only this tiny authored EXIT fixture is used. Source hashes, version diagnostics,
+  byte hash and step outcomes are logged. Browser diagnostics are capped at 100
+  events of 1,024 characters each; result JSON is capped at 256 KiB, and SPIR-V at
+  128 KiB. Nothing is uploaded or deployed, including binaries, browser profiles,
+  traces or credentials. The final summary explicitly preserves compatibility limits.
+
+Local lock generation first hit the workspace's disk limit. The two exact package
+entries were populated from official version-specific registry metadata (tarball URL
+and SHA-512 integrity), then successfully checked/normalized using npm's offline
+`--package-lock-only --ignore-scripts --no-audit` operation. CI must still perform
+`npm ci` and the audit; no browser or package install was attempted locally.
+
+Official references: [Playwright library](https://playwright.dev/docs/library),
+[download capture](https://playwright.dev/docs/downloads),
+[download stream API](https://playwright.dev/docs/api/class-download),
+[browser installation](https://playwright.dev/docs/browsers), and
+[Khronos SPIRV-Tools](https://github.com/KhronosGroup/SPIRV-Tools).
+
+A green runtime gate means only synthetic EXIT native/browser translation parity
+and structural SPIR-V validation on Linux Chromium. It does not mean GPU execution,
+Windows/macOS browser testing, resources, arithmetic, branch correctness, game
+compatibility, Metal conversion, or working unsigned IPA output.
