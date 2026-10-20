@@ -567,17 +567,7 @@ export async function prepareSealedRuntime({
     plans.program = {
       entry: "sealed-workers/program-worker.mjs",
       assets: [
-        ...[
-          "pyodide.mjs",
-          "pyodide.asm.js",
-          "pyodide.asm.wasm",
-          "python_stdlib.zip",
-          "pyodide-lock.json",
-        ].map((name) => [name, bytes(`${OFFLINE}/pyodide-dist/${name}`)]),
-        ...["capstone-lz4.wasm", "patch_nso.py", "python-adapters.py"].map((name) => [
-          name,
-          bytes(`toolchain/program-rewrite-spike/dist/${name}`),
-        ]),
+        ["capstone-lz4.wasm", bytes("toolchain/program-rewrite-spike/dist/capstone-lz4.wasm")],
       ],
     };
   for (const plan of Object.values(plans)) bytes(plan.entry);

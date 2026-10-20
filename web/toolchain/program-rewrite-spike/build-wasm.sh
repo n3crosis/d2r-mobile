@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")"
-mkdir -p deps dist/licenses dist/runtime
+mkdir -p deps dist/licenses dist/js
 fetch() {
   local name="$1" repo tag commit
   read -r repo tag commit < <(python3 -c 'import json,sys; d=json.load(open("toolchain-lock.json"))[sys.argv[1]]; print(d["repository"], d["tag"], d["commit"])' "$name")
@@ -30,12 +30,12 @@ emcc --no-entry -O2 -I deps/capstone/include bridge.c \
   -sEXPORTED_RUNTIME_METHODS='["ccall","UTF8ToString","HEAPU8"]' \
   -o dist/capstone-lz4.mjs
 (cd ../../.. && sha256sum -c web/toolchain/program-rewrite-spike/upstream-source.sha256)
-cp ../../../dm/tools/patch_nso.py dist/patch_nso.py
-cp python-adapters.py worker.mjs dist/
-sed 's@../../program-release-catalog.mjs@./program-release-catalog.mjs@' rewrite-core.mjs > dist/rewrite-core.mjs
+python3 audit-js-source.py
+cp worker.mjs rewrite-core.mjs dist/
+for file in js/*.mjs; do
+  sed 's@../../../program-release-catalog.mjs@../program-release-catalog.mjs@g' "$file" > "dist/js/$(basename "$file")"
+done
 cp ../../program-rewriter-adapter.mjs ../../program-release-catalog.mjs ../../guest-framework.mjs dist/
-cp node_modules/pyodide/{pyodide.mjs,pyodide.asm.js,pyodide.asm.wasm,python_stdlib.zip,pyodide-lock.json} dist/runtime/
 cp deps/capstone/LICENSE.TXT dist/licenses/capstone.txt
 cp deps/lz4/lib/LICENSE dist/licenses/lz4.txt
-cp PYODIDE_LICENSE dist/licenses/pyodide.txt
 cp toolchain-lock.json dist/

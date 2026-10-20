@@ -161,9 +161,7 @@ export async function assembleRuntime({ build } = {}) {
     for (const name of [
       "capstone-lz4.mjs",
       "capstone-lz4.wasm",
-      "patch_nso.py",
       "rewrite-core.mjs",
-      "python-adapters.py",
       "worker.mjs",
       "program-rewriter-adapter.mjs",
       "program-release-catalog.mjs",
@@ -172,13 +170,15 @@ export async function assembleRuntime({ build } = {}) {
     ])
       await copy(`${program}/${name}`);
     for (const name of [
-      "pyodide.mjs",
-      "pyodide.asm.js",
-      "pyodide.asm.wasm",
-      "python_stdlib.zip",
-      "pyodide-lock.json",
+      "binary.mjs",
+      "arm64.mjs",
+      "relocations.mjs",
+      "rewrite.mjs",
+      "rules.mjs",
+      "rule-data.mjs",
+      "outputs.mjs",
     ])
-      await copy(`${program}/runtime/${name}`);
+      await copy(`${program}/js/${name}`);
     const asset = "toolchain/asset-generation-spike/public";
     // Production uses the sealed Python closure only. Ordinary worker/vendor/generated
     // mirrors belong to manual reference harnesses and are never shipped.

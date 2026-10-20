@@ -1,28 +1,11 @@
 import createNative from "../toolchain/program-rewrite-spike/dist/capstone-lz4.mjs";
-import {
-  createProgramRewriter,
-  installProgramNativeBindings,
-} from "../toolchain/program-rewrite-spike/rewrite-core.mjs";
+import { createProgramRewriter } from "../toolchain/program-rewrite-spike/rewrite-core.mjs";
 import { PROGRAM_REWRITER_SOURCE } from "../program-release-catalog.mjs";
 import { byteFactory } from "./wasm-factory.mjs";
-const NAMES = [
-  "capstone-lz4.wasm",
-  "pyodide.mjs",
-  "pyodide.asm.js",
-  "pyodide.asm.wasm",
-  "python_stdlib.zip",
-  "pyodide-lock.json",
-  "patch_nso.py",
-  "python-adapters.py",
-];
-const ORIGIN = "https://offline.invalid";
-const PREFIX = "/v0.27.7/";
-const hex = (bytes) => Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-const digest = async (bytes) => new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+const NAMES = ["capstone-lz4.wasm"];
 let started = false;
 let context;
 let queue = Promise.resolve();
-const urls = [];
 const rewrite = createProgramRewriter(() => {
   if (!context) throw new Error("PROGRAM_NOT_INITIALIZED");
   return context;
@@ -54,53 +37,10 @@ async function initialize(data) {
     assets.set(name, new Uint8Array(buffer));
   }
   if (total > 96 * 1024 * 1024) throw new Error("PROGRAM_ASSET_CAP");
-  if (hex(await digest(assets.get("patch_nso.py"))) !== PROGRAM_REWRITER_SOURCE)
-    throw new Error("PROGRAM_SOURCE_DRIFT");
-  // Same source-locked Pyodide loader adapter as the sealed asset runtime.
-  // This does not replace fetch, XHR, import, or any browser networking API.
-  Object.defineProperty(globalThis, "__readOfflinePyodide", {
-    value: async (value, integrity) => {
-      const url = new URL(value);
-      const name = url.pathname.slice(PREFIX.length);
-      if (
-        url.origin !== ORIGIN ||
-        !url.pathname.startsWith(PREFIX) ||
-        url.search ||
-        url.hash ||
-        !NAMES.slice(1, 6).includes(name)
-      )
-        throw new Error("PROGRAM_OFFLINE_RESOURCE");
-      const bytes = assets.get(name);
-      if (!bytes) throw new Error("PROGRAM_OFFLINE_RESOURCE");
-      if (
-        integrity !== undefined &&
-        integrity !== `sha256-${btoa(String.fromCharCode(...(await digest(bytes))))}`
-      )
-        throw new Error("PROGRAM_OFFLINE_INTEGRITY");
-      return new Response(bytes, {
-        headers: {
-          "Content-Type": name.endsWith(".wasm") ? "application/wasm" : "application/octet-stream",
-        },
-      });
-    },
-  });
-  const moduleUrl = (name) => {
-    const url = URL.createObjectURL(new Blob([assets.get(name)], { type: "text/javascript" }));
-    urls.push(url);
-    return url;
-  };
   const native = await byteFactory(createNative, assets.get("capstone-lz4.wasm").buffer)();
-  installProgramNativeBindings(native);
-  await import(moduleUrl("pyodide.asm.js"));
-  const { loadPyodide } = await import(moduleUrl("pyodide.mjs"));
-  const py = await loadPyodide({ indexURL: `${ORIGIN}${PREFIX}`, stdout() {}, stderr() {} });
-  if (py.version !== "0.27.7") throw new Error("PROGRAM_PYTHON_VERSION");
-  py.FS.writeFile("/patch_nso.py", assets.get("patch_nso.py"));
-  await py.runPythonAsync(
-    new TextDecoder("utf-8", { fatal: true }).decode(assets.get("python-adapters.py")),
-  );
-  // No fixture manifest, fixture fetch, or synthetic input route is shipped here.
-  context = { py, manifest: { cases: [] } };
+  // The bundled JS/rule closure is source-pinned at build time and checked again
+  // by the admission factory. No Python loader or fixture route is shipped.
+  context = { native, manifest: { sourceSha256: PROGRAM_REWRITER_SOURCE, cases: [] } };
 }
 self.addEventListener("message", ({ data }) => {
   if (data?.type === "initialize") {
