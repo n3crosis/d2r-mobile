@@ -1,30 +1,98 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
+import { profiles, validateProfile, run } from "../verification/verify.mjs";
 const workflows = new URL("../../.github/workflows/", import.meta.url);
-const automatic = new Set(["web-packager-checks.yml", "toolchain-style-checks.yml"]);
 
-test("only the two lightweight workflows trigger automatically", async () => {
-  const files = (await readdir(workflows)).filter((name) => name.endsWith(".yml"));
-  assert.equal(files.length, 16);
-  for (const name of files) {
-    const text = await readFile(new URL(name, workflows), "utf8");
-    const trigger = text.slice(text.indexOf("\non:"), text.indexOf("\npermissions:"));
-    assert.match(trigger, /\n {2}workflow_dispatch:/, name);
-    if (automatic.has(name)) {
-      assert.match(trigger, /\n {2}push:/, name);
-      assert.match(trigger, /\n {2}pull_request:/, name);
-    } else {
-      assert.doesNotMatch(trigger, /\n {2}(push|pull_request|schedule|workflow_run):/, name);
-    }
+test("one GitHub workflow has bounded quick defaults and explicit heavy profiles", async () => {
+  assert.deepEqual(
+    (await readdir(workflows)).filter((name) => name.endsWith(".yml")),
+    ["verify.yml"],
+  );
+  const text = await readFile(new URL("verify.yml", workflows), "utf8");
+  assert.match(text, /default: quick/);
+  assert.match(text, /max-parallel: 3/);
+  assert.match(text, /github\.event_name == 'workflow_dispatch'/);
+  assert.match(text, /!github\.event\.repository\.private/);
+  assert.match(text, /os: \[windows-2022, macos-14\]/);
+  assert.match(text, /needs\.desktop-build\.outputs\.digest/);
+  assert.doesNotMatch(text, /pull_request_target:|self-hosted|secrets\./);
+  for (const sha of text.matchAll(/uses: [^@]+@(\S+)/g)) assert.match(sha[1], /^[0-9a-f]{40}$/);
+  assert.match(text, /name: web-preview\n\s+path: web\/dist\//);
+  assert.match(text, /retention-days: 7/);
+});
+
+test("profile selection rejects arbitrary shell, paths, and prototype names", () => {
+  for (const bad of [
+    "../quick",
+    "quick;echo unsafe",
+    "constructor",
+    "__proto__",
+    "",
+    "assets\nshader",
+  ]) {
+    assert.throws(() => validateProfile(bad), /Unknown verification profile/);
+  }
+  for (const name of ["quick", "full", ...Object.keys(profiles)])
+    assert.equal(validateProfile(name), name);
+  assert.throws(() => run("assets", {}), /--provision/);
+});
+
+test("allowlisted metadata is emitted without executing a proof", async () => {
+  const temp = await mkdtemp(join(tmpdir(), "verification-metadata-"));
+  try {
+    const output = join(temp, "output");
+    const result = spawnSync(
+      process.execPath,
+      [
+        new URL("../verification/verify.mjs", import.meta.url).pathname,
+        "shader-pipeline",
+        "--metadata",
+      ],
+      {
+        env: { ...process.env, GITHUB_OUTPUT: output, RUNNER_TEMP: temp },
+        encoding: "utf8",
+      },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const text = await readFile(output, "utf8");
+    assert.match(text, /dotnet=true/);
+    assert.match(text, /linked-shader\/native/);
+    assert.doesNotMatch(text, /\$\{\{/);
+  } finally {
+    await rm(temp, { recursive: true, force: true });
   }
 });
 
-test("frontend defaults to one Node version and style uses the local script", async () => {
-  const frontend = await readFile(new URL("web-packager-checks.yml", workflows), "utf8");
-  assert.match(frontend, /inputs\.compatibility/);
-  assert.match(frontend, /\|\| '\["24"\]'/);
-  assert.doesNotMatch(frontend, /\n {2}shader-spike:/);
-  const style = await readFile(new URL("toolchain-style-checks.yml", workflows), "utf8");
-  assert.match(style, /run: bash web\/scripts\/check-authored-style\.sh/);
+test("shared recipe runner preserves failure, skipped steps, and diagnostics", async () => {
+  const temp = await mkdtemp(join(tmpdir(), "verification-steps-"));
+  try {
+    const script = `source "$VERIFY_ROOT/web/verification/steps.sh"
+step first fail . 0 <<'STEP'
+exit 7
+STEP
+step second skipped . 0 <<'STEP'
+exit 0
+STEP
+always_step report diagnostics . 0 <<'STEP'
+printf '%s %s' "$VERIFY_OUTCOME_first" "$VERIFY_OUTCOME_second" > "$RUNNER_TEMP/result"
+STEP
+finish
+`;
+    const result = spawnSync("bash", ["-c", script], {
+      env: {
+        ...process.env,
+        VERIFY_ROOT: new URL("../../", import.meta.url).pathname,
+        RUNNER_TEMP: temp,
+      },
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 1, result.stderr);
+    assert.equal(await readFile(join(temp, "result"), "utf8"), "failure skipped");
+  } finally {
+    await rm(temp, { recursive: true, force: true });
+  }
 });

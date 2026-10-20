@@ -55,3 +55,7 @@ bash -n web/toolchain/spirv-cross-spike/build.sh
 bash -n web/toolchain/program-rewrite-spike/build-wasm.sh
 bash -n web/toolchain/texture-spike/build-wasm.sh
 bash -n web/scripts/check-authored-style.sh
+
+for script in web/verification/*.sh web/verification/recipes/*.sh; do
+  bash -n "$script"
+done

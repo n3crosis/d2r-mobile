@@ -1,87 +1,98 @@
-# Local-first testing
+# One verification entry point, local first
 
-Run ordinary checks locally before a coherent commit. CI is a small independent
-safety net, not the default development loop. These are contributor commands;
-users of the hosted packager do not install Bun, Node, Python, or a toolchain.
-
-## Everyday checks
-
-Prerequisites: Bun 1.4.3, Node 22.12+ (24 recommended), and Python 3. The existing
-synthetic tests use Node's test runner intentionally; Bun manages and bundles the
-frontend, not a silent replacement test runtime.
+The repository has one GitHub Actions workflow: **Verify**. Ordinary pushes/PRs
+run one quick Linux job. Expensive proofs are never automatic: choose one profile
+or `full` explicitly in Run workflow. The same recipes run locally through:
 
 ```sh
-cd web
-bun install --frozen-lockfile
-bun scripts/check-local.mjs
+node web/verification/verify.mjs quick
 ```
 
-The shared entry point runs the production build (including Oxlint, Oxfmt and
-TypeScript), synthetic unit/integration tests, and docs/workflow formatting. It
-does not install tools, launch a browser, download game files, or use real keys.
-Use `bun run test` or `node --test tests/<changed-area>.test.mjs` during iteration.
-The large >4 GiB stream test stays explicitly opt-in, not a skipped coverage claim.
-
-For authored Python/C/Bash changes, install the exact tools into an isolated
-local environment once, then use the **same script** as CI from the repo root:
+Prerequisites: Bun 1.4.3, Node 22.12+ (24 recommended), Python 3 with venv/pip,
+and Bash. Quick verification uses the frozen Bun lock, Oxlint/Oxfmt, TypeScript,
+production build, synthetic tests, three .NET startup regression tests that do
+not need .NET, the source-drift check, and authored Python/C/Bash formatting.
+CI installs Ruff 0.14.0 and clang-format 21.1.2 into an isolated temporary
+venv. Local runs reuse those exact versions from PATH rather than reinstalling
+them each time. Set them up once if needed:
 
 ```sh
 python3 -m venv /tmp/d2r-style-tools
 /tmp/d2r-style-tools/bin/pip install --index-url https://pypi.org/simple --only-binary=:all: ruff==0.14.0 clang-format==21.1.2
-PATH="/tmp/d2r-style-tools/bin:$PATH" bash web/scripts/check-authored-style.sh
+export PATH="/tmp/d2r-style-tools/bin:$PATH"
 ```
 
-The script checks only explicit authored files, never broadly formats native,
-vendor, generated, downloaded runtime, or game files. C# format/analyzer checks
-belong to the shader toolchain recipe because they require its pinned .NET SDK.
+No browser, game files, keys, or native SDK are needed.
 
-## What runs automatically
+During iteration use `cd web && bun run test` or a focused `node --test` file.
+`bun scripts/check-local.mjs` is the frontend-only subset. There is no mandatory
+full toolchain rebuild after each fix. Contributors install these tools; hosted
+packager users do not.
 
-At most **two jobs** for a relevant ordinary push or pull request:
+## GitHub profiles
 
-- `web-packager-checks.yml`: one Node 24 frontend job with Bun/Oxc, tests, build,
-  dependency audit, and source-drift checks. No duplicate Node matrix or .NET build.
-- `toolchain-style-checks.yml`: one short, path-filtered Python/C/Bash style job.
+- `quick`: one Node 24 job, including authored-language checks and webpage artifact.
+- `compatibility`: quick plus a separate Node 22 check.
+- `extraction`: authenticated NSP boundary and actual Chromium Worker.
+- `signed-nca`: isolated synthetic signing-root proof; production trust unchanged.
+- `texture`: decode, BC3 encode, swizzle, and Chromium Worker parity.
+- `assets`: native art, HUD, map-goal, CASC overlays, and v61 cross-adapter parity.
+- `program`: original ARM64 rewrite and Guest framework parity.
+- `shader`: native/browser translator parity plus C# formatting/analyzers.
+- `spirv-cross`: native/WASM SPIRV-Cross parity.
+- `shader-pipeline`: linked translator-to-MSL pipeline proof.
+- `offline-wasm`, `offline-pyodide`, `offline-dotnet`: respective sealed-network proofs.
+- `staged-output`: actual Chromium OPFS commit/cancel/integrity proof.
+- `zip64`: real >4 GiB synthetic CRC stream with bounded memory.
+- `desktop`: build public runtime once, verify its producer digest, then run actual
+  Windows/macOS Chromium checks on standard runners. Public repositories only.
+- `full`: quick, Node compatibility, all Linux proofs, and desktop platform checks.
+  Linux proof parallelism is capped at three; this is deliberately opt-in.
 
-A manual dispatch of the frontend workflow can opt into Node 22 + 24 compatibility.
-Concurrency cancellation still stops stale work on the same branch. Existing
-heavy workflows have **no push or pull-request triggers**. Their tests, pinned
-build dependencies, assertions and artifacts remain available; they are not
-replaced by a passing dummy gate. Existing repository required-check settings
-must be reconciled if they refer to retired automatic jobs; source files alone
-cannot prove those settings.
+## Local heavyweight verification
 
-## Targeted native/browser proofs
+The concrete build/assertion commands live in `web/verification/recipes/*.sh`;
+`profiles.json` pins each proof's runtime, timeout and artifact boundaries. No
+workflow generator or hidden copy of old workflow files exists. One dispatcher
+validates profile names and executes the same recipes locally and in Actions.
+Failures skip later normal steps, retain always-run diagnostics, and fail the
+profile. Source isolation, exact hashes, assertions, and private-input exclusions
+remain in the original proof commands.
 
-Run the relevant subsystem locally when its documented build prerequisites are
-available. The linked workflow retains the exact setup, working directories,
-commands, environment variables and pinned dependencies for a clean Linux run;
-its corresponding `web/toolchain/*/README.md` describes the implementation.
-Do not blindly execute workflow expressions as shell text. If the current local
-environment cannot launch Chromium or lacks a required platform, explicitly
-run only the relevant manual workflow instead. Never report a blocked local
-browser run as a pass. Full Windows/macOS coverage belongs to release readiness,
-not every frontend edit.
+Review the chosen recipe first. Heavy profiles fetch/install official pinned
+SDKs and build tools; some Linux recipes use `sudo apt-get` and install a .NET
+workload or Chromium system dependencies. Local invocation refuses those recipes
+unless explicitly opted in:
 
-- Extraction/container/authentication changes: [NSP boundary](../.github/workflows/nsp-extraction-checks.yml), plus [isolated synthetic signature proof](../.github/workflows/synthetic-signed-nca.yml) when trust handling changes. The latter has a standalone local entry point, `bash web/toolchain/synthetic-signed-nca/run-ci.sh`, after its documented Emscripten prerequisites.
-- Texture decode/BC3/swizzle changes: [texture proof](../.github/workflows/texture-browser-checks.yml).
-- Native art/HUD/map-goal/CASC generator changes: [asset proof](../.github/workflows/browser-asset-checks.yml).
-- ARM64 rewrite/Guest construction changes: [program proof](../.github/workflows/program-rewrite-checks.yml).
-- Translator/C# changes: [shader runtime proof](../.github/workflows/shader-runtime-parity.yml), including authored C# format and analyzers.
-- SPIRV-Cross changes: [Cross proof](../.github/workflows/spirv-cross-browser-checks.yml).
-- Linked shader orchestration changes: [linked shader proof](../.github/workflows/shader-pipeline-browser-checks.yml).
-- Offline runtime/bootstrap closure changes: relevant [Emscripten](../.github/workflows/offline-runtime-checks.yml), [Pyodide](../.github/workflows/offline-pyodide-checks.yml), or [.NET](../.github/workflows/offline-dotnet-checks.yml) sealed-network proof.
-- OPFS/staging/commit changes: [staged output proof](../.github/workflows/staged-output-browser-checks.yml).
-- ZIP64 arithmetic/CRC changes: [large stream proof](../.github/workflows/zip64-large-output-checks.yml), or locally from `web`: `ZIP64_LARGE_STREAM_TEST=1 NODE_OPTIONS=--max-old-space-size=256 node --test --test-timeout=240000 tests/zip64-writer.test.mjs`.
-- Desktop API/platform changes and release readiness: [Windows/macOS Chromium proof](../.github/workflows/desktop-browser-checks.yml). Its Linux runtime build is shared between the two desktop jobs, not duplicated.
+```sh
+node web/verification/verify.mjs texture --provision
+node web/verification/verify.mjs full --provision
+```
 
-Manual runs must target the exact feature-branch commit under review. An older
-passing artifact does not validate changed code. Manual dispatch availability
-also depends on GitHub recognizing the workflow on the default branch; if the
-feature-only workflow cannot be dispatched, use the local recipe or arrange an
-explicit, reviewed workflow publication. Do not re-enable broad automatic
-fan-out just to manufacture a check result.
+Use a suitable Linux development environment for these Linux recipes. Local
+`full` explicitly excludes Windows/macOS and reports that boundary; it cannot
+claim desktop coverage on Linux. Desktop recipes require the matching OS and
+verified producer artifact/digest, which the GitHub workflow coordinates. If a
+sandbox cannot launch Chromium, do not retry around the restriction or report a
+pass. Use the relevant approved GitHub profile instead.
 
-Synthetic component checks do not establish a working real-game IPA, full-size
-processing, shell compatibility, device installation, or game execution. Those
-remain separate delivery gates in [the progress checklist](../docs/WEB_DELIVERY_PROGRESS.md).
+Manual dispatch may be unavailable until GitHub recognizes the workflow on the
+default branch. Do not merge the feature branch or restore automatic heavy
+fan-out solely to manufacture results; arrange reviewed workflow publication or
+use a supported local environment. Run proofs against the exact commit under
+review. Repository required-check settings are separate and can change.
+
+## Downloadable webpage
+
+A successful GitHub quick job uploads **web-preview**, containing only `web/dist/`:
+the built HTML, JavaScript, CSS, public static assets, and `build-manifest.json`.
+The manifest records the commit (when built in GitHub), byte sizes, and SHA-256
+hashes. Retention is seven days. It excludes source/toolchain directories, game
+files, keys and IPA output; unexpected hidden/key/game files fail packaging.
+
+Extract the artifact and serve its contents through HTTPS static hosting. Opening
+`index.html` through `file://` is not a supported folder-picker/runtime setup.
+This artifact is the current webpage preview, **not a working real-game IPA**.
+It does not enable unfinished generation or publish to the private hosted Site.
+Synthetic component results do not prove complete game processing, shell/device
+compatibility, installation or execution; see the delivery checklist.

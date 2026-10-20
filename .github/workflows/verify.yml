@@ -1,0 +1,179 @@
+name: Verify
+on:
+  push:
+    branches: [feature/web-ipa-packager]
+    paths:
+      [
+        "web/**",
+        "dm/gfx/tools/**",
+        "dm/third_party/ryujinx/**",
+        "dm/tools/**",
+        ".github/workflows/verify.yml",
+      ]
+  pull_request:
+    paths:
+      [
+        "web/**",
+        "dm/gfx/tools/**",
+        "dm/third_party/ryujinx/**",
+        "dm/tools/**",
+        ".github/workflows/verify.yml",
+      ]
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "Quick by default; select one proof or full explicitly"
+        type: choice
+        default: quick
+        options:
+          - quick
+          - compatibility
+          - signed-nca
+          - offline-dotnet
+          - offline-pyodide
+          - offline-wasm
+          - staged-output
+          - shader-pipeline
+          - zip64
+          - texture
+          - program
+          - spirv-cross
+          - assets
+          - extraction
+          - shader
+          - desktop
+          - full
+
+permissions:
+  contents: read
+concurrency:
+  group: verify-${{ github.event.pull_request.number || github.ref }}-${{ inputs.profile || 'quick' }}
+  cancel-in-progress: true
+jobs:
+  quick:
+    if: ${{ github.event_name != 'workflow_dispatch' || contains(fromJSON('["quick","compatibility","full"]'), inputs.profile) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.3"
+      - name: Shared local and CI quick verification
+        run: node web/verification/verify.mjs quick
+      - name: Upload built static webpage (no source, game files, or keys)
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: web-preview
+          path: web/dist/
+          if-no-files-found: error
+          retention-days: 7
+  compatibility:
+    if: ${{ github.event_name == 'workflow_dispatch' && contains(fromJSON('["compatibility","full"]'), inputs.profile) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: "22"
+          package-manager-cache: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "1.4.3"
+      - run: node web/verification/verify.mjs quick
+  proofs:
+    if: ${{ github.event_name == 'workflow_dispatch' && contains(fromJSON('["signed-nca","offline-dotnet","offline-pyodide","offline-wasm","staged-output","shader-pipeline","zip64","texture","program","spirv-cross","assets","extraction","shader","full"]'), inputs.profile) }}
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        profile: ${{ fromJSON(inputs.profile == 'full' && '["signed-nca","offline-dotnet","offline-pyodide","offline-wasm","staged-output","shader-pipeline","zip64","texture","program","spirv-cross","assets","extraction","shader"]' || format('["{0}"]', inputs.profile)) }}
+    name: Proof (${{ matrix.profile }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Read allowlisted profile requirements
+        id: profile
+        run: node web/verification/verify.mjs "$PROFILE" --metadata
+        env:
+          PROFILE: ${{ matrix.profile }}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: ${{ steps.profile.outputs.node }}
+          package-manager-cache: false
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        if: ${{ steps.profile.outputs.dotnet == 'true' }}
+        with:
+          dotnet-version: "10.0.402"
+      - name: Execute same isolated proof recipe as local development
+        id: proof
+        run: node web/verification/verify.mjs "$PROFILE"
+        env:
+          PROFILE: ${{ matrix.profile }}
+      - name: Preserve only profile-allowlisted synthetic evidence
+        if: ${{ !cancelled() && steps.profile.outputs.artifact != '' && (steps.profile.outputs.always == 'true' || steps.proof.outcome == 'success') }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: ${{ steps.profile.outputs.artifact }}
+          path: ${{ steps.profile.outputs.paths }}
+          if-no-files-found: ${{ steps.profile.outputs.missing }}
+          retention-days: ${{ steps.profile.outputs.retention }}
+  desktop-build:
+    if: ${{ github.event_name == 'workflow_dispatch' && !github.event.repository.private && contains(fromJSON('["desktop","full"]'), inputs.profile) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Build and seal public runtime once
+        id: build
+        run: node web/verification/verify.mjs desktop-build
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: desktop-public-texture-runtime
+          path: web/toolchain/offline-runtime-spike/dist/
+          if-no-files-found: error
+          retention-days: 1
+  desktop:
+    needs: desktop-build
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, macos-14]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: desktop-public-texture-runtime
+          path: web/toolchain/offline-runtime-spike/dist/
+      - name: Verify producer digest and run actual platform proofs
+        run: node web/verification/verify.mjs desktop
+        env:
+          EXPECTED_DIGEST: ${{ needs.desktop-build.outputs.digest }}

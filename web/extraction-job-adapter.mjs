@@ -49,6 +49,21 @@ export function readAuthenticatedProgramModules(extracted, selection, { signal }
   }
 }
 
+/** Authenticated, live asset capabilities. No caller-owned copy or trust flag can
+ * register provenance; selection is bound to the same verified extraction result.
+ */
+export function readAuthenticatedAssets(extracted, selection, { signal } = {}) {
+  if (signal?.aborted) fail("EXTRACTION_CANCELLED");
+  try {
+    const proof = authenticatedPrograms.get(extracted);
+    if (!proof || proof.selection !== canonical(selection)) fail("EXTRACTION_PROVENANCE_REJECTED");
+    proof.check();
+    return proof.assets;
+  } catch {
+    fail("EXTRACTION_PROVENANCE_REJECTED");
+  }
+}
+
 /** Only trusted application code supplies createWorker. Combine these three job
  * methods with independently trusted generators/output adapters, compose cleanup,
  * and explicitly runPackagingJob({secretLifetime:"archive", ...}).
@@ -250,6 +265,11 @@ export function createExtractionJobAdapter({
         // Expose bounded read-only capabilities, not metadata rows, tokens, key files,
         // raw source handles, sessions or the transport client.
         const romfs = Object.freeze({
+          // Indexing already enforces ROMFS_LIMITS.files/path/depth. Expose only
+          // immutable inventory, never raw image offsets or source handles.
+          files: Object.freeze(
+            indexed.files.map(({ path, size }) => Object.freeze({ path, size })),
+          ),
           getFile(path) {
             check();
             const file = indexed.getFile(path);
@@ -292,6 +312,7 @@ export function createExtractionJobAdapter({
         authenticatedPrograms.set(extracted, {
           selection: canonical(selected.selection),
           modules: extracted.programModules,
+          assets: Object.freeze({ romfs, logicalAssets }),
           check: () => check(),
         });
         return extracted;
