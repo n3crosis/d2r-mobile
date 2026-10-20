@@ -60,7 +60,7 @@ export async function convertSpirv(input, { factory, replayContext } = {}) {
   factory ??= (await import("./spirv-cross.mjs")).default;
   const msl = await invoke(factory, bytes, MSL_ARGUMENTS, "/output.metal");
   // This is upstream SPIR-V reflection, NOT the game's replay .json schema.
-  const reflectionText = await invoke(factory, bytes, ["--reflect"], "/reflection.json");
+  const reflectionText = await invoke(factory, bytes, ["--reflect", "json"], "/reflection.json");
   const reflection = JSON.parse(reflectionText);
   const mslBytes = new TextEncoder().encode(msl);
   return {

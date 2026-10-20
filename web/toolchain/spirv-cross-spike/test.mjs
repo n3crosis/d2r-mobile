@@ -41,6 +41,7 @@ test("byte API invokes exact native flags, isolates calls, preserves hashes and 
   });
   assert.equal(instances, 2);
   assert.deepEqual(calls[0].slice(0, -3), MSL_ARGUMENTS);
+  assert.deepEqual(calls[1], ["--reflect", "json", "/input.spv", "--output", "/reflection.json"]);
   assert.equal(result.msl, "kernel void main0() {}\n");
   assert.equal(result.replay.entry, "main0");
   assert.match(result.provenance.inputSha256, /^[a-f0-9]{64}$/);

@@ -76,11 +76,16 @@ upstream license, synthetic `.spv`, native/browser source+JSON, browser version,
 fixture/output hashes, and source-chain manifest. `provenance.py` records all
 original native chain input hashes and compares the existing header without
 rewriting it. Initial observed checkout: source chain `c675d3fa7c90` versus
-header `15cf7ca29eaf` (mismatch, production acceptance remains blocked). The Chromium package is reused
+header `15cf7ca29eaf` (unresolved compatibility condition pending a matched
+release shell and verified `SHADER_SRC`, not proof generated game output is wrong).
+The existing packager may align a chain label only after source-digest equivalence;
+this stage never blindly renames it. The Chromium package is reused
 from the sibling shader-spike's committed exact dependency lockfile. Upstream
 SPIRV-Cross is Apache-2.0; its LICENSE (and NOTICE if present) is copied beside
 redistributed compiler output. Preserve those notices when hosting the bundle.
 
 Current local evidence: three Node tests pass, including the native Python
-reflection differential. Native/WASM compilation and actual browser parity are
-CI-only until that workflow runs successfully; no local SDK was installed.
+reflection differential. The first CI run successfully built native and WASM compilers, then exposed an
+upstream CLI parsing detail: `--reflect` consumes an optional format argument.
+Both invocations now explicitly pass `--reflect json` with a regression assertion.
+Actual browser parity still awaits the corrected CI run; no local SDK was installed.

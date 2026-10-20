@@ -14,6 +14,7 @@ function fixture(name, payload) {
   header.set(names, 40);
   return new Blob([header, payload]);
 }
+let stage = "module-initialization";
 try {
   let wasm;
   const boundary = await createBoundary(async (options) => {
@@ -24,17 +25,21 @@ try {
   globalThis.fetch = () => {
     throw new Error("Unexpected network operation");
   };
+  stage = "crypto-fixture";
   assert(boundary.cryptoFixture() === 0);
   const prod = new TextEncoder().encode(`header_key = ${"0123456789abcdef".repeat(4)}\n`);
   const title = new TextEncoder().encode(`${"11".repeat(16)} = ${"22".repeat(16)}\n`);
+  stage = "explicit-key-loading";
   boundary.loadKeys(prod, title);
   assert(prod.every((b) => b === 0) && title.every((b) => b === 0));
   assert(!boundary.secretFilesPresent());
+  stage = "blob-pfs0-mount";
   const payload = new Uint8Array(3 * 65536 + 17);
   for (let i = 0; i < payload.length; i++) payload[i] = i % 251;
   boundary.mount([fixture("synthetic.cnmt", payload)]);
   assert(boundary.open(0, "synthetic-pfs0") === 1);
   assert(boundary.entry(0).size === BigInt(payload.length));
+  stage = "bounded-output";
   let received = 0,
     calls = 0;
   await boundary.streamEntry(0, async (chunk) => {
@@ -64,6 +69,7 @@ try {
   // A sparse synthetic read-only FS node exercises actual WASM off_t seeks
   // beyond 4 GiB without allocating or downloading a 5 GiB Blob. The regular
   // path above separately exercises real Blob/WORKERFS reads.
+  stage = "sparse-64bit-seek";
   const sparse = new Uint8Array(await fixture("sparse.bin", new Uint8Array(1)).arrayBuffer());
   const sparseOffset = 5n * 1024n ** 3n;
   new DataView(sparse.buffer).setBigUint64(16, sparseOffset, true);
@@ -91,6 +97,7 @@ try {
   assert(boundary.read(0, 0n, 1)[0] === 173);
   // The production Meta entrypoint must reject an unsigned synthetic header.
   // There is no test-key override or skip-signature flag in that entrypoint.
+  stage = "unsigned-meta-rejection";
   const unsignedHeader = new Uint8Array(0xc00);
   unsignedHeader.set([78, 67, 65, 51], 0x200);
   unsignedHeader[0x205] = 1;
@@ -104,6 +111,7 @@ try {
     rejected = true;
   }
   assert(rejected);
+  stage = "path-rejection";
   boundary.mount([fixture("../unsafe", new Uint8Array(1))]);
   rejected = false;
   try {
@@ -112,6 +120,7 @@ try {
     rejected = true;
   }
   assert(rejected);
+  stage = "disposal";
   boundary.dispose();
   self.postMessage({
     ok: true,
@@ -127,5 +136,5 @@ try {
   });
 } catch {
   // Never surface exception messages or stacks from a key-handling context.
-  self.postMessage({ ok: false, error: "Synthetic WASM browser smoke failed" });
+  self.postMessage({ ok: false, error: "Synthetic WASM browser smoke failed", stage });
 }

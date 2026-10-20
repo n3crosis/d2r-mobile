@@ -33,10 +33,10 @@ jobs:
         shell: bash
         working-directory: web/toolchain/spirv-cross-spike
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "22"
       - name: Verify pure byte boundary and native replay reflection
@@ -69,14 +69,14 @@ jobs:
             spirv-as --target-env spv1.0 "$fixture.spvasm" -o "wwwroot/$fixture.spv"
             spirv-val --target-env spv1.0 "wwwroot/$fixture.spv"
             "$RUNNER_TEMP/spirv-native/spirv-cross" --msl --msl-version 20300 --msl-argument-buffers --msl-texture-buffer-native --msl-pad-fragment-output "wwwroot/$fixture.spv" --output "results/$fixture.native.metal"
-            "$RUNNER_TEMP/spirv-native/spirv-cross" --reflect "wwwroot/$fixture.spv" --output "results/$fixture.native.json"
+            "$RUNNER_TEMP/spirv-native/spirv-cross" --reflect json "wwwroot/$fixture.spv" --output "results/$fixture.native.json"
           done
           sha256sum toolchain-lock.json build.sh *.spvasm wwwroot/*.mjs wwwroot/*.wasm wwwroot/*.spv "$GITHUB_WORKSPACE/dm/gfx/tools/dmsh_build.py" "$GITHUB_WORKSPACE/dm/gfx/tools/dmsh_chain.py" "$GITHUB_WORKSPACE/dm/gfx/tools/nometal_run.py" > results/source-chain.sha256
       - name: Compare actual browser worker to native source and reflection
         run: node capture-browser.mjs results
       - name: Retain synthetic diagnostics and deployable WASM bundle
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: synthetic-spirv-cross-browser-parity
           path: |

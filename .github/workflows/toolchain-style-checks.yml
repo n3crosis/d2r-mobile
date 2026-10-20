@@ -9,6 +9,7 @@ on:
       - "web/toolchain/spirv-cross-spike/**"
       - "web/toolchain/asset-generation-spike/**"
       - "web/toolchain/program-rewrite-spike/**"
+      - "web/toolchain/texture-spike/**"
       - "web/toolchain/style/**"
       - ".github/workflows/toolchain-style-checks.yml"
   pull_request:
@@ -17,6 +18,7 @@ on:
       - "web/toolchain/spirv-cross-spike/**"
       - "web/toolchain/asset-generation-spike/**"
       - "web/toolchain/program-rewrite-spike/**"
+      - "web/toolchain/texture-spike/**"
       - "web/toolchain/style/**"
       - ".github/workflows/toolchain-style-checks.yml"
 
@@ -35,7 +37,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
       - name: Install exact formatter versions from the official Python registry
@@ -57,6 +59,7 @@ jobs:
             web/toolchain/asset-generation-spike/test/verify-png.py
             web/toolchain/program-rewrite-spike/make-fixtures.py
             web/toolchain/program-rewrite-spike/python-adapters.py
+            web/toolchain/texture-spike/native-fixtures.py
           )
           ruff check --config web/toolchain/style/ruff.toml "${python_sources[@]}"
           ruff format --check --config web/toolchain/style/ruff.toml "${python_sources[@]}"
@@ -66,9 +69,11 @@ jobs:
             web/toolchain/nsp-extract-spike/boundary.c \
             web/toolchain/nsp-extract-spike/crypto-fixture.c \
             web/toolchain/nsp-extract-spike/quiet.h \
-            web/toolchain/program-rewrite-spike/bridge.c
+            web/toolchain/program-rewrite-spike/bridge.c \
+            web/toolchain/texture-spike/boundary.c
       - name: Syntax-check authored Bash build scripts only
         run: |
           bash -n web/toolchain/nsp-extract-spike/build-wasm.sh
           bash -n web/toolchain/spirv-cross-spike/build.sh
           bash -n web/toolchain/program-rewrite-spike/build-wasm.sh
+          bash -n web/toolchain/texture-spike/build-wasm.sh

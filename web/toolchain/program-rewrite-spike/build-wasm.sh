@@ -35,5 +35,5 @@ cp python-adapters.py worker.mjs dist/
 cp node_modules/pyodide/{pyodide.mjs,pyodide.asm.js,pyodide.asm.wasm,python_stdlib.zip,pyodide-lock.json} dist/runtime/
 cp deps/capstone/LICENSE.TXT dist/licenses/capstone.txt
 cp deps/lz4/lib/LICENSE dist/licenses/lz4.txt
-cp node_modules/pyodide/LICENSE dist/licenses/pyodide.txt
+cp PYODIDE_LICENSE dist/licenses/pyodide.txt
 cp toolchain-lock.json dist/

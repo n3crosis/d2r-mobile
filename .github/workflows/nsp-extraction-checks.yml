@@ -19,10 +19,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "22"
       - name: Install pinned official Emscripten SDK
@@ -50,9 +50,10 @@ jobs:
           PLAYWRIGHT_ENTRY="$RUNNER_TEMP/nsp-playwright/node_modules/playwright/index.mjs" \
             node web/toolchain/nsp-extract-spike/browser-smoke.mjs
       - name: Retain public WASM and required notices only
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: nsp-metadata-wasm-synthetic-verified
+          name: nsp-metadata-wasm-boundary
           path: web/toolchain/nsp-extract-spike/dist/
           if-no-files-found: error
           retention-days: 7

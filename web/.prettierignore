@@ -11,3 +11,11 @@ SHADCN_LICENSE.md
 # Preserve upstream SparkMD5 formatting; only its module wrapper is adapted.
 vendor/spark-md5-3.0.2/spark-md5.mjs
 vendor/spark-md5-3.0.2/LICENSE2
+
+# Generated toolchain output and downloaded upstream/runtime code only.
+toolchain/**/dist/
+toolchain/**/.build/
+toolchain/program-rewrite-spike/deps/
+toolchain/asset-generation-spike/public/generated/
+toolchain/asset-generation-spike/public/vendor/
+toolchain/spirv-cross-spike/wwwroot/spirv-cross.mjs

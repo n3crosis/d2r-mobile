@@ -7,6 +7,12 @@ export default tseslint.config(
   {
     ignores: [
       "dist/**",
+      "toolchain/**/dist/**",
+      "toolchain/**/.build/**",
+      "toolchain/program-rewrite-spike/deps/**",
+      "toolchain/asset-generation-spike/public/generated/**",
+      "toolchain/asset-generation-spike/public/vendor/**",
+      "toolchain/spirv-cross-spike/wwwroot/spirv-cross.mjs",
       "vendor/spark-md5-3.0.2/spark-md5.mjs",
       "node_modules/**",
       "coverage/**",
@@ -50,6 +56,11 @@ export default tseslint.config(
       "vite.config.ts",
     ],
     languageOptions: { globals: globals.node },
+  },
+  {
+    // This Node harness also runs callbacks in the browser via page.evaluate.
+    files: ["toolchain/asset-generation-spike/test/browser.mjs"],
+    languageOptions: { globals: globals.browser },
   },
   {
     files: ["src/**/*.{ts,tsx}"],

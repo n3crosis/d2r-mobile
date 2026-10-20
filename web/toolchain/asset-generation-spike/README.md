@@ -17,7 +17,7 @@ Import `AssetWorker` from `public/client.mjs`:
 
 ```js
 const worker = new AssetWorker();
-const result = await worker.run('image-default-frame', spriteUint8Array, { frame: 0 });
+const result = await worker.run("image-default-frame", spriteUint8Array, { frame: 0 });
 // result.files: {'frame.rgba': ArrayBuffer, 'frame.png': ArrayBuffer,
 //                'frame.sprite': ArrayBuffer}
 worker.close();
@@ -27,9 +27,13 @@ Optional `fromReader(reader, logicalPath, operation, {frame, signal})` expects:
 
 ```ts
 interface LogicalAssetReader {
-  read(logicalPath: string, options: {
-    maxBytes: number; signal?: AbortSignal;
-  }): Promise<Uint8Array>;
+  read(
+    logicalPath: string,
+    options: {
+      maxBytes: number;
+      signal?: AbortSignal;
+    },
+  ): Promise<Uint8Array>;
 }
 ```
 
@@ -37,19 +41,19 @@ This is a **logical CASC asset byte reader**, not the NSP/NCA `readAt(offset,len
 
 ## Native portability audit
 
-| Source | Portable core | Host-only / unimplemented boundary |
-| --- | --- | --- |
-| `gen_assets.py` | Generator ordering, source fingerprint concept | subprocess orchestration, PID lock, workspace paths; must become a worker job graph |
-| `romfs_art.py` | v31 pixels and horizontal frame crop (adapted here) | `touch_layout._read_entry` CASC reader, v61 BC3/NVN block-linear decode, runtime clang/ctypes |
-| `gen_hud_v4.py` | Pillow composition, NumPy masks; `dflt` packaged here | whole HUD needs source sprites, layout configuration, locale data, fonts and rewritten input/output boundaries |
-| `gen_widestash_art.py` | Pillow tile/crop/flip, NumPy pixel processing | NVN descriptor/swizzle and BC3 encoder path; not built here |
-| `gen_pouch_art.py`, `gen_vault_cover.py`, `gen_merc_art.py` | Image geometry after decoding | depend on `gen_widestash_art` and original sprites; v61 output needs encoder/swizzle |
-| `gen_fe_rightpanel.py` | NumPy column copies | requires exact original 401×1080 sprite; cannot replace required v61 with raw RGBA |
-| `gen_map_goal_art.py` | Image labels, table parsing | game strings and original font retrieval; no font supplied or licensed by this spike |
-| `native_art/generate.py` | CSV/JSON skill-index generation, image export | requires original manifest hashes and exact game sprites/tables; those checks must survive porting |
-| `gen_hud_exp.py` | CSV -> exact C experience header (packaged here) | logical input reader supplied in memory |
-| `gen_vault_table.py` | JSON/TSV joins, type ancestry, sort, C emission | `dmx.get` archive reads, inventory of sprite paths; not implemented here |
-| `gen_romfs_overlay.py` | Sprite header encoding and touch-directory rewrite (subset here) | all layout patch builders, borrowed path registry, feature variants, CASC `.build.config` and data-archive packing |
+| Source                                                      | Portable core                                                    | Host-only / unimplemented boundary                                                                                 |
+| ----------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `gen_assets.py`                                             | Generator ordering, source fingerprint concept                   | subprocess orchestration, PID lock, workspace paths; must become a worker job graph                                |
+| `romfs_art.py`                                              | v31 pixels and horizontal frame crop (adapted here)              | `touch_layout._read_entry` CASC reader, v61 BC3/NVN block-linear decode, runtime clang/ctypes                      |
+| `gen_hud_v4.py`                                             | Pillow composition, NumPy masks; `dflt` packaged here            | whole HUD needs source sprites, layout configuration, locale data, fonts and rewritten input/output boundaries     |
+| `gen_widestash_art.py`                                      | Pillow tile/crop/flip, NumPy pixel processing                    | NVN descriptor/swizzle and BC3 encoder path; not built here                                                        |
+| `gen_pouch_art.py`, `gen_vault_cover.py`, `gen_merc_art.py` | Image geometry after decoding                                    | depend on `gen_widestash_art` and original sprites; v61 output needs encoder/swizzle                               |
+| `gen_fe_rightpanel.py`                                      | NumPy column copies                                              | requires exact original 401×1080 sprite; cannot replace required v61 with raw RGBA                                 |
+| `gen_map_goal_art.py`                                       | Image labels, table parsing                                      | game strings and original font retrieval; no font supplied or licensed by this spike                               |
+| `native_art/generate.py`                                    | CSV/JSON skill-index generation, image export                    | requires original manifest hashes and exact game sprites/tables; those checks must survive porting                 |
+| `gen_hud_exp.py`                                            | CSV -> exact C experience header (packaged here)                 | logical input reader supplied in memory                                                                            |
+| `gen_vault_table.py`                                        | JSON/TSV joins, type ancestry, sort, C emission                  | `dmx.get` archive reads, inventory of sprite paths; not implemented here                                           |
+| `gen_romfs_overlay.py`                                      | Sprite header encoding and touch-directory rewrite (subset here) | all layout patch builders, borrowed path registry, feature variants, CASC `.build.config` and data-archive packing |
 
 **Unsupported:** v61 decoding, BC3 encoding, NVN deswizzle/swizzle, archive extraction/decryption, CASC packaging, full HUD/skill/vault generation, font rasterization, manifest-version validation for real files, and integration into the main web UI. `casc-pack` and v61 inputs fail explicitly. A future C/WASM bridge should accept validated descriptor + compressed bytes, return linear BC3 blocks with explicit dimensions, and be compared against native `nvn_deswizzle` before connecting to Pillow's DDS decode. No fake replacement pixels are emitted.
 
@@ -89,7 +93,7 @@ npm run test:browser
 python3 test/verify-png.py
 ```
 
-Browser execution is intentionally delegated to GitHub CI after this coherent implementation batch. A source implementation or successful packaging does **not** establish browser parity; inspect the workflow artifact/report before claiming it passed. Linux Chromium CI validates the browser runtime path, not native Windows/macOS OS-specific integration.
+Browser execution was delegated to GitHub CI after the coherent implementation batch. [Run 39392846657](https://github.com/n3crosis/d2r-mobile/actions/runs/39392846657) **passed** on commit `143e375973d4f4d5fbc770e3464f9112c2403a4b`: runtime preparation, independent native reference, real Chromium exact parity, PNG pixel verification, and artifact upload all succeeded. The `browser-asset-generation-evidence` artifact contains the report and prepared static build (9,864,227 compressed bytes; artifact SHA-256 `fcd01fd9daa64c9ec42ea8db90a369e7a965f98acbf7389b448a6e9fd7adddf9`). This proves the listed synthetic subset only. Linux Chromium CI validates the browser runtime path, not native Windows/macOS OS-specific integration or full real-game asset generation. Source changes after that commit require their own CI proof.
 
 ## Data and licensing
 

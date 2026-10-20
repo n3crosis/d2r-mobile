@@ -69,7 +69,11 @@ try {
         };
       }),
   );
-  assert.equal(result.ok, true, "Synthetic browser WASM smoke must pass");
+  assert.equal(
+    result.ok,
+    true,
+    `Synthetic browser WASM smoke must pass (stage: ${result.stage ?? "completed"})`,
+  );
   assert.deepEqual(external, [], "No external traffic");
   assert.deepEqual(diagnostics, [], "No native or runtime diagnostic output");
   console.log(JSON.stringify({ ok: true, checks: result.checks }));

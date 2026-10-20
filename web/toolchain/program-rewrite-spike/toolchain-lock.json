@@ -19,7 +19,12 @@
   "pyodide": {
     "version": "0.27.7",
     "source": "https://www.npmjs.com/package/pyodide",
-    "license": "MPL-2.0"
+    "license": "MPL-2.0",
+    "licenseSource": "https://raw.githubusercontent.com/pyodide/pyodide/0.27.7/LICENSE",
+    "licenseSha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5"
   },
-  "oracle": { "capstone": "5.0.3", "lz4": "4.4.4" }
+  "oracle": {
+    "capstone": "5.0.3",
+    "lz4": "4.4.4"
+  }
 }
