@@ -16,7 +16,7 @@ static hactool_ctx_t tool;
 static nca_ctx_t nca;
 static nca_section_ctx_t *section;
 static FILE *raw;
-static uint64_t extent, pfs_offset;
+static uint64_t extent, pfs_offset, romfs_offset, romfs_size;
 static pfs0_header_t *directory;
 static size_t directory_size;
 static int keys_ready;
@@ -58,6 +58,8 @@ void nsp_close(void) {
     raw = NULL;
     extent = 0;
     pfs_offset = 0;
+    romfs_offset = 0;
+    romfs_size = 0;
 }
 void nsp_reset(void) {
     nsp_close();
@@ -276,7 +278,8 @@ int nsp_inspect_nca(const char *path, unsigned char *out) {
 }
 /* Shared authenticated PFS0 opener. Program mode selects only non-BKTR
  * ExeFS; no RomFS, patch overlay or unsupported crypto fallback is exposed. */
-static int open_authenticated_pfs0(const char *path, int program) {
+static int open_authenticated_section(const char *path, int mode) {
+    int program = mode != 0;
     unsigned char public_info[24];
     int rc = nsp_inspect_nca(path, public_info);
     if (rc)
@@ -314,13 +317,24 @@ static int open_authenticated_pfs0(const char *path, int program) {
         if (candidate->crypt_type != CRYPT_NONE && candidate->crypt_type != CRYPT_CTR &&
             candidate->crypt_type != CRYPT_XTS)
             return -4;
-        if (candidate->partition_type == PARTITION_PFS0 && candidate->fs_type == FS_TYPE_PFS0) {
+        /* These legacy crypto paths do not implement sparse/compressed
+         * sections or the newer metadata-hash/skip-layer-hash extensions. */
+        for (size_t j = 0; j < sizeof candidate->_0x5; j++)
+            if (candidate->_0x5[j])
+                return -4;
+        for (size_t j = 0; j < sizeof candidate->_0x148; j++)
+            if (candidate->_0x148[j])
+                return -4;
+        int is_pfs0 =
+            candidate->partition_type == PARTITION_PFS0 && candidate->fs_type == FS_TYPE_PFS0;
+        int is_romfs =
+            candidate->partition_type == PARTITION_ROMFS && candidate->fs_type == FS_TYPE_ROMFS;
+        if (!is_pfs0 && (!program || !is_romfs))
+            return -4;
+        if ((mode == 2 && is_romfs) || (mode != 2 && is_pfs0)) {
             if (found != 4)
                 return -4;
             found = i;
-        } else if (!program || candidate->partition_type != PARTITION_ROMFS ||
-                   candidate->fs_type != FS_TYPE_ROMFS) {
-            return -4;
         }
     }
     if (!program && present != 1)
@@ -328,8 +342,7 @@ static int open_authenticated_pfs0(const char *path, int program) {
     if (found == 4)
         return -2;
     nca_fs_header_t *h = &nca.header.fs_headers[found];
-    if (h->partition_type != PARTITION_PFS0 || h->fs_type != FS_TYPE_PFS0 ||
-        (h->crypt_type != CRYPT_CTR && h->crypt_type != CRYPT_NONE))
+    if (h->crypt_type != CRYPT_CTR && h->crypt_type != CRYPT_NONE)
         return -4;
     unsigned char digest[32];
     sha256_hash_buffer(digest, h, sizeof *h);
@@ -365,6 +378,14 @@ static int open_authenticated_pfs0(const char *path, int program) {
         nsp_zero(key, sizeof key);
     }
     extent = section->size;
+    return 0;
+}
+static int open_authenticated_pfs0(const char *path, int program) {
+    int rc = open_authenticated_section(path, program ? 1 : 0);
+    if (rc)
+        return rc;
+    nca_fs_header_t *h = section->header;
+    unsigned char digest[32];
     pfs0_superblock_t *sb = &h->pfs0_superblock;
     if ((!program && sb->pfs0_size > META_LIMIT) || sb->hash_table_size > META_LIMIT ||
         !sb->block_size || sb->block_size > META_LIMIT ||
@@ -430,6 +451,167 @@ static int open_authenticated_pfs0(const char *path, int program) {
     if (rc)
         nsp_close();
     return rc;
+}
+/* IVFC reader contract: section-relative exact reads. The root is trusted
+ * only when called from nsp_open_romfs AFTER NCA/section authentication. */
+typedef int (*ivfc_reader_t)(void *, uint64_t, void *, size_t);
+static int ivfc_verify(ivfc_reader_t reader, void *context, const ivfc_hdr_t *ivfc, uint64_t size) {
+    if (ivfc->magic != MAGIC_IVFC || ivfc->id != 0x20000 ||
+        ivfc->num_levels != IVFC_MAX_LEVEL + 1 || ivfc->master_hash_size != 32)
+        return -4;
+    for (unsigned i = 0; i < IVFC_MAX_LEVEL; i++) {
+        const ivfc_level_hdr_t *level = &ivfc->level_headers[i];
+        if (!level->hash_data_size || level->block_size < 5 || level->block_size > 24 ||
+            !within(level->logical_offset, level->hash_data_size, size))
+            return -2;
+        uint64_t block_size = UINT64_C(1) << level->block_size;
+        uint64_t blocks =
+            level->hash_data_size / block_size + (level->hash_data_size % block_size != 0);
+        uint64_t hash_size = i ? ivfc->level_headers[i - 1].hash_data_size : 32;
+        if (blocks > hash_size / 32)
+            return -2;
+        for (unsigned j = 0; j < i; j++) {
+            const ivfc_level_hdr_t *other = &ivfc->level_headers[j];
+            if (level->logical_offset < other->logical_offset + other->hash_data_size &&
+                other->logical_offset < level->logical_offset + level->hash_data_size)
+                return -2;
+        }
+    }
+    unsigned char *chunk = malloc(CHUNK_LIMIT);
+    if (!chunk)
+        return -1;
+    int rc = 0;
+    for (unsigned i = 0; !rc && i < IVFC_MAX_LEVEL; i++) {
+        const ivfc_level_hdr_t *level = &ivfc->level_headers[i];
+        uint64_t block_size = UINT64_C(1) << level->block_size;
+        uint64_t blocks =
+            level->hash_data_size / block_size + (level->hash_data_size % block_size != 0);
+        for (uint64_t b = 0; !rc && b < blocks; b++) {
+            unsigned char expected[32], digest[32];
+            if (!i)
+                memcpy(expected, ivfc->master_hash, 32);
+            else
+                rc = reader(context, ivfc->level_headers[i - 1].logical_offset + b * 32, expected,
+                            32);
+            if (rc)
+                break;
+            uint64_t data_size = level->hash_data_size - b * block_size;
+            if (data_size > block_size)
+                data_size = block_size;
+            sha_ctx_t *hash = new_sha_ctx(HASH_TYPE_SHA256, 0);
+            for (uint64_t done = 0; !rc && done < block_size;) {
+                size_t count =
+                    block_size - done > CHUNK_LIMIT ? CHUNK_LIMIT : (size_t)(block_size - done);
+                memset(chunk, 0, count);
+                if (done < data_size) {
+                    size_t take = data_size - done < count ? (size_t)(data_size - done) : count;
+                    rc =
+                        reader(context, level->logical_offset + b * block_size + done, chunk, take);
+                }
+                if (!rc)
+                    sha_update(hash, chunk, count);
+                done += count;
+            }
+            if (!rc) {
+                sha_get_hash(hash, digest);
+                if (memcmp(digest, expected, 32))
+                    rc = -3;
+            }
+            free_sha_ctx(hash);
+        }
+    }
+    nsp_zero(chunk, CHUNK_LIMIT);
+    free(chunk);
+    return rc;
+}
+static int ivfc_section_read(void *context, uint64_t offset, void *out, size_t size) {
+    (void)context;
+    return read_at(offset, out, size);
+}
+int nsp_open_romfs(const char *path, unsigned char *out_size) {
+    int rc = open_authenticated_section(path, 2);
+    if (rc) {
+        nsp_close();
+        return rc;
+    }
+    ivfc_hdr_t *ivfc = &section->header->romfs_superblock.ivfc_header;
+    /* Legacy non-BKTR RomFS leaves the patch-info remainder unused. */
+    for (size_t i = 0; i < sizeof section->header->romfs_superblock._0xE0; i++)
+        if (section->header->romfs_superblock._0xE0[i]) {
+            nsp_close();
+            return -4;
+        }
+    rc = ivfc_verify(ivfc_section_read, NULL, ivfc, extent);
+    if (!rc) {
+        const ivfc_level_hdr_t *last = &ivfc->level_headers[IVFC_MAX_LEVEL - 1];
+        romfs_hdr_t header;
+        if (last->hash_data_size < sizeof header)
+            rc = -2;
+        else
+            rc = read_at(last->logical_offset, &header, sizeof header);
+        if (!rc && header.header_size != ROMFS_HEADER_SIZE)
+            rc = -2;
+        if (!rc) {
+            romfs_offset = last->logical_offset;
+            romfs_size = last->hash_data_size;
+            memcpy(out_size, &romfs_size, 8);
+        }
+    }
+    if (rc)
+        nsp_close();
+    return rc;
+}
+int nsp_read_romfs(uint32_t lo, uint32_t hi, unsigned char *out, uint32_t count) {
+    uint64_t offset = pair(lo, hi);
+    if (!romfs_size || count > CHUNK_LIMIT || !within(offset, count, romfs_size))
+        return -2;
+    int rc = read_at(romfs_offset + offset, out, count);
+    return rc ? rc : (int)count;
+}
+/* Closed synthetic fixture: no caller-controlled root, no persistent reader
+ * state and no path around the production RSA/IVFC entrypoint. */
+static int ivfc_fixture_read(void *context, uint64_t offset, void *out, size_t size) {
+    if (!within(offset, size, 384))
+        return -2;
+    memcpy(out, (unsigned char *)context + offset, size);
+    return 0;
+}
+int nsp_ivfc_fixture(void) {
+    unsigned char bytes[384] = {0};
+    memcpy(bytes + 5 * 64, "abc", 3);
+    for (int i = 4; i >= 0; i--)
+        sha256_hash_buffer(bytes + i * 64, bytes + (i + 1) * 64, 64);
+    ivfc_hdr_t header = {0};
+    header.magic = MAGIC_IVFC;
+    header.id = 0x20000;
+    header.num_levels = 7;
+    header.master_hash_size = 32;
+    for (unsigned i = 0; i < 6; i++) {
+        header.level_headers[i].logical_offset = i * 64;
+        header.level_headers[i].hash_data_size = i == 5 ? 3 : 32;
+        header.level_headers[i].block_size = 6;
+    }
+    /* Independently generated with Python hashlib: repeatedly SHA256-pad-to64
+     * six times starting from the public ASCII string abc. */
+    const unsigned char root[32] = {0xa4, 0xed, 0xb8, 0x73, 0x6e, 0xb0, 0xc7, 0x4c,
+                                    0x95, 0x13, 0xda, 0xfc, 0x57, 0x55, 0xd7, 0xc0,
+                                    0x5f, 0x50, 0x05, 0x63, 0x3b, 0x42, 0xc0, 0x0b,
+                                    0xff, 0x86, 0x3d, 0x95, 0x7d, 0xa1, 0x26, 0x7e};
+    memcpy(header.master_hash, root, 32);
+    if (ivfc_verify(ivfc_fixture_read, bytes, &header, sizeof bytes))
+        return 1;
+    bytes[320] ^= 1;
+    if (ivfc_verify(ivfc_fixture_read, bytes, &header, sizeof bytes) != -3)
+        return 2;
+    bytes[320] ^= 1;
+    header.level_headers[1].logical_offset = 0;
+    if (ivfc_verify(ivfc_fixture_read, bytes, &header, sizeof bytes) != -2)
+        return 3;
+    header.level_headers[1].logical_offset = 64;
+    header.level_headers[5].block_size = 32;
+    if (ivfc_verify(ivfc_fixture_read, bytes, &header, sizeof bytes) != -2)
+        return 4;
+    return 0;
 }
 int nsp_open_meta(const char *path) {
     int rc = open_authenticated_pfs0(path, 0);

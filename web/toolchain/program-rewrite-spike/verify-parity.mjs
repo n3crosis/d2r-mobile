@@ -1,3 +1,4 @@
+import { verifyGuestAdapter } from "./verify-adapter.mjs";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { readFile, readdir, mkdir, writeFile } from "node:fs/promises";
@@ -118,12 +119,14 @@ try {
       );
   }
   assert.match(results.find((r) => r.id === "unsupported").error, /Unsupported input/);
+  const adapterProof = await verifyGuestAdapter(page);
   await mkdir(new URL("./browser-results/", import.meta.url), { recursive: true });
   await writeFile(
     new URL("./browser-results/parity.json", import.meta.url),
     JSON.stringify(
       {
         syntheticOnly: true,
+        adapterProof,
         cases: manifest.cases.map(({ name, success }) => ({
           name,
           expectedSuccess: success,

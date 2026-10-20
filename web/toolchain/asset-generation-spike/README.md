@@ -98,3 +98,7 @@ Browser execution was delegated to GitHub CI after the coherent implementation b
 ## Data and licensing
 
 Synthetic pixels/tables are authored by this test. No proprietary game font or image is shipped/downloaded. Original game fonts must remain user-supplied and local, and their licenses must permit the intended use; this spike grants no redistribution rights. The prepared runtime remains subject to Pyodide and included packages' licenses. Keep package license metadata when distributing a deployment. Native adaptation retains this repository's licensing.
+
+## Optional v61 PNG bridge (separate integration)
+
+The standalone worker above still rejects v61. `web/v61-asset-worker.mjs` composes the separate real texture WASM worker with this unchanged Pyodide worker, and `web/asset-generator-adapter.mjs` exposes it only with explicit `enableV61Png: true`. Output is PNG only; native v61 sprite encoding is still unsupported. Texture worker parity passed [run 39395178181](https://github.com/n3crosis/d2r-mobile/actions/runs/39395178181). The extended asset workflow now includes an independent two-frame v61 native fixture and real cross-worker/browser packaging-adapter pixel comparison. That new composed-path check remains pending its first pushed CI run. See `web/ASSET_GENERATOR_ADAPTER_SCOPE.md` for bounds and limitations.

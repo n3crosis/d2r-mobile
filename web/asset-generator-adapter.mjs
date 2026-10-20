@@ -91,14 +91,21 @@ async function abortable(action, signal) {
  *   Reader.read(logicalPath,{maxBytes,signal})->Promise<Uint8Array>, resolves CASC itself.
  * @returns {{capabilities:object,generateAssets:Function,dispose:Function}}
  */
-export function createAssetGeneratorAdapter({ recipes, createWorker, resolveReader } = {}) {
+export function createAssetGeneratorAdapter({
+  recipes,
+  createWorker,
+  resolveReader,
+  enableV61Png = false,
+} = {}) {
+  if (typeof enableV61Png !== "boolean") fail("ASSET_INVALID_V61_OPTION");
   const jobs = checkedRecipes(recipes); // Validate whole plan before reading any user data.
   if (typeof createWorker !== "function") fail("ASSET_WORKER_UNAVAILABLE");
   if (resolveReader !== undefined && typeof resolveReader !== "function")
     fail("ASSET_READER_UNAVAILABLE");
   let started = false,
     disposed = false,
-    activeWorker;
+    activeWorker,
+    workerCleanupFailed = false;
   const ownedOutputs = [];
   function closeWorker() {
     const worker = activeWorker;
@@ -106,6 +113,7 @@ export function createAssetGeneratorAdapter({ recipes, createWorker, resolveRead
     try {
       worker?.close();
     } catch {
+      workerCleanupFailed = true;
       fail("ASSET_WORKER_CLEANUP_FAILED");
     }
   }
@@ -207,21 +215,30 @@ export function createAssetGeneratorAdapter({ recipes, createWorker, resolveRead
           );
         }
       }
+      closeWorker();
       return entries.sort((a, b) => a.path.localeCompare(b.path, "en"));
     } catch (error) {
       wipe();
-      if (signal?.aborted) fail("ASSET_CANCELLED");
-      if (error instanceof AssetAdapterError) throw error;
-      fail("ASSET_GENERATION_FAILED");
-    } finally {
-      signal?.removeEventListener("abort", onAbort);
+      let cleanupFailed = workerCleanupFailed;
       try {
         closeWorker();
-      } catch (error) {
-        wipe();
-        throw error;
+      } catch {
+        cleanupFailed = true;
       }
+      const primary = signal?.aborted
+        ? new AssetAdapterError("ASSET_CANCELLED")
+        : error instanceof AssetAdapterError
+          ? error
+          : new AssetAdapterError("ASSET_GENERATION_FAILED");
+      if (cleanupFailed) primary.cleanupCode = "ASSET_WORKER_CLEANUP_FAILED";
+      throw primary;
+    } finally {
+      signal?.removeEventListener("abort", onAbort);
     }
   }
-  return Object.freeze({ capabilities: ASSET_ADAPTER_CAPABILITIES, generateAssets, dispose });
+  return Object.freeze({
+    capabilities: Object.freeze({ ...ASSET_ADAPTER_CAPABILITIES, v61PngImport: enableV61Png }),
+    generateAssets,
+    dispose,
+  });
 }

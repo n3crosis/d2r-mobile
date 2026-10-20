@@ -8,6 +8,7 @@ on:
       - "web/toolchain/nsp-extract-spike/**"
       - "web/toolchain/spirv-cross-spike/**"
       - "web/toolchain/asset-generation-spike/**"
+      - "web/toolchain/asset-generation-spike/test/native-v61.py"
       - "web/toolchain/program-rewrite-spike/**"
       - "web/toolchain/texture-spike/**"
       - "web/toolchain/style/**"
@@ -17,6 +18,7 @@ on:
       - "web/toolchain/nsp-extract-spike/**"
       - "web/toolchain/spirv-cross-spike/**"
       - "web/toolchain/asset-generation-spike/**"
+      - "web/toolchain/asset-generation-spike/test/native-v61.py"
       - "web/toolchain/program-rewrite-spike/**"
       - "web/toolchain/texture-spike/**"
       - "web/toolchain/style/**"
@@ -56,13 +58,14 @@ jobs:
             web/toolchain/asset-generation-spike/scripts/package-core.py
             web/toolchain/asset-generation-spike/src/core.py
             web/toolchain/asset-generation-spike/test/native-reference.py
+            web/toolchain/asset-generation-spike/test/native-v61.py
             web/toolchain/asset-generation-spike/test/verify-png.py
             web/toolchain/program-rewrite-spike/make-fixtures.py
             web/toolchain/program-rewrite-spike/python-adapters.py
             web/toolchain/texture-spike/native-fixtures.py
           )
-          ruff check --config web/toolchain/style/ruff.toml "${python_sources[@]}"
-          ruff format --check --config web/toolchain/style/ruff.toml "${python_sources[@]}"
+          ruff check --no-cache --config web/toolchain/style/ruff.toml "${python_sources[@]}"
+          ruff format --check --no-cache --config web/toolchain/style/ruff.toml "${python_sources[@]}"
       - name: Format-check authored C bindings and fixture only
         run: |
           clang-format --dry-run --Werror --style=file:web/toolchain/style/clang-format.yaml \

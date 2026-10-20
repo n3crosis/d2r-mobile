@@ -21,7 +21,8 @@ export async function createBoundary(factory) {
   module.FS.mkdir("/input");
   module.FS.mkdir("/secret");
   let mounted = false,
-    disposed = false;
+    disposed = false,
+    generation = 0;
   const guard = (fn) => {
     if (disposed) throw new Error("Extractor has been disposed");
     try {
@@ -56,6 +57,7 @@ export async function createBoundary(factory) {
   return {
     mount(blobs) {
       return guard(() => {
+        generation++;
         module._nsp_close();
         if (mounted) module.FS.unmount("/input");
         if (
@@ -86,6 +88,7 @@ export async function createBoundary(factory) {
             !title.length
           )
             throw new Error("Invalid key input");
+          generation++;
           module.FS.writeFile("/secret/prod.keys", prod);
           module.FS.writeFile("/secret/title.keys", title);
           return check(module._nsp_load_keys());
@@ -100,6 +103,7 @@ export async function createBoundary(factory) {
     inspect(index) {
       return guard(() =>
         withBuffer(24, (ptr) => {
+          generation++;
           check(
             module.ccall("nsp_inspect_nca", "number", ["string", "number"], [path(index), ptr]),
           );
@@ -115,6 +119,7 @@ export async function createBoundary(factory) {
     },
     open(index, kind = "meta") {
       return guard(() => {
+        generation++;
         const operation =
           kind === "meta"
             ? "nsp_open_meta"
@@ -128,11 +133,52 @@ export async function createBoundary(factory) {
         return check(module._nsp_entry_count());
       });
     },
+    // Reader lifetime is bound to this exact authenticated NCA. A later open,
+    // inspect, key load, mount or input hash invalidates it even if that fails.
+    openRomfs(index) {
+      return guard(() => {
+        const current = ++generation;
+        const size = withBuffer(8, (ptr) => {
+          check(module.ccall("nsp_open_romfs", "number", ["string", "number"], [path(index), ptr]));
+          return new DataView(module.HEAPU8.buffer, ptr, 8).getBigUint64(0, true);
+        });
+        return Object.freeze({
+          size,
+          readAt(offset, count) {
+            return guard(() => {
+              if (current !== generation) throw new Error("RomFS reader expired");
+              if (
+                typeof offset !== "bigint" ||
+                offset < 0n ||
+                offset > size ||
+                !Number.isInteger(count) ||
+                count < 0 ||
+                count > CHUNK ||
+                BigInt(count) > size - offset
+              )
+                throw new Error("Invalid bounded read");
+              return withBuffer(Math.max(count, 1), (ptr) => {
+                const length = check(
+                  module._nsp_read_romfs(
+                    Number(offset & 0xffffffffn),
+                    Number(offset >> 32n),
+                    ptr,
+                    count,
+                  ),
+                );
+                return module.HEAPU8.slice(ptr, ptr + length);
+              });
+            });
+          },
+        });
+      });
+    },
     // Whole-NCA input digest is independent of header/CNMT declarations.
     // Hashing an input closes the current member directory; reopen afterward.
     hashInput(index) {
       return guard(() =>
         withBuffer(32, (ptr) => {
+          generation++;
           check(module.ccall("nsp_hash_input", "number", ["string", "number"], [path(index), ptr]));
           return Array.from(module.HEAPU8.subarray(ptr, ptr + 32), (byte) =>
             byte.toString(16).padStart(2, "0"),
@@ -209,6 +255,9 @@ export async function createBoundary(factory) {
     },
     cryptoFixture() {
       return guard(() => check(module._nsp_crypto_fixture()));
+    },
+    ivfcFixture() {
+      return guard(() => check(module._nsp_ivfc_fixture()));
     },
     secretFilesPresent() {
       return module.FS.readdir("/secret").some((name) => name !== "." && name !== "..");

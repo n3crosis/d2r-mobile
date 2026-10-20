@@ -198,3 +198,20 @@ test("hard input and aggregate output budgets reject rather than truncating", as
     { code: "ASSET_INVALID_RECIPES" },
   );
 });
+
+test("cleanup failure preserves a primary generation failure without unsafe finally throws", async () => {
+  const f = fixture({
+    worker: {
+      run: async () => {
+        throw new Error("private failure");
+      },
+      close: () => {
+        throw new Error("private cleanup");
+      },
+    },
+  });
+  await assert.rejects(f.adapter.generateAssets({ extracted: { logicalAssets: f.reader } }), {
+    code: "ASSET_GENERATION_FAILED",
+    cleanupCode: "ASSET_WORKER_CLEANUP_FAILED",
+  });
+});

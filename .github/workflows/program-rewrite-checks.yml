@@ -7,11 +7,17 @@ on:
     paths:
       - "web/toolchain/program-rewrite-spike/**"
       - "dm/tools/patch_nso.py"
+      - "dm/tools/guest_dylib.py"
+      - "web/program-rewriter-adapter.mjs"
+      - "web/guest-framework.mjs"
       - ".github/workflows/program-rewrite-checks.yml"
   pull_request:
     paths:
       - "web/toolchain/program-rewrite-spike/**"
       - "dm/tools/patch_nso.py"
+      - "dm/tools/guest_dylib.py"
+      - "web/program-rewriter-adapter.mjs"
+      - "web/guest-framework.mjs"
       - ".github/workflows/program-rewrite-checks.yml"
 permissions:
   contents: read
@@ -55,4 +61,5 @@ jobs:
             web/toolchain/program-rewrite-spike/browser-results/
             web/toolchain/program-rewrite-spike/dist/
             web/toolchain/program-rewrite-spike/oracle/
+            web/toolchain/program-rewrite-spike/oracle-guest/
           retention-days: 7

@@ -1,0 +1,109 @@
+name: Linked browser shader pipeline parity
+on:
+  push:
+    branches: [feature/web-ipa-packager]
+    paths:
+      - "web/shader-pipeline.mjs"
+      - "web/shell-contract.mjs"
+      - "web/tests/shader-pipeline.test.mjs"
+      - "web/toolchain/shader-pipeline-spike/**"
+      - "web/toolchain/shader-spike/**"
+      - "web/toolchain/spirv-cross-spike/**"
+      - "dm/gfx/tools/dmsh_xlate/**"
+      - "dm/gfx/tools/dmsh_build.py"
+      - "dm/third_party/ryujinx/**"
+      - ".github/workflows/shader-pipeline-browser-checks.yml"
+  pull_request:
+    paths:
+      - "web/shader-pipeline.mjs"
+      - "web/shell-contract.mjs"
+      - "web/tests/shader-pipeline.test.mjs"
+      - "web/toolchain/shader-pipeline-spike/**"
+      - "web/toolchain/shader-spike/**"
+      - "web/toolchain/spirv-cross-spike/**"
+      - "dm/gfx/tools/dmsh_xlate/**"
+      - "dm/gfx/tools/dmsh_build.py"
+      - "dm/third_party/ryujinx/**"
+      - ".github/workflows/shader-pipeline-browser-checks.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: shader-pipeline-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  linked-native-browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    defaults:
+      run:
+        shell: bash
+        working-directory: web/toolchain/shader-pipeline-spike
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+      DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE: "true"
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "22"
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: "10.0.402"
+      - name: Pin native and browser translator SDK and validate adapter
+        run: |
+          printf '{"sdk":{"version":"10.0.402","rollForward":"disable","allowPrerelease":false,"workloadVersion":"10.0.402"}}\n' > "$GITHUB_WORKSPACE/global.json"
+          test "$(dotnet --version)" = 10.0.402
+          node --test ../../tests/shader-pipeline.test.mjs
+          dotnet workload install wasm-tools
+          dotnet workload --version
+          npm ci --ignore-scripts --prefix ../shader-spike
+          (cd ../shader-spike && npx --no-install playwright install --with-deps chromium)
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y spirv-tools
+          spirv-val --version
+      - name: Build original translator and unchanged browser spike
+        run: |
+          dotnet publish ../shader-spike/ShaderSpike.csproj -c Release -p:EnableNETAnalyzers=true -p:AnalysisLevel=latest -p:TreatWarningsAsErrors=true
+          native_project="$GITHUB_WORKSPACE/dm/gfx/tools/dmsh_xlate/dmsh_xlate.csproj"
+          dotnet build "$native_project" -c Release
+          native_dll="$GITHUB_WORKSPACE/dm/gfx/tools/dmsh_xlate/bin/Release/net10.0/dmsh_xlate.dll"
+          actual=$(dotnet "$native_dll" --source-sha)
+          expected=$(cat "$GITHUB_WORKSPACE/dm/gfx/tools/dmsh_xlate/Program.cs" "$native_project" | sha256sum | cut -c1-16)
+          test "$actual" = "$expected"
+          node capture-browser.mjs prepare "$RUNNER_TEMP/linked-shader/fixture"
+          timeout --kill-after=5s 60s dotnet "$native_dll" "$RUNNER_TEMP/linked-shader/fixture/jobs.json" "$RUNNER_TEMP/linked-shader/native"
+          spirv-val --target-env vulkan1.1 "$RUNNER_TEMP/linked-shader/native/0000000000000001.spv"
+      - name: Build pinned native and WASM SPIRV-Cross with existing recipe
+        run: |
+          git clone --depth 1 --branch vulkan-sdk-1.4.357.0 https://github.com/KhronosGroup/SPIRV-Cross.git "$RUNNER_TEMP/linked-cross"
+          test "$(git -C "$RUNNER_TEMP/linked-cross" rev-parse HEAD)" = 6c09849fe88c48eaed08413aa022aaa136a3a057
+          git clone --depth 1 --branch 4.0.20 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/linked-emsdk"
+          test "$(git -C "$RUNNER_TEMP/linked-emsdk" rev-parse HEAD)" = e4fe26ef59168ff44f4c23c466e497bf60b3411e
+          "$RUNNER_TEMP/linked-emsdk/emsdk" install 4.0.20
+          "$RUNNER_TEMP/linked-emsdk/emsdk" activate 4.0.20
+          bash ../spirv-cross-spike/build.sh native "$RUNNER_TEMP/linked-cross" "$RUNNER_TEMP/linked-cross-native"
+          source "$RUNNER_TEMP/linked-emsdk/emsdk_env.sh"
+          bash ../spirv-cross-spike/build.sh wasm "$RUNNER_TEMP/linked-cross" "$RUNNER_TEMP/linked-cross-wasm"
+      - name: Independent native Metal and upstream reflection oracle
+        run: |
+          native="$RUNNER_TEMP/linked-shader/native"
+          "$RUNNER_TEMP/linked-cross-native/spirv-cross" --msl --msl-version 20300 --msl-argument-buffers --msl-texture-buffer-native --msl-pad-fragment-output "$native/0000000000000001.spv" --output "$native/0000000000000001_b.metal"
+          "$RUNNER_TEMP/linked-cross-native/spirv-cross" --reflect json "$native/0000000000000001.spv" --output "$native/0000000000000001.cross.json"
+      - name: Real Chromium linked pipeline versus original native outputs
+        run: |
+          timeout --kill-after=5s 180s node capture-browser.mjs capture ../shader-spike/bin/Release/net10.0/publish "$RUNNER_TEMP/linked-shader/native" "$RUNNER_TEMP/linked-shader/browser"
+          sha256sum ../../shader-pipeline.mjs ../shader-spike/ShaderBridge.cs ../spirv-cross-spike/wwwroot/*.mjs ../spirv-cross-spike/wwwroot/*.wasm "$RUNNER_TEMP/linked-shader/native/"* > "$RUNNER_TEMP/linked-shader/browser/source-chain.sha256"
+      - name: Retain synthetic evidence only
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: linked-shader-pipeline-synthetic-evidence
+          path: |
+            ${{ runner.temp }}/linked-shader/native/
+            ${{ runner.temp }}/linked-shader/browser/
+          retention-days: 7
+          if-no-files-found: warn

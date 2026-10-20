@@ -5,6 +5,11 @@ on:
     paths:
       [
         "web/toolchain/asset-generation-spike/**",
+        "web/toolchain/texture-spike/**",
+        "web/asset-generator-adapter.mjs",
+        "web/v61-asset-worker.mjs",
+        "dm/gfx/nvn/nvn_tex.*",
+        "dm/gfx/tex/nvn_*",
         "dm/ios/tools/**",
         ".github/workflows/browser-asset-checks.yml",
       ]
@@ -12,6 +17,11 @@ on:
     paths:
       [
         "web/toolchain/asset-generation-spike/**",
+        "web/toolchain/texture-spike/**",
+        "web/asset-generator-adapter.mjs",
+        "web/v61-asset-worker.mjs",
+        "dm/gfx/nvn/nvn_tex.*",
+        "dm/gfx/tex/nvn_*",
         "dm/ios/tools/**",
         ".github/workflows/browser-asset-checks.yml",
       ]
@@ -24,7 +34,7 @@ concurrency:
 jobs:
   browser-assets:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: web/toolchain/asset-generation-spike
@@ -51,6 +61,19 @@ jobs:
         run: |
           timeout --kill-after=5s 180s npm run test:browser
           "$RUNNER_TEMP/asset-reference/bin/python" test/verify-png.py
+      - name: Build pinned texture bridge for cross-adapter parity
+        run: |
+          git clone --depth 1 --branch 4.0.20 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/asset-texture-emsdk"
+          test "$(git -C "$RUNNER_TEMP/asset-texture-emsdk" rev-parse HEAD)" = e4fe26ef59168ff44f4c23c466e497bf60b3411e
+          "$RUNNER_TEMP/asset-texture-emsdk/emsdk" install 4.0.20
+          "$RUNNER_TEMP/asset-texture-emsdk/emsdk" activate 4.0.20
+          source "$RUNNER_TEMP/asset-texture-emsdk/emsdk_env.sh"
+          bash ../texture-spike/build-wasm.sh
+          python3 test/native-v61.py
+      - name: Verify actual v61 texture worker through asset and packaging adapters
+        run: |
+          timeout --kill-after=5s 180s node test/v61-browser.mjs
+          "$RUNNER_TEMP/asset-reference/bin/python" test/native-v61.py --verify
       - name: Retain parity evidence and self-hostable synthetic spike
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
@@ -60,4 +83,9 @@ jobs:
             web/toolchain/asset-generation-spike/test-results/
             web/toolchain/asset-generation-spike/public/
             web/toolchain/asset-generation-spike/source-provenance.json
+            web/asset-generator-adapter.mjs
+            web/v61-asset-worker.mjs
+            web/toolchain/texture-spike/texture-worker.mjs
+            web/toolchain/texture-spike/browser-texture.mjs
+            web/toolchain/texture-spike/dist/
           if-no-files-found: error

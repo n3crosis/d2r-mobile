@@ -85,3 +85,22 @@ these tiny fixtures. Real-build authorization/validation, segment hash checks,
 resource limits, cancellation/progress UX, large-module memory measurement,
 host-runtime compatibility, and integration with the production packaging
 pipeline remain blockers. Do not relax the fixture gate to claim those done.
+
+## Packaging-job adapter (synthetic integration only)
+
+`web/program-rewriter-adapter.mjs` exposes the coordinator's
+`generateProgram({extracted, selection, signal}) -> OutputEntry[]` contract. It
+requires an externally trusted, exact source/input/output/Guest digest catalog,
+a bounded input resolver and worker factory. The catalog is never obtained from
+extracted content or accepted because a module claims a build ID. The generator
+writes Guest.framework and the loader's `dm/main.{fixups,gates,cuts}.tsv` entries,
+with strict fixup bounds, structural ad-hoc signature metadata, cancellation,
+single-use lifecycle, output budgets, sanitized errors and explicit disposal.
+
+CI generates the synthetic catalog from independent native `patch_nso.py` AND
+`guest_dylib.py` subprocesses. Browser adapter outputs must match those native
+Guest bytes. This connects two real implementations for synthetic data; it is
+not a production adapter or a playable build. No real-version catalog exists,
+and the worker's original exact synthetic gate is unchanged. Source pins,
+catalog construction and host-version compatibility need a separately reviewed
+real-release trust policy before production support could be enabled.

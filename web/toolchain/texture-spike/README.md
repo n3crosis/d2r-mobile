@@ -92,9 +92,12 @@ known-red BC1 and zero-BC3 oracles supplement same-source differential tests.
 Malformed requests, heap growth, public worker transfer/recovery, and no external
 traffic are tested. Generated fixtures are ignored, synthetic and local only.
 
-Native checks have been run locally. WASM/browser checks are **CI gates**, not a
-claim that the SDK/browser tests have already passed in this checkout. No game
-texture validation or end-to-end asset-generation parity is claimed.
+Native checks have been run locally. Official Emscripten compilation, Node/WASM
+differential checks and actual Chromium dedicated-worker checks passed in
+[CI run 39395178181](https://github.com/n3crosis/d2r-mobile/actions/runs/39395178181)
+at commit `1db2b64b8a6d8512fb9492369bde823419ab40a3`. This includes the explicit
+`HEAPU8`/`HEAPU32` runtime exports required by Emscripten 4.0.20. No game texture
+validation or end-to-end asset-generation parity is claimed.
 
 ## Notices
 
