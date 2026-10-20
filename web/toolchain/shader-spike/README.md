@@ -4,7 +4,10 @@ This is isolated developer scaffolding, **not a working translator release**.
 GitHub Actions run `39387602517` passed C# restore, authored-source format,
 Release build/analyzers (zero warnings/errors), and static publish using the
 pinned .NET SDK/workload set `10.0.402`. The compiler gate does not prove browser
-execution or native parity. The runtime gate described below has not run yet.
+execution or native parity. The first runtime run `39388812968` passed native restore/build, verified the original
+CLI embedded-source hash, and translated the synthetic EXIT fixture successfully.
+It then failed deployment-layout discovery before Chromium launched; parity and
+SPIR-V validation remain pending.
 The React/shadcn preview does not load this directory. It does not unblock IPA
 assembly by itself. There are no game bytes, keys, or generated binaries here.
 
@@ -100,7 +103,8 @@ Do not put SDK installation in the public browser startup or ordinary preview bu
 
 ## Synthetic fixture and oracle gate
 
-`synthetic-fixture.mjs` constructs 16 bytes: a scheduling word at byte 0, then
+`wwwroot/synthetic-fixture.mjs` constructs 16 bytes (the top-level module re-exports
+it for the native verifier): a scheduling word at byte 0, then
 little-endian `0xe30000000007000f` at byte 8. This is derived from this repository's
 `InstTable` EXIT pattern, `InstExit` predicate/condition fields (`PT=7`, `Ccc.T=15`),
 and `Decoder.FillBlock` skipping a control word each 32 bytes. It is an intentionally
@@ -208,3 +212,18 @@ A green runtime gate means only synthetic EXIT native/browser translation parity
 and structural SPIR-V validation on Linux Chromium. It does not mean GPU execution,
 Windows/macOS browser testing, resources, arithmetic, branch correctness, game
 compatibility, Metal conversion, or working unsigned IPA output.
+
+### First runtime failure and deployment repair
+
+Run `39388812968` found no complete published harness. The project had used legacy
+`WasmExtraFilesToDeploy` items, which are not the WebAssembly SDK's static-content
+mechanism. The pinned SDK imports StaticWebAssets, whose default content includes
+`wwwroot/**`. The single fixture source now lives beside index.html and worker.mjs
+under wwwroot; the old path re-exports it for existing native/tests imports. Legacy
+deploy items were removed. Translation code, native oracle and fixture bytes are
+unchanged. The capture runner also records bounded publish-directory inventory
+before checking its deployment-root requirements, so a remaining layout failure is
+visible without uploading any binaries.
+
+SDK source: [WebAssembly imports](https://github.com/dotnet/sdk/blob/v10.0.402/src/WasmSdk/Sdk/Sdk.props)
+and [default static content](https://github.com/dotnet/sdk/blob/v10.0.402/src/StaticWebAssetsSdk/Sdk/Sdk.StaticWebAssets.StaticAssets.ProjectSystem.props).

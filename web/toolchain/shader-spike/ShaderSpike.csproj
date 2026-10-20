@@ -22,8 +22,5 @@
     <Compile Include="$(RyuSrc)/Spv.Generator/**/*.cs" Exclude="$(RyuSrc)/Spv.Generator/**/obj/**;$(RyuSrc)/Spv.Generator/**/bin/**" />
     <Compile Include="$(RyuSrc)/Ryujinx.Common/Pools/ObjectPool.cs;$(RyuSrc)/Ryujinx.Common/Memory/IArray.cs;$(RyuSrc)/Ryujinx.Common/Memory/StructArrayHelpers.cs;$(RyuSrc)/Ryujinx.Common/Utilities/BitUtils.cs;$(RyuSrc)/Ryujinx.Common/Utilities/BitfieldExtensions.cs" />
     <EmbeddedResource Include="$(RyuSrc)/Ryujinx.Graphics.Shader/CodeGen/Glsl/HelperFunctions/*.glsl" LogicalName="Ryujinx.Graphics.Shader.CodeGen.Glsl.HelperFunctions.%(Filename)%(Extension)" />
-    <WasmExtraFilesToDeploy Include="wwwroot/index.html" TargetPath="index.html" />
-    <WasmExtraFilesToDeploy Include="wwwroot/worker.mjs" TargetPath="worker.mjs" />
-    <WasmExtraFilesToDeploy Include="synthetic-fixture.mjs" TargetPath="synthetic-fixture.mjs" />
   </ItemGroup>
 </Project>

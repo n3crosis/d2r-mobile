@@ -14,9 +14,12 @@ assert.ok(
 const output = resolve(outputDirectory);
 await mkdir(output, { recursive: true });
 const candidates = [];
+const inventory = [];
 async function discover(directory, depth = 0) {
   if (depth > 6) return;
   const entries = await readdir(directory, { withFileTypes: true });
+  if (inventory.length < 32)
+    inventory.push({ directory, entries: entries.slice(0, 64).map((entry) => entry.name) });
   if (entries.some((entry) => entry.name === "index.html" && entry.isFile())) {
     try {
       assert.ok((await stat(join(directory, "_framework/dotnet.js"))).isFile());
@@ -33,6 +36,11 @@ async function discover(directory, depth = 0) {
   }
 }
 await discover(resolve(publishDirectory));
+await writeFile(
+  join(output, "bundle-diagnostics.json"),
+  JSON.stringify({ candidates, inventory }, null, 2),
+);
+console.log("Published bundle candidates:", JSON.stringify(candidates));
 assert.equal(
   candidates.length,
   1,
