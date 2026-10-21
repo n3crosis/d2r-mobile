@@ -355,7 +355,11 @@ export async function stageArchiveRecord(
         abort(combined);
         if (!integer(at, decodedSize) || !integer(count, 1024 * 1024) || count > decodedSize - at)
           fail("READ_BOUNDS");
-        const bytes = await waiting(() => file.readAt(at, count), combined);
+        const bytes = await waiting(() => {
+          if (disposed) fail("DISPOSED");
+          return file.readAt(at, count);
+        }, combined);
+        if (disposed) fail("DISPOSED");
         abort(combined);
         if (!(bytes instanceof Uint8Array) || bytes.length !== count) fail("SHORT_READ");
         return bytes;

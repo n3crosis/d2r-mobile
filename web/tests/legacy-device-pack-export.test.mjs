@@ -266,12 +266,13 @@ test("manifest and final-marker close failures never report completion", async (
 });
 test("unsafe source backing buffers reject and secure context is required", async () => {
   const fs = fixture();
-  fs.options.finalizedPack.source.readAt = async (_, count) =>
-    new Uint8Array(new ArrayBuffer(65537), 0, count);
+  const borrowed = new Uint8Array(65537).fill(23);
+  fs.options.finalizedPack.source.readAt = async (_, count) => borrowed.subarray(0, count);
   await assert.rejects(
     exportLegacyDevicePack(fs.options),
     (error) => /READ_RANGE/.test(error.cause.message) && error.report.cleanupComplete,
   );
+  assert.ok(borrowed.every((byte) => byte === 23));
   const insecure = fixture();
   await assert.rejects(
     exportLegacyDevicePack({ ...insecure.options, secureContext: false }),
@@ -279,6 +280,35 @@ test("unsafe source backing buffers reject and secure context is required", asyn
   );
   assert.equal(insecure.events.length, 0);
 });
+test("cancelled and short reads wipe bounded owned bytes before export cleanup", async () => {
+  for (const mode of ["cancel", "short"]) {
+    const fs = fixture(),
+      controller = new AbortController();
+    const original = fs.content.slice();
+    let returned;
+    fs.options.finalizedPack.source.readAt = async (_, count) => {
+      returned = new Uint8Array(mode === "short" ? count - 1 : count).fill(19);
+      if (mode === "cancel") controller.abort();
+      return returned;
+    };
+    await assert.rejects(
+      exportLegacyDevicePack({ ...fs.options, signal: controller.signal }),
+      (error) => {
+        assert.equal(
+          error.report.code,
+          mode === "cancel" ? "CANCELLED" : "LEGACY_PACK_EXPORT_FAILED",
+        );
+        assert.equal(error.report.cleanupComplete, true);
+        if (mode === "short") assert.match(error.cause.message, /READ_RANGE/);
+        return true;
+      },
+    );
+    assert.ok(returned.every((byte) => byte === 0));
+    assert.deepEqual(fs.content, original);
+    assert.deepEqual([...fs.root.entries.keys()], ["unrelated"]);
+  }
+});
+
 test("abort during streaming reports written bytes and preserves no owned leftovers", async () => {
   const controller = new AbortController();
   const fs = fixture({

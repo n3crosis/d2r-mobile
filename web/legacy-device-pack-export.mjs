@@ -190,21 +190,21 @@ export async function exportLegacyDevicePack({
       check();
       const count = Math.min(LEGACY_PACK_EXPORT_CHUNK_BYTES, pack.size - offset);
       const bytes = await source.readAt(offset, count, { signal });
-      check();
-      if (
-        !(bytes instanceof Uint8Array) ||
-        !(bytes.buffer instanceof ArrayBuffer) ||
-        bytes.buffer.resizable ||
-        bytes.buffer.byteLength > LEGACY_PACK_EXPORT_CHUNK_BYTES ||
-        bytes.length !== count
-      )
-        fail("LEGACY_PACK_READ_RANGE");
+      const boundedBytes =
+        bytes instanceof Uint8Array &&
+        bytes.buffer instanceof ArrayBuffer &&
+        !bytes.buffer.resizable &&
+        bytes.buffer.byteLength <= LEGACY_PACK_EXPORT_CHUNK_BYTES;
       try {
+        check();
+        if (!boundedBytes || bytes.length !== count) fail("LEGACY_PACK_READ_RANGE");
         await writeBuffer.append(bytes);
         offset += count;
         check();
       } finally {
-        bytes.fill(0);
+        // 读取返回后立即拥有有界副本；取消或短读失败也必须清理。
+        // Own bounded read copies immediately; wipe them on cancellation or short-read failure too.
+        if (boundedBytes) bytes.fill(0);
       }
     }
     await writeBuffer.flush();

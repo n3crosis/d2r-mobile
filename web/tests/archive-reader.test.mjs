@@ -420,3 +420,52 @@ test("high-expansion zlib record is rejected after bounded input submission", as
     /exceeds declared/,
   );
 });
+
+test("rejected or cancelled final checksum wipes decoded output but preserves borrowed input", async () => {
+  for (const failure of ["mismatch", "throw", "cancel"]) {
+    const input = new Uint8Array([1, 2, 3, 4]),
+      controller = new AbortController();
+    let decoded;
+    await assert.rejects(
+      decodeArchiveRecord(
+        { size: input.length, read: async (at, count) => input.subarray(at, at + count) },
+        {
+          offset: 0,
+          encodedSize: input.length,
+          decodedSize: input.length,
+          encoding: "n",
+          ckey: md5(input),
+        },
+        {
+          signal: controller.signal,
+          async verifyMd5(bytes) {
+            decoded = bytes;
+            if (failure === "cancel") controller.abort();
+            if (failure === "throw") throw new Error("verifier failure");
+            return failure !== "mismatch";
+          },
+        },
+      ),
+      failure === "cancel" ? { name: "AbortError" } : /MD5 mismatch|verifier failure/,
+    );
+    assert.deepEqual(decoded, new Uint8Array(input.length));
+    assert.deepEqual(input, new Uint8Array([1, 2, 3, 4]));
+  }
+});
+test("successful decoding preserves returned bytes and borrowed source views", async () => {
+  const input = new Uint8Array([1, 2, 3, 4]);
+  const result = await decodeArchiveRecord(
+    { size: input.length, read: async (at, count) => input.subarray(at, at + count) },
+    {
+      offset: 0,
+      encodedSize: input.length,
+      decodedSize: input.length,
+      encoding: "n",
+      ckey: md5(input),
+    },
+    { verifyMd5 },
+  );
+  assert.notEqual(result.buffer, input.buffer);
+  assert.deepEqual(result, new Uint8Array([1, 2, 3, 4]));
+  assert.deepEqual(input, result);
+});

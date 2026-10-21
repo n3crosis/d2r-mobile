@@ -555,3 +555,50 @@ test("abort while draining a large compressed window never finalizes or reads af
   assert.equal(staging.state.finalized, 0);
   assert.equal(staging.state.disposed, 1);
 });
+
+test("staged read disposal blocks queued dispatch and late completion without mutating borrowed bytes", async () => {
+  for (const timing of ["before", "during"]) {
+    const f = fixture("n", Buffer.from([9])),
+      staging = stageFactory();
+    const returned = new Uint8Array([9]);
+    let reads = 0,
+      start,
+      finish;
+    const started = new Promise((resolve) => {
+      start = resolve;
+    });
+    const delayed = new Promise((resolve) => {
+      finish = resolve;
+    });
+    const output = await stageArchiveRecord(
+      source(f.raw),
+      f.record,
+      options(async () => {
+        const stage = await staging.createStage();
+        return {
+          ...stage,
+          async finalize() {
+            const file = await stage.finalize();
+            return {
+              ...file,
+              readAt() {
+                reads++;
+                start();
+                return delayed;
+              },
+            };
+          },
+        };
+      }),
+    );
+    const pending = output.readAt(0, 1);
+    const rejected = assert.rejects(pending, /ARCHIVE_STREAM_DISPOSED/);
+    if (timing === "during") await started;
+    await output.dispose();
+    finish(returned);
+    await rejected;
+    assert.equal(reads, timing === "before" ? 0 : 1);
+    assert.equal(staging.state.disposed, 1);
+    assert.deepEqual(returned, new Uint8Array([9]));
+  }
+});

@@ -206,24 +206,31 @@ export async function decodeArchiveRecord(source, record, { verifyMd5, signal } 
     blocks = [{ position: 0, encoded: encodedSize, decoded: decodedSize }];
   }
   const output = new Uint8Array(decodedSize);
-  let destination = 0;
-  for (const [index, block] of blocks.entries()) {
-    const bytes = await read(block.position, block.encoded);
-    if (isBlte) await verify(bytes, block.checksum, { kind: "encoded block", index });
-    const mode = isBlte ? String.fromCharCode(bytes[0]).toLowerCase() : encoding;
-    // 拒绝 BLTE 中的小写模式：原生解码器仅接受 N 和 Z。
-    // Reject lowercase modes in BLTE: native decoder accepts only N and Z.
-    if (isBlte && bytes[0] !== 78 && bytes[0] !== 90)
-      throw new Error("Unsupported BLTE block mode");
-    const payload = isBlte ? bytes.subarray(1) : bytes;
-    if (mode === "n") {
-      if (payload.length !== block.decoded) throw new Error("Raw length mismatch");
-      output.set(payload, destination);
-    } else {
-      await inflateInto(payload, output, destination, block.decoded, signal);
+  try {
+    let destination = 0;
+    for (const [index, block] of blocks.entries()) {
+      const bytes = await read(block.position, block.encoded);
+      if (isBlte) await verify(bytes, block.checksum, { kind: "encoded block", index });
+      const mode = isBlte ? String.fromCharCode(bytes[0]).toLowerCase() : encoding;
+      // 拒绝 BLTE 中的小写模式：原生解码器仅接受 N 和 Z。
+      // Reject lowercase modes in BLTE: native decoder accepts only N and Z.
+      if (isBlte && bytes[0] !== 78 && bytes[0] !== 90)
+        throw new Error("Unsupported BLTE block mode");
+      const payload = isBlte ? bytes.subarray(1) : bytes;
+      if (mode === "n") {
+        if (payload.length !== block.decoded) throw new Error("Raw length mismatch");
+        output.set(payload, destination);
+      } else {
+        await inflateInto(payload, output, destination, block.decoded, signal);
+      }
+      destination += block.decoded;
     }
-    destination += block.decoded;
+    await verify(output, ckey, { kind: "decoded content" });
+    return output;
+  } catch (error) {
+    // 未通过完整校验的自有输出必须擦除；不修改可能借用的来源读取视图。
+    // Wipe owned output that did not pass complete verification; leave borrowed source views untouched.
+    output.fill(0);
+    throw error;
   }
-  await verify(output, ckey, { kind: "decoded content" });
-  return output;
 }
