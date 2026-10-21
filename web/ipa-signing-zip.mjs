@@ -83,6 +83,7 @@ export async function inspectUnsignedSigningArchive(blob, { signal } = {}) {
 
 export async function createSignedSigningArchive(entries, { signal } = {}) {
   const parts = [];
+  let pendingPayload;
   try {
     requireValue(Array.isArray(entries) && entries.length > 0 && entries.length <= 20000);
     const snapshot = entries.map(({ path, size, mode, blob }) => {
@@ -100,7 +101,18 @@ export async function createSignedSigningArchive(entries, { signal } = {}) {
         async *chunks() {
           for (let offset = 0; offset < entry.size; offset += 65536) {
             signal?.throwIfAborted();
-            yield new Uint8Array(await entry.blob.slice(offset, offset + 65536).arrayBuffer());
+            const source = entry.blob.slice(offset, offset + 65536);
+            const bytes = new Uint8Array(await source.arrayBuffer());
+            requireValue(
+              source.size === Math.min(65536, entry.size - offset) && bytes.length === source.size,
+            );
+            requireValue(!pendingPayload);
+            pendingPayload = { bytes, source };
+            try {
+              yield bytes;
+            } finally {
+              pendingPayload = undefined;
+            }
           }
         },
       })),
@@ -108,14 +120,22 @@ export async function createSignedSigningArchive(entries, { signal } = {}) {
         async write(bytes) {
           total += bytes.length;
           if (total > IPA_SIGNING_LIMITS.ipaBytes) throw signingError("SIGNING_SIZE_LIMIT");
-          // Blob 快照不保留可变 WASM 缓冲区。
-          // Blob snapshots never retain mutable WASM buffers.
-          parts.push(new Blob([bytes]));
+          // 仅精确匹配当前 CRC 块时复用不可变切片；头和描述符仍独立快照。
+          // Reuse an immutable slice only for the exact current CRC chunk; headers/descriptors remain independent snapshots.
+          const payload = pendingPayload;
+          pendingPayload = undefined;
+          if (payload) {
+            requireValue(payload.bytes === bytes);
+            parts.push(payload.source);
+          } else {
+            parts.push(new Blob([bytes]));
+          }
         },
         async close() {
           closed = true;
         },
         async abort() {
+          pendingPayload = undefined;
           parts.length = 0;
         },
       },
@@ -128,6 +148,7 @@ export async function createSignedSigningArchive(entries, { signal } = {}) {
     signal?.throwIfAborted();
     return blob;
   } catch {
+    pendingPayload = undefined;
     parts.length = 0;
     signal?.throwIfAborted();
     throw signingError("SIGNING_OUTPUT_INVALID");

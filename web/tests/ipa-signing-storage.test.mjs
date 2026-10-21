@@ -260,3 +260,119 @@ test("custom mount remaps app root, reads in bounded slices and accepts signed W
   assert.equal(unmounted, true);
   assert.throws(() => mount.collectEntries(), /SIGNING_CLOSED/);
 });
+
+test("signing ZIP reuses only immutable payload slices and matches the canonical byte writer", async () => {
+  const { writeZip } = await import("../zip-writer.mjs");
+  const { validateStagedZip } = await import("../staged-zip-validator.mjs");
+  const { fileSource } = await import("../preflight.mjs");
+  const files = [
+    ...entries().filter((file) => !file.path.endsWith("/resource")),
+    entry("empty", new Uint8Array()),
+    entry(
+      "resource",
+      Uint8Array.from({ length: 65543 }, (_, i) => i & 255),
+    ),
+  ];
+  const baselineParts = [];
+  await writeZip(
+    files.map((file) => ({
+      ...file,
+      async *chunks() {
+        for (let offset = 0; offset < file.size; offset += 65536)
+          yield new Uint8Array(await file.blob.slice(offset, offset + 65536).arrayBuffer());
+      },
+    })),
+    {
+      async write(bytes) {
+        baselineParts.push(new Blob([bytes]));
+      },
+      async close() {},
+      async abort() {
+        baselineParts.length = 0;
+      },
+    },
+  );
+  const baseline = new Blob(baselineParts);
+  const NativeBlob = globalThis.Blob,
+    originalSlice = NativeBlob.prototype.slice,
+    originalRead = NativeBlob.prototype.arrayBuffer;
+  const readBuffers = new WeakSet(),
+    sourceSlices = new WeakSet();
+  let payloadRecopies = 0,
+    metadataSnapshots = 0,
+    finalParts;
+  let output;
+  try {
+    NativeBlob.prototype.slice = function (...args) {
+      const slice = originalSlice.apply(this, args);
+      sourceSlices.add(slice);
+      return slice;
+    };
+    NativeBlob.prototype.arrayBuffer = async function () {
+      const buffer = await originalRead.call(this);
+      readBuffers.add(buffer);
+      return buffer;
+    };
+    globalThis.Blob = new Proxy(NativeBlob, {
+      construct(target, args) {
+        const parts = args[0] ?? [];
+        if (args[1]?.type === "application/octet-stream") finalParts = [...parts];
+        if (parts.length === 1 && ArrayBuffer.isView(parts[0])) {
+          if (readBuffers.has(parts[0].buffer)) payloadRecopies++;
+          else metadataSnapshots++;
+        }
+        return Reflect.construct(target, args, target);
+      },
+    });
+    output = await createSignedSigningArchive(files);
+    assert.equal(payloadRecopies, 0);
+    assert.equal(metadataSnapshots, files.length * 3 + 1);
+    assert.equal(finalParts.filter((part) => sourceSlices.has(part)).length, 4);
+    assert.equal(
+      finalParts.filter((part) => sourceSlices.has(part)).reduce((sum, part) => sum + part.size, 0),
+      files.reduce((sum, file) => sum + file.size, 0),
+    );
+  } finally {
+    globalThis.Blob = NativeBlob;
+    NativeBlob.prototype.slice = originalSlice;
+    NativeBlob.prototype.arrayBuffer = originalRead;
+  }
+  assert.deepEqual(await output.arrayBuffer(), await baseline.arrayBuffer());
+  const receipt = await validateStagedZip(fileSource(output), files, {
+    archiveFormat: "zip32",
+    maxOutputBytes: 512 * 1024 * 1024,
+  });
+  assert.equal(receipt.valid, true);
+  assert.equal(receipt.entries, files.length);
+});
+
+test("signing ZIP rejects interrupted or inconsistent source reads without stale slice reuse", async () => {
+  const originalRead = Blob.prototype.arrayBuffer;
+  for (const failure of ["throw", "short", "different", "abort"]) {
+    const controller = new AbortController();
+    let reads = 0;
+    try {
+      Blob.prototype.arrayBuffer = async function () {
+        const bytes = await originalRead.call(this);
+        if (++reads === 2) {
+          if (failure === "throw") throw Error("synthetic read failure");
+          if (failure === "short") return bytes.slice(1);
+          if (failure === "different") {
+            new Uint8Array(bytes)[0] ^= 1;
+            return bytes;
+          }
+          controller.abort();
+        }
+        return bytes;
+      };
+      await assert.rejects(
+        createSignedSigningArchive(entries(), { signal: controller.signal }),
+        failure === "abort" ? { name: "AbortError" } : /SIGNING_OUTPUT_INVALID/,
+      );
+    } finally {
+      Blob.prototype.arrayBuffer = originalRead;
+    }
+  }
+  const output = await createSignedSigningArchive(entries());
+  assert.equal((await inspectUnsignedSigningArchive(output)).entries.length, 3);
+});
