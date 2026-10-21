@@ -226,6 +226,17 @@ test("custom mount remaps app root, reads in bounded slices and accepts signed W
     new Uint8Array(await output.find((e) => e.path === root + "Test").blob.arrayBuffer())[4],
     255,
   );
+  const replacement = app.node_ops.mknod(app, "Test.archo.0", 0o100644);
+  replacement.stream_ops.write({ node: replacement }, new Int8Array([4, 5, 6]), 0, 3, 0);
+  assert.equal(replacement.node_ops.getattr(replacement).mode & 0o777, 0o644);
+  app.node_ops.unlink(app, "Test");
+  replacement.node_ops.rename(replacement, app, "Test");
+  assert.equal(replacement.node_ops.getattr(replacement).mode & 0o777, 0o755);
+  assert.equal(mount.collectEntries().find((e) => e.path === root + "Test").mode, 0o755);
+  assert.equal(
+    new Uint8Array(await output.find((e) => e.path === root + "Test").blob.arrayBuffer())[4],
+    255,
+  );
   mount.dispose();
   assert.equal(unmounted, true);
   assert.throws(() => mount.collectEntries(), /SIGNING_CLOSED/);

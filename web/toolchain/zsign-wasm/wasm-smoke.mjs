@@ -3,6 +3,7 @@
 // 不使用真实凭据，不签名应用；此检查不证明浏览器或设备兼容性。
 // No real credentials or app signing; this check does not establish browser or device compatibility.
 import assert from "node:assert/strict";
+import { mountSigningArchive } from "../../ipa-signing-mount.mjs";
 import process from "node:process";
 import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
@@ -18,6 +19,98 @@ async function checkedFile(name) {
   const bytes = await readFile(url);
   assert.equal(bytes.length, info.size);
   return bytes;
+}
+// 合成 Blob 仅为 Node 提供同步切片读取；实际浏览器使用 FileReaderSync。
+// Synthetic Blobs provide synchronous slice reads in Node; the browser uses FileReaderSync.
+class SyntheticBlob extends Blob {
+  constructor(bytes) {
+    super([bytes]);
+    this.bytes = bytes.slice();
+  }
+  slice(start = 0, end = this.size) {
+    return new SyntheticBlob(this.bytes.slice(start, end));
+  }
+}
+async function checkCustomMount(module) {
+  const appRoot = "Payload/Synthetic.app/",
+    root = "/work/Payload/App.app/";
+  const executable = new Uint8Array([0xcf, 0xfa, 0xed, 0xfe, 1, 2, 3, 4]);
+  const resource = new Uint8Array(65539).fill(19);
+  const manifest = [
+    { path: appRoot + "Info.plist", mode: 0o644, bytes: new Uint8Array([1, 2, 3]) },
+    { path: appRoot + "Synthetic", mode: 0o755, bytes: executable },
+    { path: appRoot + "resource", mode: 0o644, bytes: resource },
+  ];
+  let largestRead = 0;
+  const mount = mountSigningArchive(
+    module,
+    {
+      appRoot,
+      entries: manifest.map(({ path, mode, bytes }) => ({
+        path,
+        mode,
+        size: bytes.length,
+        blob: new SyntheticBlob(bytes),
+      })),
+    },
+    {
+      readBlobSync(blob) {
+        largestRead = Math.max(largestRead, blob.size);
+        return blob.bytes;
+      },
+    },
+  );
+  const FS = module.FS;
+  try {
+    assert.deepEqual(
+      FS.readdir(root).sort(),
+      [".", "..", "Info.plist", "Synthetic", "resource"].sort(),
+    );
+    assert.equal(FS.stat(root + "Synthetic").mode & 0o777, 0o755);
+    assert.deepEqual(FS.readFile(root + "resource"), resource);
+    assert.ok(largestRead <= 65536);
+    assert.throws(() => FS.open(root + "resource", "w"));
+    const stream = FS.open(root + "Info.plist", "w");
+    try {
+      assert.equal(FS.stat(root + "Info.plist").size, 0);
+      assert.equal(FS.write(stream, new Int8Array([9, 8]), 0, 2, 0), 2);
+    } finally {
+      FS.close(stream);
+    }
+    assert.deepEqual(FS.readFile(root + "Info.plist"), new Uint8Array([9, 8]));
+    FS.mkdir(root + "_CodeSignature");
+    FS.writeFile(root + "_CodeSignature/CodeResources", new Uint8Array([7]));
+    for (const suffix of [".archo.0", ".fato"]) {
+      FS.writeFile(root + "Synthetic" + suffix, executable);
+      assert.equal(FS.stat(root + "Synthetic" + suffix).mode & 0o777, 0o644);
+      FS.unlink(root + "Synthetic");
+      FS.rename(root + "Synthetic" + suffix, root + "Synthetic");
+      assert.equal(FS.stat(root + "Synthetic").mode & 0o777, 0o755);
+      assert.deepEqual(FS.readFile(root + "Synthetic"), executable);
+      assert.throws(() => FS.stat(root + "Synthetic" + suffix));
+    }
+    const snapshot = mount.collectEntries();
+    FS.writeFile(root + "Synthetic", new Uint8Array([4, 5, 6]));
+    assert.deepEqual(
+      new Uint8Array(
+        await snapshot.find((e) => e.path === appRoot + "Synthetic").blob.arrayBuffer(),
+      ),
+      executable,
+    );
+    assert.equal(snapshot.find((e) => e.path === appRoot + "Synthetic").mode, 0o755);
+    assert.deepEqual(
+      new Uint8Array(
+        await snapshot.find((e) => e.path === appRoot + "resource").blob.arrayBuffer(),
+      ),
+      resource,
+    );
+    assert.deepEqual(executable, new Uint8Array([0xcf, 0xfa, 0xed, 0xfe, 1, 2, 3, 4]));
+    FS.unlink(root + "_CodeSignature/CodeResources");
+    FS.rmdir(root + "_CodeSignature");
+  } finally {
+    mount.dispose();
+    FS.rmdir("/work");
+  }
 }
 async function runWorker() {
   assert.ok(Number(process.versions.node.split(".")[0]) >= 24, "Node 24 or newer required");
@@ -98,7 +191,9 @@ async function runWorker() {
     assert.deepEqual(module.FS.readFile("/smoke/bytes"), new Uint8Array([1, 2, 3]));
     module.FS.unlink("/smoke/bytes");
     module.FS.rmdir("/smoke");
+    await checkCustomMount(module);
     return {
+      customSigningMountVerified: true,
       wasmInitializationVerified: true,
       staticProvidersAndEntropyVerified: true,
       browserExecutionVerified: false,

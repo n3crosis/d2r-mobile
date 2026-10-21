@@ -192,12 +192,13 @@ export function createSigningFileStore(archive, { readBlobSync } = {}) {
           (from === to + ".fato" || from.startsWith(to + ".archo.")) &&
           files.has(from),
       );
-      if (from === to) return;
       const file = files.get(from);
       requireValue(file.size <= cap(to));
       drop(files.get(to));
       files.delete(from);
-      files.set(to, { ...file, path: to, mode: original.get(to)?.mode ?? file.mode });
+      const mode = original.get(to)?.mode ?? file.mode;
+      files.set(to, { ...file, path: to, mode });
+      return mode;
     },
     collectEntries() {
       check();
