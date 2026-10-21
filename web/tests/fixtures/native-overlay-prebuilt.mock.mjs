@@ -25,6 +25,9 @@ const files = () => ({
 });
 mock.module("../../casc-overlay-writer.mjs", {
   namedExports: {
+    async prepareCascOverlayManifest() {
+      return Object.freeze({});
+    },
     async writeCascOverlay({ replacements }) {
       calls.push(["bc", replacements.map((r) => Array.from(r.bytes))]);
       return { files: files() };
@@ -127,4 +130,30 @@ test("archive mismatch and payload-bearing input fail closed", async () => {
     generateNativeOverlay({ ...options(), prebuiltPack: { ...external(), source: {} } }),
     /OVERLAY_PREBUILT_METADATA/,
   );
+});
+
+test("recycle failure wipes recipe buffers before releasing them", async () => {
+  const opts = options();
+  const run = opts.worker.run;
+  let returned;
+  opts.worker.run = async () => {
+    returned = await run();
+    const id = Object.keys(returned.files)[0];
+    returned.files[id] = returned.files[id].buffer;
+    return returned;
+  };
+  await assert.rejects(
+    generateNativeOverlay({
+      ...opts,
+      recycleWorker: async () => {
+        throw new Error("restart failure");
+      },
+    }),
+    /OVERLAY_RECIPE_FAILED/,
+  );
+  for (const value of Object.values(returned.files)) {
+    const bytes = value instanceof ArrayBuffer ? new Uint8Array(value) : value;
+    assert.ok(bytes.every((byte) => byte === 0));
+  }
+  for (const value of Object.values(opts.generated)) assert.deepEqual(value, new Uint8Array([8]));
 });

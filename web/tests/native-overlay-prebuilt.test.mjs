@@ -18,5 +18,5 @@ test("native overlay optional prebuilt assembly (isolated module mocks)", () => 
   );
   assert.equal(result.error, undefined);
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  assert.match(result.stdout, /tests 2/);
+  assert.match(result.stdout, /tests 3/);
 });

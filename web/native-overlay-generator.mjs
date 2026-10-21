@@ -245,11 +245,11 @@ export async function generateNativeOverlay({
     bundle.manifest = "";
     if (payload.length > NATIVE_OVERLAY_LIMITS.payload) fail("OVERLAY_INPUT_LIMIT");
     const result = await worker.run("overlay-recipe", payload, {});
-    await recycleWorker?.({ signal });
     for (const value of Object.values(result?.files ?? {})) {
       const data = bytes(value);
       if (data) owned.push(data);
     }
+    await recycleWorker?.({ signal });
     signal?.throwIfAborted();
     if (
       !Array.isArray(result?.variants) ||
