@@ -1,3 +1,4 @@
+// 按固定源版本移植 patch_nso.py 的重定位代码块；仍由 Capstone 解码。
 // Source-pinned ports of patch_nso.py's relocation blocks. Capstone remains the decoder.
 import { check, put32 } from "./binary.mjs";
 import {
@@ -291,6 +292,7 @@ export function createRelocations(context, bindings, keyIndex) {
       words.push(word);
     }
     for (const word of words) emit(word);
+    // 顺序执行的出口必须是第零个桩；外部出口排在其后。
     // Sequential fall-out must be stub zero; external exits follow it.
     for (const target of [hi, ...targets]) {
       emit(STRX(s, t));

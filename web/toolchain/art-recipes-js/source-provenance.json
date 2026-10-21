@@ -3,7 +3,7 @@
   "sources": {
     "dm/ios/tools/gen_hud_v4.py": "d190a279fb63ec0a0da913e3661713917a4a0ad9d7a84307865e73d0fd1583a7",
     "web/toolchain/asset-generation-spike/src/core.py": "9d570bcc17ccf2ae460193c1fc093010ae22031ccf0c52e63a90a43bcdce9b1e",
-    "web/toolchain/art-kernels/kernels.mjs": "6bedfcf5e9605c90232c3896370538a0a5f994d3688a4f9bdb05de4dd6daef0f",
+    "web/toolchain/art-kernels/kernels.mjs": "87ec9ca1f11fb7ff6e4ae61fdec92e17dd7367b98eba80ad8264fc4c8d2b7b9c",
     "dm/ios/tools/native_art/generate.py": "7a20f945f860a55a756fde685c1ddc4f7a92877b6f46da891437e634780c1992",
     "web/toolchain/asset-generation-spike/src/native_art.py": "159462b6c3c094e46f3fbde40608b33056c65595b6daa419cb9497a36f6fbeb2",
     "dm/ios/tools/gen_map_goal_art.py": "74f80d518c91c2e4b0a9a685da1cddb5ee7623a350ce17603b0f03c29a72126c",

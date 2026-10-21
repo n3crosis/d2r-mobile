@@ -42,6 +42,7 @@ mock.module("../../production-profile.mjs", {
       if (state.setupFailure) throw new Error("SETUP_FAILED");
       return {
         contentMode: "synthetic",
+        shell: { contract: {} },
         trustedShell: { trustedRecipe: { requiredPaths: [], product: "synthetic" } },
         close() {},
       };

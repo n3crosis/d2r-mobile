@@ -1,8 +1,11 @@
 import createModule from "./dist/texture.mjs";
 import { createTextureDecoder } from "./browser-texture.mjs";
 const decoder = createTextureDecoder(createModule);
+// 请求包含 id、operation（layout／decode／decodeV61）、descriptor、source 和 options。
 // Request: {id, operation: 'layout'|'decode'|'decodeV61', descriptor, source, options}.
+// 响应为成功对象 {id, ok:true, result}，或失败对象 {id, ok:false, error:{name,code,message}}。
 // Response: {id, ok:true, result} or {id, ok:false, error:{name,code,message}}.
+// 转移 source.buffer 以避免复制大型输入；结果拥有自己的字节。
 // Transfer source.buffer to avoid copying large inputs. Results own their bytes.
 let queue = Promise.resolve();
 self.onmessage = ({ data }) => {

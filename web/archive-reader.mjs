@@ -10,6 +10,8 @@
 import { MAX_READ_BYTES, readRange } from "./preflight.mjs";
 
 export const ARCHIVE_LIMITS = Object.freeze({
+  // 所选着色器包可能是解码后超过 53 MiB 的单条 zlib 记录。
+  // 着色器读取器已将每个请求包限制为 256 MiB。
   // Selected shader packs can be single zlib records above 53 MiB decoded.
   // The shader reader already limits each requested pack to 256 MiB.
   encodedRecord: 256 * 1024 * 1024,

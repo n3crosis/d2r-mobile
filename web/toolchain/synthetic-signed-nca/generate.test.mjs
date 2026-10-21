@@ -67,6 +67,7 @@ test("generator produces internally coherent authored fixtures, no persisted pri
     });
     assert.equal(index.files.length, 1);
     assert.equal(index.files[0].path, "hello.txt");
+    // 对所有 IVFC 块分别按父层校验，零填充部分也包括在内。
     // All IVFC blocks independently checked against their parent, including zero padding.
     const nca = read("program.nca"),
       fs = nca.subarray(0x600, 0x800),

@@ -320,7 +320,10 @@ static int open_authenticated_section(const char *path, int mode, int warlock_me
         return rc;
     uint32_t valid;
     memcpy(&valid, public_info + 20, 4);
-    /* The known unlock-only Warlock Meta may be repacked without a retail
+    /* 已知仅用于解锁的 Warlock Meta 可能经过重新打包而不带零售版签名。
+     * 调用方会计算整个 NCA 的摘要并检查其 CNMT 内容。
+     * 绝不可将此例外扩展到可执行内容或 RomFS 内容。
+     * The known unlock-only Warlock Meta may be repacked without a retail
      * signature. Its caller measures the whole NCA and checks its CNMT content.
      * Never extend this exception to executable or RomFS content. */
     int unsigned_warlock_meta = warlock_meta && mode == 0;

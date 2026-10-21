@@ -137,11 +137,13 @@ function table(raw) {
   const values = byteKey(raw.subarray(est, est + estSize)).split("\0");
   const specs = [];
   if (raw[7] === 0) {
+    // 原始合成夹具使用序号索引。
     // The original synthetic fixture uses ordinal indexes.
     values.forEach((value, index) => {
       specs[index] = value;
     });
   } else {
+    // 零售版 TVFS 的 CFT 记录使用 EST 字符串表内的字节偏移。
     // Retail TVFS CFT records use byte offsets into the EST string table.
     let specOffset = 0;
     for (const value of values) {

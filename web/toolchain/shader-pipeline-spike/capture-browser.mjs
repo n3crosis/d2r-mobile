@@ -1,3 +1,4 @@
+// 合成输入的真实工作线程集成，使用独立的原始原生命令行参考结果。
 // Synthetic real-worker integration, independent original native CLI oracle.
 import assert from "node:assert/strict";
 import { readFile, writeFile, mkdir, readdir, stat } from "node:fs/promises";
@@ -47,7 +48,7 @@ if (command === "prepare") {
         if ((await stat(join(directory, "_framework/dotnet.js"))).isFile())
           candidates.push(directory);
       } catch {
-        /* Not published runtime. */
+        /* 不是发布的运行时。Not published runtime. */
       }
     }
     for (const e of entries)
@@ -70,6 +71,7 @@ if (command === "prepare") {
     oracles.set(key, { msl, spirv, resources, reflection });
   }
   const sourceDigest = aggregate.digest("hex").slice(0, 16);
+  // 合成预期配方来自独立的原生夹具输出，而非浏览器输出；它并不构成对真实发布版壳的信任断言。
   // Synthetic expected recipe originates from independent native fixture output,
   // never from browser output. It is not a real release-shell trust assertion.
   const chain = "000000000001",
@@ -143,6 +145,7 @@ if (command === "prepare") {
           translatorWorkerUrl: "/translator/worker.mjs",
           crossWorkerUrl: "/web/toolchain/spirv-cross-spike/wwwroot/worker.mjs",
         };
+        // 同时测试实际 C# 桥接，不仅测试适配器侧拒绝。
         // Exercise the actual C# bridge too, not only adapter-side rejection.
         const rawWorker = new Worker(options.translatorWorkerUrl, { type: "module" });
         let rawId = 0;

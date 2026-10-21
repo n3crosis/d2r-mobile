@@ -1,4 +1,5 @@
 import { validateEncodeRequest } from "./browser-texture-encoder.mjs";
+/** 同时仅处理一个请求；取消会终止两个编解码运行时，后续调用重新启动它们。 */
 /** One in-flight request. Cancellation terminates both codec runtimes; later calls restart. */
 export class TextureEncodeClient {
   #worker;
@@ -36,6 +37,7 @@ export class TextureEncodeClient {
       !(input.buffer instanceof ArrayBuffer)
     )
       return Promise.reject(new Error("Invalid encoder input bytes"));
+    // 使用自有副本，确保传输、取消或任务失败时用户输入保持不变。
     // Own copies keep user input intact on transfer, cancellation or failed jobs.
     const payload = {
       width: request.width,

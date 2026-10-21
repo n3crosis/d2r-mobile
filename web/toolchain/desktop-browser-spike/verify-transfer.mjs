@@ -1,3 +1,4 @@
+// 仅用于 CI：将确切的公开运行时目录树绑定到构建作业的受信摘要。
 // CI only: bind the exact public runtime tree to the build job's trusted digest.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";

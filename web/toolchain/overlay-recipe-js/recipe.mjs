@@ -1,4 +1,5 @@
-/** Source-pinned native overlay orchestration. No Python, filesystem, or fetch. */
+/** 固定源版本的原生覆盖层编排；不使用 Python、文件系统或 fetch。
+ * Source-pinned native overlay orchestration. No Python, filesystem, or fetch. */
 import closeImage from "./close-image.json" with { type: "json" };
 import {
   createTouchLayouts,
@@ -180,7 +181,8 @@ export function touchPath(path) {
     }
   return null;
 }
-/** Preserve insertion order and both original controller/shared layout-set gates. */
+/** 保留插入顺序及原始控制器/共享布局集的两项门禁。
+ * Preserve insertion order and both original controller/shared layout-set gates. */
 export function relocateLayouts(
   replacements,
   { manifestPaths, original, readAsset, pad, padRoot },
@@ -344,6 +346,7 @@ export function createOverlayRecipe({ png, md5, sha1 } = {}) {
       const hud = png.decodeRgba(generated.get("NativeHUD/v4/base.png"));
       requireValue(hud.width * hud.height <= 4194304, "OVERLAY_HUD_IMAGE_LIMIT");
       const rows = [];
+      // 原生 str.splitlines 会识别这些控制分隔符。
       // Native str.splitlines recognizes these control separators.
       // eslint-disable-next-line no-control-regex
       const lines = input.manifest.split(/\r\n|[\n\r\v\f\u001c-\u001e\u0085\u2028\u2029]/);

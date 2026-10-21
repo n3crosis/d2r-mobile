@@ -1,4 +1,5 @@
-// Experimental isolated wrapper. Not imported by the production dispatcher.
+// 供生产资源运行时使用的隔离、有界字体光栅化封装。
+// Isolated, bounded font rasterizer wrapper used by the production asset runtime.
 const FONT_LIMIT = 16 * 1024 * 1024,
   PIXELS = 4 * 1024 * 1024,
   SIDE = 8192;

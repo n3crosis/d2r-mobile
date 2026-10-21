@@ -97,6 +97,7 @@ try {
     ...(process.env.CHROMIUM_EXECUTABLE ? { executablePath: process.env.CHROMIUM_EXECUTABLE } : {}),
   });
   const context = await browser.newContext({ serviceWorkers: "block" });
+  // 不安装路由或拦截；先验证两个哨兵端点均可访问。
   // No routing/interception is installed. Prove both sentinels are reachable first.
   const control = await context.newPage();
   await control.goto(`${origin}/control`);

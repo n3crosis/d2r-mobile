@@ -1,3 +1,4 @@
+// 仅用于构建打包；不重写运行时源码，也不进行全局网络拦截。
 // Build-only packaging. No runtime source rewriting or global network interception.
 import { Buffer } from "node:buffer";
 import { readFile, writeFile, mkdir, readdir, copyFile } from "node:fs/promises";

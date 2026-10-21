@@ -1,3 +1,4 @@
+// 仅用于构建的流程；复用现有 CI 的 emsdk 4.0.20，不创建新 CI 作业。
 // Build-only recipe. Uses the existing CI emsdk 4.0.20; creates no new CI job.
 import process from "node:process";
 import { execFileSync } from "node:child_process";

@@ -13,6 +13,8 @@ const contentKey = (record) => `${record.sha256}:${record.bytes}`;
 const validSize = (value, cap = maximumFile) =>
   Number.isSafeInteger(value) && value > 0 && value <= cap;
 
+// 传输与逻辑路径清单分离：工作线程清单和相对路径保持不变，
+// 相同的公开字节只传输一次。
 // Transport is separate from the logical path inventory: worker manifests and
 // relative paths stay unchanged, while identical public bytes travel only once.
 export function createRuntimeTransport(contents, { assets } = {}) {

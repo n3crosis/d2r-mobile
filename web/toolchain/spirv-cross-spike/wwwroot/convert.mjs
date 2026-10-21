@@ -1,3 +1,4 @@
+// 浏览器/Node 字节边界；不使用外部进程、不上传数据，也不包含游戏资源。
 // Browser/Node byte boundary. No external processes, uploads or game assets.
 import { replayFields } from "./replay-reflection.mjs";
 import { MSL_ARGUMENTS, CROSS_COMMIT, validateSpirv } from "./spirv-contract.mjs";
@@ -7,6 +8,7 @@ async function sha256(bytes) {
     .map((x) => x.toString(16).padStart(2, "0"))
     .join("");
 }
+// 每次请求使用新实例，隔离全局命令行状态与虚拟文件。
 // A fresh instance isolates global CLI state and virtual files between requests.
 async function invoke(factory, input, args, output) {
   const errors = [];
@@ -27,7 +29,7 @@ async function invoke(factory, input, args, output) {
       try {
         module.FS.unlink(path);
       } catch {
-        /* May not exist after compiler failure. */
+        /* 编译器失败后文件可能不存在。May not exist after compiler failure. */
       }
     }
   }
@@ -36,6 +38,7 @@ export async function convertSpirv(input, { factory, replayContext } = {}) {
   const bytes = validateSpirv(input);
   factory ??= (await import("./spirv-cross.mjs")).default;
   const msl = await invoke(factory, bytes, MSL_ARGUMENTS, "/output.metal");
+  // 这是上游 SPIR-V 反射信息，并非游戏回放 .json 的结构。
   // This is upstream SPIR-V reflection, NOT the game's replay .json schema.
   const reflectionText = await invoke(factory, bytes, ["--reflect", "json"], "/reflection.json");
   const reflection = JSON.parse(reflectionText);

@@ -175,6 +175,8 @@ async function selectedManifest(romfs, wanted, signal) {
 }
 const manifestSelections = new WeakMap();
 
+// 只读取一次已认证的源清单，以此解析两种覆盖层变体。
+// 不透明的选择结果仍绑定到确切的 RomFS 对象和请求路径。
 // Resolve both overlay variants against one read of the authenticated source manifest.
 // The opaque selection remains bound to the exact RomFS object and requested paths.
 export async function prepareCascOverlayManifest({ romfs, paths, signal } = {}) {

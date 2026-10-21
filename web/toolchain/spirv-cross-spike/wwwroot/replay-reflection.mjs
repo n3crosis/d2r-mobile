@@ -1,3 +1,6 @@
+// 直接按语义移植 dm/gfx/tools/dmsh_build.py 的反射辅助函数。
+// 仅根据 MSL 与转换器提供的资源信息推导字段；不会虚构 chain/source/control 键，
+// 也不会将 MSL 编译成 metallib。
 // Direct semantic port of dm/gfx/tools/dmsh_build.py reflection helpers.
 // This only derives fields from MSL and translator resource facts. It never
 // invents chain/source/control keys or turns MSL into a compiled metallib.

@@ -1,3 +1,5 @@
+// 经验证的 3.3.94012 图集使用浏览器编解码器编码后得到这些 PNG 摘要。
+// 每个替代版本均绑定到其固定 PNG 摘要；不捆绑任何图像字节。
 // The verified 3.3.94012 atlases encode to these PNG hashes with the browser codec.
 // Each alternate is tied to its frozen PNG digest; no image bytes are bundled.
 const browserDigests = Object.freeze({

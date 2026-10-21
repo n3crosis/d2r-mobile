@@ -1,5 +1,6 @@
 import process from "node:process";
 import { Buffer } from "node:buffer";
+// 仅用于构建：复用现有 CI 的 emsdk 4.0.20，不新增 CI 作业。
 // Build-only: reuse the existing CI emsdk 4.0.20, never add a CI job.
 import { readFileSync, writeFileSync, mkdirSync, existsSync, copyFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -50,6 +51,8 @@ if (
 execFileSync("unzip", ["-oq", archive, "-d", vendor]);
 const source = join(vendor, pin.root);
 writeFileSync(join(source, "include/ftconfig.h"), config);
+// 流标志仅移除文件 I/O；所有光栅化模块、微调、整数运算与默认值
+// 均沿用固定版本 3.1.58 移植的原始列表。
 // The stream flag removes file I/O only. All rasterizer modules, hinting,
 // integer arithmetic and defaults are the pinned 3.1.58 port's unchanged list.
 const common = [

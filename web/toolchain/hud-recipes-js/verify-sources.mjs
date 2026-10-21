@@ -1,3 +1,4 @@
+// 仅用于打包门禁：保留全部现有源码与元数据校验。
 // Packaging gate only: preserve every existing source/metadata guard.
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";

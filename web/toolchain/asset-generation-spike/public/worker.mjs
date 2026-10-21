@@ -54,6 +54,7 @@ function postResult(id, result) {
   }
   self.postMessage({ id, ok: true, result }, transfers);
 }
+// 串行队列避免并发访问 Python 全局状态和重复初始化。
 // Serial queue avoids concurrent Python globals and double initialization.
 let queue = Promise.resolve();
 self.onmessage = ({ data }) => {

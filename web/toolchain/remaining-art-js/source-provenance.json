@@ -7,5 +7,5 @@
   "dm/ios/tools/gen_fe_rightpanel.py": "c68ea1e6d5c720eca576b298708cd637d8d2d898d192e34a92c41121a52db424",
   "web/toolchain/asset-generation-spike/src/remaining_art.py": "6ffce475275a2f8c8ff2a30b292af9bc286f415e1923273a96bf084d42020725",
   "web/toolchain/asset-generation-spike/src/mercenary.py": "a78d5f4937adabad03becfd25eac21b3eeae7deaeb5dffa51bd56ac4719b29f8",
-  "web/toolchain/art-kernels/kernels.mjs": "6bedfcf5e9605c90232c3896370538a0a5f994d3688a4f9bdb05de4dd6daef0f"
+  "web/toolchain/art-kernels/kernels.mjs": "87ec9ca1f11fb7ff6e4ae61fdec92e17dd7367b98eba80ad8264fc4c8d2b7b9c"
 }

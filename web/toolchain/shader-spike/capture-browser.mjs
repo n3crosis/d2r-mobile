@@ -1,3 +1,4 @@
+// 仅用于开发者 CI，不导入原生参考结果，也不以 Node 运行时替代浏览器。
 // Developer CI only. Never imports the native oracle or substitutes a Node runtime.
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
@@ -27,6 +28,7 @@ async function discover(directory, depth = 0) {
       assert.ok((await stat(join(directory, "synthetic-fixture.mjs"))).isFile());
       candidates.push(await realpath(directory));
     } catch {
+      /* 这不是可部署的完整资源包。 */
       /* Not a complete deployable bundle. */
     }
   }

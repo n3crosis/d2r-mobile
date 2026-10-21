@@ -38,6 +38,8 @@ async function initialize(data) {
   }
   if (total > 96 * 1024 * 1024) throw new Error("PROGRAM_ASSET_CAP");
   const native = await byteFactory(createNative, assets.get("capstone-lz4.wasm").buffer)();
+  // 捆绑的 JS 与规则依赖闭包在构建时固定源码摘要，并由准入工厂再次检查。
+  // 不交付 Python 加载器或夹具入口。
   // The bundled JS/rule closure is source-pinned at build time and checked again
   // by the admission factory. No Python loader or fixture route is shipped.
   context = { native, manifest: { sourceSha256: PROGRAM_REWRITER_SOURCE, cases: [] } };

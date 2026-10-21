@@ -1,3 +1,4 @@
+// 纯编译器契约；无需导入生成的 WASM 模块，可安全用于应用包。
 // Pure compiler contract; safe in the application bundle without generated WASM imports.
 export const MSL_ARGUMENTS = Object.freeze([
   "--msl",

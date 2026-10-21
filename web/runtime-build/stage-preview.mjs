@@ -8,6 +8,8 @@ const preview = new URL("../dist/", import.meta.url);
 const destination = new URL("runtime/", preview);
 const expected = process.env.EXPECTED_RUNTIME_MANIFEST_SHA256;
 const inventory = await verifyRuntimeInventory(source, expected, process.env.GITHUB_SHA || null);
+// 固定目标目录仅用于 Bun 生成的输出；不得复制任意目录树，
+// 仅暂存经过独立验证的清单条目。
 // The fixed destination belongs only to the generated Bun output. Do not copy
 // arbitrary trees; only independently verified manifest entries are staged.
 await rm(destination, { recursive: true, force: true });

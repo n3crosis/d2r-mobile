@@ -347,6 +347,9 @@ export function createExtractionEngine(
             (!header.fixedSignatureValid && (!warlock || ![1, 5].includes(header.contentType)))
           )
             diagnostic("CONTENT_AUTHENTICATION_FAILED");
+          // 这个仅用于解锁的小型附加内容可能带有重新打包的 NCA 头。
+          // 即使在快速模式下，也始终计算两个文件的摘要并将其绑定到各自的内容 ID；
+          // 基础游戏与更新的可执行内容头仍必须具有有效签名。
           // The small, unlock-only add-on can have repacked NCA headers. Always
           // measure both files and bind each digest to its content ID, even in
           // fast mode; executable base/update headers still require signatures.

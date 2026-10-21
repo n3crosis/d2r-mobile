@@ -1,4 +1,8 @@
-/** Handwritten port of the source-pinned native annotation/string pipeline.
+/** 按固定源版本手工移植原生注释与字符串处理流水线。
+ * 公开源码行为：不包含可选私有 oldnames.tsv/comments.tsv。
+ * readAsset/readReplacement 使用规范化小写 data/... 路径；
+ * 调用方在此处提供清单选定的资源字节前须先认证它们。
+ * Handwritten port of the source-pinned native annotation/string pipeline.
  * Public-source behavior: optional private oldnames.tsv/comments.tsv are absent.
  * readAsset/readReplacement use canonical lowercase data/... paths. The caller
  * authenticates manifest-selected asset bytes before exposing them here.
@@ -49,6 +53,7 @@ const pythonSort = (a, b) => {
   }
   return aa.length - bb.length;
 };
+// Python json.dumps(..., ensure_ascii=False)，使用默认的逗号与冒号空格。
 // Python json.dumps(..., ensure_ascii=False), default comma/colon spaces.
 const json = (v) => {
   if (Array.isArray(v)) return "[" + v.map(json).join(", ") + "]";
@@ -73,6 +78,8 @@ function readText(bytes, path) {
   return decoder.decode(bytes);
 }
 
+// csv.DictReader(..., delimiter='\t')：保留引号内的制表符、换行和双写引号。
+// 忽略空白记录，但不忽略含空字段的记录。
 // csv.DictReader(..., delimiter='\t'): preserve quoted tabs/newlines and doubled
 // quotes. Blank records are ignored, unlike records containing empty fields.
 function table(text) {
@@ -142,6 +149,7 @@ class Strings {
   load(name) {
     if (this.text.has(name)) return;
     const path = STR + name;
+    // 原生实现始终先读取并认证原始资源，再读取替换资源。
     // Native always reads/authenticates the original before reading a replacement.
     let text = readText(this.readAsset(path), path);
     const replacement = this.readReplacement(path);
@@ -535,6 +543,7 @@ function baseRule(t, s, code, name) {
   const weapon = t.weap.get(code),
     armor = t.armor.get(code);
   if (D.CLASS_MAGIC.includes(code)) parts.push(format(words.class_magic, ...t.classMagic(code)));
+  // Python 空字典为假值，而 JS 空对象不是。
   // Python empty dicts are false; JS empty objects are not.
   const v0 = D.VALUE_BASES[code],
     vb = v0 && Object.keys(v0).length ? v0 : D.WEAPON_VALUE[code];
@@ -629,7 +638,10 @@ function textboxTable(full, plain) {
   return tab;
 }
 
-/** All methods are async (sha1 may be synchronous or async). Asset reads remain
+/** 所有方法均为异步（sha1 可为同步或异步）。资源读取仍为同步：
+ * 有界工作线程已持有经过认证的源字节。返回的 Map 保留插入顺序。
+ * 附属文件使用无 BOM 的 UTF-8；字符串替换恰含一个 BOM，与原生 utf-8-sig 写入一致。
+ * All methods are async (sha1 may be synchronous or async). Asset reads remain
  * synchronous: the bounded worker already holds the authenticated source bytes.
  * Returned Maps are insertion ordered. Sidecars are UTF-8 without BOM; string
  * replacements have exactly one BOM, as native utf-8-sig writes do.
@@ -672,6 +684,7 @@ export function createAnnotations({ readAsset, readReplacement = () => undefined
       if (Object.keys(items).some((key) => DATA.touch.fileOnly.includes(key)))
         replacements.set(STR + name, encode(strings.text.get(name), true));
     }
+    // 原生附属文件校验的是原始资源，而非仅用于文件的替换内容。
     // Native sidecar validates original assets, never the file-only replacements.
     const originals = new Strings(readAsset, () => undefined);
     for (const name of Object.keys(DATA.touch.tables.zhCN))
@@ -753,6 +766,7 @@ export function createAnnotations({ readAsset, readReplacement = () => undefined
     for (const col of LANGS) {
       s.col = col;
       const st = { 旧译名: 0, 可变范围: ranges(s, excel) };
+      // 原生 comments() 即使缺少可选表也仍会读取 skills。
       // Native comments() still reads skills even when its optional table is absent.
       if (col === "zhCN")
         for (const key of s.keys("skills.json"))

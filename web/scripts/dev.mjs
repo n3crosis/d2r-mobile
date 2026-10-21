@@ -26,6 +26,7 @@ function scheduleRebuild() {
   clearTimeout(timer);
   timer = setTimeout(rebuild, 100);
 }
+// 不递归监视下载的工具链、node_modules 或构建输出。
 // Do not recursively watch downloaded toolchains, node_modules or build output.
 const watchers = [
   watch(`${root}/src`, { recursive: true }, scheduleRebuild),

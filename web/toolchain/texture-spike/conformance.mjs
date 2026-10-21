@@ -88,6 +88,7 @@ export async function conformance(factory, fixtures, moduleOptions) {
   sprite[23] = 0;
   header.setUint16(4, 31, true);
   rejects(() => decoder.decodeV61(sprite), -2);
+  // 强制堆增长超过初始 16 MiB，并使用独立的全零 BC3 参考结果。
   // Force growth beyond the initial 16 MiB heap, with an independent zero-BC3 oracle.
   const large = { ...d, flags: 0x10, width: 2049, height: 2049 };
   const zeros = new Uint8Array(decoder.layout(large).storageBytes);
@@ -103,6 +104,7 @@ export async function conformance(factory, fixtures, moduleOptions) {
     decoder.decode(redDesc, red).pixels.every((v, i) => v === [255, 0, 0, 255][i % 4]),
     "BC1 known-red oracle failed",
   );
+  // 每次畸形请求和堆增长后，有效输入仍须正常工作。
   // Valid input still works after every malformed request and heap growth.
   expect(decoder.layout(d).width === 16, "Decoder recovery failed");
   return { checks: checks + 4, fixtures: fixtures.length };

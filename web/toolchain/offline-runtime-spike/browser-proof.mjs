@@ -87,6 +87,7 @@ try {
   const probes = [`${origin}/probe/same`, `${foreign}/probe/cross`];
   browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ serviceWorkers: "block" });
+  // 不安装路由或拦截；先验证两个哨兵端点均可访问。
   // No routing/interception is installed. Prove both sentinels are reachable first.
   const control = await context.newPage();
   await control.goto(`${origin}/control`);
@@ -134,6 +135,7 @@ try {
       assert.equal(outcome.result.documentBlocked, 4);
       assert.equal(outcome.result.transferred, true);
       assert.equal(workers, 1);
+      // 等待浏览器异步资源操作完成；服务器收到请求才是决定性证据。
       // Let async browser resource work settle; server receipt is the decisive evidence.
       await page.waitForTimeout(250);
       assert.deepEqual(

@@ -41,6 +41,7 @@ const origin = `http://127.0.0.1:${server.address().port}`;
 const browser = await chromium.launch({ headless: true });
 try {
   const page = await browser.newPage();
+  // 运行时完全同源；绝不上传任何夹具或输出。
   // Runtime is entirely same-origin. No fixture or output is ever uploaded.
   await page.route("**/*", (route) =>
     route

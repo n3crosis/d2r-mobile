@@ -14,6 +14,8 @@ export function nativeArtAtlasDescriptor(bytes) {
     height = h.getUint32(12, true),
     frameWidth = h.getUint16(6, true),
     frameCount = h.getUint16(20, true);
+  // 部分源图集紧邻排列帧，不添加 BC3 块填充。
+  // 完整纹理宽度仍按块对齐，并作为一张图像解码。
   // Some source atlases pack adjacent frames without BC3 block padding.
   // Their full texture width is still block aligned and decodes as one image.
   const framePitch =

@@ -1,5 +1,6 @@
 import process from "node:process";
 import { Buffer } from "node:buffer";
+/** 仅使用自行编写的简单内容；临时签名私钥始终留在内存中。 */
 /** Authored toy content only. The ephemeral private signing key never leaves memory. */
 import { generateKeyPairSync, createHash, sign, constants, verify } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -55,6 +56,7 @@ function pfsSection(files) {
   fs.writeBigUInt64LE(BigInt(data.length), 72);
   return { fs, bytes, payloadOffset: offset + data.length - files.at(-1)[1].length };
 }
+// 使用真实 RomFS 树布局，仅包含自行编写的问候语，不含游戏资源。
 // One real RomFS tree layout containing only an authored greeting, not game assets.
 const greeting = Buffer.from("Synthetic authenticated RomFS greeting.\n");
 const romfs = Buffer.alloc(256 + greeting.length);
@@ -67,6 +69,7 @@ romfs.writeUInt32LE(9, 140);
 romfs.write("hello.txt", 144);
 greeting.copy(romfs, 256);
 function romfsSection() {
+  // 每层仅有一个 512 字节块，使用独立的 Node SHA256 层级校验。
   // Single 512-byte block per level, independent Node SHA256 hierarchy.
   const levels = Array.from({ length: 6 }, () => Buffer.alloc(512));
   romfs.copy(levels[5]);

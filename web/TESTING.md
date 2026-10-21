@@ -1,5 +1,7 @@
 # One verification entry point, local first
 
+中文: [TESTING.zh-CN.md](TESTING.zh-CN.md)
+
 The repository has one GitHub Actions workflow: **Verify**. Ordinary pushes/PRs
 run one quick Linux browser-build job, and manual dispatch runs that same job.
 There are no CI matrices, cross-platform jobs, or optional heavy CI profiles.

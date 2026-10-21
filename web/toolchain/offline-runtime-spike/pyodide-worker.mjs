@@ -1,3 +1,4 @@
+// 专用合成验证工作线程；仅在初始化完成后接受私密输入任务。
 // Dedicated synthetic-only worker. Private-input jobs are accepted only after initialization.
 const OPERATION_LIMITS = Object.freeze({
   "image-default-frame": [20, 4096],
@@ -70,6 +71,8 @@ async function initialize(data) {
   }
   if (total > 96 * 1024 * 1024) throw new Error("Runtime cap exceeded");
   let reads = 0;
+  // 此回调仅用于三个来源锁定的 Pyodide 内部调用点。
+  // 全局 fetch、import、XHR 及浏览器 CSP 均不会被替换。
   // This callback is used only at three source-locked Pyodide internal call sites.
   // Global fetch, import, XHR and the browser CSP are never replaced.
   Object.defineProperty(globalThis, "__readOfflinePyodide", {
@@ -133,6 +136,7 @@ async function initialize(data) {
     },
   });
   const packages = {
+    // Pyodide 记录锁文件中的元数据名称（Pillow），而不是规范化的查找键。
     // Pyodide records lock metadata name (Pillow), not normalized lookup key.
     pillow: Object.hasOwn(py.loadedPackages, "Pillow"),
   };
@@ -179,6 +183,7 @@ async function initialize(data) {
     await py.runPythonAsync(code);
   }
   const after = probes.length ? await probe(probes) : 0;
+  // 未知或缺失的依赖绝不回退到网络。
   // Unknown/missing dependencies never fall back to network.
   let missingRejected = false;
   try {
@@ -246,6 +251,7 @@ function postResult(id, result) {
   self.postMessage({ id, ok: true, result }, transfers);
 }
 self.onmessage = ({ data }) => {
+  // 初始化尚未证明网络隔离时，不将到达的任务加入队列。
   // Do not queue jobs arriving while initialization is network-unproven.
   if (data?.type !== "initialize" && !initialized) {
     self.postMessage({ id: data?.id, ok: false, error: "Runtime not initialized" });
@@ -257,6 +263,8 @@ self.onmessage = ({ data }) => {
         self.postMessage({ id: 0, ok: true, result: await initialize(data) });
       else await run(data);
     } catch (error) {
+      // 初始化不能接收任务输入；其有界诊断仅包含公开运行时及源码信息，
+      // 任务失败信息仍保持脱敏。
       // Initialization cannot receive job input. Its bounded diagnostics contain
       // only public runtime/source information; job failures remain sanitized.
       const detail =

@@ -1,4 +1,5 @@
 import { convertSpirv } from "./convert.mjs";
+// 请求串行执行，避免不受限的并发 WASM 堆分配。
 // Requests are serialized to avoid unbounded concurrent WASM heap allocations.
 let queue = Promise.resolve();
 self.onmessage = ({ data }) => {

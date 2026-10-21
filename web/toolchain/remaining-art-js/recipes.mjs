@@ -1,4 +1,6 @@
-/** Source-pinned mercenary/stash/trove/vault/pouch composition, no Python or I/O.
+/** 固定源版本的佣兵、仓库、宝藏、金库与袋子图像组合，不使用 Python 或 I/O。
+ * 显式指定后端：固定的图像内核、PNG 编解码器及现有数值图像内核。
+ * Source-pinned mercenary/stash/trove/vault/pouch composition, no Python or I/O.
  * Backends are explicit: frozen image-kernels, PNG codec and existing numeric art kernels.
  */
 const MAX_PAYLOAD = 20 * 1024 * 1024;
@@ -66,7 +68,8 @@ export function supportsRemainingArtOperation(operation) {
   return OPERATIONS.has(operation);
 }
 
-/** Matches gen_trove_art.geometry insertion order and Python's float expressions. */
+/** 匹配 gen_trove_art.geometry 的插入顺序与 Python 浮点表达式。
+ * Matches gen_trove_art.geometry insertion order and Python's float expressions. */
 export function troveGeometry() {
   const W = 732,
     FR = 20,
@@ -269,6 +272,8 @@ export function createRemainingArtRecipes({ pixels, png, numeric } = {}) {
             300 + x,
             420,
           );
+          // 精确匹配宽度为 1 的 ImageDraw.line((0,y),(width,y),fill=RGBA)：
+          // 包含端点，再裁剪到图块；不使用抗锯齿或混合。
           // Exact ImageDraw.line((0,y),(width,y),fill=RGBA) at width1: endpoint
           // is inclusive, then clipped to the block. No antialiasing/blending.
           const rgb = pixels.convert(edge, 3),

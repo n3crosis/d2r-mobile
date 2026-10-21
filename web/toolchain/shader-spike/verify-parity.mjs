@@ -56,6 +56,7 @@ if (command === "prepare" && first) {
     nativeResources,
     "Resource sidecar differs from native oracle",
   );
+  // 仅在完全一致后写入，便于独立查看验证器诊断。
   // Written only after full equality, for independently visible validator diagnostics.
   await writeFile(join(first, "browser-synthetic-exit.spv"), browserSpirv);
   console.log(

@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
-/* Node/browser parity helper; called only with a local synthetic fixture server. */
+/* Node/浏览器一致性辅助工具；仅配合本地合成夹具服务器调用。
+ * Node/browser parity helper; called only with a local synthetic fixture server. */
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 export async function verifyGuestAdapter(page) {
@@ -119,6 +120,7 @@ export async function verifyGuestAdapter(page) {
       await expectCode(() => rejected.generateProgram(), error);
       await rejected.dispose();
     }
+    // 注册的路径必须同时使用固定的仓库目录和注入的提取来源验证器；即使已认证的合成字节也无法通过摘要校验。
     // Registered route must use the pinned repository catalog AND an injected
     // extraction provenance verifier. Even authenticated synthetic bytes fail hashes.
     await expectCode(

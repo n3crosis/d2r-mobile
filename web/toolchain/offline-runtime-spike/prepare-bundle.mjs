@@ -1,3 +1,4 @@
+// 仅用于 CI/构建；运行时字节由现有固定版本的纹理构建生成。
 // CI/build only. Runtime bytes are produced by the existing pinned texture build.
 import { readFile, writeFile, mkdir, copyFile, cp } from "node:fs/promises";
 import { createHash } from "node:crypto";

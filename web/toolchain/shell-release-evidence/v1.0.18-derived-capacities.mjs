@@ -1,4 +1,6 @@
+// 从编译后的边界检查和相等性检查还原公开外壳的精确容量。
 // Exact public shell capacities, recovered from compiled bounds and equality checks.
+// 证据与解释见 DERIVED_CAPACITIES.md；不使用通用回退数量。
 // Evidence and interpretation: DERIVED_CAPACITIES.md. No generic fallback counts.
 const record = {
   schemaVersion: 1,

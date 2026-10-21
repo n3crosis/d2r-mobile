@@ -1,4 +1,6 @@
+// 自行编写的类 MSL 字符串用于独立覆盖重放解析器分支，不依赖
 // Authored MSL-like strings to cover replay parser branches independently of
+// 小型已编译 SPIR-V 样本；不声称这些字符串可编译为 Metal。
 // the tiny compiled SPIR-V fixtures. These are not claimed to compile as Metal.
 const resources = {
   sbufs: [

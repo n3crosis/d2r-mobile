@@ -1,3 +1,4 @@
+// 仅包含构建方持有的受信验证代码；不提供文件选择器或真实输入接口。
 // Trusted, build-owned proof code only. No file picker or real-input interface.
 let started = false;
 const MAX_WASM = 16 * 1024 * 1024;

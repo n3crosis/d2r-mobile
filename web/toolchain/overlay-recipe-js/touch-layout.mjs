@@ -1,3 +1,5 @@
+// 固定源版本的原生触控布局配方；静态控件来自受信源码，而非游戏资源。
+// 运行时读取由经过认证的覆盖层归档提供。
 // Pinned native touch-layout recipe. Static widgets are generated from trusted source,
 // never from game assets; runtime reads are supplied by the authenticated overlay archive.
 import data from "./touch-data.json" with { type: "json" };

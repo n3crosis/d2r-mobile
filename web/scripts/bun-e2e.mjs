@@ -1,3 +1,5 @@
+// 在 Bun 中使用本地输入运行生产打包器；仓库不包含游戏文件或密钥，
+// 也不将它们发送到预览服务器。
 // Run the production packager against local inputs under Bun. No game files or
 // keys are included in the repository or sent to the preview server.
 import { createHash } from "node:crypto";

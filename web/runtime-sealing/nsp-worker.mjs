@@ -3,6 +3,7 @@ import factory from "../toolchain/nsp-extract-spike/dist/hactool-boundary.mjs";
 import { byteFactory, initializationWasm } from "./wasm-factory.mjs";
 import { createBoundary } from "../toolchain/nsp-extract-spike/browser-boundary.mjs";
 import { createExtractionEngine } from "../toolchain/nsp-extract-spike/extraction-engine.mjs";
+// 不接受调用方提供的模块 URL、源码、原生名称或文件系统路径。
 // No caller-supplied module URLs, source code, native names or filesystem paths.
 let ready;
 let initializing = false;
@@ -72,6 +73,7 @@ self.onmessage = async ({ data }) => {
       self.close();
     }
   } catch (error) {
+    // 错误会终止处理；绝不序列化解析器或原生错误文本，以及含密钥的状态。
     // An error is terminal. Never serialize parser/native text or key-bearing state.
     try {
       await (await ready).execute("dispose");

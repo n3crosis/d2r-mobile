@@ -1,3 +1,4 @@
+// 仅在构建时适配精确锁定源码的内部加载器；绝不修改全局 fetch。
 // Build-only, exact-source-locked internal loader adaptation. Never patches global fetch.
 import { readFile, writeFile, mkdir, cp, copyFile } from "node:fs/promises";
 import { createHash } from "node:crypto";

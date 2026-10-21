@@ -8,6 +8,8 @@ export const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const outputDirectory = resolve(root, "dist");
 
 export async function build() {
+  // 此目录仅包含生成的前端资源；绝不将源码、密钥文件、
+  // 工具链夹具或环境变量复制到部署产物中。
   // This directory contains only generated frontend assets. Never copy source,
   // key files, toolchain fixtures, or environment variables into the deployment.
   await rm(outputDirectory, { recursive: true, force: true });

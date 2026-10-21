@@ -1,5 +1,6 @@
 import process from "node:process";
 import { Buffer } from "node:buffer";
+/** 分别使用生产根与隔离测试根，对真实编译的生产边界进行两次测试。 */
 /** Tests real compiled production boundary twice, with production vs isolated test root. */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -82,6 +83,7 @@ assert.equal(
   ),
   -3,
 );
+// 从外层 NSP 开始，通过同一个有界 PFS 读取器读取其中实际的 NCA 字节。
 // Start at an outer NSP and read its actual NCA bytes through the same bounded PFS reader.
 assert.equal(open(test, "nsp_open_pfs0", fixture("synthetic.nsp")), 0);
 assert.equal(test._nsp_entry_count(), 2);
@@ -133,6 +135,7 @@ assert.equal(
   Buffer.from(await hello.readAt(0n, Number(hello.size))).toString(),
   "Synthetic authenticated RomFS greeting.\n",
 );
+// 分别破坏每个已认证层，而不只是外层 NSP 或签名。
 // Individually corrupt each authenticated layer, not merely the outer NSP or signature.
 for (const [label, offset] of Object.entries(manifest.mutations)) {
   const bytes = Buffer.from(outer[1].bytes);

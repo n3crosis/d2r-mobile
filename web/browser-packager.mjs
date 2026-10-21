@@ -141,6 +141,7 @@ export async function prepareBrowserPackager({
     signingFactory = undefined;
     if (!signer) return closeConversion();
     wholeClosePromise = cleanupPackagingAdapters(() => signer.close(), closeConversion);
+    // 卸载时可以有意忽略清理结果；等待清理的调用方仍会收到原始拒绝原因。
     // Unmount may intentionally ignore cleanup; awaiters still receive the original rejection.
     wholeClosePromise.catch(() => undefined);
     return wholeClosePromise;
@@ -187,6 +188,7 @@ export async function prepareBrowserPackager({
         if (!signingFactory) throw new Error("SIGNING_CLOSED");
         return signingFactory.prepare(options);
       },
+      // 未签名 Blob 仍归调用方所有，签名失败时绝不替换它。
       // The unsigned Blob remains caller-owned and is never replaced on signing failure.
       async sign(options) {
         if (!signingFactory) throw new Error("SIGNING_CLOSED");

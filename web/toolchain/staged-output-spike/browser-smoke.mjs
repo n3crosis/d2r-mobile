@@ -1,3 +1,4 @@
+/** 小型真实 Chromium OPFS 验证，并非系统保存选择器或多 GB 耐久测试。 */
 /** Tiny real Chromium OPFS proof, NOT an OS save-picker or multi-GB endurance test. */
 import assert from "node:assert/strict";
 import http from "node:http";
@@ -163,6 +164,7 @@ try {
       results.push("insufficient estimated quota: no temporary output created");
       return results;
     } finally {
+      // 此目录由本隔离测试创建，并非用户存储。
       // This directory was created by this isolated test, not user storage.
       await root.removeEntry(directoryName, { recursive: true });
     }

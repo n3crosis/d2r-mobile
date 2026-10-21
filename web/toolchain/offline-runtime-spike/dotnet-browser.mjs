@@ -104,6 +104,7 @@ try {
     ...(process.env.CHROMIUM_EXECUTABLE ? { executablePath: process.env.CHROMIUM_EXECUTABLE } : {}),
   });
   const context = await browser.newContext({ serviceWorkers: "block" });
+  // 不安装路由或拦截；先验证两个哨兵端点均可访问。
   // No routing/interception is installed. Prove both sentinels are reachable first.
   const control = await context.newPage();
   await control.goto(`${origin}/control`);
@@ -178,6 +179,7 @@ try {
       const destination = path.resolve(process.argv[2]);
       await mkdir(destination, { recursive: true });
       await writeFile(path.join(destination, "browser-result.json"), JSON.stringify(translated));
+      // 独立的原生对比在后续 CI 步骤中执行。
       // Independent native comparison executes in the following CI step.
       assert.equal(
         await page.evaluate(async () => {

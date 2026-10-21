@@ -1,3 +1,4 @@
+// 固定来源美术配方的数值移植；Pillow 负责栅格输入输出及绘制。
 // Numeric ports of the source-pinned art recipes. Pillow owns raster I/O and drawing.
 const MAX_PIXELS = 16 * 1024 * 1024;
 function image(bytes, width, height, channels = 4) {

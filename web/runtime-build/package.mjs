@@ -122,6 +122,7 @@ export function validateOptionalCodecReceipts({
     throw new Error("Invalid optional codec build receipt");
   return { bytes: shaReport.bytes, sha256: shaReport.sha256 };
 }
+// 验证实际原生输出的凭据；仅含源码或签名构建不完整时不得发布。
 // Validate real native output receipts; a source-only or partial signing build must not publish.
 export function validateSigningBuildReceipt({ report, pins, compiler }) {
   const names = [
@@ -371,6 +372,7 @@ export async function assembleRuntime({ build } = {}) {
       pins: signingPins,
       compiler: await readFile(resolve(web, `${signingDirectory}/compiler-version.txt`), "utf8"),
     });
+    // JS 工厂虽已捆绑进封闭工作线程，其凭据仍必须匹配。
     // The JS factory is bundled into the closed worker, but its receipt must still match.
     for (const [name, expected] of Object.entries(signingFiles)) {
       const file = resolve(web, signingDirectory, name);

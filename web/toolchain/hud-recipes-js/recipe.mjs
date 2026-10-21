@@ -1,4 +1,5 @@
-// Complete Switch-mode HUD composition port. No production runtime import yet.
+// 完整的 Switch 模式 HUD 组合移植，由生产资源运行时使用。
+// Complete Switch-mode HUD composition port used by the production asset runtime.
 import { defaultState, clearCircles, silhouette, metal } from "../art-kernels/kernels.mjs";
 import { ordered, put, roundEven as round, float, stringifyPython } from "./python-values.mjs";
 import { requireValue as require, vitalCharacters, generateLayout } from "./support.mjs";
@@ -62,6 +63,7 @@ function clearRectangle(image, x0, y0, x1, y1) {
       image.data[(y * image.width + x) * 4 + 3] = 0;
 }
 function border(image) {
+  // Pillow 包含端点的矩形 (0,0,w-1,h-1)，线宽为 3，使用替换式 RGBA 颜色。
   // Pillow inclusive rectangle (0,0,w-1,h-1), width=3, replacement RGBA ink.
   for (let y = 0; y < image.height; y++)
     for (let x = 0; x < image.width; x++)

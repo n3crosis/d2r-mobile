@@ -1,3 +1,4 @@
+// 固定版本 HUD 配方所需的有限 Python 值与 JSON 语义。
 // Narrow Python value/JSON semantics needed by the pinned HUD recipe.
 const ORDER = Symbol("Python insertion order");
 export class PyFloat extends Number {}
@@ -25,6 +26,7 @@ export function roundEven(value, digits = 0) {
   if (!Number.isFinite(value) || !Number.isInteger(digits) || digits < 0 || digits > 1)
     throw new RangeError("Bounded Python round");
   if (!value) return digits ? value : 0;
+  // 对精确的 binary64 有理数舍入，而非 value*10（后者会再次舍入）。
   // Round the exact binary64 rational, not value*10 (which rounds a second time).
   const bits = new DataView(new ArrayBuffer(8));
   bits.setFloat64(0, Math.abs(value));
@@ -86,6 +88,8 @@ export function stringifyPython(value, indent = 1) {
   }
   return visit(value, 0);
 }
+// 解析游戏布局与结构补丁时，保留浮点数与整数的类型差异及对象插入顺序。
+// JSON.parse 会丢失这两项区别。
 // Preserve float-vs-int type and object insertion order when parsing game layout
 // and the structural patch. JSON.parse loses both distinctions.
 export function parsePython(text) {

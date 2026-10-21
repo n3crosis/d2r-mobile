@@ -29,6 +29,7 @@ export function run(profile, environment = process.env, provision = false) {
     console.log(
       "Full local Linux proof set; Windows/macOS desktop coverage is excluded and must run separately.",
     );
+    // 在 Linux 上不会假装已执行特定平台的桌面验证。
     // Platform-specific desktop execution is intentionally not pretended on Linux.
     for (const name of [
       "quick",
@@ -50,6 +51,7 @@ export function run(profile, environment = process.env, provision = false) {
     GITHUB_PATH: join(temp, "path"),
     GITHUB_ENV: join(temp, "env"),
   };
+  // 当产物或依赖作业使用已知路径时，保留 CI 临时根目录。
   // Preserve the CI temp root when artifacts or dependent jobs use its known paths.
   if (environment.GITHUB_ACTIONS === "true") env.RUNNER_TEMP = environment.RUNNER_TEMP;
   mkdirSync(env.RUNNER_TEMP, { recursive: true });

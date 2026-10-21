@@ -1,3 +1,4 @@
+// 使用真实 Chromium Worker 的测试工具，绝不将原生输出导入浏览器。
 // Real Chromium worker harness; never imports native output into the browser.
 import assert from "node:assert/strict";
 import { createServer } from "node:http";

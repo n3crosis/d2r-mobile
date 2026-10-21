@@ -1,6 +1,10 @@
+// 根据仓库内的解码器自行编写，不含从游戏提取的着色器字节。
 // Authored from the vendored decoder; no extracted game shader bytes.
+// 使用 InstTable.cs 的前缀和 InstDecoders.cs 的 InstAld/InstAst/InstMov32i 字段；
 // InstTable.cs prefixes; InstDecoders.cs InstAld/InstAst/InstMov32i fields;
+// 使用 ShaderHeader.cs 的阶段位 10..13 及 header[18] 的颜色分量掩码；
 // ShaderHeader.cs stage bits10..13 + header[18] color component mask;
+// Decoder.cs 在每个 32 字节指令组开头跳过一个调度字。
 // Decoder.cs skips one scheduling word at each 32-byte instruction-group start.
 import { code as computeCode, job as computeJob } from "../shader-spike/synthetic-fixture.mjs";
 const prefix = (bits) => BigInt(`0b${bits.padEnd(64, "0")}`);
@@ -19,6 +23,7 @@ function graphics(stage, instructions, colorMask = 0) {
   }
   const bytes = new Uint8Array(0x50 + words.length * 8),
     view = new DataView(bytes.buffer);
+  // 自行编写的最小 SPH：SphType1/2、Version3；原生解码器使用阶段字段。
   // Minimal authored SPH: SphType1/2, Version3; native decoder uses stage.
   view.setUint32(0, (stage === "vs" ? 1 : 2) | (3 << 5) | ((stage === "vs" ? 1 : 5) << 10), true);
   view.setUint32(0x48, colorMask, true);

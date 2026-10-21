@@ -1,3 +1,5 @@
+// SPIRV-Cross 工作线程在 Node 中使用与 Chromium 相同的 V8 WebAssembly 引擎。
+// 端到端运行的其余部分由 Bun 驱动。
 // Node uses the same V8 WebAssembly engine as Chromium for the SPIRV-Cross
 // worker. Bun drives the rest of the end-to-end run.
 import { createInterface } from "node:readline";

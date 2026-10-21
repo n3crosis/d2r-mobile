@@ -1,3 +1,4 @@
+// 仅处理像素的有界 WASM API；不使用浏览器图像解码器或 Canvas。
 // Pixel-only, bounded WASM API. No browser image decoder or Canvas participates.
 export const MAX_PIXELS = 4_194_304;
 const MAX_SIDE = 8192;

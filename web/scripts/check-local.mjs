@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
+// 不下载工具、不启动浏览器，也不使用游戏文件或密钥输入；请在冻结锁文件安装后运行。
 // No tool downloads, browser launch, game files, or key inputs. Run after frozen install.
 const cwd = fileURLToPath(new URL("../", import.meta.url));
 const bun = process.env.BUN_EXECUTABLE || "bun";

@@ -1,4 +1,5 @@
 /* global document */
+// 构建时替换此摘要；此验证程序不接收用户数据。
 // Build replaces this digest; no user data is accepted by this proof harness.
 const MANIFEST_SHA256 = "__MANIFEST_SHA256__";
 const EXPECTED = ["__EXPECTED_ASSETS__"];
@@ -87,6 +88,7 @@ globalThis.startOfflineDotnet = async (probes) => {
     }
     if (total > MAX_TOTAL) throw new Error("Public runtime total exceeded");
     const assets = new Map();
+    // 顺序加载限制临时内存，并在密封前完成。
     // Sequential loads bound temporary memory and finish before sealing.
     for (const asset of manifest.assets) {
       const bytes = await readBounded(asset.path, asset.bytes);
@@ -99,6 +101,7 @@ globalThis.startOfflineDotnet = async (probes) => {
     seal.content =
       "default-src 'none'; connect-src 'none'; script-src blob: 'wasm-unsafe-eval'; worker-src blob:; style-src 'none'; img-src 'none'; font-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
     document.head.append(seal);
+    // 仅用于测试的进程间通信标记：采用 Playwright 绑定，而非 HTTP 请求或 CSP 控制。
     // Test-only IPC marker: Playwright binding, not an HTTP request or CSP control.
     await globalThis.offlineProofSealed?.();
     const blocked = [];

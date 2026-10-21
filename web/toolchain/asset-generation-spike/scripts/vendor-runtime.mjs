@@ -1,3 +1,4 @@
+// 仅用于构建/CI；浏览器绝不访问 CDN。npm 锁文件固定运行时字节；上游 pyodide-lock.json 使用 SHA-256 固定依赖 wheel。
 // Build/CI only. Browser never contacts the CDN. npm lock pins the runtime bytes;
 // upstream pyodide-lock.json pins dependency wheels with SHA-256.
 import { mkdir, readFile, copyFile, writeFile, readdir } from "node:fs/promises";
@@ -23,6 +24,7 @@ for (const file of [
     .update(await readFile(`${dest}/${file}`))
     .digest("hex");
 }
+// 保留运行时包分发的许可证和声明文件。wheel 归档保留自身的 dist-info 许可证；下方也会保存包元数据。
 // Preserve the runtime package's distributed license/notice files. Wheel archives
 // retain their own dist-info licenses; package metadata is saved below as well.
 for (const file of await readdir(source)) {

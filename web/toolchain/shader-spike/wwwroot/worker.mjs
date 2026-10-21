@@ -1,3 +1,4 @@
+// 开发者编译器边界；链接后的合成阶段在独立 CI 中测试。
 // Developer compiler boundary; linked synthetic stages are tested in separate CI.
 import { dotnet } from "./_framework/dotnet.js";
 
@@ -7,6 +8,7 @@ const ready = dotnet
     return { exports: await runtime.getAssemblyExports(runtime.getConfig().mainAssemblyName) };
   })
   .catch((error) => ({ error }));
+// 立即注册监听器，避免丢失启动期间到达的请求。
 // Attach immediately: requests arriving during startup must not be lost.
 globalThis.addEventListener("message", async ({ data }) => {
   const { requestId, job, code } = data ?? {};
