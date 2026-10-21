@@ -58,7 +58,13 @@ export function invokeSigningNative(native, password) {
       0,
     );
     if (code !== 0)
-      throw signingError(code === -203 ? "SIGNING_IDENTITY_INVALID" : "SIGNING_FAILED");
+      throw signingError(
+        code === -206
+          ? "SIGNING_PROFILE_MISMATCH"
+          : code === -203
+            ? "SIGNING_IDENTITY_INVALID"
+            : "SIGNING_FAILED",
+      );
   } finally {
     for (const { pointer, length } of allocations) {
       try {

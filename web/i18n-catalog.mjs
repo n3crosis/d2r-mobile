@@ -758,12 +758,12 @@ export const catalog = Object.freeze({
     "描述文件（.mobileprovision，最多 4 MiB）"
   ],
   "dmWebSigningWorking": [
-    "Unsigned IPA retained; signing and verifying locally.",
-    "未签名 IPA 已保留；正在本地签名并验证。"
+    "Unsigned IPA retained; signing and checking the archive locally.",
+    "未签名 IPA 已保留；正在本地签名并检查归档。"
   ],
   "dmWebSigningComplete": [
-    "Signed IPA verified by the signing tool and ready to download; device installation or execution is not guaranteed.",
-    "已签名 IPA 已通过签名工具验证并可下载；这不保证设备可安装或运行。"
+    "Signed IPA created and ready to download; device installation or execution is not guaranteed.",
+    "已签名 IPA 已创建并可下载；这不保证设备可安装或运行。"
   ],
   "dmWebSigningFailed": [
     "Signing failed. The unsigned IPA and exported resources remain available; save the unsigned IPA, then reload to retry.",
@@ -778,11 +778,15 @@ export const catalog = Object.freeze({
     "下载已签名 IPA"
   ],
   "dmWebSignedHelp": [
-    "Signing was verified, but device eligibility, installation and game compatibility still require device checks.",
-    "签名已验证，但设备授权、安装和实际游戏兼容性仍需在设备上检查。"
+    "Device eligibility, installation and game compatibility still require device checks.",
+    "设备资格、安装和游戏兼容性仍需在设备上检查。"
   ],
   "dmWebCleanupWarning": [
     "Cleanup failed. Save any available IPA before reloading.",
     "清理失败。请保存可用的 IPA 后再重新载入。"
+  ],
+  "dmWebSigningProfileMismatch": [
+    "The identity or profile is mismatched or expired, or this signing tool does not support the profile. Unsigned IPA retained; save it, then reload and select compatible credentials.",
+    "证书或描述文件不匹配、已过期，或此签名工具不支持该描述文件。未签名 IPA 已保留；请先保存，再重新载入并选择兼容凭据。"
   ]
 });

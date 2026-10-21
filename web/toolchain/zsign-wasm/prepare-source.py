@@ -20,6 +20,7 @@ if output.exists():
 shutil.copytree(source / "src", output)
 for name in ["zsign_export.cpp", "zsign_export.h"]:
     shutil.copyfile(port / "native" / name, output / name)
+shutil.copyfile(here / "profile-compatibility.inc", output / "profile-compatibility.inc")
 
 
 def replace(path, old, new):
@@ -97,6 +98,43 @@ new = """    bool initialized = zsa.Init(certFile, pkeyFile, provFile, entitleme
     if (!passwd.empty()) OPENSSL_cleanse(&passwd[0], passwd.size());
     if (!initialized) return -203;"""
 replace("zsign_export.cpp", old, new)
+# 兼容性检查仅修改派生授权，不修改用户的原始描述文件或应用标识。
+# Compatibility checks change derived entitlements, never the original profile or bundle ID.
+replace(
+    "openssl.h",
+    "\tbool GenerateCMS(const string& strCDHashData,",
+    "\tbool ValidateProfileForBundle(const string& bundleId);\n\n\tbool GenerateCMS(const string& strCDHashData,",
+)
+with (output / "openssl.cpp").open("a") as file:
+    file.write('\n#include "profile-compatibility.inc"\n')
+replace(
+    "zsign_export.cpp",
+    "    if (!initialized) return -203;",
+    """    if (!initialized) return -203;
+    // 只读取固定根目录的原始标识；限制元数据大小并检查读取和关闭错误。
+    // Read the unchanged identifier at the fixed root, bounding metadata and checking I/O.
+    if (inputFolder != "/work/Payload/App.app" || !bundleId.empty() ||
+        !bundleVersion.empty() || !displayName.empty() || !entitlementsFile.empty()) return -206;
+    FILE* info = fopen("/work/Payload/App.app/Info.plist", "rb");
+    if (!info) return -206;
+    string infoData;
+    char infoChunk[4096];
+    bool infoValid = true;
+    while (true) {
+        size_t count = fread(infoChunk, 1, sizeof(infoChunk), info);
+        if (infoData.size() + count > 1024 * 1024) { infoValid = false; break; }
+        infoData.append(infoChunk, count);
+        if (count < sizeof(infoChunk)) {
+            infoValid = feof(info) && !ferror(info);
+            break;
+        }
+    }
+    if (fclose(info) != 0) infoValid = false;
+    jvalue infoPlist;
+    if (!infoValid || infoData.empty() || !infoPlist.read_plist(infoData) ||
+        !infoPlist.is_object() || !infoPlist["CFBundleIdentifier"].is_string() ||
+        !zsa.ValidateProfileForBundle(infoPlist["CFBundleIdentifier"].as_string())) return -206;""",
+)
 # wasm32 的 int64_t 不一定是 long；使用工具链提供的格式宏。
 # wasm32 int64_t is not necessarily long; use the toolchain's format macro.
 replace(
@@ -119,7 +157,12 @@ replace(
 report = {
     "patches": {
         p.name: hashlib.sha256(p.read_bytes()).hexdigest()
-        for p in [here / "prepare-source.py", here / "stream-sha.inc", here / "bounded-map.inc"]
+        for p in [
+            here / "prepare-source.py",
+            here / "stream-sha.inc",
+            here / "bounded-map.inc",
+            here / "profile-compatibility.inc",
+        ]
     },
     "modifiedFiles": [
         "common/sha.cpp",
@@ -127,6 +170,8 @@ report = {
         "zsign_export.cpp",
         "common/json.cpp",
         "common/util.cpp",
+        "openssl.cpp",
+        "openssl.h",
     ],
     "portedFiles": ["zsign_export.cpp", "zsign_export.h"],
 }

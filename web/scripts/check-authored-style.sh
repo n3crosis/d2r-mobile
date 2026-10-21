@@ -68,6 +68,8 @@ ruff check --no-cache --config web/toolchain/style/ruff.toml "${python_sources[@
 ruff format --check --no-cache --config web/toolchain/style/ruff.toml "${python_sources[@]}"
 
 clang-format --dry-run --Werror --style=file:web/toolchain/style/clang-format.yaml \
+  web/toolchain/zsign-wasm/profile-compatibility.inc \
+  web/toolchain/zsign-wasm/profile-compatibility-test.cpp \
   web/toolchain/zsign-wasm/stream-sha.inc \
   web/toolchain/zsign-wasm/bounded-map.inc \
   web/toolchain/sha256-stream-wasm/bridge.c \

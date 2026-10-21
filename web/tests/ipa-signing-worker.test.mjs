@@ -216,3 +216,22 @@ test("initialization failure is sanitized; no private work can run after close",
   assert.ok(new Uint8Array(credentials.identity).every((v) => v === 0));
   assert.equal(h.closed, 1);
 });
+
+test("native profile mismatch is closed, wipes credentials and never packages output", async () => {
+  const h = harness();
+  h.native._zsign_sign_bundle = () => -206;
+  await initialize(h);
+  const credentials = makeCredentials();
+  await h.handle({ id: 1, type: "sign", ipa: input(), credentials });
+  assert.deepEqual(h.messages.at(-1), {
+    id: 1,
+    ok: false,
+    error: { code: "SIGNING_PROFILE_MISMATCH" },
+  });
+  assert.deepEqual(h.events, ["inspect", "dispose"]);
+  assert.equal(h.files.size, 0);
+  assert.equal(h.freed.length, 9);
+  assert.ok(h.native.HEAPU8.every((value) => value === 0));
+  assert.equal(credentials.password, "");
+  assert.equal(h.closed, 1);
+});

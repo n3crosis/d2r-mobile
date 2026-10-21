@@ -95,7 +95,7 @@ test("invalid credential sizes fail before reading and late cancellation wipes f
 test("UI preloads signing before credentials and keeps signing errors outside packaging failure", async () => {
   const source = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
   assert.match(source, /get\("signing"\) === "1"/);
-  assert.match(source, /astcPreset,\s*signing,\s*signal:/);
+  assert.match(source, /astcPreset,[\s\S]*?signing,\s*signal:/);
   assert.match(source, /setSigningReady\(value.signingReady\)/);
   assert.match(source, /disabled=\{!signingReady \|\| !ready \|\| busy\}/);
   assert.ok(
@@ -112,6 +112,9 @@ test("UI preloads signing before credentials and keeps signing errors outside pa
   assert.match(signing, /setStatus\(t\("dmWebUnsignedReady"\)\)/);
   assert.match(source, /const signedDownload = download\?\.fileName === "D2RMobile-signed.ipa"/);
   assert.match(signing, /clearSigningInputs\(\)/);
+  assert.match(signing, /setSigningStatus\(signingMessage\)/);
+  assert.equal((signing.match(/appendActivity\(signingMessage, true\)/g) ?? []).length, 1);
+  assert.doesNotMatch(signing, /appendActivity\(signingError/);
   assert.doesNotMatch(signing, /packagingFailure|setResourceOutcome|setLegacyStatus/);
   assert.doesNotMatch(source, /localStorage|sessionStorage/);
   assert.match(source, /autoComplete="off"/);
@@ -135,6 +138,34 @@ test("terminal UI cleanup closes the captured packager without losing completed 
   assert.ok(cleanup.indexOf("await jobPackager.close()") < cleanup.indexOf("operation.finish()"));
   assert.match(
     source,
-    /dmWebSigningCancelled" : "dmWebSigningFailed"[\s\S]*?setStatus\(t\("dmWebUnsignedReady"\)\)/,
+    /dmWebSigningCancelled"[\s\S]*?dmWebSigningFailed"[\s\S]*?setStatus\(t\("dmWebUnsignedReady"\)\)/,
   );
+});
+
+// 只映射封闭错误码；不展示证书名称或原始错误消息。
+// Map only the closed error code; never display certificate names or raw error messages.
+test("signing mismatch has a fixed actionable label without stronger verification claims", async () => {
+  const source = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  assert.match(
+    source,
+    /signingError instanceof Error &&\s*signingError.message === "SIGNING_PROFILE_MISMATCH"/,
+  );
+  assert.match(
+    source,
+    /controller.signal.aborted[\s\S]*?dmWebSigningCancelled[\s\S]*?SIGNING_PROFILE_MISMATCH[\s\S]*?dmWebSigningProfileMismatch[\s\S]*?dmWebSigningFailed/,
+  );
+  assert.doesNotMatch(source, /setSigningStatus\(signingError|t\(signingError/);
+  const table = await readFile(new URL("../../dm/i18n/ui_text.tsv", import.meta.url), "utf8");
+  const row = (key) =>
+    table
+      .split("\n")
+      .find((line) => line.startsWith(key + "\t"))
+      .split("\t");
+  assert.match(
+    row("dmWebSigningProfileMismatch")[2],
+    /mismatched or expired.*Unsigned IPA retained/,
+  );
+  assert.match(row("dmWebSigningComplete")[2], /created and ready to download.*not guaranteed/);
+  assert.doesNotMatch(row("dmWebSigningComplete")[2], /verified/);
+  assert.match(row("dmWebSigningWorking")[2], /checking the archive locally/);
 });

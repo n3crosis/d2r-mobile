@@ -506,13 +506,19 @@ export default function App() {
           setSigningStatus(t("dmWebSigningComplete"));
           setStatus(t("dmWebSigningComplete"));
           prepareDownload();
-        } catch {
+        } catch (signingError) {
           if (!current()) return;
           // 签名失败不改变已完成的未签名 IPA 或资源结果，不走打包失败分支。
           // Signing failure does not change the completed unsigned IPA or resources and bypasses packaging-failure reporting.
-          setSigningStatus(
-            t(controller.signal.aborted ? "dmWebSigningCancelled" : "dmWebSigningFailed"),
+          const signingMessage = t(
+            controller.signal.aborted
+              ? "dmWebSigningCancelled"
+              : signingError instanceof Error && signingError.message === "SIGNING_PROFILE_MISMATCH"
+                ? "dmWebSigningProfileMismatch"
+                : "dmWebSigningFailed",
           );
+          setSigningStatus(signingMessage);
+          appendActivity(signingMessage, true);
           setStatus(t("dmWebUnsignedReady"));
           prepareDownload(false);
         } finally {

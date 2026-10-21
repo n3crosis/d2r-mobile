@@ -2,7 +2,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { validateSigningBuildReceipt } from "../runtime-build/package.mjs";
+import {
+  validateSigningBuildReceipt,
+  validateSigningPatchHashes,
+} from "../runtime-build/package.mjs";
 const pins = JSON.parse(
   await readFile(new URL("../toolchain/zsign-wasm/pins.json", import.meta.url), "utf8"),
 );
@@ -51,4 +54,35 @@ test("missing, changed, oversized or unproven signing outputs cannot be packaged
     mutate(value);
     assert.throws(() => validateSigningBuildReceipt(value), /Invalid signing build receipt/);
   }
+});
+
+test("signing local receipts bind all four production patches including profile compatibility", () => {
+  const localHashes = Object.fromEntries(
+    ["prepare-source.py", "stream-sha.inc", "bounded-map.inc", "profile-compatibility.inc"].map(
+      (name, index) => [name, String(index).repeat(64)],
+    ),
+  );
+  const report = { patches: { ...localHashes } };
+  assert.doesNotThrow(() => validateSigningPatchHashes(report, localHashes));
+  for (const name of Object.keys(localHashes)) {
+    const missing = structuredClone(report);
+    delete missing.patches[name];
+    assert.throws(
+      () => validateSigningPatchHashes(missing, localHashes),
+      /local source receipt mismatch/,
+    );
+    const stale = structuredClone(report);
+    stale.patches[name] = "f".repeat(64);
+    assert.throws(
+      () => validateSigningPatchHashes(stale, localHashes),
+      /local source receipt mismatch/,
+    );
+  }
+  const missingLocalHelper = { ...localHashes };
+  delete missingLocalHelper["profile-compatibility.inc"];
+  assert.throws(
+    () => validateSigningPatchHashes(report, missingLocalHelper),
+    /local source receipt mismatch/,
+  );
+  assert.throws(() => validateSigningPatchHashes({}, {}), /local source receipt mismatch/);
 });

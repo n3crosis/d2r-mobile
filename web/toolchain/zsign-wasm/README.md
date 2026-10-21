@@ -72,7 +72,8 @@ cache/debug options, ad-hoc requests and extension apps before calling native.
 
 Return codes: `0` success; `-201` invalid tree; `-202` missing credential paths;
 `-203` identity/profile initialization failed; `-204` signing failed;
-`-205` provider/entropy unavailable. Translate these to closed UI error codes;
+`-205` provider/entropy unavailable; `-206` profile/bundle compatibility rejected.
+Translate these to closed UI error codes;
 never display raw native errors, certificate names, passwords or file contents.
 
 Use a fresh worker/module per job. Allocate each string explicitly, then zero
@@ -82,6 +83,31 @@ strings cannot be reliably erased: make no forensic-erasure promise. Credentials
 must never enter persistent storage, logs, telemetry, workers' bootstrap assets,
 network requests or the output IPA. The provisioning profile is intentionally
 embedded in the signed output; the P12 and password are not.
+
+## Offline profile compatibility
+
+After identity initialization, the bridge reads the unchanged root
+`CFBundleIdentifier` from the fixed `Info.plist` path with checked I/O and a 1 MiB
+limit. The profile gate limits both CMS bytes and extracted content to 4 MiB,
+checks selected-certificate membership, certificate/profile dates against the
+device clock, certificate OU and profile team agreement, and application-ID
+prefix matching. A legacy application-ID prefix need not equal the team ID.
+Only derived entitlements are replaced; original profile bytes remain unchanged.
+
+This deliberately restricted gate accepts XML profile content only. Binary
+profiles, XML comments/CDATA, duplicate or noncanonical date nodes (required
+`YYYY-MM-DDTHH:MM:SSZ`), ambiguous teams/certificate OUs and unsupported wildcard
+patterns fail closed. Application IDs support exact matching or a complete
+trailing `*` segment. Matching wildcard keychain groups expand to the concrete
+application ID; explicitly granted concrete shared groups remain unchanged.
+After those supported expansions, any remaining wildcard entitlement string
+(including iCloud grants) is rejected within a 16-level, 4,096-node traversal
+limit. Such profiles may be valid for Apple tooling but are not supported here;
+the bridge does not invent container, app-group or iCloud capabilities.
+Unsupported profiles retain the unsigned-download fallback.
+
+These checks do not verify the CMS Apple signature, trust chain, revocation,
+device eligibility, required application capabilities or installability.
 
 ## Memory and output contract
 
