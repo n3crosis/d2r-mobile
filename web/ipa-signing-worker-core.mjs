@@ -215,6 +215,12 @@ export function createIpaSigningWorkerHandler({
       ];
       if (!required.every((path) => entries.some((entry) => entry.path === path && entry.size > 0)))
         throw signingError("SIGNING_OUTPUT_INVALID");
+      // 条目已是独立 Blob 快照；打包前释放可变覆盖层并擦除原生凭据和堆。
+      // Entries are independent Blob snapshots; release the mutable overlay and wipe native credentials/heap before packaging.
+      mounted.dispose();
+      mounted = undefined;
+      clearNative(native);
+      native = undefined;
       progress("package", 0);
       output = await createArchive(entries);
       current();
