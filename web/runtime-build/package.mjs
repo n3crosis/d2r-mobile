@@ -156,6 +156,20 @@ export function validateSigningBuildReceipt({ report, pins, compiler }) {
     throw new Error("Invalid signing build receipt");
   return report.files;
 }
+const SIGNING_PATCH_SOURCES = Object.freeze([
+  "prepare-source.py",
+  "stream-sha.inc",
+  "bounded-map.inc",
+  "profile-compatibility.inc",
+]);
+export function validateSigningPatchHashes(report, localHashes) {
+  for (const name of SIGNING_PATCH_SOURCES)
+    if (
+      !/^[a-f0-9]{64}$/.test(localHashes?.[name]) ||
+      report?.patches?.[name] !== localHashes[name]
+    )
+      throw new Error("Signing local source receipt mismatch");
+}
 export async function assembleRuntime({ build } = {}) {
   if (
     build?.emscripten !== "4.0.20" ||
@@ -379,12 +393,10 @@ export async function assembleRuntime({ build } = {}) {
     const signingPatches = JSON.parse(
       await readFile(resolve(web, `${signingDirectory}/patch-report.json`), "utf8"),
     );
-    for (const name of ["prepare-source.py", "stream-sha.inc", "bounded-map.inc"])
-      if (
-        hash(await readFile(resolve(web, "toolchain/zsign-wasm", name))) !==
-        signingPatches.patches?.[name]
-      )
-        throw new Error("Signing local source receipt mismatch");
+    const signingLocalHashes = {};
+    for (const name of SIGNING_PATCH_SOURCES)
+      signingLocalHashes[name] = hash(await readFile(resolve(web, "toolchain/zsign-wasm", name)));
+    validateSigningPatchHashes(signingPatches, signingLocalHashes);
     for (const path of OPTIONAL_RUNTIME_ASSET_GROUPS["ipa-signing"]) {
       const source = path.startsWith("sealed-workers/") ? `runtime-build/.build/${path}` : path;
       await copy(source, signingFiles[path.split("/").at(-1)], path, "ipa-signing");

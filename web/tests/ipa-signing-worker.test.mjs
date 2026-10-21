@@ -2,6 +2,8 @@
 // Synthetic dependencies test lifecycle and ABI only, not signature validity of synthetic bytes.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createSigningFileStore } from "../ipa-signing-fs.mjs";
+import { createSignedSigningArchive } from "../ipa-signing-zip.mjs";
 import {
   createIpaSigningWorkerHandler,
   invokeSigningNative,
@@ -115,7 +117,7 @@ test("one-shot worker composes stages then removes credentials and wipes heap be
   await initialize(h);
   const credentials = makeCredentials();
   await h.handle({ id: 1, type: "sign", ipa: input(), credentials });
-  assert.deepEqual(h.events, ["inspect", "collect", "package", "dispose", "reply"]);
+  assert.deepEqual(h.events, ["inspect", "collect", "dispose", "package", "reply"]);
   assert.equal(h.messages.at(-1).ok, true);
   assert.equal(h.closed, 1);
   assert.equal(credentials.password, "");
@@ -215,4 +217,129 @@ test("initialization failure is sanitized; no private work can run after close",
   await h.handle({ id: 1, type: "sign", ipa: input(), credentials });
   assert.ok(new Uint8Array(credentials.identity).every((v) => v === 0));
   assert.equal(h.closed, 1);
+});
+
+test("native profile mismatch is closed, wipes credentials and never packages output", async () => {
+  const h = harness();
+  h.native._zsign_sign_bundle = () => -206;
+  await initialize(h);
+  const credentials = makeCredentials();
+  await h.handle({ id: 1, type: "sign", ipa: input(), credentials });
+  assert.deepEqual(h.messages.at(-1), {
+    id: 1,
+    ok: false,
+    error: { code: "SIGNING_PROFILE_MISMATCH" },
+  });
+  assert.deepEqual(h.events, ["inspect", "dispose"]);
+  assert.equal(h.files.size, 0);
+  assert.equal(h.freed.length, 9);
+  assert.ok(h.native.HEAPU8.every((value) => value === 0));
+  assert.equal(credentials.password, "");
+  assert.equal(h.closed, 1);
+});
+
+test("real store snapshots package after mutable storage, credentials and native heap are cleared", async () => {
+  class SyncBlob extends Blob {
+    constructor(bytes) {
+      super([bytes]);
+      this.bytes = bytes.slice();
+    }
+    slice(start = 0, end = this.size) {
+      return new SyncBlob(this.bytes.slice(start, end));
+    }
+  }
+  const appRoot = "Payload/Original.app/";
+  const original = new Uint8Array([0xcf, 0xfa, 0xed, 0xfe, 1, 2, 3, 4]);
+  const archive = {
+    appRoot,
+    entries: [
+      { path: appRoot + "Original", size: 8, mode: 0o755, blob: new SyncBlob(original) },
+      {
+        path: appRoot + "Info.plist",
+        size: 1,
+        mode: 0o644,
+        blob: new SyncBlob(new Uint8Array([1])),
+      },
+    ],
+  };
+  let store,
+    disposed = 0;
+  const credentials = makeCredentials();
+  const h = harness({
+    inspectArchive: async () => archive,
+    mountArchive: () => {
+      store = createSigningFileStore(archive, { readBlobSync: (blob) => blob.bytes });
+      store.write(appRoot + "Original", 4, new Uint8Array([42]));
+      store.write(appRoot + "embedded.mobileprovision", 0, new Uint8Array([3, 4]));
+      store.write(appRoot + "_CodeSignature/CodeResources", 0, new Uint8Array([7]));
+      return {
+        collectEntries: () => store.collectEntries(),
+        dispose() {
+          disposed++;
+          store.dispose();
+        },
+      };
+    },
+    createArchive: async (entries) => {
+      assert.equal(disposed, 1);
+      assert.equal(store.allocatedBytes, 0);
+      assert.equal(h.files.size, 0);
+      assert.equal(h.freed.length, 9);
+      assert.ok(h.native.HEAPU8.every((value) => value === 0));
+      assert.ok(new Uint8Array(credentials.identity).every((value) => value === 0));
+      assert.ok(new Uint8Array(credentials.profile).every((value) => value === 0));
+      assert.equal(credentials.password, "");
+      assert.deepEqual(
+        new Uint8Array(
+          await entries.find((e) => e.path === appRoot + "Original").blob.arrayBuffer(),
+        ),
+        new Uint8Array([0xcf, 0xfa, 0xed, 0xfe, 42, 2, 3, 4]),
+      );
+      return createSignedSigningArchive(entries);
+    },
+  });
+  await initialize(h);
+  await h.handle({ id: 1, type: "sign", ipa: input(), credentials });
+  assert.equal(disposed, 1);
+  assert.equal(h.messages.at(-1).ok, true);
+  assert.ok(h.messages.at(-1).result.blob.size > 22);
+  assert.equal(original[4], 1);
+});
+
+test("packaging rejection and closure after early cleanup never publish partial output", async () => {
+  for (const closeDuringPackaging of [false, true]) {
+    let resume, entered;
+    const started = new Promise((resolve) => {
+      entered = resolve;
+    });
+    const h = harness({
+      createArchive: () => {
+        assert.deepEqual(h.events, ["inspect", "collect", "dispose"]);
+        assert.equal(h.files.size, 0);
+        assert.ok(h.native.HEAPU8.every((value) => value === 0));
+        entered();
+        return new Promise((resolve, reject) => {
+          resume = () =>
+            closeDuringPackaging ? resolve(input()) : reject(Error("private detail"));
+        });
+      },
+    });
+    await initialize(h);
+    const pending = h.handle({ id: 1, type: "sign", ipa: input(), credentials: makeCredentials() });
+    await started;
+    if (closeDuringPackaging)
+      await h.handle({ id: 1, type: "sign", ipa: input(), credentials: makeCredentials() });
+    resume();
+    await pending;
+    assert.equal(
+      h.messages.some((message) => message.id === 1 && message.ok),
+      false,
+    );
+    assert.equal(
+      h.messages.at(-1).error.code,
+      closeDuringPackaging ? "SIGNING_PROTOCOL_INVALID" : "SIGNING_FAILED",
+    );
+    assert.equal(h.events.filter((event) => event === "dispose").length, 1);
+    assert.equal(h.closed, 1);
+  }
 });

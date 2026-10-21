@@ -95,24 +95,36 @@ native outputs fail packaging; source-only integration is not a usable signer.
 Existing manifests without this group remain valid for unsigned generation.
 
 Select `prepareBrowserPackager({ signing: true })` before private input. Public
-bootstrap verifies the complete selected closure and initializes zsign with its
-transferred WASM bytes before exposing `signingReady`. It revokes the startup
-Blob URL after initialization. `session.takeIpaSigningClient()` transfers worker
-ownership once, so conversion runtime cleanup does not terminate the signer.
-The packager's internal conversion cleanup preserves it, while explicit
-`packager.close()` releases it, including after setup failure. Its combined
-cleanup promise is idempotent and rejection-observed for fire-and-forget callers;
-awaiters still receive cleanup failures. The UI closes it on every terminal
-conversion/signing path.
+bootstrap verifies the selected closure and actually initializes zsign before
+exposing `signingReady`. `session.takeIpaSigningFactory()` transfers ownership
+once to an independent factory. The initialized bootstrap worker is reused for
+the first attempt; subsequent attempts create fresh one-shot workers from the
+factory's retained verified worker Blob and bounded WASM copy. Startup Blob URLs
+are revoked after initialization, including failure and cancellation paths.
 
-`packager.sign({ ipa, credentials, signal, onProgress })` accepts a caller-owned
-unsigned Blob and explicit local P12/profile/password inputs only after public
-preparation. It returns a separate signed Blob and filename. Signing is one-shot;
-cancellation, failure and completion terminate its worker. The original unsigned
-result remains available if signing fails or is cancelled. No account login,
-upload, persistent credential storage, lazy runtime download or automatic
+Before reading P12/profile files into credential buffers, await
+`packager.prepareSigning({ signal })` to obtain an owned `{ sign, close }` attempt.
+Only then call `attempt.sign({ ipa, credentials, signal, onProgress })`; always
+call its synchronous, idempotent `close()` in a finally block, including when file
+validation or reading fails before signing. An attempt is one-shot and only one
+may be outstanding. Direct `packager.sign(...)` delegates only to an already
+prepared attempt and never starts a worker or downloads anything implicitly.
+
+Conversion cleanup releases the conversion runtime without closing the signing
+factory. Signing failure/cancellation leaves the exact committed unsigned Blob
+available for a retry with fresh credential inputs, without regenerating NSPs,
+exporting resources again, retaining prior credentials, or keeping conversion
+runtimes alive. Between completed attempts, only verified public worker/WASM
+assets remain in the factory. Explicit `packager.close()` or unmount aborts any
+pending initialization/signing, terminates its worker, clears the retained WASM
+copy and drops the worker Blob. The UI also closes the factory after successful
+signing or a nonretryable generation failure. The whole-packager cleanup promise
+remains idempotent and rejection-observed; awaiting it still reports cleanup errors.
+
+A successful attempt returns a separate signed Blob and filename. No account
+login, upload, persistent credential storage, lazy runtime download or automatic
 certificate lookup is part of this flow. JavaScript password strings cannot be
-reliably zeroized; the UI clears its references and inputs after the attempt.
+reliably zeroized; the UI clears its references and inputs after every attempt.
 
 This is an architectural no-network-request boundary for the signing code, not
 page-level CSP lockdown or a claim of universal browser network containment.

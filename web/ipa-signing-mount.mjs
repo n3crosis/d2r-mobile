@@ -79,7 +79,13 @@ export function mountSigningArchive(module, archive, options = {}) {
           store.truncate(external(node.path), attr.size);
           node.size = attr.size;
         });
-      if (attr.mode !== undefined && attr.mode !== node.mode) error(63);
+      if (attr.mode !== undefined) {
+        // Emscripten open 在创建后回写 0644/0666；只消费一次并保持规范 0644。
+        // Emscripten open finalizes a new file as 0644/0666; consume this once and retain canonical 0644.
+        if (node.creationModePending && [0o100644, 0o100666].includes(attr.mode)) {
+          node.creationModePending = false;
+        } else if (attr.mode !== node.mode) error(63);
+      }
     },
     lookup(parent, name) {
       return parent.contents[name] ?? error(44);
@@ -94,7 +100,9 @@ export function mountSigningArchive(module, archive, options = {}) {
         } else if (type === 0o100000) {
           store.truncate(external(path), 0);
         } else error(63);
-        return create(parent, name, type | (type === 0o040000 ? 0o755 : 0o644), path);
+        const node = create(parent, name, type | (type === 0o040000 ? 0o755 : 0o644), path);
+        node.creationModePending = type === 0o100000;
+        return node;
       });
     },
     rename(node, parent, name) {
@@ -185,8 +193,11 @@ export function mountSigningArchive(module, archive, options = {}) {
     FS.mkdir("/work");
     FS.mount(
       {
-        mount() {
+        mount(mountInfo) {
           const root = create(null, "/", 0o040755, "");
+          // 子节点在构造时继承挂载标识，必须先设置以便 unmount 清理哈希表。
+          // Children inherit mount identity at construction; set it first so unmount cleans the hash table.
+          root.mount = mountInfo;
           for (const directory of [...directories]
             .filter(Boolean)
             .sort((a, b) => a.split("/").length - b.split("/").length)) {

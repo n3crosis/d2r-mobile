@@ -9,3 +9,13 @@ This isolated adapter is not an enabled signing UI or a validated native signing
 - `createSignedSigningArchive(entries, { signal })` uses the existing canonical STORE writer, snapshots chunks into Blobs and performs a fresh independent manifest/layout/CRC validation before returning a Blob. Errors contain closed signing codes rather than filenames. This validates ZIP integrity, not certificate trust, provisioning eligibility or cryptographic signing semantics.
 
 The committed unsigned IPA must remain a separate fallback. Signing is a new post-commit transaction in an independent disposable worker. These modules neither upload nor publish anything. Their synthetic tests cover canonical roundtrip, CRC corruption, forbidden paths, cancellation, read/write bounds, immutable resources, changed-entry snapshots, temporary replacement, disposal, and signed-byte WASM heap views. Real Emscripten/native interoperability and signing remain separate validation gates.
+
+Retry orchestration is separate from storage. The independently owned public-asset
+factory in `sealed-runtime/ipa-signing-factory.mjs` prepares each one-shot worker
+before credential files are read. Its first attempt reuses the bootstrap worker;
+later attempts initialize fresh workers from verified in-memory public bytes,
+without network access. Each attempt must close even if credential-file reading
+fails. Failure/cancellation preserves the same unsigned Blob and requires fresh
+credential inputs; it does not repeat conversion or retain previous credentials.
+Explicit packager close/unmount disposes the factory and its retained public
+assets. These lifetime guarantees do not establish native signing or device trust.

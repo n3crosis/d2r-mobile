@@ -2,6 +2,7 @@
 // Test boundaries with transferable synthetic credentials, not real identities or claimed Apple verification.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createDownloadPreparation } from "../download-preparation.mjs";
 import { prepareIpaSigningClient } from "../ipa-signing-client.mjs";
 import { validateSigningCredentials, validateSigningProgress } from "../ipa-signing-contract.mjs";
 class WorkerDouble extends EventTarget {
@@ -249,4 +250,30 @@ test("deadline overrides cannot disable or exceed bounded production defaults", 
     assert.equal(worker.messages.length, 0);
     assert.equal(worker.terminated, 1);
   }
+});
+
+test("profile mismatch keeps the committed unsigned download available", async () => {
+  const original = ipa();
+  let retainedBlob;
+  const fallback = createDownloadPreparation({
+    createObjectURL: (blob) => {
+      retainedBlob = blob;
+      return "blob:unsigned";
+    },
+    revokeObjectURL() {},
+  });
+  fallback.retain({ blob: original, fileName: "D2RMobile-unsigned.ipa" });
+  const before = fallback.prepare();
+  const { client, worker } = await ready((w) =>
+    queueMicrotask(() =>
+      w.reply({ id: 1, ok: false, error: { code: "SIGNING_PROFILE_MISMATCH" } }),
+    ),
+  );
+  await assert.rejects(client.sign({ ipa: original, credentials: identity() }), {
+    message: "SIGNING_PROFILE_MISMATCH",
+  });
+  assert.deepEqual(fallback.prepare(), before);
+  assert.equal(retainedBlob, original);
+  assert.equal(worker.terminated, 1);
+  fallback.dispose();
 });

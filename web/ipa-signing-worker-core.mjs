@@ -58,7 +58,13 @@ export function invokeSigningNative(native, password) {
       0,
     );
     if (code !== 0)
-      throw signingError(code === -203 ? "SIGNING_IDENTITY_INVALID" : "SIGNING_FAILED");
+      throw signingError(
+        code === -206
+          ? "SIGNING_PROFILE_MISMATCH"
+          : code === -203
+            ? "SIGNING_IDENTITY_INVALID"
+            : "SIGNING_FAILED",
+      );
   } finally {
     for (const { pointer, length } of allocations) {
       try {
@@ -209,6 +215,12 @@ export function createIpaSigningWorkerHandler({
       ];
       if (!required.every((path) => entries.some((entry) => entry.path === path && entry.size > 0)))
         throw signingError("SIGNING_OUTPUT_INVALID");
+      // 条目已是独立 Blob 快照；打包前释放可变覆盖层并擦除原生凭据和堆。
+      // Entries are independent Blob snapshots; release the mutable overlay and wipe native credentials/heap before packaging.
+      mounted.dispose();
+      mounted = undefined;
+      clearNative(native);
+      native = undefined;
       progress("package", 0);
       output = await createArchive(entries);
       current();
