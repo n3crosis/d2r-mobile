@@ -15,7 +15,9 @@ export class NodeCrossWorker {
       { stdio: ["pipe", "pipe", "pipe"] },
     );
     this.child.on("error", (error) => this.fail(error));
+    this.child.stdin.on("error", (error) => this.fail(error));
     this.child.on("exit", (code) => {
+      clearTimeout(this.killTimer);
       if (!this.closed) this.fail(new Error(`Node SPIRV-Cross worker exited: ${code}`));
     });
     this.child.stdout.setEncoding("utf8");
@@ -46,6 +48,7 @@ export class NodeCrossWorker {
   }
 
   receive(chunk) {
+    if (this.closed) return;
     this.buffer += chunk;
     if (this.buffer.length > 32 * 1024 * 1024) {
       this.fail(new Error("NODE_CROSS_MESSAGE_LIMIT"));
@@ -70,15 +73,30 @@ export class NodeCrossWorker {
   fail(error) {
     if (this.closed) return;
     const event = { message: error.message, error };
-    this.onerror?.(event);
-    for (const listener of this.listeners.get("error") ?? []) listener(event);
-    this.terminate();
+    try {
+      for (const listener of [this.onerror, ...(this.listeners.get("error") ?? [])]) {
+        try {
+          listener?.(event);
+        } catch {
+          /* 观察者不能阻断关闭。 | Observers cannot block shutdown. */
+        }
+      }
+    } finally {
+      this.terminate();
+    }
   }
 
   terminate() {
     if (this.closed) return;
     this.closed = true;
+    this.buffer = "";
+    this.listeners.clear();
+    this.onmessage = this.onerror = this.onmessageerror = null;
     this.child.stdin.end();
-    this.child.kill();
+    this.child.kill("SIGTERM");
+    // 同步 Worker API 不等待退出；有限宽限期后强制终止桥接进程。
+    // The synchronous Worker API cannot await exit; force the bridge down after a bounded grace period.
+    this.killTimer = setTimeout(() => this.child.kill("SIGKILL"), 2000);
+    this.killTimer.unref?.();
   }
 }

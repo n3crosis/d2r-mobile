@@ -3,7 +3,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createHash } from "node:crypto";
+import { deflateSync } from "node:zlib";
 import {
+  createCascOverlayTransform,
   inspectCascPackStorageSpecs,
   createCascPackStorageLookup,
   patchCascPrebuiltReferences,
@@ -258,4 +260,99 @@ test("compact lookup requires both thresholds and rejects unbounded query hints"
   const { bytes } = fixture();
   for (const expectedQueries of [-1, 1.5, NaN, Infinity, "2048", 32769])
     assert.throws(() => createCascPackStorageLookup(bytes, { expectedQueries }));
+});
+
+// 零私有输入的零售布局合成检查，不声称与旧 Python 序号索引参考逐字节一致。
+// Synthetic retail-layout checks with no private inputs, not parity with the old ordinal-index Python reference.
+function retailFixture() {
+  const original = fixture();
+  const specs = Buffer.from("n\0z\0b:64K*=n\0b:256K*=z\0");
+  const bytes = new Uint8Array(46 + 75 + specs.length);
+  bytes.set(original.bytes.subarray(0, 46 + 75));
+  bytes[7] = 16;
+  new DataView(bytes.buffer).setUint32(42, specs.length);
+  bytes.set(specs, 46 + 75);
+  [0, 2, 4].forEach((offset, i) => {
+    bytes[46 + i * 25 + 20] = offset;
+  });
+  return { bytes, entries: original.entries };
+}
+
+test("retail EST byte offsets preserve specs and reject interior or out-of-table references", () => {
+  const { bytes, entries } = retailFixture();
+  const before = bytes.slice();
+  assert.deepEqual(
+    inspectCascPackStorageSpecs(bytes, entries).map(({ spec, specIndex }) => [spec, specIndex]),
+    [
+      ["n", 0],
+      ["z", 2],
+      ["b:64K*=n", 4],
+    ],
+  );
+  const compressed = bytes.slice();
+  compressed[116] = 13;
+  assert.equal(inspectCascPackStorageSpecs(compressed, [entries[2]])[0].spec, "b:256K*=z");
+  for (const offset of [1, 3, 5, 22, 255]) {
+    const invalid = bytes.slice();
+    invalid[116] = offset;
+    assert.throws(() => inspectCascPackStorageSpecs(invalid, entries), /CASC_OVERLAY_INVALID/);
+  }
+  const patched = patchCascPrebuiltReferences(bytes, [
+    { ...entries[2], newEkey: key(900), encodedSize: 123, decodedSize: 122 },
+  ]);
+  assert.equal(patched[116], 4);
+  assert.deepEqual(bytes, before);
+});
+
+test("retail raw BLTE emits exact 64 KiB N blocks, checksums and empty-record framing", async () => {
+  const digest = (data) => new Uint8Array(createHash("md5").update(data).digest());
+  const hash = (data) => Buffer.from(digest(data)).toString("hex");
+  const generate = createCascOverlayTransform({
+    md5: digest,
+    compress: (data) => new Uint8Array(deflateSync(data, { level: 9 })),
+  });
+  for (const length of [0, 65536, 65537, 131073]) {
+    const { bytes: vfs, entries } = retailFixture();
+    const root = fixture(1).bytes;
+    const oldVfs = key(900);
+    root.set(Buffer.from(oldVfs, "hex"), 46);
+    const config = Buffer.from(
+      `vfs-1 = ${hash(vfs)} ${oldVfs}\nvfs-1-size = ${vfs.length} ${vfs.length}\nvfs-root = ${hash(root)} ${key(901)}\nvfs-root-size = ${root.length} ${root.length}\n`,
+    );
+    const content = Uint8Array.from({ length }, (_, i) => i % 251);
+    const parts = [config, vfs, root, content];
+    const result = await generate(new Uint8Array(Buffer.concat(parts)), {
+      parts: parts.map((p) => p.length),
+      jobs: [{ path: entries[2].path, oldEkey: entries[2].oldEkey }],
+      location: [0, 2],
+    });
+    const archive = result.files["data/00-00000002.data"];
+    const encoded = archive.subarray(0, result.inventory[0].encodedSize);
+    const view = new DataView(encoded.buffer, encoded.byteOffset, encoded.length);
+    const count = Math.max(1, Math.ceil(length / 65536));
+    assert.equal(Buffer.from(encoded.subarray(0, 4)).toString(), "BLTE");
+    assert.equal(view.getUint32(4), 12 + count * 24);
+    assert.equal(encoded[8], 15);
+    assert.equal(encoded[9] * 65536 + encoded[10] * 256 + encoded[11], count);
+    let at = 12 + count * 24,
+      decoded = 0;
+    for (let i = 0; i < count; i++) {
+      const size = Math.min(65536, length - decoded);
+      assert.equal(view.getUint32(12 + i * 24), size + 1);
+      assert.equal(view.getUint32(16 + i * 24), size);
+      const block = encoded.subarray(at, at + size + 1);
+      assert.equal(block[0], 78);
+      assert.deepEqual(block.subarray(1), content.subarray(decoded, decoded + size));
+      assert.deepEqual(encoded.subarray(20 + i * 24, 36 + i * 24), digest(block));
+      at += size + 1;
+      decoded += size;
+    }
+    assert.equal(at, encoded.length);
+    assert.equal(decoded, length);
+    assert.equal(result.inventory[0].decodedSize, length);
+    assert.equal(
+      result.inventory[0].ekey.slice(0, 18),
+      hash(encoded.subarray(0, 12 + count * 24)).slice(0, 18),
+    );
+  }
 });

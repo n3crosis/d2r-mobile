@@ -181,7 +181,7 @@ test("reject checksum, header, mode, extent, budget and short-read corruption wi
     /SHORT_READ/,
   );
 });
-test("explicit new budget supports >16MiB BLTE without decoded retention; old whole-buffer limit remains", async () => {
+test("streaming supports >16MiB BLTE without decoded retention; whole-buffer reader accepts expanded budget", async () => {
   const part = Buffer.alloc(1024 * 1024, 7),
     block = Buffer.concat([Buffer.from("Z"), deflateSync(part)]),
     count = 17;
@@ -211,14 +211,13 @@ test("explicit new budget supports >16MiB BLTE without decoded retention; old wh
   assert.equal(staging.state.appended, 17 * 1024 * 1024);
   assert.equal(staging.state.chunks.length, 0);
   await result.dispose();
-  await assert.rejects(
-    decodeArchiveRecord(
-      { size: raw.length, read: (at, n) => raw.subarray(at, at + n) },
-      { ...record, offset: 0 },
-      { verifyMd5: () => true },
-    ),
-    /decoded size/,
+  const decoded = await decodeArchiveRecord(
+    { size: raw.length, read: (at, n) => raw.subarray(at, at + n) },
+    { ...record, offset: 0 },
+    { verifyMd5: (bytes, expected) => md5(bytes) === expected },
   );
+  assert.equal(decoded.length, 17 * 1024 * 1024);
+  assert.ok(decoded.every((byte) => byte === 7));
 });
 test("abort pending archive reads and stage acquisition; late owned stage is disposed", async () => {
   const f = fixture("n");
