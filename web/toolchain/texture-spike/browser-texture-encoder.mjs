@@ -99,7 +99,25 @@ export async function createTextureEncoder(createModule, encodeRGBA, options = {
     )
       throw new TextureError(-5);
     const linearBC3 = await encodeRGBA(rgba, width, height);
-    return { ...packLinearBC3(templateHeader, linearBC3, width, height), linearBC3 };
+    try {
+      return { ...packLinearBC3(templateHeader, linearBC3, width, height), linearBC3 };
+    } catch (error) {
+      // 打包失败时擦除独立编码结果，但不修改注入编码器借用的调用方输入视图。
+      // Wipe independent encoded output on packing failure, never aliases of caller inputs.
+      const bytes =
+        linearBC3 instanceof Uint8Array
+          ? linearBC3
+          : linearBC3 instanceof ArrayBuffer
+            ? new Uint8Array(linearBC3)
+            : null;
+      if (
+        bytes?.byteLength &&
+        bytes.buffer !== rgba.buffer &&
+        bytes.buffer !== templateHeader.buffer
+      )
+        bytes.fill(0);
+      throw error;
+    }
   }
   return Object.freeze({ encodeAndPack, packLinearBC3 });
 }

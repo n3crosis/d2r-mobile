@@ -233,6 +233,27 @@ test("cleanup failure is observable and dispose retries owned resources", async 
   assert.deepEqual([...fs.entries.keys()], ["unrelated"]);
 });
 
+test("failed writer abort retains the stage until a successful dispose retry", async () => {
+  const faults = { abort: new Error("abort failed") };
+  const fs = filesystem(faults),
+    stage = await fs.make();
+  await stage.append(Uint8Array.of(1, 2, 3));
+  await assert.rejects(stage.dispose(), (error) => {
+    assert.match(error.message, /CLEANUP_FAILED/);
+    assert.deepEqual(error.errors, [faults.abort]);
+    return true;
+  });
+  assert.ok(fs.entries.has(name));
+  assert.equal(fs.events.filter((event) => event[0] === "remove").length, 0);
+  delete faults.abort;
+  await stage.dispose();
+  assert.equal(fs.events.filter((event) => event[0] === "abort").length, 2);
+  assert.equal(fs.events.filter((event) => event[0] === "remove").length, 1);
+  assert.deepEqual([...fs.entries.keys()], ["unrelated"]);
+  await stage.dispose();
+  assert.equal(fs.events.filter((event) => event[0] === "remove").length, 1);
+});
+
 test("abort before and during creation or writes cleans safely", async () => {
   const controller = new AbortController();
   controller.abort();
@@ -333,10 +354,20 @@ test("operation and cleanup errors retain both causes and support later cleanup 
   await assert.rejects(stage.append(Uint8Array.of(1)), (error) => {
     assert.equal(error.cause, write);
     assert.equal(error.errors[0], write);
-    assert.deepEqual(error.errors[1].errors, [abort, remove]);
+    assert.deepEqual(error.errors[1].errors, [abort]);
     return true;
   });
+  assert.equal(
+    fs.events.some((event) => event[0] === "remove"),
+    false,
+  );
+  assert.ok(fs.entries.has(name));
   delete faults.abort;
+  await assert.rejects(stage.dispose(), (error) => {
+    assert.deepEqual(error.errors, [remove]);
+    return true;
+  });
+  assert.ok(fs.entries.has(name));
   delete faults.remove;
   await stage.dispose();
   assert.deepEqual([...fs.entries.keys()], ["unrelated"]);

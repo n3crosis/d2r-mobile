@@ -61,7 +61,9 @@ export async function createRawFileStage({
         errors.push(cause);
       }
     }
-    if (child && !removed) {
+    // 终止失败不能证明写入已停止；保留写入器和目录供 dispose 重试。
+    // A failed abort does not prove writes stopped; retain writer and child for dispose retry.
+    if (!writer && child && !removed) {
       try {
         await root.removeEntry(name, { recursive: true });
         removed = true;
