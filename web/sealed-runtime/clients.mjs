@@ -1016,7 +1016,7 @@ export async function prepareSealedRuntime({
           const { descriptor, ...geometry } = nativeArtAtlasDescriptor(value);
           const source = value.slice(40);
           const result = await l.request(
-            { operation: "decode", descriptor, source },
+            { operation: "decodePillowBc3", descriptor, source },
             [source.buffer],
             signal,
           );

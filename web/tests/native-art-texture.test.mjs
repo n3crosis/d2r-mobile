@@ -36,7 +36,7 @@ test("whole-atlas worker uses explicit decode descriptor and abort closes pendin
   const client = new NativeArtTextureClient(worker);
   const controller = new AbortController();
   const pending = client.decodeAtlas(sprite(), { signal: controller.signal });
-  assert.equal(sent.operation, "decode");
+  assert.equal(sent.operation, "decodePillowBc3");
   assert.equal(sent.descriptor.width, 136);
   assert.equal(sent.source.length, 16);
   controller.abort();

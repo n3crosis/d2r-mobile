@@ -85,7 +85,9 @@ export class NativeArtTextureClient {
       signal?.addEventListener("abort", abort, { once: true });
       this.#pending.set(id, { resolve, reject, cleanup, geometry });
       try {
-        this.#worker.postMessage({ id, operation: "decode", descriptor, source }, [source.buffer]);
+        this.#worker.postMessage({ id, operation: "decodePillowBc3", descriptor, source }, [
+          source.buffer,
+        ]);
       } catch {
         this.#pending.delete(id);
         cleanup();

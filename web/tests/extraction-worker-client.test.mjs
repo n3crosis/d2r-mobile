@@ -245,3 +245,16 @@ test("RomFS verification progress reaches the caller without completing the requ
   assert.deepEqual(await pending, { token: "romfs", size: 100n });
   client.close();
 });
+
+test("ExeFS open progress reaches selection without closing its worker", async () => {
+  const { worker, client } = make();
+  const events = [];
+  const pending = client.select({}, { onProgress: (event) => events.push(event) });
+  const progress = { stage: "exefs-open", completed: 0, total: 0, bytes: 0 };
+  worker.emit({ id: 1, progress });
+  assert.deepEqual(events, [progress]);
+  assert.equal(worker.terminated, false);
+  worker.emit({ id: 1, ok: true, result: { selection: {}, token: "exefs", entries: [] } });
+  assert.deepEqual(await pending, { selection: {}, token: "exefs", entries: [] });
+  client.close();
+});

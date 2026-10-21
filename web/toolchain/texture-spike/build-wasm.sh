@@ -12,7 +12,7 @@ emcc -O2 -std=c11 -I"$ROOT/dm/gfx/nvn" -I"$ROOT/dm/gfx/tex" \
   -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=16777216 -sMAXIMUM_MEMORY=268435456 \
   -sSTACK_SIZE=1048576 -sFILESYSTEM=0 -sABORTING_MALLOC=0 \
   '-sEXPORTED_RUNTIME_METHODS=["HEAPU8","HEAPU32"]' \
-  '-sEXPORTED_FUNCTIONS=["_malloc","_free","_texture_info","_texture_decode","_texture_pack_bc3"]' \
+  '-sEXPORTED_FUNCTIONS=["_malloc","_free","_texture_info","_texture_decode","_texture_decode_pillow_bc3","_texture_pack_bc3"]' \
   -o "$OUT/texture.mjs"
 cp "$ROOT/LICENSE" "$OUT/licenses/repository-LICENSE.txt"
 cp "$ROOT/dm/third_party/bcdec/LICENSE" "$OUT/licenses/bcdec-LICENSE.txt"

@@ -81,7 +81,7 @@ export async function createTextureDecoder(createModule, options = {}) {
       rows: m[7],
     }));
   }
-  function decode(desc, source, { level = 0, layer = 0 } = {}) {
+  function decodeWith(decoder, desc, source, { level = 0, layer = 0 } = {}) {
     if (
       !(source instanceof Uint8Array) ||
       source.byteLength > CAP ||
@@ -96,17 +96,7 @@ export async function createTextureDecoder(createModule, options = {}) {
         input = allocation(source.byteLength);
         output = allocation(m[2] * m[3] * m[5]);
         module.HEAPU8.set(source, input);
-        check(
-          module._texture_decode(
-            ptr,
-            level,
-            layer,
-            input,
-            source.byteLength,
-            output,
-            m[2] * m[3] * m[5],
-          ),
-        );
+        check(decoder(ptr, level, layer, input, source.byteLength, output, m[2] * m[3] * m[5]));
         return {
           pixels: module.HEAPU8.slice(output, output + m[2] * m[3] * m[5]),
           width: m[2],
@@ -120,6 +110,10 @@ export async function createTextureDecoder(createModule, options = {}) {
       }
     });
   }
+  const decode = (desc, source, options) =>
+    decodeWith(module._texture_decode, desc, source, options);
+  const decodePillowBc3 = (desc, source, options) =>
+    decodeWith(module._texture_decode_pillow_bc3, desc, source, options);
   function decodeV61(bytes) {
     if (!(bytes instanceof Uint8Array) || bytes.length < 40 || bytes.length > CAP + 40)
       throw new TextureError(-5);
@@ -148,5 +142,5 @@ export async function createTextureDecoder(createModule, options = {}) {
     );
     return { ...result, frameWidth };
   }
-  return Object.freeze({ layout, decode, decodeV61 });
+  return Object.freeze({ layout, decode, decodePillowBc3, decodeV61 });
 }

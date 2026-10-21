@@ -127,11 +127,14 @@ export function createExtractionWorkerClient({
   function message(event) {
     const data = event.data;
     if (
-      (active?.operation === "initialize" || active?.operation === "openRomfs") &&
+      (active?.operation === "initialize" ||
+        active?.operation === "select" ||
+        active?.operation === "openRomfs") &&
       data?.id === active.id &&
       keys(data, ["id", "progress"]) &&
       isExtractionProgress(data.progress) &&
-      (active.operation === "openRomfs") === romfsProgress(data.progress.stage)
+      (active.operation === "openRomfs") === romfsProgress(data.progress.stage) &&
+      (active.operation !== "select" || data.progress.stage === "exefs-open")
     ) {
       try {
         active.onProgress?.(Object.freeze({ ...data.progress }));

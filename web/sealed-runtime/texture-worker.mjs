@@ -90,6 +90,10 @@ async function run(data) {
     if (!(data.source instanceof Uint8Array) || data.source.byteLength > 64 * 1024 * 1024)
       throw new Error("Input cap");
     result = decoder.decode(data.descriptor, data.source, data.options);
+  } else if (data.operation === "decodePillowBc3") {
+    if (!(data.source instanceof Uint8Array) || data.source.byteLength > 64 * 1024 * 1024)
+      throw new Error("Input cap");
+    result = decoder.decodePillowBc3(data.descriptor, data.source, data.options);
   } else if (data.operation === "decodeV61") {
     if (!(data.source instanceof Uint8Array) || data.source.byteLength > 64 * 1024 * 1024 + 40)
       throw new Error("Input cap");

@@ -13,6 +13,8 @@ self.onmessage = ({ data }) => {
       if (data.operation === "decodeV61") result = api.decodeV61(data.source);
       else if (data.operation === "decode")
         result = api.decode(data.descriptor, data.source, data.options);
+      else if (data.operation === "decodePillowBc3")
+        result = api.decodePillowBc3(data.descriptor, data.source, data.options);
       else if (data.operation === "layout") result = api.layout(data.descriptor, data.options);
       else throw new Error("Unsupported texture worker operation");
       self.postMessage(
