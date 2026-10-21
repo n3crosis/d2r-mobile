@@ -228,10 +228,14 @@ export async function indexRomfs(source, { signal } = {}) {
   complete(dirRanges, dirs.size);
   complete(fileRanges, files.size);
   disjoint(dataRanges, "file data");
-  disjoint(
-    [...tables.map((table) => [table.offset, table.offset + table.size]), ...dataRanges],
-    "file data and metadata",
-  );
+  // 文件范围和表范围已分别检查；仅检查四个表与文件的交集，避免再次排序和复制文件列表。
+  // Files and tables are separately disjoint; check only their intersections, avoiding another file-list copy and sort.
+  for (const table of tables) {
+    if (!table.size) continue;
+    const end = table.offset + table.size;
+    for (const [start, next] of dataRanges)
+      if (start < end && table.offset < next) fail("file data and metadata overlap");
+  }
   const byPath = new Map(entries.map((entry) => [entry.path, entry]));
   return Object.freeze({
     size: imageSize,

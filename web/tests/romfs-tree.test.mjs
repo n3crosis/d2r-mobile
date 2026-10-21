@@ -286,3 +286,23 @@ test("rejects deep and overlong paths without recursive traversal", async () => 
   await assert.rejects(indexRomfs(directoryChain(65)), /depth limit/);
   await assert.rejects(indexRomfs(directoryChain(17, 255)), /path budget/);
 });
+
+// 所有四个元数据表均不得与非空文件相交；零长度范围仍不占用空间。
+// All four metadata tables reject nonempty file intersections; empty extents still occupy no space.
+test("file extents reject each metadata table, but allow empty tables and empty files", async () => {
+  for (const tableAt of [8, 24, 40, 56]) {
+    const f = fixture({ dataOffset: 80n, size: 1n });
+    f.source.size = 1024n;
+    const tableStart = f.view.getBigUint64(tableAt, true);
+    f.set64(f.fileStart + 8, tableStart - 80n);
+    await assert.rejects(indexRomfs(f.source), /file data and metadata overlap/);
+    f.set64(f.fileStart + 16, 0n);
+    assert.equal((await indexRomfs(f.source)).files[0].size, 0n);
+  }
+  const f = fixture({ dataOffset: 256n });
+  f.set64(8, 260n);
+  f.set64(16, 0n);
+  f.set64(40, 260n);
+  f.set64(48, 0n);
+  assert.equal((await indexRomfs(f.source)).files.length, 1);
+});
