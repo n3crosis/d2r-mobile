@@ -204,11 +204,15 @@ function run(data) {
       !(["hs", "ds"].includes(data.job.stage) && data.job.allowUnverifiedTessellation === true))
   )
     throw new Error("Invalid bounded shader input");
-  const result = JSON.parse(
-    exports.ShaderBridge.Translate(JSON.stringify(data.job), new Uint8Array(data.payload)),
+  const resultJson = exports.ShaderBridge.Translate(
+    JSON.stringify(data.job),
+    new Uint8Array(data.payload),
   );
-  if (JSON.stringify(result).length > 24 * 1024 * 1024) throw new Error("Shader result cap");
-  return result;
+  // 解析之前限制托管回复，避免先分配超限的 JS 对象图；不限制编译器内部内存。
+  // Bound managed replies before parsing an oversized JS object graph; this does not bound compiler-internal memory.
+  if (typeof resultJson !== "string" || resultJson.length > 24 * 1024 * 1024)
+    throw new Error("Shader result cap");
+  return JSON.parse(resultJson);
 }
 // .NET10 通过未设置的 onmessage 槽识别独立工作线程运行时。
 // 像原始着色器工作线程一样立即注册，但不占用该槽。

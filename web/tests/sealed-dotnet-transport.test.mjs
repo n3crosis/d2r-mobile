@@ -9,13 +9,14 @@ const source = readFileSync(
   new URL("../sealed-runtime/dotnet-worker.mjs", import.meta.url),
   "utf8",
 );
-function worker() {
+function worker({ resultJson, parse } = {}) {
   const listeners = new Map(),
     replies = [],
     calls = [];
   const context = createContext({
     ArrayBuffer,
     Uint8Array,
+    ...(parse ? { JSON: { parse, stringify: JSON.stringify } } : {}),
     self: {
       addEventListener(type, listener) {
         listeners.set(type, listener);
@@ -28,7 +29,9 @@ function worker() {
       ShaderBridge: {
         Translate(json, bytes) {
           calls.push({ job: JSON.parse(json), bytes: [...bytes] });
-          return JSON.stringify({ sentinel: "managed-export-reached" });
+          return resultJson === undefined
+            ? JSON.stringify({ sentinel: "managed-export-reached" })
+            : resultJson;
         },
       },
     },
@@ -97,4 +100,26 @@ test("tessellation opt-in does not bypass existing payload or metadata caps", as
   ])
     assert.equal((await transport.request({ ...request("hs", true), ...change })).ok, false);
   assert.equal(transport.calls.length, 0);
+});
+
+// 不允许超限回复先进入 JSON.parse；保留正常回复与净化错误行为。
+// Oversized replies must not reach JSON.parse; normal replies and sanitized errors remain intact.
+test("managed output is bounded before parsing", async () => {
+  for (const resultJson of ['"' + "x".repeat(24 * 1024 * 1024) + '"', null, 7]) {
+    let parses = 0;
+    const transport = worker({
+      resultJson,
+      parse(value) {
+        parses++;
+        return JSON.parse(value);
+      },
+    });
+    const reply = await transport.request(request("cs"));
+    assert.equal(transport.calls.length, 1);
+    assert.equal(parses, 0);
+    assert.equal(reply.ok, false);
+    assert.equal(reply.error, "Offline .NET operation failed (new)");
+  }
+  const transport = worker({ resultJson: '{"bounded":true}' });
+  assert.equal((await transport.request(request("cs"))).result.bounded, true);
 });
