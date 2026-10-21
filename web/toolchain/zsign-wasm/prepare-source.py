@@ -20,7 +20,9 @@ if output.exists():
 shutil.copytree(source / "src", output)
 for name in ["zsign_export.cpp", "zsign_export.h"]:
     shutil.copyfile(port / "native" / name, output / name)
-shutil.copyfile(here / "profile-compatibility.inc", output / "profile-compatibility.inc")
+shutil.copyfile(
+    here / "profile-compatibility.inc", output / "profile-compatibility.inc"
+)
 
 
 def replace(path, old, new):
@@ -60,10 +62,18 @@ struct ZFileMappedInfo { string path; size_t offset; size_t size; bool ro; };
 static map<void*, ZFileMappedInfo> s_mapFilesNoMmap;
 
 """
-fs.write_text(text[:start] + struct + (here / "bounded-map.inc").read_text() + "\n" + text[end:])
-replace("zsign_export.cpp", "#define ZSIGN_EXPORT EMSCRIPTEN_KEEPALIVE", "#define ZSIGN_EXPORT")
+fs.write_text(
+    text[:start] + struct + (here / "bounded-map.inc").read_text() + "\n" + text[end:]
+)
 replace(
-    "zsign_export.cpp", '#define ZSIGN_VERSION "0.7"', '#define ZSIGN_VERSION "1.1.3-d2r-browser"'
+    "zsign_export.cpp",
+    "#define ZSIGN_EXPORT EMSCRIPTEN_KEEPALIVE",
+    "#define ZSIGN_EXPORT",
+)
+replace(
+    "zsign_export.cpp",
+    '#define ZSIGN_VERSION "0.7"',
+    '#define ZSIGN_VERSION "1.1.3-d2r-browser"',
 )
 replace(
     "zsign_export.cpp",
@@ -153,6 +163,105 @@ replace(
     "common/json.cpp",
     '#ifdef _WIN32\n\t\t::snprintf(buf, 256, "%lld", m_value.v_date);',
     '#ifdef __EMSCRIPTEN__\n\t\t::snprintf(buf, 256, "%" PRId64, static_cast<int64_t>(m_value.v_date));\n#elif defined(_WIN32)\n\t\t::snprintf(buf, 256, "%lld", m_value.v_date);',
+)
+# 在派生副本中修复 XML 字符串往返；不修改固定上游源码或二进制 plist 解析器。
+# Fix XML string round-trips in the derived copy, not the pinned upstream or binary plist reader.
+plist = output / "common/json.cpp"
+text = plist.read_text()
+start = text.index("bool jpreader::_decode_string(")
+end = text.index("bool jpreader::_add_error(", start)
+text = (
+    text[:start]
+    + r"""bool jpreader::_decode_string(ptoken& token, string& strdec)
+{
+    strdec.clear();
+    strdec.reserve(static_cast<size_t>(token.pend - token.pbegin));
+    const char* cursor = token.pbegin;
+    while (cursor != token.pend) {
+        unsigned char ch = static_cast<unsigned char>(*cursor++);
+        if (ch != '&') {
+            // 数据和日期保留既有的格式空白处理；键与字符串保留内容。
+            // Keep existing data/date formatting whitespace handling; preserve key/string content.
+            if (token.type != ptoken::E_PTOKEN_KEY && token.type != ptoken::E_PTOKEN_STRING &&
+                (ch == '\t' || ch == '\r' || ch == '\n')) continue;
+            if (ch < 0x20 && ch != '\t' && ch != '\r' && ch != '\n')
+                return _add_error("Invalid XML character", token.pbegin);
+            // XML 原始换行规范化；字符引用中的换行不受此规则影响。
+            // Normalize literal XML line endings, not character-reference line endings.
+            if (ch == '\r') {
+                if (cursor != token.pend && *cursor == '\n') ++cursor;
+                ch = '\n';
+            }
+            strdec.push_back(static_cast<char>(ch));
+            continue;
+        }
+        const char* start = cursor;
+        while (cursor != token.pend && *cursor != ';') ++cursor;
+        if (cursor == token.pend || *cursor != ';')
+            return _add_error("Invalid XML entity", token.pbegin);
+        string entity(start, cursor++);
+        uint32_t code = 0;
+        if (entity == "amp") code = '&';
+        else if (entity == "lt") code = '<';
+        else if (entity == "gt") code = '>';
+        else if (entity == "quot") code = '"';
+        else if (entity == "apos") code = '\'';
+        else {
+            size_t at = 1;
+            uint32_t base = 10;
+            if (entity.empty() || entity[0] != '#')
+                return _add_error("Unknown XML entity", token.pbegin);
+            if (at < entity.size() && entity[at] == 'x') { base = 16; ++at; }
+            if (at == entity.size()) return _add_error("Empty XML character reference", token.pbegin);
+            for (; at < entity.size(); ++at) {
+                unsigned char digit = static_cast<unsigned char>(entity[at]);
+                uint32_t value = digit >= '0' && digit <= '9' ? digit - '0' :
+                    digit >= 'a' && digit <= 'f' ? digit - 'a' + 10 :
+                    digit >= 'A' && digit <= 'F' ? digit - 'A' + 10 : 16;
+                if (value >= base || code > (0x10ffffU - value) / base)
+                    return _add_error("Invalid XML character reference", token.pbegin);
+                code = code * base + value;
+            }
+        }
+        if (!(code == 9 || code == 10 || code == 13 ||
+              (code >= 0x20 && code <= 0xd7ff) ||
+              (code >= 0xe000 && code <= 0xfffd) || (code >= 0x10000 && code <= 0x10ffff)))
+            return _add_error("Invalid XML character reference", token.pbegin);
+        // 仅解码一次；例如 &amp;lt; 必须保留为字面量 &lt;。
+        // Decode once only: for example, &amp;lt; remains the literal text &lt;.
+        if (code < 0x80) strdec.push_back(static_cast<char>(code));
+        else {
+            if (code < 0x800) strdec.push_back(static_cast<char>(0xc0 | (code >> 6)));
+            else {
+                if (code < 0x10000) strdec.push_back(static_cast<char>(0xe0 | (code >> 12)));
+                else {
+                    strdec.push_back(static_cast<char>(0xf0 | (code >> 18)));
+                    strdec.push_back(static_cast<char>(0x80 | ((code >> 12) & 63)));
+                }
+                strdec.push_back(static_cast<char>(0x80 | ((code >> 6) & 63)));
+            }
+            strdec.push_back(static_cast<char>(0x80 | (code & 63)));
+        }
+    }
+    return true;
+}
+
+"""
+    + text[end:]
+)
+# 数据、日期和字符串调用方必须传播实体解析错误。
+# Data, date and string callers must propagate entity parsing failures.
+old = "\t\t_decode_string(token, strval);"
+if text.count(old) != 3:
+    raise SystemExit("Unexpected pinned plist string callers")
+text = text.replace(old, "\t\tif (!_decode_string(token, strval)) return false;")
+plist.write_text(text)
+# 解码后的结束符和回车必须重新转义，保持有效 XML 与字符引用语义。
+# Re-escape decoded terminators and carriage returns to preserve XML validity and reference semantics.
+replace(
+    "common/json.cpp",
+    '\t//_string_replace(str, ">", "&gt;");\t//optional',
+    '\t_string_replace(str, ">", "&gt;");\n\t_string_replace(str, "\\r", "&#13;");',
 )
 report = {
     "patches": {
