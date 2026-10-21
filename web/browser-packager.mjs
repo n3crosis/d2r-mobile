@@ -169,7 +169,10 @@ export async function prepareBrowserPackager({
     shaders = createProductionShaderAdapter({
       runtime,
       catalog: profile.catalog,
-      trustedShell: profile.trustedShell,
+      trustedShell: {
+        ...profile.shell.contract,
+        trustedRecipe: profile.trustedShell.trustedRecipe,
+      },
     });
     let used = false;
     const allowed = (path) =>

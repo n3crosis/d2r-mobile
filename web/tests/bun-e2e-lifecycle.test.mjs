@@ -2,7 +2,7 @@
 // Synthetic outputs and startup failures only; no private inputs or conversion.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
@@ -70,6 +70,7 @@ test("setup failure restores globals, stops server, revokes URL and permits anot
       JSON.stringify({
         assets: [
           { path: "sealed-workers/nsp-worker.mjs", bytes: source.length, sha256: hash(source) },
+          { path: "sealed-workers/cross-worker.mjs", bytes: source.length, sha256: hash(source) },
         ],
         transport: {
           entries: [{ sha256: hash(source), bytes: source.length, offset: 0, file: "chunk.gz" }],
@@ -148,7 +149,11 @@ test("preview serves confined real targets and rejects external symlinks", () =>
     await writeFile(outside, "private synthetic");
     await symlink(outside, join(preview, "escape"));
     await symlink(inside, join(preview, "alias"));
-    assert.equal(await resolvePreviewFile(preview, inside), inside);
-    assert.equal(await resolvePreviewFile(preview, join(preview, "alias")), inside);
-    assert.equal(await resolvePreviewFile(preview, join(preview, "escape")), null);
+    const previewRoot = await realpath(preview);
+    assert.equal(await resolvePreviewFile(previewRoot, inside), await realpath(inside));
+    assert.equal(
+      await resolvePreviewFile(previewRoot, join(preview, "alias")),
+      await realpath(inside),
+    );
+    assert.equal(await resolvePreviewFile(previewRoot, join(preview, "escape")), null);
   }));

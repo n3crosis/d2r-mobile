@@ -325,7 +325,7 @@ export function createOverlayRecipe({ png, md5, sha1 } = {}) {
     async execute(operation, payload, options = {}) {
       requireValue(operation === "overlay-recipe", "OVERLAY_RECIPE_OPERATION");
       requireValue(
-        payload instanceof Uint8Array && payload.length <= 128 * MiB && exactKeys(options, []),
+        payload instanceof Uint8Array && payload.length <= 144 * MiB && exactKeys(options, []),
         "OVERLAY_RECIPE_OPTIONS",
       );
       const input = JSON.parse(utf8sig(payload));
@@ -334,7 +334,7 @@ export function createOverlayRecipe({ png, md5, sha1 } = {}) {
         typeof input.manifest === "string" && utf8.encode(input.manifest).length <= 16 * MiB,
         "OVERLAY_MANIFEST_LIMIT",
       );
-      const assets = decodeMap(input.assets, 64 * MiB),
+      const assets = decodeMap(input.assets, 96 * MiB),
         generated = decodeMap(input.generated, 48 * MiB);
       requireValue(
         [...assets.keys()].every((path) => logical(path) === path),

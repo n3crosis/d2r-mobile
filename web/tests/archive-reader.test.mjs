@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { deflateSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { archiveLocator, ARCHIVE_LIMITS, decodeArchiveRecord } from "../archive-reader.mjs";
@@ -96,6 +97,22 @@ test("large raw records are read in bounded chunks", async () => {
   assert.equal(Buffer.compare(Buffer.from(decoded), bytes), 0);
   assert.ok(input.reads.length >= 3);
   assert.ok(input.reads.every(([, length]) => length <= 4 * 1024 * 1024));
+});
+test("single compressed records may expand beyond the old 16 MiB block limit", async () => {
+  const decoded = Buffer.alloc(17 * 1024 * 1024, 0x5a);
+  const encoded = deflateSync(decoded);
+  const result = await decodeArchiveRecord(
+    source(encoded),
+    {
+      offset: 0,
+      encodedSize: encoded.length,
+      decodedSize: decoded.length,
+      encoding: "z",
+      ckey: md5(decoded),
+    },
+    { verifyMd5 },
+  );
+  assert.equal(Buffer.compare(Buffer.from(result), decoded), 0);
 });
 test("MD5 is mandatory, includes BLTE mode byte, and checks final CKey", async () => {
   const bytes = Buffer.from(blte.raw, "hex");

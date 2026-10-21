@@ -10,10 +10,12 @@
 import { MAX_READ_BYTES, readRange } from "./preflight.mjs";
 
 export const ARCHIVE_LIMITS = Object.freeze({
-  encodedRecord: 16 * 1024 * 1024,
-  decodedRecord: 16 * 1024 * 1024,
-  encodedBlock: 16 * 1024 * 1024,
-  decodedBlock: 16 * 1024 * 1024,
+  // Selected shader packs can be single zlib records above 53 MiB decoded.
+  // The shader reader already limits each requested pack to 256 MiB.
+  encodedRecord: 256 * 1024 * 1024,
+  decodedRecord: 256 * 1024 * 1024,
+  encodedBlock: 256 * 1024 * 1024,
+  decodedBlock: 256 * 1024 * 1024,
   blocks: 4096,
   compressedSlice: 1024,
 });

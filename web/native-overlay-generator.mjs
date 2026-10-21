@@ -12,9 +12,9 @@ import { writeCascOverlay, writeCascPrebuiltOverlay } from "./casc-overlay-write
 export const NATIVE_OVERLAY_LIMITS = Object.freeze({
   manifest: 128 * 1024 * 1024,
   projectedManifest: 16 * 1024 * 1024,
-  assets: 64 * 1024 * 1024,
+  assets: 96 * 1024 * 1024,
   generated: 48 * 1024 * 1024,
-  payload: 128 * 1024 * 1024,
+  payload: 144 * 1024 * 1024,
   output: 128 * 1024 * 1024,
   file: 16 * 1024 * 1024,
   rows: 262144,
@@ -83,9 +83,14 @@ async function manifestInputs(romfs, logicalAssets, signal) {
   const line = (text) => {
     if (!text || text.startsWith("#")) return;
     const f = text.replace(/\r$/, "").split("|");
-    if (f.length < 11) return;
+    if (f.length < 11 || !f[9]) return;
     const key = path(f[9]);
-    const row = ["", "", "", "", f[4], f[5], "", "", "", f[9], ""].join("|") + "\n";
+    const originalPath = f[9].replaceAll("\\", "/");
+    const colon = originalPath.lastIndexOf(":");
+    const prefix = colon < 0 ? "" : originalPath.slice(0, colon + 1);
+    const suffix = originalPath.slice(colon + 1);
+    const projectedPath = prefix + (/^data\//i.test(suffix) ? suffix : `data/${suffix}`);
+    const row = ["", "", "", "", f[4], f[5], "", "", "", projectedPath, ""].join("|") + "\n";
     projectedBytes += utf8.encode(row).length;
     if (
       projectedBytes > NATIVE_OVERLAY_LIMITS.projectedManifest ||

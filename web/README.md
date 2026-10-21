@@ -68,6 +68,12 @@ bun run test:e2e:bun -- \
   --output /path/to/unsigned.ipa
 ```
 
+For a local run with the pinned native SPIRV-Cross CLI, set
+`D2R_E2E_SPIRV_CROSS_MODE=native`, `D2R_E2E_SPIRV_CROSS_CLI` to the built
+executable, and `D2R_E2E_SPIRV_CROSS_SOURCE` to its source checkout. The runner
+checks the source commit before converting shaders. This mode tests IPA assembly
+under Bun; the browser build still uses its verified WASM converter.
+
 The frontend uses React, TypeScript, Tailwind and shadcn/ui source components;
 [component provenance and licenses](SHADCN_PROVENANCE.md) are retained.
 Bun's HTML bundler emits static HTML, JavaScript and CSS to `dist/`. Frontend

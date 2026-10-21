@@ -112,7 +112,7 @@ function table(raw) {
       raw[5] >= 46 &&
       raw[5] <= raw.length &&
       raw[6] === 16 &&
-      raw[7] === 0 &&
+      (raw[7] === 0 || raw[7] === 16) &&
       u32(raw, 8) === 10,
   );
   const path = u32(raw, 12),
@@ -134,9 +134,23 @@ function table(raw) {
   const nonempty = spans.filter(([, size]) => size > 0).sort((a, b) => a[0] - b[0]);
   for (let i = 1; i < nonempty.length; i++)
     requireValue(nonempty[i - 1][0] + nonempty[i - 1][1] <= nonempty[i][0]);
-  const specs = byteKey(raw.subarray(est, est + estSize)).split("\0");
+  const values = byteKey(raw.subarray(est, est + estSize)).split("\0");
+  const specs = [];
+  if (raw[7] === 0) {
+    // The original synthetic fixture uses ordinal indexes.
+    values.forEach((value, index) => {
+      specs[index] = value;
+    });
+  } else {
+    // Retail TVFS CFT records use byte offsets into the EST string table.
+    let specOffset = 0;
+    for (const value of values) {
+      specs[specOffset] = value;
+      specOffset += value.length + 1;
+    }
+  }
   for (let pos = cft; pos < cft + cftSize; pos += 25)
-    requireValue(["n", "z", "b:256K*=z"].includes(specs[raw[pos + 20]]));
+    requireValue(["n", "z", "b:64K*=n", "b:256K*=z"].includes(specs[raw[pos + 20]]));
   return { path, pathSize, vfs, vfsSize, cft, cftSize, end: cft + cftSize, est, estSize, specs };
 }
 function pathEntry(raw, at) {
@@ -622,11 +636,16 @@ function createOverlayTransform({ md5, compress } = {}, prebuiltMode) {
     requireValue(result instanceof Uint8Array && result.length <= MAX_OUTPUT);
     return result;
   };
-  async function blte(content) {
+  async function blte(content, spec) {
+    const rawBlocks = spec === "b:64K*=n";
+    const blockSize = rawBlocks ? 64 * 1024 : 256 * 1024;
     const blocks = [];
-    for (let at = 0; at < content.length; at += 256 * 1024) {
-      const raw = content.subarray(at, at + 256 * 1024);
-      blocks.push({ encoded: concat([new Uint8Array([90]), await zip(raw)]), decoded: raw.length });
+    for (let at = 0; at < content.length; at += blockSize) {
+      const raw = content.subarray(at, at + blockSize);
+      blocks.push({
+        encoded: concat([new Uint8Array([rawBlocks ? 78 : 90]), rawBlocks ? raw : await zip(raw)]),
+        decoded: raw.length,
+      });
     }
     if (!blocks.length) blocks.push({ encoded: new Uint8Array([78]), decoded: 0 });
     const headerSize = 12 + 24 * blocks.length,
@@ -644,7 +663,8 @@ function createOverlayTransform({ md5, compress } = {}, prebuiltMode) {
     return concat([header, ...blocks.map((block) => block.encoded)]);
   }
   async function encode(content, spec) {
-    return spec === "n" ? content.slice() : spec === "z" ? zip(content) : blte(content);
+    requireValue(["n", "z", "b:64K*=n", "b:256K*=z"].includes(spec));
+    return spec === "n" ? content.slice() : spec === "z" ? zip(content) : blte(content, spec);
   }
   function ekey(encoded, location, offset) {
     const size = byteKey(encoded.subarray(0, 4)) === "BLTE" ? u32(encoded, 4) : encoded.length;

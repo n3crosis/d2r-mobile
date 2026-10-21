@@ -12,7 +12,7 @@ export const OPERATION_LIMITS = Object.freeze({
   "casc-overlay": [64, 1048576],
   "casc-prebuilt-overlay": [64, 1048576],
   "mercenary-art": [20, 4096],
-  "overlay-recipe": [128, 4096],
+  "overlay-recipe": [144, 4096],
   "remaining-art": [20, 4096],
 });
 export function validateInitialization(data) {

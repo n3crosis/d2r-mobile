@@ -1,13 +1,14 @@
 // Run the production packager against local inputs under Bun. No game files or
 // keys are included in the repository or sent to the preview server.
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, stat, lstat, open, realpath } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, lstat, open, realpath, writeFile } from "node:fs/promises";
 import { basename, join, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { gunzipSync } from "node:zlib";
 import { prepareBrowserPackager } from "../browser-packager.mjs";
 import { DirectoryHandle, storageAt } from "./bun-e2e-fs.mjs";
+import { NodeCrossWorker } from "./bun-e2e-node-worker.mjs";
 
 function usage() {
   throw new Error(
@@ -39,21 +40,21 @@ function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-async function packageReaderSource(preview) {
+async function verifiedWorkerSource(preview, workerPath) {
   const manifest = JSON.parse(
     await readFile(join(preview, "runtime/runtime-manifest.json"), "utf8"),
   );
-  const asset = manifest.assets.find((item) => item.path === "sealed-workers/nsp-worker.mjs");
+  const asset = manifest.assets.find((item) => item.path === workerPath);
   const entry = manifest.transport.entries.find((item) => item.sha256 === asset?.sha256);
-  if (!asset || !entry || entry.bytes !== asset.bytes) throw new Error("BUN_E2E_READER_MANIFEST");
+  if (!asset || !entry || entry.bytes !== asset.bytes) throw new Error("BUN_E2E_WORKER_MANIFEST");
   const compressed = await readFile(join(preview, "runtime", entry.file));
   const transport = manifest.transport.files.find((item) => item.path === entry.file);
   if (!transport || sha256(compressed) !== transport.sha256)
-    throw new Error("BUN_E2E_READER_TRANSPORT");
+    throw new Error("BUN_E2E_WORKER_TRANSPORT");
   const decoded = gunzipSync(compressed);
   const source = decoded.subarray(entry.offset, entry.offset + entry.bytes);
   if (source.length !== asset.bytes || sha256(source) !== asset.sha256)
-    throw new Error("BUN_E2E_READER_HASH");
+    throw new Error("BUN_E2E_WORKER_HASH");
   return source.toString("utf8");
 }
 
@@ -184,7 +185,8 @@ export async function run(options) {
       pathToFileURL(join(preview, "runtime/runtime-integrity.mjs")).href
     );
     if (sha256(manifestBytes) !== runtimeManifestSha256) throw new Error("BUN_E2E_MANIFEST_HASH");
-    const readerSource = await packageReaderSource(preview);
+    const readerSource = await verifiedWorkerSource(preview, "sealed-workers/nsp-worker.mjs");
+    const crossSource = await verifiedWorkerSource(preview, "sealed-workers/cross-worker.mjs");
     const prefix = await Bun.file(
       new URL("./bun-e2e-file-reader-prefix.mjs", import.meta.url),
     ).text();
@@ -193,16 +195,19 @@ export async function run(options) {
     );
     server = await startPreview(preview);
     staging = await mkdtemp(join(tmpdir(), "d2r-bun-e2e-"));
+    const crossPath = join(staging, "cross-worker.mjs");
+    await writeFile(crossPath, crossSource);
     const NativeWorker = globalThis.Worker;
     let workers = 0;
     restore.push(
       replaceBunGlobal(
         globalThis,
         "Worker",
-        class extends NativeWorker {
+        class {
           constructor(url, workerOptions) {
             workers++;
-            super(workers === 4 ? readerUrl : url, workerOptions);
+            if (workers === 5) return new NodeCrossWorker(crossPath);
+            return new NativeWorker(workers === 4 ? readerUrl : url, workerOptions);
           }
         },
       ),
