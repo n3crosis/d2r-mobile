@@ -6,48 +6,34 @@ This supplements, and does not replace or relax, [CONTRIBUTING.md](../CONTRIBUTI
 and the [PR template](../.github/PULL_REQUEST_TEMPLATE.md). This is not a claim
 that a PR is ready. Mark an item only after checking the exact change and recording
 the revision, platform and actual output. Only the source checks explicitly recorded below are reported as run.
-The full browser build and publication at f9cb44a passed; later edits require their
+The full browser build and publication at 155fd76 passed; later edits require their
 own checks. Game/device tests and screenshots remain pending. No PR has been opened.
 
 ## Published checkpoint versus pending work
 
-Verified publication: `f9cb44a0ab5bcde738b55717bce41567b1c72a90`, successful
-[Verify 39536682757](https://github.com/n3crosis/d2r-mobile/actions/runs/39536682757),
-artifact `12318171949`, owner-private Site deployment at 2026-10-21 03:13:26 UTC.
-Exact ZIP/runtime digests, artifact size and inventory are recorded in
-[the delivery receipt](WEB_DELIVERY_PROGRESS.md#publication-receipt-and-pending-source-changes).
-The publication includes canonical Warlock preselection, removal of 48 unused
-raw-source payload assets and a confirmed SDK cache hit, without a timing claim.
+Published `155fd764add607adf9070fafd5fdf58e40296408` passed
+[Verify 39549460300](https://github.com/n3crosis/d2r-mobile/actions/runs/39549460300).
+Artifact, digests and the 2026-10-21 05:32:00 UTC deployment receipt are recorded in
+[delivery status](WEB_DELIVERY_PROGRESS.md#publication-receipt-and-pending-source-changes).
 
-The published shader changes passed 23 targeted shader tests, frontend checks
-and the full CI. Site source: `bdbbacb62b0f36abc5766a3faafad5f850cae035`.
-These checks do not establish real-game/device acceptance or measured RAM savings.
-The native fast/thorough option is live. Actual revised WASM tests passed 32
-synthetic fixtures / 80 calls with opaque-URL execution verified, not browser,
-decode, real-game or device proof. Paired stability evidence is recorded below;
-it does not establish universal determinism.
+The default output remains unsigned. Optional local zsign WASM signing accepts
+P12/PFX identities and provisioning profiles without uploading credentials. Its
+compatibility checks do not establish certificate trust, revocation status or
+device eligibility. After signing failure or cancellation, fresh credentials can
+retry against the retained unsigned Blob without repeating NSP conversion or
+resource export. Completed unsigned downloads and resource outcomes remain available.
 
-Download-preparation retry, UI/cleanup/RPC race fixes, stream cancellation and
-committed IPA recovery after cleanup failure are now live, alongside batch suffix
-lookup and art-buffer lifetime improvements. Cleanup failure remains visible;
-a genuinely completed IPA can be saved before reloading without regeneration.
-Evidence is synthetic testing, not browser RAM, timing or real-game measurement.
-After project-only SourceLink opt-out, local symbols remain and remote source
-retrieval is removed. The observed `e93a15a` / `32e9717` artifact pair has identical
-297 logical assets and 33 runtime payloads, including .NET boot/main and SPIRV;
-only outer `build.sourceRevision` changed. This establishes stability for that
-pair, not universal build determinism.
+The publication includes early signing-heap/mutable-filesystem release and source
+Blob reuse, plus the user's extraction-progress and Pillow-compatible BC3 fixes.
+These are implementation changes, not measured browser RAM/speed savings. The
+browser runtime retains .NET but contains no Python runtime, packages or scripts;
+Python build/reference tooling is separate. Build and synthetic checks do not
+establish real-game conversion, real-credential signing, installation or execution.
 
-The `db94` 1 MiB filesystem write batching and thresholded CFT index changes
-are now live. This release also includes the user's `32a9` RomFS tail-metadata
-and unnamed-CASC handling, the sealed tessellation gate's explicit opt-in fix,
-digest allocation improvements, and removal of the dead orphan Python adapter.
-No browser speed/RAM proof is claimed.
-
-The next uncommitted source changes are not live: 64 KiB archive second-pass
-read windows, prepared-code buffer wiping on abort, stable log identifiers,
-and owned supplemental-pack index handling. They still require their own build
-and publication; this deployment receipt does not cover them.
+Historical paired-build evidence remains limited to `e93a15a` / `32e9717`:
+all 297 logical assets and 33 runtime payloads in that pair were identical,
+including .NET boot/main and SPIRV; only outer `build.sourceRevision` changed.
+That observed pair does not establish universal determinism or certify later builds.
 
 ## What changed / why
 
@@ -74,6 +60,9 @@ Review generated diffs before committing. The work does not establish bilingual
 coverage for every historical browser spike, comment or document.
 
 ## Checks from the unchanged PR template
+
+The checked source results below are historical records from 2026-10-20, including
+the then-current 553-string count; they are not the current catalog inventory.
 
 No game files needed (historical recorded outputs below, not rerun in this documentation update):
 
