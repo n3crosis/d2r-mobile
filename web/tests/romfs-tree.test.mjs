@@ -87,6 +87,27 @@ test("indexes nested synthetic RomFS without reading payload; lazy bounded reads
   assert.equal((await member.readAt(member.size, 0)).length, 0);
 });
 
+test("indexes RomFS metadata stored after file data and rejects overlap", async () => {
+  const original = fixture({ dataOffset: 512n, size: 8n });
+  const metadataStart = 520;
+  const bytes = new Uint8Array(metadataStart + original.bytes.length - 80);
+  bytes.set(original.bytes.subarray(0, 80));
+  bytes.fill(0x5a, 512, metadataStart);
+  bytes.set(original.bytes.subarray(80), metadataStart);
+  const view = new DataView(bytes.buffer);
+  for (const at of [8, 24, 40, 56])
+    view.setBigUint64(at, view.getBigUint64(at, true) + BigInt(metadataStart - 80), true);
+  const source = {
+    size: BigInt(bytes.length),
+    readAt: async (offset, count) => bytes.slice(Number(offset), Number(offset) + count),
+  };
+  const index = await indexRomfs(source);
+  assert.equal(index.files.length, 1);
+  assert.deepEqual(await index.files[0].readAt(0n, 8), new Uint8Array(8).fill(0x5a));
+  view.setBigUint64(metadataStart + original.fileStart - 80 + 16, 12n, true);
+  await assert.rejects(indexRomfs(source), /file data and metadata overlap/);
+});
+
 test("rejects malformed header/table sizes before bulk reads", async () => {
   for (const change of [
     (f) => f.set64(0, 79),

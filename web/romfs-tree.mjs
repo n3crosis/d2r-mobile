@@ -117,11 +117,11 @@ export async function indexRomfs(source, { signal } = {}) {
   if (u64(0) !== 80n) fail("header size");
   const tables = [8, 24, 40, 56].map((p) => ({ offset: u64(p), size: u64(p + 8) }));
   const dataOffset = u64(72);
-  if (dataOffset < 80n || dataOffset > imageSize) fail("data offset");
+  if (dataOffset < 80n || dataOffset > imageSize || dataOffset % 4n) fail("data offset");
   let metadataBytes = 80n;
   for (const table of tables) {
     if (table.offset < 80n || table.offset % 4n || table.size % 4n) fail("table alignment");
-    extent(table.offset, table.size, dataOffset, "metadata table");
+    extent(table.offset, table.size, imageSize, "metadata table");
     metadataBytes += table.size;
   }
   if (metadataBytes > BigInt(ROMFS_LIMITS.metadataBytes)) fail("metadata budget");
@@ -228,6 +228,10 @@ export async function indexRomfs(source, { signal } = {}) {
   complete(dirRanges, dirs.size);
   complete(fileRanges, files.size);
   disjoint(dataRanges, "file data");
+  disjoint(
+    [...tables.map((table) => [table.offset, table.offset + table.size]), ...dataRanges],
+    "file data and metadata",
+  );
   const byPath = new Map(entries.map((entry) => [entry.path, entry]));
   return Object.freeze({
     size: imageSize,

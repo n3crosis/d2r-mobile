@@ -120,6 +120,9 @@ export async function createCascLogicalAssets(romfs, { signal } = {}) {
   await scanManifest(
     getFile,
     (fields) => {
+      // 无名清单记录不可通过逻辑路径请求；保留其余已验证行。
+      // Unnamed manifest records cannot be requested by logical path.
+      if (!fields[9]) return;
       const key = checkPath(fields[9]);
       if (index.has(key)) duplicatePaths.add(key);
       index.set(key, Object.freeze(fields));

@@ -110,6 +110,17 @@ test("logical reads match original dmx lookup, duplicate resolution and all enco
   assert.ok(Object.isFrozen(assets.lookup(fixture.queries[0])));
 });
 
+test("unnamed manifest records do not prevent indexed logical reads", async () => {
+  const unnamed = ["0", "0", "0", "0", "0", "0", "0", "0", "n", "", "0"].join("|");
+  const manifest = fixture.manifest.replace("# comment\n", `# comment\n${unnamed}\n`);
+  const assets = await createCascLogicalAssets(romfs({ manifest }));
+  assert.equal(assets.count, 3);
+  assert.equal(
+    Buffer.from(await assets.read(fixture.queries[0])).toString("hex"),
+    fixture.answers[0],
+  );
+});
+
 test("budgets and unsupported layout reject before reading archive bytes", async () => {
   const source = romfs();
   const assets = await createCascLogicalAssets(source);
