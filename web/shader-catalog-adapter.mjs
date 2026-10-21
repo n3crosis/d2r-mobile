@@ -61,68 +61,79 @@ export async function decodeShaderRecord(descriptor, input, flags) {
   // 等待哈希前先拍快照，避免调用方修改已检查字节。
   // Snapshot before awaiting the hash, so a caller cannot mutate checked bytes.
   const rec = bytes(input, 2 * 1024 * 1024, "shader record").slice();
-  const ci = find(rec, control);
-  if (ci < 0x38 || ci + 0x880 > rec.length)
-    throw new Error("Missing/truncated shader control segment");
-  if ((await sha(rec.subarray(ci, ci + 0x880))).slice(0, 16) !== descriptor.key)
-    throw new Error("Control hash does not match catalog key");
-  const view = new DataView(rec.buffer);
-  const c1o = view.getUint32(ci + 0x700, true),
-    c1t = view.getUint32(ci + 0x704, true);
-  if (c1o > c1t || c1t > ci - 0x38 || ![0, 256, 512, 768].includes(c1t - c1o))
-    throw new Error("Invalid c1 range");
-  const start = 0x38 + (descriptor.stage === "cs" ? 0 : 0x30);
-  const code = rec.slice(start, ci);
-  if (
-    code.length < (descriptor.stage === "cs" ? 16 : 0x60) ||
-    code.length > 1024 * 1024 ||
-    code.length % 8
-  )
-    throw new Error("Invalid shader code bounds");
-  if (descriptor.stage !== "cs") {
-    const stage = (new DataView(code.buffer).getUint32(0, true) >>> 10) & 15;
-    if (stage !== { vs: 1, hs: 2, ds: 3, ps: 5 }[descriptor.stage])
-      throw new Error("SPH stage disagrees with catalog");
-  }
-  if (descriptor.stage === "hs" && new DataView(code.buffer).getUint32(8, true) >>> 24 === 0)
-    throw new Error("Hull SPH requires nonzero threads per input primitive");
-  const facts = structuredClone(descriptor.facts);
-  if (
-    !facts ||
-    ["attr", "fout", "img", "tex"].some(
-      (k) => !facts[k] || typeof facts[k] !== "object" || Array.isArray(facts[k]),
+  let code,
+    returned = false;
+  try {
+    const ci = find(rec, control);
+    if (ci < 0x38 || ci + 0x880 > rec.length)
+      throw new Error("Missing/truncated shader control segment");
+    if ((await sha(rec.subarray(ci, ci + 0x880))).slice(0, 16) !== descriptor.key)
+      throw new Error("Control hash does not match catalog key");
+    const view = new DataView(rec.buffer);
+    const c1o = view.getUint32(ci + 0x700, true),
+      c1t = view.getUint32(ci + 0x704, true);
+    if (c1o > c1t || c1t > ci - 0x38 || ![0, 256, 512, 768].includes(c1t - c1o))
+      throw new Error("Invalid c1 range");
+    const start = 0x38 + (descriptor.stage === "cs" ? 0 : 0x30);
+    code = rec.slice(start, ci);
+    if (
+      code.length < (descriptor.stage === "cs" ? 16 : 0x60) ||
+      code.length > 1024 * 1024 ||
+      code.length % 8
     )
-  )
-    throw new Error("Missing explicit facts");
-  if (
-    Object.keys(facts).some((k) => !["attr", "fout", "img", "tex", "local", "shared"].includes(k))
-  )
-    throw new Error("Unexpected fact field");
-  return {
-    job: {
-      key: descriptor.key,
-      stage: descriptor.stage,
-      tex: {},
-      img: {},
-      attr: {},
-      fout: {},
-      c1: [...rec.subarray(0x38 + c1o, 0x38 + c1t)]
-        .map((x) => x.toString(16).padStart(2, "0"))
-        .join(""),
-      debug: flags.debug,
-      reduced: flags.reduced,
-      ...(["hs", "ds"].includes(descriptor.stage) ? { allowUnverifiedTessellation: true } : {}),
-      ...facts,
-    },
-    code,
-    source: {
-      name: descriptor.name,
-      index: descriptor.index,
-      pcPaired: descriptor.pcPaired,
-      controlVerified: true,
-    },
-    installable: false,
-  };
+      throw new Error("Invalid shader code bounds");
+    if (descriptor.stage !== "cs") {
+      const stage = (new DataView(code.buffer).getUint32(0, true) >>> 10) & 15;
+      if (stage !== { vs: 1, hs: 2, ds: 3, ps: 5 }[descriptor.stage])
+        throw new Error("SPH stage disagrees with catalog");
+    }
+    if (descriptor.stage === "hs" && new DataView(code.buffer).getUint32(8, true) >>> 24 === 0)
+      throw new Error("Hull SPH requires nonzero threads per input primitive");
+    const facts = structuredClone(descriptor.facts);
+    if (
+      !facts ||
+      ["attr", "fout", "img", "tex"].some(
+        (k) => !facts[k] || typeof facts[k] !== "object" || Array.isArray(facts[k]),
+      )
+    )
+      throw new Error("Missing explicit facts");
+    if (
+      Object.keys(facts).some((k) => !["attr", "fout", "img", "tex", "local", "shared"].includes(k))
+    )
+      throw new Error("Unexpected fact field");
+    const prepared = {
+      job: {
+        key: descriptor.key,
+        stage: descriptor.stage,
+        tex: {},
+        img: {},
+        attr: {},
+        fout: {},
+        c1: [...rec.subarray(0x38 + c1o, 0x38 + c1t)]
+          .map((x) => x.toString(16).padStart(2, "0"))
+          .join(""),
+        debug: flags.debug,
+        reduced: flags.reduced,
+        ...(["hs", "ds"].includes(descriptor.stage) ? { allowUnverifiedTessellation: true } : {}),
+        ...facts,
+      },
+      code,
+      source: {
+        name: descriptor.name,
+        index: descriptor.index,
+        pcPaired: descriptor.pcPaired,
+        controlVerified: true,
+      },
+      installable: false,
+    };
+    returned = true;
+    return prepared;
+  } finally {
+    // 返回的代码拥有独立缓冲区；失败时清理尚未交给调用方的代码。
+    // Returned code owns a separate backing; wipe unreturned code on failure.
+    rec.fill(0);
+    if (!returned) code?.fill(0);
+  }
 }
 /**
  * 转移整个独立缓冲区以消除调用方别名；仅缓存固定目录需要的记录边界，不缓存解码结果。

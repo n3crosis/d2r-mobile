@@ -120,6 +120,49 @@ test("authored cs/vs/ps records and c1 match original native job_for exactly", a
       );
     }
 });
+test("record snapshots always wipe without altering borrowed input or successful code", async () => {
+  const originalSlice = Uint8Array.prototype.slice;
+  for (const outcome of ["success", "control", "stage", "facts"]) {
+    const { rec, descriptor } = fixture("vs", 0);
+    rec[0x70] = 7;
+    if (outcome === "control") descriptor.key = "0".repeat(16);
+    if (outcome === "stage") new DataView(rec.buffer).setUint32(0x68, 0, true);
+    if (outcome === "facts") descriptor.facts = null;
+    const before = rec.slice();
+    let snapshot, code;
+    Uint8Array.prototype.slice = function (...args) {
+      const result = originalSlice.apply(this, args);
+      if (this === rec) snapshot = result;
+      else if (this === snapshot) code = result;
+      return result;
+    };
+    try {
+      const pending = decodeShaderRecord(descriptor, rec, { debug: true, reduced: false });
+      if (outcome === "success") {
+        const result = await pending;
+        assert.equal(result.code, code);
+        assert.notEqual(result.code.buffer, snapshot.buffer);
+        assert.deepEqual(result.code, before.subarray(0x68, before.length - 0x880));
+        assert.equal(result.code[8], 7);
+      } else {
+        await assert.rejects(
+          pending,
+          outcome === "control"
+            ? /Control hash/
+            : outcome === "stage"
+              ? /SPH stage/
+              : /Missing explicit facts/,
+        );
+        if (code) assert.ok(code.every((byte) => byte === 0));
+      }
+      assert.ok(snapshot.every((byte) => byte === 0));
+      assert.deepEqual(rec, before);
+    } finally {
+      Uint8Array.prototype.slice = originalSlice;
+    }
+  }
+});
+
 test("invalid c1 and SPH fail closed even with a matching control hash", async () => {
   for (const kind of ["c1", "sph"]) {
     const { rec, descriptor } = fixture("vs", 0);
