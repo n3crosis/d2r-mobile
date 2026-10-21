@@ -9,9 +9,9 @@ const update = named("Update", D2R_PATCH_ID);
 const dlc = named("Warlock", D2R_WARLOCK_ID);
 const unrelated = "Other [0100000000000000].nsp";
 
-test("recognized base/update preselect canonical optional Warlock, not unrelated titles", () => {
+test("recognized base/update leave optional Warlock unchecked", () => {
   const names = Object.freeze([unrelated, dlc, update, base, "Unknown DLC.nsp"]);
-  assert.deepEqual(selectDefaultNspNames(names), [base, update, dlc]);
+  assert.deepEqual(selectDefaultNspNames(names), [base, update]);
   assert.deepEqual(selectDefaultNspNames([base, update, unrelated]), [base, update]);
   assert.deepEqual(selectDefaultNspNames([base, update, "DLC [0100726014353002].nsp"]), [
     base,
@@ -30,17 +30,15 @@ test("missing or ambiguous base and missing update preserve the existing all-nam
   }
 });
 
-test("case and multiple update versions preserve every recognized candidate for later authentication", () => {
+test("case and multiple update versions preserve every recognized update candidate", () => {
   const upper = [base, update, dlc].map((name) => name.toUpperCase());
-  assert.deepEqual(selectDefaultNspNames([...upper, unrelated]), upper);
+  assert.deepEqual(selectDefaultNspNames([...upper, unrelated]), upper.slice(0, 2));
   const secondUpdate = named("Update v2", D2R_PATCH_ID);
   const secondDlc = named("Warlock v2", D2R_WARLOCK_ID);
   assert.deepEqual(selectDefaultNspNames([secondUpdate, secondDlc, base, update, dlc, unrelated]), [
     base,
     secondUpdate,
     update,
-    secondDlc,
-    dlc,
   ]);
 });
 
@@ -55,18 +53,16 @@ test("exact bracket markers are hints, not filename authenticity checks", () => 
     [base, update],
   );
   const spoof = named("Untrusted contents", D2R_WARLOCK_ID);
-  assert.deepEqual(selectDefaultNspNames([base, update, spoof]), [base, update, spoof]);
+  assert.deepEqual(selectDefaultNspNames([base, update, spoof]), [base, update]);
 });
 
-test("new DLC hints reject multiple title markers without changing base/update or fallback selection", () => {
+test("DLC filenames do not change base/update or fallback selection", () => {
   const mixed = `Other [0100000000000000] ${dlc}`;
   const repeated = `Copy [0100726014353001] ${dlc}`;
   const secondDlc = named("Warlock v2", D2R_WARLOCK_ID);
   assert.deepEqual(selectDefaultNspNames([base, update, mixed, repeated, dlc, secondDlc]), [
     base,
     update,
-    dlc,
-    secondDlc,
   ]);
   assert.deepEqual(selectDefaultNspNames([update, mixed]), [update, mixed]);
   const oldBaseHint = `Other [0100000000000000] ${base}`;
