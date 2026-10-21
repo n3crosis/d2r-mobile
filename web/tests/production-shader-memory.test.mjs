@@ -5,6 +5,8 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
   createShaderOutputBudget,
+  createShaderRecordProgress,
+  createShaderFinalizationCheckpoint,
   shaderOutputChunks,
   createShaderSourceCache,
 } from "../production-shaders.mjs";
@@ -248,4 +250,113 @@ test("cancellation after preparation wipes owned code without starting translati
     },
   );
   assert.equal(result.status, 0, result.stderr || result.stdout);
+});
+
+// 合成时钟验证节流与最终记录计数，不把计数当作阶段完成。
+// A synthetic clock verifies throttling and the last record count, not stage completion.
+test("shader counters are monotonic, throttled, bounded and observer-isolated", async () => {
+  let time = 0;
+  const controller = new AbortController(),
+    events = [];
+  const report = createShaderRecordProgress(
+    6,
+    (value) => events.push(value),
+    controller.signal,
+    () => time,
+  );
+  report(1);
+  report(2);
+  report(2);
+  report(0);
+  report(7);
+  report(NaN);
+  time = 249;
+  report(3);
+  time = 250;
+  report(4);
+  report(3);
+  report(5);
+  report(6);
+  report(6);
+  assert.deepEqual(
+    events,
+    [1, 4, 6].map((completedRecords) => ({ completedRecords, totalRecords: 6 })),
+  );
+  assert.ok(events.every(Object.isFrozen));
+  assert.ok(events.every((value) => !Object.hasOwn(value, "state")));
+  controller.abort();
+  assert.doesNotThrow(() => report(6));
+  const cancelled = createShaderRecordProgress(
+    1,
+    () => assert.fail("cancelled observer"),
+    controller.signal,
+  );
+  cancelled(1);
+  createShaderRecordProgress(1, () => {
+    throw new Error("private");
+  })(1);
+  createShaderRecordProgress(1, async () => {
+    throw new Error("private async");
+  })(1);
+  await new Promise((resolve) => setImmediate(resolve));
+  for (const total of [0, 6928, Infinity, 1.5])
+    assert.throws(() => createShaderRecordProgress(total));
+});
+
+test("finalization yields on byte or monotonic work budget without per-row tasks", async () => {
+  let time = 0,
+    tasks = 0,
+    checks = 0;
+  const checkpoint = createShaderFinalizationCheckpoint(
+    () => checks++,
+    undefined,
+    async () => {
+      tasks++;
+    },
+    () => time,
+  );
+  for (let i = 0; i < 3; i++) assert.equal(checkpoint(1024 * 1024), undefined);
+  assert.equal(tasks, 0);
+  await checkpoint(1024 * 1024);
+  assert.equal(tasks, 1);
+  time = 7;
+  assert.equal(checkpoint(0), undefined);
+  time = 8;
+  await checkpoint(0);
+  assert.equal(tasks, 2);
+  assert.ok(checks >= 8);
+  assert.throws(() => checkpoint(-1));
+});
+
+test("cancellation delivered by a finalization task rejects before continuing", async () => {
+  const controller = new AbortController();
+  const checkpoint = createShaderFinalizationCheckpoint(
+    () => controller.signal.throwIfAborted(),
+    controller.signal,
+    async ({ signal }) => {
+      assert.equal(signal, controller.signal);
+      controller.abort();
+    },
+    () => 0,
+  );
+  await assert.rejects(checkpoint(4 * 1024 * 1024), { name: "AbortError" });
+  assert.throws(() => checkpoint(1), { name: "AbortError" });
+});
+
+// 检查让出位置仍位于完整证明之后；结果发布前必须完成最后取消检查。
+// Check yields remain after complete proof, with a final cancellation check before publishing results.
+test("production finalization preserves proof-first ordering and signal-aware record yields", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(new URL("../production-shaders.mjs", import.meta.url), "utf8");
+  assert.ok(
+    source.indexOf("await pipeline.verifyCompleteSourceSet()") <
+      source.indexOf("const checkpoint = createShaderFinalizationCheckpoint"),
+  );
+  assert.match(source, /await yieldBrowserTask\(\{ signal: controller.signal \}\)/);
+  assert.doesNotMatch(source, /setTimeout\(resolve, 0\)/);
+  assert.match(
+    source,
+    /entries.push\(entry\("dm\/c1_full.tsv", index\)\);\s*check\(\);\s*return entries/,
+  );
+  assert.match(source, /const pause = checkpoint\(json.length\);\s*if \(pause\) await pause/);
 });

@@ -28,6 +28,7 @@ import { runPackagingJob, PackagingJobError } from "./packaging-job.mjs";
 import {
   sanitizeResourceOutcome,
   sanitizeResourceProgress,
+  sanitizeShaderRecordProgress,
   resourceProgressLabel,
   packagingActivity,
   isLegacyAstcDiagnosticCode,
@@ -297,7 +298,11 @@ export async function prepareBrowserPackager({
               });
             return entries.filter((entry) => allowed(entry.path));
           },
-          generateShaders: (context) => shaders.generateShaders(context),
+          generateShaders: (context) =>
+            shaders.generateShaders({
+              ...context,
+              onProgress: createShaderDiagnosticObserver(onProgress, context.signal),
+            }),
           async loadShell({ signal }) {
             // 选择来自独立认证的提取边界。
             // Selection came from the independently authenticated extraction boundary.
@@ -628,4 +633,28 @@ export async function cleanupPackagingAdapters(cleanupExtraction, closeAdapters)
   if (failures.length === 1) throw failures[0];
   if (failures.length > 1)
     throw new AggregateError(failures, "PACKAGING_ADAPTER_CLEANUP_FAILED", { cause: failures[0] });
+}
+
+// 仅投影已验证的有界记录数，观察者异常不改变作业结果。
+// Project only validated bounded record counts; observer errors cannot change the job result.
+export function createShaderDiagnosticObserver(onProgress, signal) {
+  return (value) => {
+    if (signal?.aborted || typeof onProgress !== "function") return;
+    const progress = sanitizeShaderRecordProgress(value);
+    if (!progress) return;
+    try {
+      Promise.resolve(
+        onProgress(
+          Object.freeze({
+            stage: "shaders",
+            state: "running",
+            diagnostic: Object.freeze({ kind: "shader-records", ...progress }),
+          }),
+        ),
+      ).catch(() => {});
+    } catch {
+      // 不转发观察者错误或任意私有字段。
+      // Never forward observer errors or arbitrary private fields.
+    }
+  };
 }

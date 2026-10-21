@@ -4,6 +4,7 @@
  * 全目录 noMetal 源码组装。绝不调用 Apple Metal，也不在摘要证明之前重标记。
  * Full-catalog noMetal source assembly. Never invokes Apple Metal or relabels before digest proof.
  */
+import { yieldBrowserTask } from "./browser-task-yield.mjs";
 import { resolveLogicalAssetSuffixes } from "./logical-asset-suffixes.mjs";
 import { assertShaderCatalog } from "./shader-catalog-adapter.mjs";
 import { createShaderPipeline } from "./shader-pipeline.mjs";
@@ -82,7 +83,7 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
     }
   }
   return Object.freeze({
-    async generateShaders({ extracted, selection, signal } = {}) {
+    async generateShaders({ extracted, selection, signal, onProgress } = {}) {
       if (disposed || used) fail("Production shader adapter is disposed or already used");
       signal?.throwIfAborted();
       used = true;
@@ -96,6 +97,11 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
         controller.signal.throwIfAborted();
       };
       const budget = createShaderOutputBudget(MAX_TOTAL);
+      const reportRecords = createShaderRecordProgress(
+        expected.length,
+        onProgress,
+        controller.signal,
+      );
       let sources;
       const pending = [],
         c1 = [];
@@ -221,10 +227,11 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
           retained.push(base);
           if (fetch) retained.push(fetch);
           pending.push({ key, replay, base, fetch, replayReservation });
+          reportRecords(pending.length);
           if (descriptor.embedded) sources.completeEmbedded();
           // 不联网地让出执行，允许在目录记录之间取消。
           // Yield without networking; permit cancellation between catalog records.
-          await new Promise((resolve) => setTimeout(resolve, 0));
+          await yieldBrowserTask({ signal: controller.signal });
         }
         check();
         const proof = await pipeline.verifyCompleteSourceSet();
@@ -255,7 +262,9 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
             },
           });
         };
+        const checkpoint = createShaderFinalizationCheckpoint(check, controller.signal);
         for (const row of pending.sort((a, b) => a.key.localeCompare(b.key))) {
+          check();
           row.replay.chain = chain;
           const json = encoder.encode(JSON.stringify(row.replay, null, 1));
           budget.replace(row.replayReservation, json.length);
@@ -268,7 +277,10 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
             entry(`msl/b-${chain}/${row.key}_b.json`, json),
           );
           if (row.fetch) entries.push(entry(`msl/b-${chain}/${row.key}_bf.metallib`, row.fetch));
+          const pause = checkpoint(json.length);
+          if (pause) await pause;
         }
+        check();
         const index = encoder.encode(
           `# chain b-${chain} ${localStamp()}\n` +
             c1
@@ -279,6 +291,7 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
         budget.replace(0, index.length);
         retained.push(index);
         entries.push(entry("dm/c1_full.tsv", index));
+        check();
         return entries;
       } catch (error) {
         dispose();
@@ -377,4 +390,66 @@ export function createShaderSourceCache(embeddedCount) {
       image = undefined;
     },
   });
+}
+
+// 仅报告已转换且计入预算的记录；全部记录完成不代表完整证明、阶段或 IPA 完成。
+// Report only converted, budgeted records; all records counted does not mean proof, stage or IPA completion.
+export function createShaderRecordProgress(
+  totalRecords,
+  onProgress,
+  signal,
+  now = () => performance.now(),
+) {
+  if (!Number.isSafeInteger(totalRecords) || totalRecords < 1 || totalRecords > 6927)
+    fail("Invalid shader progress total");
+  let previous = 0,
+    lastEmitted = 0,
+    lastTime = -Infinity;
+  return (completedRecords) => {
+    if (
+      signal?.aborted ||
+      typeof onProgress !== "function" ||
+      !Number.isSafeInteger(completedRecords) ||
+      completedRecords <= previous ||
+      completedRecords > totalRecords
+    )
+      return;
+    previous = completedRecords;
+    const time = now();
+    if (lastEmitted && completedRecords !== totalRecords && time - lastTime < 250) return;
+    lastEmitted = completedRecords;
+    lastTime = time;
+    try {
+      Promise.resolve(onProgress(Object.freeze({ completedRecords, totalRecords }))).catch(
+        () => {},
+      );
+    } catch {
+      // 观察者异常不得影响转换或证明。
+      // Observer errors must not affect conversion or proof.
+    }
+  };
+}
+
+// 按实际输出工作量或单次任务时间让出；不为每条记录安排定时器。
+// Yield by actual output work or task duration, without scheduling per-record timers.
+export function createShaderFinalizationCheckpoint(
+  check,
+  signal,
+  yieldTask = yieldBrowserTask,
+  now = () => performance.now(),
+) {
+  let bytes = 0,
+    started = now();
+  return (written) => {
+    check();
+    if (!Number.isSafeInteger(written) || written < 0 || written > MAX_TOTAL)
+      fail("Invalid shader finalization work");
+    bytes += written;
+    if (bytes < 4 * 1024 * 1024 && now() - started < 8) return undefined;
+    return yieldTask({ signal }).then(() => {
+      check();
+      bytes = 0;
+      started = now();
+    });
+  };
 }

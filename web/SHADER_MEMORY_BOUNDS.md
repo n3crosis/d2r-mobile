@@ -48,3 +48,15 @@ browser timing, RAM measurements or real-game proof.
 Focused synthetic tests establish accounting, chunk backing sizes, cancellation
 and cache lifetime behavior. They do not measure browser RAM savings or establish
 real-game validation.
+
+## Pending progress and cooperative task yielding
+
+The current uncommitted change is not live. Shader progress reports actual
+completed/budgeted record counters on the first and last record, with intermediate
+updates throttled to 250 ms rather than logging every record. Even `6927/6927`
+means only that record work is counted, not that the shader stage or IPA is complete.
+
+Per-record timers are replaced by `scheduler.yield()` where available, otherwise
+a one-shot MessageChannel task. Final JSON processing yields after 4 MiB or 8 ms
+of work, with cancellation checks. These are cooperative scheduling thresholds,
+not hard latency or RAM guarantees; existing output budgets remain unchanged.

@@ -4,6 +4,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   packagingActivity,
+  shaderProgressLabel,
+  sanitizeShaderRecordProgress,
   packagingFailureMessage,
   packagingFailureSummary,
   sanitizeResourceOutcome,
@@ -195,5 +197,68 @@ test("ticket diagnostics are specific and counters never expose input details", 
   assert.doesNotMatch(
     packagingFailureSummary({ stage: "secrets", detailCode: "TITLE_KEY_REQUIRED" }),
     /does not import NSP tickets/,
+  );
+});
+
+test("shader record labels remain bounded running counters without private fields", async () => {
+  const { createShaderDiagnosticObserver } = await import("../browser-packager.mjs");
+  const events = [];
+  const observer = createShaderDiagnosticObserver((event) => events.push(event));
+  observer({ completedRecords: 6927, totalRecords: 6927, name: "PRIVATE" });
+  assert.equal(events.length, 1);
+  assert.equal(events[0].state, "running");
+  assert.equal(shaderProgressLabel(events[0]), "Generating shaders (6927/6927)");
+  assert.doesNotMatch(JSON.stringify(events), /PRIVATE|name/);
+  assert.equal(shaderProgressLabel({ ...events[0], state: "complete" }), null);
+  assert.equal(shaderProgressLabel({ ...events[0], stage: "assets" }), null);
+  for (const value of [
+    { completedRecords: 2, totalRecords: 1 },
+    { completedRecords: 0, totalRecords: 1 },
+    { completedRecords: 1, totalRecords: 6928 },
+    { completedRecords: NaN, totalRecords: 1 },
+  ]) {
+    assert.equal(sanitizeShaderRecordProgress(value), undefined);
+    observer(value);
+  }
+  assert.equal(events.length, 1);
+  const controller = new AbortController();
+  controller.abort();
+  createShaderDiagnosticObserver(
+    () => assert.fail("cancelled"),
+    controller.signal,
+  )({ completedRecords: 1, totalRecords: 1 });
+  createShaderDiagnosticObserver(() => {
+    throw new Error("private");
+  })({ completedRecords: 1, totalRecords: 1 });
+  createShaderDiagnosticObserver(async () => {
+    throw new Error("private");
+  })({ completedRecords: 1, totalRecords: 1 });
+  await new Promise((resolve) => setImmediate(resolve));
+});
+
+test("production shader counters use coalesced UI status without record log spam", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const branch = app.slice(
+    app.indexOf("const shaderLabel = shaderProgressLabel(event)"),
+    app.indexOf("// 补充包导出单独显示"),
+  );
+  assert.match(branch, /pendingGenerationStatus.current = shaderLabel/);
+  assert.match(branch, /appendActivity\(null\)/);
+  assert.match(branch, /return;/);
+  assert.match(app, /cancellation.current\?\.abort\(\);\s*pendingGenerationStatus.current = null/);
+  const packager = await readFile(new URL("../browser-packager.mjs", import.meta.url), "utf8");
+  assert.match(
+    packager,
+    /onProgress: createShaderDiagnosticObserver\(onProgress, context.signal\)/,
+  );
+  const shaders = await readFile(new URL("../production-shaders.mjs", import.meta.url), "utf8");
+  assert.ok(
+    shaders.indexOf("reportRecords(pending.length)") >
+      shaders.indexOf("budget.replace(0, base.length"),
+  );
+  assert.ok(
+    shaders.indexOf("reportRecords(pending.length)") <
+      shaders.indexOf("await pipeline.verifyCompleteSourceSet()"),
   );
 });

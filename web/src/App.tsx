@@ -17,6 +17,7 @@ import {
   packagingFailureSummary,
   committedCleanupWarning,
   resourceProgressLabel,
+  shaderProgressLabel,
 } from "../packaging-diagnostics.mjs";
 
 type LocalPickers = typeof globalThis & {
@@ -375,6 +376,8 @@ export default function App() {
             kind?: string;
             processedBytes?: number;
             completedBlocks?: number;
+            completedRecords?: number;
+            totalRecords?: number;
           };
           resourceProgress?: {
             filesWritten: number;
@@ -384,6 +387,14 @@ export default function App() {
           };
         }) => {
           if (!acceptingProgress || controller.signal.aborted || !current()) return;
+          const shaderLabel = shaderProgressLabel(event);
+          if (shaderLabel) {
+            // 记录计数只更新合并后的状态行，不逐条写入活动日志。
+            // Record counts update only the coalesced status line, not per-record activity logs.
+            pendingGenerationStatus.current = shaderLabel;
+            appendActivity(null);
+            return;
+          }
           // 补充包导出单独显示，不把它的完成状态当作 IPA 完成。
           // Show the supplemental export separately; its completion is not IPA completion.
           if (legacyAstc && event.stage === "assets" && event.diagnostic?.kind === "legacy-astc") {

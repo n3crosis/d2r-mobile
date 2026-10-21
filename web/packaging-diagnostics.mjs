@@ -166,3 +166,35 @@ export function packagingFailureMessage(report) {
 export function committedCleanupWarning() {
   return t("dmWebCommittedCleanupWarning");
 }
+
+// 着色器计数不含名称或路径，且不声明阶段完成。
+// Shader counters contain no names or paths and never declare stage completion.
+export function sanitizeShaderRecordProgress(value) {
+  if (
+    !value ||
+    !Number.isSafeInteger(value.totalRecords) ||
+    value.totalRecords < 1 ||
+    value.totalRecords > 6927 ||
+    !Number.isSafeInteger(value.completedRecords) ||
+    value.completedRecords < 1 ||
+    value.completedRecords > value.totalRecords
+  )
+    return undefined;
+  return Object.freeze({
+    completedRecords: value.completedRecords,
+    totalRecords: value.totalRecords,
+  });
+}
+export function shaderProgressLabel(event) {
+  if (
+    event?.stage !== "shaders" ||
+    event.state !== "running" ||
+    event.diagnostic?.kind !== "shader-records"
+  )
+    return null;
+  const progress = sanitizeShaderRecordProgress(event.diagnostic);
+  return progress
+    ? t("dmWebStagesShaders") +
+        t("dmWebProgressFraction", progress.completedRecords, progress.totalRecords)
+    : null;
+}
