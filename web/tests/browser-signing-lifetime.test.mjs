@@ -16,5 +16,5 @@ test("packager signing lifetime and unsigned fallback (isolated mocks)", () => {
   );
   assert.equal(result.error, undefined);
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  assert.match(result.stdout, /tests 6/);
+  assert.match(result.stdout, /tests 8/);
 });

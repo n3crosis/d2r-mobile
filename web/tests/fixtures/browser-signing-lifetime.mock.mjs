@@ -89,6 +89,7 @@ mock.module("../../packaging-job.mjs", {
   namedExports: {
     PackagingJobError: class extends Error {},
     async runPackagingJob({ adapters }) {
+      state.jobs = (state.jobs ?? 0) + 1;
       const context = { selection: {}, manifest: {} };
       await adapters.extractSelected(context);
       await adapters.createOutput(context);
@@ -177,4 +178,46 @@ test("whole-packager close is idempotent and keeps cleanup rejection observable"
   await assert.rejects(closing, /PACKAGER_CLEANUP_FAILED/);
   assert.equal(state.signerClosed, true);
   assert.equal(state.runtimeClosed, true);
+});
+
+// 延迟权限查询不能在关闭后启动作业，也不能绕过单次生成约束。
+// Delayed permission completion cannot start work after close or bypass single-use generation.
+test("concurrent permission checks admit only one generation", async () => {
+  reset();
+  const packager = await prepareBrowserPackager();
+  const permissions = [];
+  const input = {
+    kind: "directory",
+    queryPermission: () => new Promise((resolve) => permissions.push(resolve)),
+  };
+  const first = packager.generate({ input, exportResources: false });
+  const second = packager.generate({ input, exportResources: false });
+  const rejected = assert.rejects(second, /RELOAD_REQUIRED/);
+  assert.equal(permissions.length, 2);
+  permissions[0]("granted");
+  permissions[1]("granted");
+  assert.equal((await first).committed, true);
+  await rejected;
+  assert.equal(state.jobs, 1);
+  await packager.close();
+});
+test("closing during permission query prevents generation after permission resolves", async () => {
+  reset();
+  const packager = await prepareBrowserPackager();
+  let grant;
+  const pending = packager.generate({
+    input: {
+      kind: "directory",
+      queryPermission: () =>
+        new Promise((resolve) => {
+          grant = resolve;
+        }),
+    },
+    exportResources: false,
+  });
+  const rejected = assert.rejects(pending, /RELOAD_REQUIRED/);
+  await packager.close();
+  grant("granted");
+  await rejected;
+  assert.equal(state.jobs ?? 0, 0);
 });

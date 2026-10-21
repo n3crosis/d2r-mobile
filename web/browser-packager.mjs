@@ -208,6 +208,9 @@ export async function prepareBrowserPackager({
           (await input.queryPermission({ mode: "readwrite" })) !== "granted"
         )
           throw new Error("INPUT_FOLDER_WRITE_PERMISSION_REQUIRED");
+        // 权限查询期间可能已关闭或被另一调用占用；恢复后重新检查单次作业状态。
+        // Permission checks can outlive closure or another caller; recheck the single-use state on resumption.
+        if (closed || used) throw new Error("RELOAD_REQUIRED");
         used = true;
         let authenticated,
           selected,
