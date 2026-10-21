@@ -15,7 +15,7 @@ source = Path(sys.argv[1]).resolve()
 here = Path(__file__).resolve().parent
 with tempfile.TemporaryDirectory(prefix="d2r-synthetic-key-parser-") as directory:
     work = Path(directory)
-    for name in ["extkeys.c", "utils.h"]:
+    for name in ["extkeys.c", "utils.h", "nca.c"]:
         shutil.copyfile(source / name, work / name)
     subprocess.run([sys.executable, str(here / "prepare-source.py"), str(work)], check=True)
     (work / "fixture.c").write_text(r"""

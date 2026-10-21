@@ -28,8 +28,8 @@ CFLAGS = -O2 -D_FILE_OFFSET_BITS=64
 LDFLAGS =
 CFG
 emmake make -C "$SRC/mbedtls" lib -j2 CC=emcc AR=emar
-# 保持上游文件独立，仅应用已审查的解析器生命周期补丁。
-# Keep upstream files distinct and apply only the reviewed parser-lifetime patch.
+# 保持上游文件独立，仅应用已审查的解析器生命周期与头格式边界补丁。
+# Keep upstream files distinct and apply only reviewed parser-lifetime and header-format boundary patches.
 sources=()
 for name in save sha aes extkeys rsa npdm bktr kip packages pki pfs0 hfs0 nca0_romfs romfs utils nax0 nso lz4 nca xci filepath ConvertUTF cJSON; do
   sources+=("$SRC/$name.c")

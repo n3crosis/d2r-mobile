@@ -68,3 +68,24 @@ old = "#define fseeko64 fseek"
 if s.count(old) != 1:
     raise SystemExit("Pinned upstream seek shim mismatch")
 p.write_text(s.replace(old, "#define fseeko64 fseeko"))
+# 边界只支持 NCA2/3；必须在上游进入旧版密钥或文件路径之前拒绝 NCA0。
+# The boundary supports only NCA2/3. Reject legacy formats before upstream
+# touches legacy key indexes or the CLI-only base file handle.
+p = root / "nca.c"
+s = p.read_text()
+replace_once(
+    "    aes_xts_decrypt(hdr_aes_ctx, &dec_header, &ctx->header, 0x400, 0, 0x200);",
+    """    aes_xts_decrypt(hdr_aes_ctx, &dec_header, &ctx->header, 0x400, 0, 0x200);
+    if (dec_header.magic != MAGIC_NCA3 && dec_header.magic != MAGIC_NCA2) {
+        free_aes_ctx(hdr_aes_ctx);
+        return 0;
+    }""",
+)
+# 首次解密仅写入前 0x400 字节；检查输入中的分区是否为空，不能读取未初始化的输出。
+# The first decrypt writes only 0x400 bytes. Detect absent sections in the
+# initialized input, not the not-yet-decrypted output section headers.
+replace_once(
+    "if (dec_header.fs_headers[i]._0x148[0] != 0 || memcmp(dec_header.fs_headers[i]._0x148, dec_header.fs_headers[i]._0x148 + 1, 0xB7))",
+    "if (ctx->header.fs_headers[i]._0x148[0] != 0 || memcmp(ctx->header.fs_headers[i]._0x148, ctx->header.fs_headers[i]._0x148 + 1, 0xB7))",
+)
+p.write_text(s)
