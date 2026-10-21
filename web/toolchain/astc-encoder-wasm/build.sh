@@ -18,6 +18,8 @@ if ! head -n 1 .build/compiler-version.txt | grep -Eq '^emcc .* 4\.0\.20([[:spac
 fi
 if [[ ! -d .build/source/.git ]]; then
   git init -q .build/source
+fi
+if ! git -C .build/source cat-file -e "$PIN^{commit}" 2>/dev/null; then
   git -C .build/source fetch --depth 1 https://github.com/ARM-software/astc-encoder.git "$PIN"
 fi
 git -C .build/source checkout --detach "$PIN"

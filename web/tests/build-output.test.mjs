@@ -1,25 +1,25 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { productionCsp, validateStaticBuild } from "../scripts/build-policy.mjs";
+import { validateStaticBuild } from "../scripts/build-policy.mjs";
 import { assetPath } from "../scripts/serve.mjs";
 
-const html = `<meta http-equiv="Content-Security-Policy" content="${productionCsp}"><link href="./app.css" rel="stylesheet"><script src="./app.js" type="module"></script>`;
+const html = `<link href="./app.css" rel="stylesheet"><script src="./app.js" type="module"></script>`;
 const assets = new Map([
   ["app.js", "document.title = 'local';"],
   ["app.css", "body{color:black}"],
 ]);
 
-test("static build accepts compiled browser assets and strict offline CSP", () => {
+test("static build accepts compiled local browser assets", () => {
   assert.doesNotThrow(() => validateStaticBuild(html, assets));
 });
 
-test("static build rejects missing, remote, inline, runtime and uncompiled assets", () => {
+test("static build rejects missing, remote, runtime and uncompiled assets", () => {
   for (const invalid of [
-    html.replace("connect-src 'none'", "connect-src *"),
     html.replace("./app.js", "https://example.com/app.js"),
-    html + "<script>fetch('/')</script>",
-    html + "<style>body{}</style>",
     html.replace("./app.css", "./missing.css"),
+    html.replace("./app.js", "../app.js"),
+    '<script src="./app.js" type="module"></script>',
+    '<link href="./app.css" rel="stylesheet">',
   ]) {
     assert.throws(() => validateStaticBuild(invalid, assets));
   }

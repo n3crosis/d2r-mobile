@@ -4,7 +4,7 @@ import { serve } from "./serve.mjs";
 
 await build();
 const server = serve();
-console.log(`Development preview: ${server.url} (refresh after rebuild; strict production CSP)`);
+console.log(`Development preview: ${server.url} (refresh after rebuild)`);
 let running = false;
 let pending = false;
 let timer;
