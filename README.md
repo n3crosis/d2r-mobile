@@ -229,7 +229,6 @@ This project is implemented and verified on the Switch release 1.0.34.0 (which c
 | Instructions                                                   | The three steps below                                    | [docs/NO_XCODE.md](docs/NO_XCODE.md)                                                                                                                                                                                                                |
 | [docs/WEB_IPA_PACKAGER.md](docs/WEB_IPA_PACKAGER.md)           | Browser packaging source contract and pending acceptance |
 | [docs/WEB_DELIVERY_PROGRESS.md](docs/WEB_DELIVERY_PROGRESS.md) | Current browser status versus historical evidence        |
-| [docs/WEB_PR_READINESS.md](docs/WEB_PR_READINESS.md)           | Browser PR checklist; unrun checks remain pending        |
 
 The Apple account used for signing: a paid developer account gives you everything; a free Apple ID works too (no iCloud save sync, and the app has to be re-signed and reinstalled every 7 days). The full list of dependencies is in [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md).
 

@@ -109,7 +109,7 @@ English: [WEB_DELIVERY_PROGRESS.md](WEB_DELIVERY_PROGRESS.md)
 ## 接下来需要的证据
 
 使用未改动的 [PR 模板](../.github/PULL_REQUEST_TEMPLATE.md)和
-[PR 准备清单](WEB_PR_READINESS.zh-CN.md)。新源码需要自己的检查结果、
+[参与开发要求](../CONTRIBUTING.zh-CN.md)。新源码需要自己的检查结果、
 中英文文字与注释审查，以及改动后的截图。发布验收还需要完整运行时组装/初始化、
 Windows/macOS 浏览器验证、输出/存储/网络失败测试、私下进行的真实输入原生对比，
 以及另行签名后的设备/游戏结果。不能仅因实现存在，就把检查标为完成。

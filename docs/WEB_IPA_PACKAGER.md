@@ -110,8 +110,7 @@ or describe synthetic outputs as ready to play.
 - Separately sign, install and exercise supported devices, gameplay and save/load.
   Never upload game inputs, keys or generated packages as PR evidence.
 
-The [PR-readiness checklist](WEB_PR_READINESS.md) records pending checks without
-replacing or weakening [CONTRIBUTING.md](../CONTRIBUTING.md) or the
-[PR template](../.github/PULL_REQUEST_TEMPLATE.md). Operational detail remains in
+Pending acceptance does not replace or weaken [CONTRIBUTING.md](../CONTRIBUTING.md)
+or the [PR template](../.github/PULL_REQUEST_TEMPLATE.md). Operational detail remains in
 [frontend overview](../web/README.md), [production flow](../web/PRODUCTION_FLOW.md)
 and [testing](../web/TESTING.md).

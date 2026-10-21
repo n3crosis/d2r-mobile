@@ -120,7 +120,7 @@ own revision and narrow scope.
 ## Evidence needed next
 
 Use the unchanged [PR template](../.github/PULL_REQUEST_TEMPLATE.md) and
-[PR-readiness checklist](WEB_PR_READINESS.md). New source needs its own checks,
+[contribution rules](../CONTRIBUTING.md). New source needs its own checks,
 Chinese/English text and comment review, and post-change screenshots. Release
 acceptance additionally needs complete runtime assembly/initialization,
 Windows/macOS browser validation, output/storage/network failure testing,

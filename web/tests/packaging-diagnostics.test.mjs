@@ -2,6 +2,7 @@
 // Browser diagnostic contracts: verify fixed labels, privacy boundaries and bounded resource counts.
 import test from "node:test";
 import assert from "node:assert/strict";
+import ts from "typescript";
 import {
   packagingActivity,
   shaderProgressLabel,
@@ -236,13 +237,82 @@ test("shader record labels remain bounded running counters without private field
   await new Promise((resolve) => setImmediate(resolve));
 });
 
+// 按语法选取进度声明及其条件分支，不依赖后续注释的文本或语言。
+// Select the progress declaration and conditional by syntax, not a following comment's text or language.
+function shaderStatusBranch(text) {
+  const file = ts.createSourceFile(
+    "App.tsx",
+    text,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const matches = [];
+  function visit(node) {
+    if (ts.isBlock(node) || ts.isSourceFile(node)) {
+      for (let i = 1; i < node.statements.length; i++) {
+        const previous = node.statements[i - 1];
+        const branch = node.statements[i];
+        if (
+          !ts.isVariableStatement(previous) ||
+          !ts.isIfStatement(branch) ||
+          !ts.isIdentifier(branch.expression) ||
+          branch.expression.text !== "shaderLabel" ||
+          !ts.isBlock(branch.thenStatement)
+        )
+          continue;
+        const declaration = previous.declarationList.declarations;
+        if (declaration.length !== 1) continue;
+        const { name, initializer } = declaration[0];
+        if (
+          !ts.isIdentifier(name) ||
+          name.text !== "shaderLabel" ||
+          !initializer ||
+          !ts.isCallExpression(initializer) ||
+          !ts.isIdentifier(initializer.expression) ||
+          initializer.expression.text !== "shaderProgressLabel" ||
+          initializer.arguments.length !== 1 ||
+          !ts.isIdentifier(initializer.arguments[0]) ||
+          initializer.arguments[0].text !== "event"
+        )
+          continue;
+        matches.push(text.slice(previous.getStart(file), branch.thenStatement.end));
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(file);
+  assert.equal(matches.length, 1, "Expected one shader progress status branch");
+  return matches[0];
+}
+
+test("shader status source selection is independent of following comments", () => {
+  const branch =
+    "const shaderLabel = shaderProgressLabel(event); if (shaderLabel) { pendingGenerationStatus.current = shaderLabel; appendActivity(null); return; }";
+  for (const comment of [
+    "// 补充包导出单独显示",
+    "// Supplemental export status",
+    "/* renamed */",
+    "",
+  ]) {
+    const source = `function progress(event) { ${branch}\n${comment}\n unrelated(); }`;
+    assert.equal(shaderStatusBranch(source), branch);
+  }
+  assert.throws(
+    () =>
+      shaderStatusBranch("// const shaderLabel = shaderProgressLabel(event); if (shaderLabel) {}"),
+    /Expected one/,
+  );
+  assert.throws(
+    () => shaderStatusBranch(`function progress(event) { ${branch} ${branch} }`),
+    /Expected one/,
+  );
+});
+
 test("production shader counters use coalesced UI status without record log spam", async () => {
   const { readFile } = await import("node:fs/promises");
   const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
-  const branch = app.slice(
-    app.indexOf("const shaderLabel = shaderProgressLabel(event)"),
-    app.indexOf("// 补充包导出单独显示"),
-  );
+  const branch = shaderStatusBranch(app);
   assert.match(branch, /pendingGenerationStatus.current = shaderLabel/);
   assert.match(branch, /appendActivity\(null\)/);
   assert.match(branch, /return;/);

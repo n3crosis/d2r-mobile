@@ -84,7 +84,7 @@ Windows/macOS 上的 Chromium 是目标桌面平台，不代表所有浏览器�
 - 私下将认证后的真实本体/更新/可选 DLC 输出与匹配的原生参考比较，包括完整着色器摘要和资源。
 - 另行签名、安装并测试支持的设备、实际游戏及存读档。不得把游戏输入、密钥或生成的安装包上传为 PR 证据。
 
-[PR 准备清单](WEB_PR_READINESS.zh-CN.md) 记录待办检查，不替代或放宽
-[参与开发要求](../CONTRIBUTING.zh-CN.md)或 [PR 模板](../.github/PULL_REQUEST_TEMPLATE.md)。
+待完成的验收不替代或放宽[参与开发要求](../CONTRIBUTING.zh-CN.md)
+或 [PR 模板](../.github/PULL_REQUEST_TEMPLATE.md)。
 操作细节见[前端概览](../web/README.md)、[生产流程](../web/PRODUCTION_FLOW.md)
 和[测试说明](../web/TESTING.md)。

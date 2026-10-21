@@ -229,7 +229,6 @@ flowchart LR
 | 说明                                                                       | 下面三步                             | [docs/NO_XCODE.zh-CN.md](docs/NO_XCODE.zh-CN.md)                                                         |
 | [docs/WEB_IPA_PACKAGER.zh-CN.md](docs/WEB_IPA_PACKAGER.zh-CN.md)           | 浏览器打包源码约定与待完成验收       |
 | [docs/WEB_DELIVERY_PROGRESS.zh-CN.md](docs/WEB_DELIVERY_PROGRESS.zh-CN.md) | 当前浏览器状态与历史证据的区别       |
-| [docs/WEB_PR_READINESS.zh-CN.md](docs/WEB_PR_READINESS.zh-CN.md)           | 浏览器 PR 清单：未执行的检查保持待办 |
 
 签名用的 Apple 账号：付费的开发者账号功能最全；免费的 Apple ID 也可以（没有 iCloud 存档同步，每 7 天要重新签名重装）。完整的依赖清单见 [docs/DEPENDENCIES.zh-CN.md](docs/DEPENDENCIES.zh-CN.md)。
 
