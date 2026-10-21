@@ -124,6 +124,7 @@ export function createProductionAssetAdapter({ runtime, profile, prebuiltPack })
           nativeOverlayGenerated: generated,
           prebuiltPack,
           createAssetWorker: runtime.createAssetWorker,
+          recycleAssetWorker: runtime.recycleAssetWorker,
           createTextureClient: runtime.createTextureClient,
           createTextureEncoder: runtime.createTextureEncoder,
         });

@@ -785,6 +785,7 @@ export async function prepareSealedRuntime({
   const channels = {},
     urls = [];
   let closed = false,
+    recyclingAssets = false,
     producerClient,
     producerWorker,
     producerInitialization,
@@ -940,7 +941,7 @@ export async function prepareSealedRuntime({
         active = false;
       return {
         request(message, transfers, signal) {
-          if (released || closed || active)
+          if (released || closed || active || (name === "assets" && recyclingAssets))
             return Promise.reject(new Error("Runtime lease closed or busy"));
           active = true;
           return channels[name].request(message, transfers, signal).finally(() => {
@@ -979,6 +980,36 @@ export async function prepareSealedRuntime({
         },
         close: l.close,
       };
+    }
+    async function recycleAssetWorker({ signal } = {}) {
+      if (closed || !plans.assets || recyclingAssets || channels.assets?.busy || signal?.aborted)
+        fail("Asset runtime unavailable or busy");
+      recyclingAssets = true;
+      channels.assets.stop();
+      try {
+        const url = URL.createObjectURL(
+          new Blob([bytes(plans.assets.entry)], { type: "text/javascript" }),
+        );
+        urls.push(url);
+        const next = (channels.assets = channel(new Worker(url, { type: "module" }), close));
+        const files = closure(ASSET_RUNTIME_DIRECTORY, validateAssetRuntimeInventory).map(
+          ([name, value]) => [name, value.slice().buffer],
+        );
+        const buffers = files.map(([, buffer]) => buffer);
+        const result = await next.request(
+          { type: "initialize", assets: files },
+          buffers,
+          signal,
+          true,
+        );
+        if (result?.initialized !== true || buffers.some((buffer) => buffer.byteLength !== 0))
+          fail("Asset runtime restart failed");
+      } catch (error) {
+        close();
+        throw error;
+      } finally {
+        recyclingAssets = false;
+      }
     }
     function createTextureClient() {
       const l = lease("texture");
@@ -1186,6 +1217,7 @@ export async function prepareSealedRuntime({
       initialized: Object.freeze(initialized),
       readPublicAsset,
       createAssetWorker,
+      recycleAssetWorker,
       createTextureClient,
       createTextureEncoder,
       createTranslator,

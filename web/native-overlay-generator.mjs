@@ -7,7 +7,11 @@
  * extraction adapter's private authenticated capability. No whole RomFS copy.
  */
 import { readAuthenticatedAssets } from "./extraction-job-adapter.mjs";
-import { writeCascOverlay, writeCascPrebuiltOverlay } from "./casc-overlay-writer.mjs";
+import {
+  prepareCascOverlayManifest,
+  writeCascOverlay,
+  writeCascPrebuiltOverlay,
+} from "./casc-overlay-writer.mjs";
 
 export const NATIVE_OVERLAY_LIMITS = Object.freeze({
   manifest: 128 * 1024 * 1024,
@@ -142,6 +146,7 @@ export async function generateNativeOverlay({
   selection,
   generated,
   worker,
+  recycleWorker,
   signal,
   prebuiltPack,
 } = {}) {
@@ -151,6 +156,7 @@ export async function generateNativeOverlay({
     !worker ||
     typeof worker.run !== "function" ||
     typeof worker.close !== "function" ||
+    (recycleWorker !== undefined && typeof recycleWorker !== "function") ||
     !generated ||
     Object.keys(generated).length !== NATIVE_OVERLAY_GENERATED.length
   )
@@ -239,6 +245,7 @@ export async function generateNativeOverlay({
     bundle.manifest = "";
     if (payload.length > NATIVE_OVERLAY_LIMITS.payload) fail("OVERLAY_INPUT_LIMIT");
     const result = await worker.run("overlay-recipe", payload, {});
+    await recycleWorker?.({ signal });
     for (const value of Object.values(result?.files ?? {})) {
       const data = bytes(value);
       if (data) owned.push(data);
@@ -264,11 +271,20 @@ export async function generateNativeOverlay({
       used.add(id);
       return data;
     };
+    const manifestSelection = await prepareCascOverlayManifest({
+      romfs: assets.romfs,
+      paths: [
+        ...result.variants.flatMap((variant) => variant.replacements.map((item) => item.path)),
+        ...(external?.records.map((record) => record.path) ?? []),
+      ],
+      signal,
+    });
     let outputBytes = 0;
     let astc;
     const overlayArchives = {};
-    for (const variant of result.variants) {
+    for (const [index, variant] of result.variants.entries()) {
       signal?.throwIfAborted();
+      if (index > 0) await recycleWorker?.({ signal });
       if (
         !Array.isArray(variant.replacements) ||
         variant.replacements.length > 4096 ||
@@ -279,7 +295,13 @@ export async function generateNativeOverlay({
         if (r.path !== path(r.path) || typeof r.add !== "boolean") fail("OVERLAY_RESULT_PATH");
         return { path: r.path, add: r.add, bytes: take(r.file) };
       });
-      const overlay = await writeCascOverlay({ romfs: assets.romfs, replacements, worker, signal });
+      const overlay = await writeCascOverlay({
+        romfs: assets.romfs,
+        replacements,
+        worker,
+        signal,
+        manifestSelection,
+      });
       const prefix =
         variant.name === "base" ? "romfs_overlay" : "romfs_overlay_variants/item_notes";
       for (const [name, value] of Object.entries(overlay.files)) {
@@ -297,12 +319,14 @@ export async function generateNativeOverlay({
       if (JSON.stringify(sideNames) !== JSON.stringify(expected)) fail("OVERLAY_SIDECAR_SET");
       let astcPrefix;
       if (external) {
+        await recycleWorker?.({ signal });
         const converted = await writeCascPrebuiltOverlay({
           romfs: assets.romfs,
           replacements,
           external,
           worker,
           signal,
+          manifestSelection,
         });
         const archiveNames = Object.keys(overlay.files).filter((name) => name.endsWith(".data"));
         const convertedNames = Object.keys(converted.files).filter((name) =>

@@ -173,6 +173,18 @@ async function selectedManifest(romfs, wanted, signal) {
   if (pending) line(pending);
   return selected;
 }
+const manifestSelections = new WeakMap();
+
+// Resolve both overlay variants against one read of the authenticated source manifest.
+// The opaque selection remains bound to the exact RomFS object and requested paths.
+export async function prepareCascOverlayManifest({ romfs, paths, signal } = {}) {
+  if (!romfs || typeof romfs.getFile !== "function" || !Array.isArray(paths)) fail();
+  const wanted = new Set(paths.map(normalize));
+  const records = await selectedManifest(romfs, wanted, signal);
+  const selection = Object.freeze({});
+  manifestSelections.set(selection, { romfs, wanted, records });
+  return selection;
+}
 const packName = ([chunk, archive]) =>
   `${String(chunk).padStart(2, "0")}-${String(archive).padStart(8, "0")}.data`;
 const validLocation = (value) =>
@@ -282,8 +294,14 @@ function externalReferences(external) {
  * 原有默认入口不接受外部引用，保持其空任务行为和字节输出。
  * The original default entry accepts no external references and preserves empty-job behavior and byte output.
  */
-export async function writeCascOverlay({ romfs, replacements, worker, signal } = {}) {
-  return writeOverlay({ romfs, replacements, worker, signal });
+export async function writeCascOverlay({
+  romfs,
+  replacements,
+  worker,
+  signal,
+  manifestSelection,
+} = {}) {
+  return writeOverlay({ romfs, replacements, worker, signal, manifestSelection });
 }
 
 /**
@@ -296,12 +314,20 @@ export async function writeCascPrebuiltOverlay({
   external,
   worker,
   signal,
+  manifestSelection,
 } = {}) {
   if (!external) return Promise.reject(new Error("CASC_OVERLAY_INVALID"));
-  return writeOverlay({ romfs, replacements, external, worker, signal });
+  return writeOverlay({ romfs, replacements, external, worker, signal, manifestSelection });
 }
 
-async function writeOverlay({ romfs, replacements, external, worker, signal } = {}) {
+async function writeOverlay({
+  romfs,
+  replacements,
+  external,
+  worker,
+  signal,
+  manifestSelection,
+} = {}) {
   signal?.throwIfAborted();
   if (
     !romfs ||
@@ -354,7 +380,14 @@ async function writeOverlay({ romfs, replacements, external, worker, signal } = 
   }
   const config = await smallFile(romfs, "data/.build.config", OVERLAY_LIMITS.config, signal);
   const values = configValues(config);
-  const manifest = await selectedManifest(romfs, seen, signal);
+  const prepared =
+    manifestSelection === undefined ? undefined : manifestSelections.get(manifestSelection);
+  if (
+    manifestSelection !== undefined &&
+    (!prepared || prepared.romfs !== romfs || [...seen].some((path) => !prepared.wanted.has(path)))
+  )
+    fail();
+  const manifest = prepared ? prepared.records : await selectedManifest(romfs, seen, signal);
   const descriptors = jobs.map((job) => {
     const oldEkey = manifest.get(job.path);
     if (job.add ? oldEkey !== undefined : oldEkey === undefined) fail();

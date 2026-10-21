@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { writeCascOverlay, OVERLAY_LIMITS } from "../casc-overlay-writer.mjs";
+import {
+  prepareCascOverlayManifest,
+  writeCascOverlay,
+  OVERLAY_LIMITS,
+} from "../casc-overlay-writer.mjs";
 import { fixture, source, worker, jobs } from "./helpers/casc-overlay-fixture.mjs";
 test("real config, TVFS and n/z/multiblock BLTE archive equal independent original-native overlay", async () => {
   const romfs = source();
@@ -21,6 +25,34 @@ test("empty overlay returns no changed files without any source reads", async ()
     inventory: [],
   });
   assert.equal(romfs.reads.length, 0);
+});
+test("one authenticated manifest selection serves both overlay variants", async () => {
+  const romfs = source();
+  const replacements = jobs();
+  const manifestSelection = await prepareCascOverlayManifest({
+    romfs,
+    paths: replacements.map((job) => job.path),
+  });
+  const manifestReads = () =>
+    romfs.reads.filter((read) => read.path === "data/build_manifest.psv").length;
+  const scanned = manifestReads();
+  assert.ok(scanned > 0);
+  for (let index = 0; index < 2; index++) {
+    const result = await writeCascOverlay({
+      romfs,
+      replacements,
+      worker: worker(),
+      manifestSelection,
+    });
+    assert.deepEqual(result.inventory, fixture.inventory);
+    assert.equal(manifestReads(), scanned);
+  }
+  await assert.rejects(
+    writeCascOverlay({ romfs: source(), replacements, worker: worker(), manifestSelection }),
+  );
+  await assert.rejects(
+    writeCascOverlay({ romfs, replacements, worker: worker(), manifestSelection: {} }),
+  );
 });
 test("first manifest duplicate wins, preserving native overlay lookup", async () => {
   const manifest = Buffer.from(fixture.files["data/build_manifest.psv"], "base64").toString();

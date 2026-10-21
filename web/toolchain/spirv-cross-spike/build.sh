@@ -16,8 +16,8 @@ if [[ $mode == native ]]; then
 elif [[ $mode == wasm ]]; then
   emcc --version | head -1 | grep -F '4.0.20'
   emcmake cmake -S "$source_dir" -B "$build_dir" "${options[@]}" \
-    '-DCMAKE_CXX_FLAGS=-fexceptions' \
-    "-DCMAKE_EXE_LINKER_FLAGS=-sMODULARIZE=1 -sEXPORT_ES6=1 -sINVOKE_RUN=0 -sEXIT_RUNTIME=0 -sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=2147483648 -sDISABLE_EXCEPTION_CATCHING=0 -sENVIRONMENT=${D2R_EMSCRIPTEN_ENVIRONMENT:-web,worker,node} -sEXPORTED_RUNTIME_METHODS=FS,callMain"
+    '-DCMAKE_CXX_FLAGS=-fwasm-exceptions' \
+    "-DCMAKE_EXE_LINKER_FLAGS=-fwasm-exceptions -sMODULARIZE=1 -sEXPORT_ES6=1 -sINVOKE_RUN=0 -sEXIT_RUNTIME=0 -sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=2147483648 -sENVIRONMENT=${D2R_EMSCRIPTEN_ENVIRONMENT:-web,worker,node} -sEXPORTED_RUNTIME_METHODS=FS,callMain"
 else
   echo "Unknown mode: $mode" >&2; exit 2
 fi

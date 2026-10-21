@@ -104,6 +104,7 @@ export function createAssetPipelineAdapter({
   prebuiltPack,
   textureReplacements = [],
   createAssetWorker,
+  recycleAssetWorker,
   createTextureClient,
   createTextureEncoder,
 } = {}) {
@@ -124,6 +125,7 @@ export function createAssetPipelineAdapter({
           (name) => !NATIVE_OVERLAY_GENERATED.includes(name),
         ))) ||
     typeof createAssetWorker !== "function" ||
+    (recycleAssetWorker !== undefined && typeof recycleAssetWorker !== "function") ||
     typeof createTextureClient !== "function" ||
     ((textureReplacements.length || mercenaryArt || remainingArt) &&
       typeof createTextureEncoder !== "function")
@@ -457,6 +459,7 @@ export function createAssetPipelineAdapter({
             generated: generatedArt,
             prebuiltPack,
             worker,
+            recycleWorker: recycleAssetWorker,
             signal: combined,
           }),
         );
