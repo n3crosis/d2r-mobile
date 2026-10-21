@@ -69,6 +69,20 @@ async function setup(
     ].map((path) => [path, encode(`synthetic ${path}`)]),
   );
   data.set(profile.archivePath, shell);
+  if (components.includes("assets")) {
+    const directory = "toolchain/asset-runtime-js/dist";
+    const records = [
+      "worker.mjs",
+      "image-kernels.wasm",
+      "png-codec.wasm",
+      "font-rasterizer.wasm",
+    ].map((path) => {
+      const value = encode(`synthetic ${path}`);
+      data.set(`${directory}/${path}`, value);
+      return { path, bytes: value.length, sha256: sha(value) };
+    });
+    data.set(`${directory}/manifest.json`, encode(JSON.stringify({ version: 1, assets: records })));
+  }
   if (producer) {
     data.set("toolchain/asset-runtime-js/dist/png-codec.wasm", encode("synthetic PNG wasm"));
     for (const path of OPTIONAL_RUNTIME_ASSET_GROUPS["legacy-astc"])
@@ -430,4 +444,74 @@ test("default runtime has no signing worker or signable lease", async (t) => {
   assert.equal(runtime.initialized.ipaSigning, undefined);
   assert.equal(setupState.state.workers.length, 1);
   assert.throws(() => runtime.takeIpaSigningFactory(), /unavailable/);
+});
+
+test("asset recycling reuses its entry URL and leases ignore retired worker events", async (t) => {
+  const { start, state, assertSealedRuntime } = await setup(t, { components: ["assets"] });
+  const runtime = await start();
+  const client = runtime.createAssetWorker();
+  await runtime.recycleAssetWorker();
+  await runtime.recycleAssetWorker();
+  const current = state.workers.at(-1);
+  assert.ok(state.workers.every((worker) => worker.url === current.url));
+  const pending = client.run("overlay-recipe", new Uint8Array([1]));
+  for (const retired of state.workers.slice(0, -1)) {
+    assert.equal(retired.terminations, 1);
+    retired.reply({ id: 1, ok: false });
+    retired.dispatchEvent(new Event("error"));
+    retired.dispatchEvent(new Event("messageerror"));
+  }
+  assert.equal(assertSealedRuntime(runtime), runtime);
+  assert.equal(current.terminations, 0);
+  current.reply({ id: 1, ok: true, result: { files: {} } });
+  assert.deepEqual(await pending, { files: {} });
+  await runtime.close();
+  assert.equal(state.revokedUrls.filter((url) => url === current.url).length, 1);
+});
+
+test("cancelling an asset restart rejects and clears all workers and request listeners", async (t) => {
+  const { start, state, controller } = await setup(t, { components: ["assets"] });
+  const runtime = await start();
+  state.initialize = false;
+  const restart = new AbortController();
+  const pending = runtime.recycleAssetWorker({ signal: restart.signal });
+  restart.abort();
+  await assert.rejects(pending, { name: "AbortError" });
+  assert.equal(getEventListeners(restart.signal, "abort").length, 0);
+  stopped(state, controller);
+});
+
+for (const action of ["close", "abort"])
+  test(`asset restart proof followed by ${action} rejects before continuation`, async (t) => {
+    const { start, state, controller, assertSealedRuntime } = await setup(t, {
+      components: ["assets"],
+    });
+    const runtime = await start();
+    state.initialize = false;
+    const restart = new AbortController();
+    const pending = runtime.recycleAssetWorker({ signal: restart.signal });
+    state.workers.at(-1).reply({ id: 0, ok: true, result: { initialized: true } });
+    if (action === "close") runtime.close();
+    else restart.abort();
+    await assert.rejects(pending, { name: "AbortError" });
+    assert.throws(() => assertSealedRuntime(runtime), /live verified/);
+    stopped(state, controller);
+  });
+
+test("asset restart rejects concurrent restarts and lease operations without disrupting initialization", async (t) => {
+  const { start, state } = await setup(t, { components: ["assets"] });
+  const runtime = await start();
+  const client = runtime.createAssetWorker();
+  state.initialize = false;
+  const pending = runtime.recycleAssetWorker();
+  await assert.rejects(runtime.recycleAssetWorker(), /busy/);
+  await assert.rejects(client.run("overlay-recipe", new Uint8Array([1])), /busy/);
+  const current = state.workers.at(-1);
+  assert.equal(current.requests.length, 1);
+  current.reply({ id: 0, ok: true, result: { initialized: true } });
+  await pending;
+  const operation = client.run("overlay-recipe", new Uint8Array([1]));
+  await assert.rejects(runtime.recycleAssetWorker(), /busy/);
+  current.reply({ id: 1, ok: true, result: {} });
+  await operation;
 });

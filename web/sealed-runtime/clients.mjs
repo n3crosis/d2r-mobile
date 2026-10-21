@@ -363,6 +363,7 @@ function channel(worker, onFatal, onStage) {
     }
   };
   worker.onmessage = ({ data }) => {
+    if (closed) return;
     if (entry?.id === 0 && data?.type === "initialization-stage") {
       onStage?.(data.stage);
       return;
@@ -390,6 +391,7 @@ function channel(worker, onFatal, onStage) {
         );
   };
   worker.onerror = (event) => {
+    if (closed) return;
     stop(
       new Error(
         entry?.id === 0
@@ -400,6 +402,7 @@ function channel(worker, onFatal, onStage) {
     onFatal();
   };
   worker.onmessageerror = () => {
+    if (closed) return;
     stop();
     onFatal();
   };
@@ -786,6 +789,7 @@ export async function prepareSealedRuntime({
     urls = [];
   let closed = false,
     recyclingAssets = false,
+    assetWorkerUrl,
     producerClient,
     producerWorker,
     producerInitialization,
@@ -829,6 +833,7 @@ export async function prepareSealedRuntime({
           ? undefined
           : URL.createObjectURL(new Blob([bytes(plan.entry)], { type: "text/javascript" }));
       if (url !== undefined) urls.push(url);
+      if (name === "assets") assetWorkerUrl = url;
       const labels = {
         assets: "game resources",
         texture: "textures",
@@ -987,11 +992,10 @@ export async function prepareSealedRuntime({
       recyclingAssets = true;
       channels.assets.stop();
       try {
-        const url = URL.createObjectURL(
-          new Blob([bytes(plans.assets.entry)], { type: "text/javascript" }),
-        );
-        urls.push(url);
-        const next = (channels.assets = channel(new Worker(url, { type: "module" }), close));
+        const next = (channels.assets = channel(
+          new Worker(assetWorkerUrl, { type: "module" }),
+          close,
+        ));
         const files = closure(ASSET_RUNTIME_DIRECTORY, validateAssetRuntimeInventory).map(
           ([name, value]) => [name, value.slice().buffer],
         );
@@ -1002,6 +1006,7 @@ export async function prepareSealedRuntime({
           signal,
           true,
         );
+        if (closed || signal?.aborted) throw new DOMException("Runtime cancelled", "AbortError");
         if (result?.initialized !== true || buffers.some((buffer) => buffer.byteLength !== 0))
           fail("Asset runtime restart failed");
       } catch (error) {
