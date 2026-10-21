@@ -1,0 +1,108 @@
+"""组合固定上游签名源码与固定分支的浏览器桥接层。
+Combine pinned upstream signing with the pinned fork's browser bridge.
+
+这是源码派生适配，不是对分支中不透明二进制文件的重建。
+This is a source-derived adaptation, not a rebuild of the fork's opaque binary.
+仅修改构建目录中的副本，保留所有原始许可证声明。
+Only build-directory copies are modified; all original license notices remain.
+"""
+
+from pathlib import Path
+import hashlib
+import json
+import shutil
+import sys
+
+here = Path(__file__).resolve().parent
+source, port, output = map(Path, sys.argv[1:])
+if output.exists():
+    raise SystemExit("Patched output already exists; use a fresh build directory")
+shutil.copytree(source / "src", output)
+for name in ["zsign_export.cpp", "zsign_export.h"]:
+    shutil.copyfile(port / "native" / name, output / name)
+
+
+def replace(path, old, new):
+    file = output / path
+    text = file.read_text()
+    if text.count(old) != 1:
+        raise SystemExit(f"Unexpected pinned source shape: {path}")
+    file.write_text(text.replace(old, new))
+
+
+sha = output / "common/sha.cpp"
+text = sha.read_text()
+start = text.index("bool ZSHA::SHAFile(")
+end = text.index("bool ZSHA::SHABase64(", start)
+text = text[:start] + (here / "stream-sha.inc").read_text() + "\n" + text[end:]
+text = text.replace(
+    "#include <openssl/sha.h>",
+    "#include <openssl/sha.h>\n#include <openssl/evp.h>\n#include <openssl/crypto.h>",
+)
+sha.write_text(text)
+# v1.1.3 已传播哈希错误；若此约束变化则拒绝构建。
+# v1.1.3 already propagates hash errors; fail closed if that invariant changes.
+if "if (!SHAFile(szFile, strSHA1, strSHA256))" not in text:
+    raise SystemExit("Missing upstream resource-hash error propagation")
+if "if (!ZSHA::SHABase64File(" not in (output / "bundle.cpp").read_text():
+    raise SystemExit("Missing upstream bundle-hash error propagation")
+fs = output / "common/fs.cpp"
+text = fs.read_text()
+start = text.index("void* ZFile::MapFile(")
+end = text.index("bool ZFile::WriteFile(", start)
+# 数据结构和基于 fopen 的映射设计源于固定的 lbr77 分支，增加读写检查和分配上限。
+# The structure and fopen-backed mapping design are derived from the pinned
+# lbr77 port, with explicit read/write error checks and a bounded allocation.
+struct = """// D2R 浏览器对 lbr77 可移植文件映射的适配。
+// D2R browser adaptation of lbr77's portable file mapping.
+struct ZFileMappedInfo { string path; size_t offset; size_t size; bool ro; };
+static map<void*, ZFileMappedInfo> s_mapFilesNoMmap;
+
+"""
+fs.write_text(text[:start] + struct + (here / "bounded-map.inc").read_text() + "\n" + text[end:])
+replace("zsign_export.cpp", "#define ZSIGN_EXPORT EMSCRIPTEN_KEEPALIVE", "#define ZSIGN_EXPORT")
+replace(
+    "zsign_export.cpp", '#define ZSIGN_VERSION "0.7"', '#define ZSIGN_VERSION "1.1.3-d2r-browser"'
+)
+replace(
+    "zsign_export.cpp",
+    '#include "zsign_export.h"',
+    '#include "zsign_export.h"\n#include <openssl/provider.h>\n#include <openssl/rand.h>\n#include <openssl/crypto.h>',
+)
+# 保持分支 ABI，同时适配上游新增的动态库移除参数。
+# Keep fork ABI; adapt to upstream's additional dylib-removal argument.
+replace(
+    "zsign_export.cpp",
+    "\t\tarrDylibFiles,\n\t\tbForceSign,",
+    "\t\tarrDylibFiles,\n\t\tvector<string>(),\n\t\tbForceSign,",
+)
+replace(
+    "zsign_export.cpp",
+    "\tstring inputFolder = SafePath(input_folder);",
+    """    // D2R：若静态密码提供程序或浏览器随机源不可用，则拒绝签名。
+    // D2R: fail closed if the static providers or browser entropy are unavailable.
+    // no-module 将两个提供程序保留在 libcrypto 中，不使用动态模块或网络回退。
+    // no-module builds keep both providers in libcrypto; no DSO/network fallback.
+    ZLog::SetLogLever(ZLog::E_NONE);
+    if (!OSSL_PROVIDER_load(NULL, "default") || !OSSL_PROVIDER_load(NULL, "legacy") ||
+        RAND_status() != 1) return -205;
+\tstring inputFolder = SafePath(input_folder);""",
+)
+# Init 完成后清零桥接层持有的密码副本，失败路径也必须清零。
+# Wipe the bridge-owned password copy after Init, including the failure path.
+old = """\tif (!zsa.Init(certFile, pkeyFile, provFile, entitlementsFile, passwd, bAdhoc, bSHA256Only, false)) {
+\t\treturn -203;
+\t}"""
+new = """    bool initialized = zsa.Init(certFile, pkeyFile, provFile, entitlementsFile, passwd, bAdhoc, bSHA256Only, false);
+    if (!passwd.empty()) OPENSSL_cleanse(&passwd[0], passwd.size());
+    if (!initialized) return -203;"""
+replace("zsign_export.cpp", old, new)
+report = {
+    "patches": {
+        p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+        for p in [here / "prepare-source.py", here / "stream-sha.inc", here / "bounded-map.inc"]
+    },
+    "modifiedFiles": ["common/sha.cpp", "common/fs.cpp", "zsign_export.cpp"],
+    "portedFiles": ["zsign_export.cpp", "zsign_export.h"],
+}
+(output.parent / "patch-report.json").write_text(json.dumps(report, indent=2) + "\n")

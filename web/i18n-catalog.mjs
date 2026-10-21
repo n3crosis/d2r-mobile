@@ -732,5 +732,57 @@ export const catalog = Object.freeze({
   "dmWebResourcesSaved": [
     "Game resources saved in %s inside the selected folder.",
     "游戏资源已保存到所选文件夹内的 %s 中。"
+  ],
+  "dmWebSigningOption": [
+    "Optional: sign the IPA locally",
+    "可选：在本地签名 IPA"
+  ],
+  "dmWebSigningHelp": [
+    "Unsigned IPA is the default. Enable before choosing a folder; the page reloads and preloads signing tools. Credentials stay on this device and are not uploaded.",
+    "默认生成未签名 IPA。请在选择文件夹前启用；页面将重载并预载签名工具。凭据仅在本设备使用，不上传。"
+  ],
+  "dmWebSigningCredentials": [
+    "Local signing credentials",
+    "本地签名凭据"
+  ],
+  "dmWebSigningIdentity": [
+    "P12 / PFX identity (up to 4 MiB)",
+    "P12 / PFX 证书（最多 4 MiB）"
+  ],
+  "dmWebSigningPassword": [
+    "Identity password (may be empty)",
+    "证书密码（可留空）"
+  ],
+  "dmWebSigningProfile": [
+    "Provisioning profile (.mobileprovision, up to 4 MiB)",
+    "描述文件（.mobileprovision，最多 4 MiB）"
+  ],
+  "dmWebSigningWorking": [
+    "Unsigned IPA retained; signing and verifying locally.",
+    "未签名 IPA 已保留；正在本地签名并验证。"
+  ],
+  "dmWebSigningComplete": [
+    "Signed IPA verified by the signing tool and ready to download; device installation or execution is not guaranteed.",
+    "已签名 IPA 已通过签名工具验证并可下载；这不保证设备可安装或运行。"
+  ],
+  "dmWebSigningFailed": [
+    "Signing failed. The unsigned IPA and exported resources remain available; save the unsigned IPA, then reload to retry.",
+    "签名失败。未签名 IPA 和已导出的资源仍可使用；请保存未签名 IPA，再重新载入后重试。"
+  ],
+  "dmWebSigningCancelled": [
+    "Signing cancelled. The unsigned IPA and exported resources remain available; save the IPA before reloading.",
+    "签名已取消。未签名 IPA 和已导出的资源仍可使用；请先保存 IPA，再重新载入。"
+  ],
+  "dmWebSignedDownload": [
+    "Download signed IPA",
+    "下载已签名 IPA"
+  ],
+  "dmWebSignedHelp": [
+    "Signing was verified, but device eligibility, installation and game compatibility still require device checks.",
+    "签名已验证，但设备授权、安装和实际游戏兼容性仍需在设备上检查。"
+  ],
+  "dmWebCleanupWarning": [
+    "Cleanup failed. Save any available IPA before reloading.",
+    "清理失败。请保存可用的 IPA 后再重新载入。"
   ]
 });

@@ -5,7 +5,13 @@ import { fileURLToPath } from "node:url";
 const outdir = fileURLToPath(new URL("../runtime-build/.build/sealed-workers/", import.meta.url));
 await rm(outdir, { recursive: true, force: true });
 await mkdir(outdir, { recursive: true });
-for (const name of ["nsp-worker", "cross-worker", "program-worker", "astc-producer-worker"]) {
+for (const name of [
+  "nsp-worker",
+  "cross-worker",
+  "program-worker",
+  "astc-producer-worker",
+  "signing-worker",
+]) {
   const source = name === "astc-producer-worker" ? `../sealed-runtime/${name}.mjs` : `${name}.mjs`;
   const result = await globalThis.Bun.build({
     entrypoints: [fileURLToPath(new URL(source, import.meta.url))],

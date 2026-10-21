@@ -61,7 +61,7 @@ export function assertBrowserPackagerCapabilities(environment = globalThis) {
 /**
  * 可选补充包在公开引导阶段选择，私有输入开始后不再联网。
  * Select the optional pack during public bootstrap; no networking after private inputs begin.
- * @param {{manifestSha256?: string, signal?: AbortSignal, onProgress?: (event: any) => void, profileId?: string, legacyAstc?: boolean, astcPreset?: "thorough"|"fast", skipContentHashes?: boolean}} [options]
+ * @param {{manifestSha256?: string, signal?: AbortSignal, onProgress?: (event: any) => void, profileId?: string, legacyAstc?: boolean, signing?: boolean, astcPreset?: "thorough"|"fast", skipContentHashes?: boolean}} [options]
  */
 export async function prepareBrowserPackager({
   manifestSha256,
@@ -69,27 +69,29 @@ export async function prepareBrowserPackager({
   onProgress,
   profileId,
   legacyAstc = false,
+  signing = false,
   astcPreset = "thorough",
   skipContentHashes = false,
 } = {}) {
   if (astcPreset !== "thorough" && astcPreset !== "fast") throw new Error("ASTC_PRESET_OPTION");
   if (typeof legacyAstc !== "boolean") throw new Error("LEGACY_ASTC_OPTION");
   if (typeof skipContentHashes !== "boolean") throw new Error("CONTENT_HASH_OPTION");
+  if (typeof signing !== "boolean") throw new Error("SIGNING_OPTION");
   const selectedProfile = resolveShellProfile(profileId);
   assertBrowserPackagerCapabilities();
   const runtime = await prepareSealedRuntime({
     baseUrl: "./runtime/",
     profileId: selectedProfile.id,
     manifestSha256,
-    ...(legacyAstc ? { optionalGroups: ["legacy-astc"] } : {}),
+    optionalGroups: [...(legacyAstc ? ["legacy-astc"] : []), ...(signing ? ["ipa-signing"] : [])],
     signal,
     onProgress,
   });
-  let profile, program, assets, shaders, shellVariantBytes;
+  let profile, program, assets, shaders, shellVariantBytes, signingClient;
   let closed = false;
   let deferRuntimeClose = false;
-  let closePromise;
-  const close = () => {
+  let closePromise, wholeClosePromise;
+  const closeConversion = () => {
     if (closed) return closePromise;
     closed = true;
     let failure,
@@ -131,7 +133,20 @@ export async function prepareBrowserPackager({
     }
     if (failed) throw failure;
   };
+  // 转换清理不能释放仍用于最终 IPA 的独立签名线程；显式关闭释放全部所有权。
+  // Conversion cleanup preserves the independent signer; explicit close releases both owners.
+  const close = () => {
+    if (wholeClosePromise) return wholeClosePromise;
+    const signer = signingClient;
+    signingClient = undefined;
+    if (!signer) return closeConversion();
+    wholeClosePromise = cleanupPackagingAdapters(() => signer.close(), closeConversion);
+    // Unmount may intentionally ignore cleanup; awaiters still receive the original rejection.
+    wholeClosePromise.catch(() => undefined);
+    return wholeClosePromise;
+  };
   try {
+    if (signing) signingClient = runtime.takeIpaSigningClient();
     if (legacyAstc && typeof runtime.createAstcProducerClient !== "function")
       throw new Error("LEGACY_ASTC_UNAVAILABLE");
     profile = await loadProductionProfile(runtime, { signal, profileId: selectedProfile.id });
@@ -164,6 +179,12 @@ export async function prepareBrowserPackager({
     return Object.freeze({
       ready: true,
       realGameVerified: false,
+      signingReady: Boolean(signingClient),
+      // The unsigned Blob remains caller-owned and is never replaced on signing failure.
+      async sign(options) {
+        if (!signingClient) throw new Error("SIGNING_CLOSED");
+        return signingClient.sign(options);
+      },
       /**
        * 仅允许明确跳过原始资源导出；验证及补充包导出保持不变。
        * Allow only explicit original-resource export skipping; validation and supplemental export stay unchanged.
@@ -385,7 +406,7 @@ export async function prepareBrowserPackager({
             };
           },
           async cleanup(context) {
-            await cleanupPackagingAdapters(() => extraction.cleanup(context), close);
+            await cleanupPackagingAdapters(() => extraction.cleanup(context), closeConversion);
           },
         };
         const pack = new TextEncoder().encode(

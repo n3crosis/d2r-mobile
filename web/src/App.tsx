@@ -9,6 +9,8 @@ import { DEFAULT_SHELL_PROFILE_ID } from "../shell-profiles.mjs";
 import { discoverNspFolder } from "../nsp-input.mjs";
 import { selectDefaultNspNames } from "../nsp-default-selection.mjs";
 import { createDownloadPreparation, attemptAutomaticDownload } from "../download-preparation.mjs";
+import { signWithLocalFiles } from "../signing-input.mjs";
+import { IPA_SIGNING_LIMITS } from "../ipa-signing-contract.mjs";
 import { createUiOperationGate } from "../ui-operation-gate.mjs";
 import { readOpfsStorageAdvisory } from "../opfs-storage-advisory.mjs";
 import {
@@ -67,6 +69,15 @@ export default function App() {
   const [astcPreset] = useState<"thorough" | "fast">(() =>
     new URLSearchParams(window.location.search).get("astcPreset") === "fast" ? "fast" : "thorough",
   );
+  const [signing] = useState(
+    () => new URLSearchParams(window.location.search).get("signing") === "1",
+  );
+  const [signingReady, setSigningReady] = useState(false);
+  const [signingStatus, setSigningStatus] = useState("");
+  const identityInput = useRef<HTMLInputElement>(null);
+  const profileInput = useRef<HTMLInputElement>(null);
+  const passwordInput = useRef<HTMLInputElement>(null);
+  const [credentialsSelected, setCredentialsSelected] = useState(false);
   const [legacyStatus, setLegacyStatus] = useState("");
   const [skipResources, setSkipResources] = useState(false);
   const [resourceOutcome, setResourceOutcome] = useState("");
@@ -100,6 +111,7 @@ export default function App() {
   const [nspNames, setNspNames] = useState<string[]>([]);
   const [selectedNsps, setSelectedNsps] = useState<Set<string>>(() => new Set());
   const [download, setDownload] = useState<{ url: string; fileName: string } | null>(null);
+  const signedDownload = download?.fileName === "D2RMobile-signed.ipa";
   const [finished, setFinished] = useState(false);
   const downloadPreparation = useRef(createDownloadPreparation());
   const [downloadPreparationFailed, setDownloadPreparationFailed] = useState(false);
@@ -187,6 +199,7 @@ export default function App() {
       legacyAstc,
       astcPreset,
       skipContentHashes,
+      signing,
       signal: controller.signal,
       onProgress: (event: LoadingProgress) => {
         if (!controller.signal.aborted) {
@@ -210,6 +223,7 @@ export default function App() {
         packager.current = value;
         setLoading(null);
         setReady(true);
+        setSigningReady(value.signingReady);
         // 空间估计不预留空间，也不阻止继续；忽略取消或卸载后的结果。
         // Estimates neither reserve space nor block continuation; ignore cancelled or unmounted results.
         void readOpfsStorageAdvisory({ signal: controller.signal }).then((estimate) => {
@@ -244,7 +258,7 @@ export default function App() {
       packager.current?.close();
       preparedDownload.dispose();
     };
-  }, [appendActivity, profileId, legacyAstc, astcPreset, skipContentHashes]);
+  }, [appendActivity, profileId, legacyAstc, astcPreset, skipContentHashes, signing]);
   async function choose() {
     if (!ready || busy || !browser.showDirectoryPicker) return;
     const operation = operationGate.current.begin();
@@ -330,7 +344,7 @@ export default function App() {
       operation.finish();
     }
   }
-  function prepareDownload() {
+  function prepareDownload(automatic = true) {
     const prepared = downloadPreparation.current.prepare();
     if (prepared.status !== "ready") {
       setDownloadPreparationFailed(true);
@@ -339,12 +353,24 @@ export default function App() {
     }
     setDownload({ url: prepared.url, fileName: prepared.fileName });
     setDownloadPreparationFailed(false);
-    attemptAutomaticDownload(prepared);
+    if (automatic) attemptAutomaticDownload(prepared);
+  }
+  function clearSigningInputs() {
+    if (identityInput.current) identityInput.current.value = "";
+    if (profileInput.current) profileInput.current.value = "";
+    if (passwordInput.current) passwordInput.current.value = "";
+    if (mounted.current) setCredentialsSelected(false);
   }
   async function generate() {
     if (!ready || busy || !folder || !packager.current || !selectedNsps.size) return;
+    if (
+      signing &&
+      (!signingReady || !identityInput.current?.files?.[0] || !profileInput.current?.files?.[0])
+    )
+      return;
     const operation = operationGate.current.begin();
     if (!operation) return;
+    const jobPackager = packager.current;
     const current = () => mounted.current && operation.isCurrent();
     const controller = operation.controller;
     cancellation.current = controller;
@@ -362,7 +388,7 @@ export default function App() {
     let acceptingProgress = true;
     let generationCompleted = false;
     try {
-      const result = await packager.current.generate({
+      const result = await jobPackager.generate({
         input: folder,
         selectedNspNames: [...selectedNsps],
         exportResources: !skipResources,
@@ -455,11 +481,44 @@ export default function App() {
         setResourceOutcome(t("dmWebResourcesSkipped"));
         setStatus(t("dmWebUnsignedReady"));
       } else {
+        setResourceOutcome(t("dmWebResourcesSaved", result.resources.directoryName));
         setStatus(t("dmWebDownloadReady", folder.name, result.resources.directoryName));
       }
       // 下载准备失败只提供重试，不重新运行转换或覆盖已完成导出状态。
       // Download preparation failures offer retry only, without rerunning conversion or overwriting completed exports.
-      prepareDownload();
+      prepareDownload(!signing);
+      if (signing) {
+        acceptingProgress = false;
+        pendingGenerationStatus.current = null;
+        setSigningStatus(t("dmWebSigningWorking"));
+        try {
+          const signed = await signWithLocalFiles({
+            unsigned: result.download,
+            sign: (options: Parameters<Packager["sign"]>[0]) => jobPackager.sign(options),
+            identityFile: identityInput.current?.files?.[0],
+            profileFile: profileInput.current?.files?.[0],
+            password: passwordInput.current?.value ?? "",
+            signal: controller.signal,
+            onProgress: undefined,
+          });
+          if (!current()) return;
+          downloadPreparation.current.retain(signed);
+          setSigningStatus(t("dmWebSigningComplete"));
+          setStatus(t("dmWebSigningComplete"));
+          prepareDownload();
+        } catch {
+          if (!current()) return;
+          // 签名失败不改变已完成的未签名 IPA 或资源结果，不走打包失败分支。
+          // Signing failure does not change the completed unsigned IPA or resources and bypasses packaging-failure reporting.
+          setSigningStatus(
+            t(controller.signal.aborted ? "dmWebSigningCancelled" : "dmWebSigningFailed"),
+          );
+          setStatus(t("dmWebUnsignedReady"));
+          prepareDownload(false);
+        } finally {
+          clearSigningInputs();
+        }
+      }
     } catch (error) {
       if (!current()) return;
       if (generationCompleted) {
@@ -501,6 +560,21 @@ export default function App() {
       setStatus(packagingFailureMessage(report));
     } finally {
       acceptingProgress = false;
+      if (current()) {
+        if (signing) clearSigningInputs();
+        pendingGenerationStatus.current = null;
+      }
+      // 终止后关闭本次打包器，包括未进入签名的失败路径；清理错误不覆盖已有产物。
+      // Close this operation's packager on every terminal path, including failures before signing; cleanup errors never replace completed artifacts.
+      try {
+        await jobPackager.close();
+      } catch {
+        if (current()) {
+          const warning = t("dmWebCleanupWarning");
+          appendActivity(warning, true);
+          setStatus((previous: string) => `${previous} ${warning}`);
+        }
+      }
       if (current()) {
         pendingGenerationStatus.current = null;
         pendingRomfsProgress.current = undefined;
@@ -655,6 +729,84 @@ export default function App() {
               </div>
             )}
           </div>
+          <div className="space-y-2">
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={signing}
+                disabled={hasSelectedFolder || busy || generating || download !== null}
+                onChange={(event) => {
+                  if (
+                    operationGate.current.busy ||
+                    hasSelectedFolder ||
+                    busy ||
+                    generating ||
+                    download !== null
+                  )
+                    return;
+                  const url = new URL(window.location.href);
+                  if (event.target.checked) url.searchParams.set("signing", "1");
+                  else url.searchParams.delete("signing");
+                  window.location.assign(url.href);
+                }}
+              />
+              {t("dmWebSigningOption")}
+            </label>
+            <p className="text-xs text-muted-foreground">{t("dmWebSigningHelp")}</p>
+            {signing && (
+              <fieldset
+                className="space-y-2 rounded-md border p-3"
+                disabled={!signingReady || !ready || busy}
+              >
+                <legend className="px-1 text-sm">{t("dmWebSigningCredentials")}</legend>
+                <label className="block text-sm">
+                  {t("dmWebSigningIdentity")}
+                  <input
+                    ref={identityInput}
+                    type="file"
+                    accept=".p12,.pfx"
+                    className="block w-full text-sm"
+                    onChange={() => {
+                      if (!operationGate.current.busy)
+                        setCredentialsSelected(
+                          Boolean(
+                            identityInput.current?.files?.[0] && profileInput.current?.files?.[0],
+                          ),
+                        );
+                    }}
+                  />
+                </label>
+                <label className="block text-sm">
+                  {t("dmWebSigningPassword")}
+                  <input
+                    ref={passwordInput}
+                    type="password"
+                    autoComplete="off"
+                    maxLength={IPA_SIGNING_LIMITS.passwordCharacters}
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  />
+                </label>
+                <label className="block text-sm">
+                  {t("dmWebSigningProfile")}
+                  <input
+                    ref={profileInput}
+                    type="file"
+                    accept=".mobileprovision"
+                    className="block w-full text-sm"
+                    onChange={() => {
+                      if (!operationGate.current.busy)
+                        setCredentialsSelected(
+                          Boolean(
+                            identityInput.current?.files?.[0] && profileInput.current?.files?.[0],
+                          ),
+                        );
+                    }}
+                  />
+                </label>
+              </fieldset>
+            )}
+          </div>
           {storageAdvisory && <p className="text-xs text-muted-foreground">{storageAdvisory}</p>}
           <div className="flex flex-wrap gap-3">
             <Button variant="outline" onClick={() => void choose()} disabled={!ready || busy}>
@@ -662,7 +814,13 @@ export default function App() {
             </Button>
             <Button
               onClick={() => void generate()}
-              disabled={!ready || !folder || !selectedNsps.size || busy}
+              disabled={
+                !ready ||
+                !folder ||
+                !selectedNsps.size ||
+                busy ||
+                (signing && (!signingReady || !credentialsSelected))
+              }
               aria-busy={generating}
             >
               {generating && (
@@ -754,6 +912,11 @@ export default function App() {
               )}
             </div>
           )}
+          {signingStatus && (
+            <p className="text-sm text-muted-foreground" role="status">
+              {signingStatus}
+            </p>
+          )}
           {resourceOutcome && (
             <p className="text-sm text-muted-foreground" role="status">
               {resourceOutcome}
@@ -764,17 +927,21 @@ export default function App() {
               <p className="text-sm text-muted-foreground" role="status">
                 {t("dmWebDownloadPreparationFailed")}
               </p>
-              <Button onClick={prepareDownload}>{t("dmWebRetryDownloadPreparation")}</Button>
+              <Button onClick={() => prepareDownload()}>
+                {t("dmWebRetryDownloadPreparation")}
+              </Button>
             </div>
           )}
           {download && (
             <div className="space-y-2">
               <Button asChild>
                 <a href={download.url} download={download.fileName}>
-                  {t("dmWebDownload")}
+                  {t(signedDownload ? "dmWebSignedDownload" : "dmWebDownload")}
                 </a>
               </Button>
-              <p className="text-xs text-muted-foreground">{t("dmWebDownloadHelp")}</p>
+              <p className="text-xs text-muted-foreground">
+                {t(signedDownload ? "dmWebSignedHelp" : "dmWebDownloadHelp")}
+              </p>
             </div>
           )}
           <p className="text-sm text-muted-foreground" role="status" aria-live="polite">

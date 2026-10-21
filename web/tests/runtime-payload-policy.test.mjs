@@ -12,9 +12,9 @@ import {
 import { OPTIONAL_RUNTIME_ASSET_GROUPS } from "../runtime-asset-groups.mjs";
 const source = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-test("only the 48 audited source copies are rejected; live assets and proof records remain", () => {
-  assert.equal(SOURCE_ONLY_RUNTIME_ASSETS.length, 48);
-  assert.equal(new Set(SOURCE_ONLY_RUNTIME_ASSETS).size, 48);
+test("only the 55 audited source copies are rejected; live assets and proof records remain", () => {
+  assert.equal(SOURCE_ONLY_RUNTIME_ASSETS.length, 55);
+  assert.equal(new Set(SOURCE_ONLY_RUNTIME_ASSETS).size, 55);
   assert.ok(Object.isFrozen(SOURCE_ONLY_RUNTIME_ASSETS));
   for (const path of SOURCE_ONLY_RUNTIME_ASSETS)
     assert.throws(() => assertNoSourceOnlyRuntimeAsset(path), /Source-only module/);

@@ -14,6 +14,7 @@ import {
   validateRuntimeTransportGroups,
 } from "../runtime-asset-groups.mjs";
 import { createAstcProducerClient as initializeAstcProducerClient } from "../astc-producer-client.mjs";
+import { prepareIpaSigningClient } from "../ipa-signing-client.mjs";
 const OFFLINE = "toolchain/offline-runtime-spike";
 const TEXTURE = "toolchain/texture-spike";
 const LIMIT = Object.freeze({
@@ -772,6 +773,11 @@ export async function prepareSealedRuntime({
         ["sha256.wasm", bytes("toolchain/sha256-stream-wasm/dist/sha256.wasm")],
       ],
     };
+  if (selectedGroups.includes("ipa-signing"))
+    plans.ipaSigning = {
+      entry: "sealed-workers/signing-worker.mjs",
+      assets: [["zsign.wasm", bytes("toolchain/zsign-wasm/dist/zsign.wasm")]],
+    };
   for (const plan of Object.values(plans)) bytes(plan.entry);
   if (signal?.aborted) throw new DOMException("Runtime cancelled", "AbortError");
   // 原型：没有页面级 CSP 锁定。输入处理保持在本地。
@@ -783,6 +789,10 @@ export async function prepareSealedRuntime({
     producerWorker,
     producerInitialization,
     producerTaken = false,
+    signingClient,
+    signingWorker,
+    signingInitialization,
+    signingTaken = false,
     closing;
   let session;
   function close() {
@@ -791,6 +801,11 @@ export async function prepareSealedRuntime({
     // 初始化客户端尚未返回时，原生 terminate 不会拒绝其等待；仅取消这段未完成的初始化。
     // Native terminate cannot reject an initializer that has not returned its client; cancel only that pending initialization.
     producerInitialization?.abort();
+    signingInitialization?.abort();
+    if (!signingTaken) {
+      signingClient?.close();
+      signingWorker?.terminate();
+    }
     if (session) sealedRuntimes.delete(session);
     for (const c of Object.values(channels)) c.stop();
     try {
@@ -820,9 +835,37 @@ export async function prepareSealedRuntime({
         program: "application compiler",
         spirvCross: "shader converter",
         astcProducer: "legacy texture producer",
+        ipaSigning: "local IPA signer",
       };
       const label = `Preparing ${labels[name] ?? "application"}…`;
       report({ phase: "initializing", label }, true);
+      if (name === "ipaSigning") {
+        const transferred = plan.assets.map(([local, value]) => [local, value.slice().buffer]);
+        const buffers = transferred.map(([, buffer]) => buffer);
+        plan.assets.length = 0;
+        signingWorker = new Worker(url, { type: "module" });
+        signingInitialization = new AbortController();
+        try {
+          signingClient = await prepareIpaSigningClient({
+            worker: signingWorker,
+            assets: transferred,
+            signal: signal
+              ? AbortSignal.any([signal, signingInitialization.signal])
+              : signingInitialization.signal,
+          });
+        } finally {
+          signingInitialization = undefined;
+        }
+        if (closed || signal?.aborted) throw new DOMException("Runtime cancelled", "AbortError");
+        if (buffers.some((buffer) => buffer.byteLength !== 0))
+          fail("Actual signing initialization/transfer failed");
+        // 已启动模块无需保留 Blob URL；转移线程所有权不会留下 URL 生命周期。
+        // The initialized module needs no retained Blob URL, including after ownership transfer.
+        URL.revokeObjectURL(url);
+        urls.splice(urls.indexOf(url), 1);
+        initialized.ipaSigning = { initialized: true };
+        continue;
+      }
       if (name === "astcProducer") {
         const transferred = plan.assets.map(([local, value]) => [local, value.slice().buffer]),
           buffers = transferred.map(([, buffer]) => buffer);
@@ -1125,6 +1168,12 @@ export async function prepareSealedRuntime({
       producerTaken = true;
       return producerClient;
     }
+    function takeIpaSigningClient() {
+      if (closed || !signingClient || signingTaken)
+        fail("IPA signer unavailable or already acquired");
+      signingTaken = true;
+      return signingClient;
+    }
     const workerUrls = Object.freeze(
       Object.fromEntries(
         ["translator", "spirvCross"]
@@ -1151,6 +1200,7 @@ export async function prepareSealedRuntime({
       createProgramWorker,
       createExtractionWorker,
       createAstcProducerClient,
+      takeIpaSigningClient,
       createShaderWorkerFactory,
       workerUrls,
       close,
