@@ -241,7 +241,9 @@ export function createIpaSigningWorkerHandler({
       try {
         mounted?.dispose();
       } catch {
-        failure = "SIGNING_FAILED";
+        // 清理失败仍须阻止成功，但不能掩盖已有的兼容性错误。
+        // Cleanup failure still prevents success without hiding an earlier compatibility error.
+        failure ??= "SIGNING_FAILED";
       }
       clearNative(native);
       native = undefined;

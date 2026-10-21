@@ -343,3 +343,52 @@ test("packaging rejection and closure after early cleanup never publish partial 
     assert.equal(h.closed, 1);
   }
 });
+
+test("profile rejection survives cleanup failure and never publishes an archive", async () => {
+  const h = harness({
+    mountArchive: () => ({
+      collectEntries() {
+        assert.fail("Rejected profile cannot collect signed output");
+      },
+      dispose() {
+        throw Error("unmount failure");
+      },
+    }),
+  });
+  h.native._zsign_sign_bundle = () => -206;
+  await initialize(h);
+  const credentials = makeCredentials();
+  await h.handle({ id: 1, type: "sign", ipa: input(), credentials });
+  assert.deepEqual(h.messages.at(-1), {
+    id: 1,
+    ok: false,
+    error: { code: "SIGNING_PROFILE_MISMATCH" },
+  });
+  assert.ok(!h.events.includes("package"));
+  assert.equal(h.files.size, 0);
+  assert.ok(h.native.HEAPU8.every((v) => v === 0));
+  assert.equal(credentials.password, "");
+  assert.equal(h.closed, 1);
+});
+
+test("cleanup failure alone remains fatal and never publishes an archive", async () => {
+  const h = harness({
+    mountArchive: () => ({
+      collectEntries: () =>
+        ["embedded.mobileprovision", "_CodeSignature/CodeResources"].map((p) => ({
+          path: "Payload/Original.app/" + p,
+          size: 1,
+        })),
+      dispose() {
+        throw Error("unmount failure");
+      },
+    }),
+  });
+  await initialize(h);
+  await h.handle({ id: 1, type: "sign", ipa: input(), credentials: makeCredentials() });
+  assert.equal(h.messages.at(-1).error.code, "SIGNING_FAILED");
+  assert.ok(!h.events.includes("package"));
+  assert.equal(h.files.size, 0);
+  assert.ok(h.native.HEAPU8.every((v) => v === 0));
+  assert.equal(h.closed, 1);
+});
