@@ -4,82 +4,55 @@
 
 ## Latest verified publication
 
-[Commit f9cb44a](https://github.com/n3crosis/d2r-mobile/commit/f9cb44a0ab5bcde738b55717bce41567b1c72a90)
-passed the [full Verify build](https://github.com/n3crosis/d2r-mobile/actions/runs/39536682757)
-and was published on 2026-10-21 at 03:13:26 UTC to the existing private
-[preview Site](https://d2r-ipa-packager.nicekrill34.chatgpt.site).
-The verified artifact is 21,987,036 bytes (about 20.97 MiB compressed ZIP, containing both shell targets), includes
-.NET, and contains no Python runtime, packages or scripts. This is archive size,
-not a browser RAM measurement.
+[Commit 155fd76](https://github.com/n3crosis/d2r-mobile/commit/155fd764add607adf9070fafd5fdf58e40296408)
+is published to the existing private [preview Site](https://d2r-ipa-packager.nicekrill34.chatgpt.site).
+Desktop Chromium on Windows/macOS is the target: single-folder required base and update with optional
+DLC, optional `title.keys` and embedded common tickets, a resource child
+folder and bounded Blob IPA download. iOS 26 and iOS 18 shell targets are available;
+the default path still requires BC textures. The experimental older-GPU option,
+selected before private inputs, generates ASTC overlays and a separate Legacy
+Device Pack. Skipping original resource export neither skips that pack nor verifies
+existing device files. Each selection loads only its shell, common assets and
+explicitly enabled closed optional groups.
 
-The release implements single-folder base/update/optional-DLC conversion,
-optional `title.keys` with embedded common-ticket handling, a resource child
-folder and bounded Blob IPA download. Desktop Chromium on Windows/macOS is the
-target. The page selects iOS 26 or iOS 18; the default path still requires BC texture support.
-The experimental older-GPU option must be selected before private files; it generates
-ASTC overlays and exports a separate Legacy Device Pack. An explicit resource-export
-skip avoids rewriting original resources for the same game/update/DLC; it does not
-verify device files or skip the Legacy Device Pack. Browser storage estimates are
-advisory only and do not report free space on the selected output disk.
-Each selection downloads only its own shell and common runtime assets; the
-experimental option additionally selects its closed optional group. Earlier
-revision-specific wire totals are not carried forward here. Frontend files are
-separate from runtime payloads. Actual WASM encoding
-passed 32 synthetic fixtures / 80 calls through an opaque module URL in CI;
-this is not browser, decode, real-game or device proof. See [implementation and acceptance](WEB_IPA_PACKAGER.md).
+The default output remains unsigned. Optional local zsign WASM signing accepts
+P12/PFX identities and provisioning profiles without uploading credentials. Its
+compatibility checks do not establish certificate trust, revocation status or
+device eligibility. After signing failure or cancellation, fresh credentials can
+retry against the retained unsigned Blob without repeating NSP conversion or
+resource export. Completed unsigned downloads and resource outcomes remain available.
 
-A successful build and publication do not establish real-game input conversion,
-separately signed device execution, gameplay or measured RAM/speed savings.
-Later source edits need their own build/publication; no new percentage is claimed.
+The publication includes early signing-heap/mutable-filesystem release and source
+Blob reuse, plus the user's extraction-progress and Pillow-compatible BC3 fixes.
+These are implementation changes, not measured browser RAM/speed savings. The
+browser runtime retains .NET but contains no Python runtime, packages or scripts;
+Python build/reference tooling is separate. Build and synthetic checks do not
+establish real-game conversion, real-credential signing, installation or execution.
+
+Download-preparation retry, committed IPA recovery after cleanup failure, stream
+cancellation, stable log IDs, bounded archive reads and art/shader buffer-lifetime
+improvements are published. Cleanup failures remain visible. Later source edits
+still need their own build/publication; no acceptance score is increased here.
+See [implementation and acceptance](WEB_IPA_PACKAGER.md).
 
 ## Publication receipt and pending source changes
 
-The published revision is `f9cb44a0ab5bcde738b55717bce41567b1c72a90`.
-Verify run `39536682757` succeeded. Artifact `12318171949` has ZIP SHA-256
-`efaeb258d6fd383598d9a6c5375282c55bd6ad61bd7aa96270ec2d29c59b7d91`.
-The owner-private Site deployment `appgdep_6ad82dcd4f708191b2fbbf68cc5b004f`
-succeeded at 03:13:26 UTC on 2026-10-21.
+Verified publication: `155fd764add607adf9070fafd5fdf58e40296408`, successful
+[Verify 39549460300](https://github.com/n3crosis/d2r-mobile/actions/runs/39549460300)
+(job `119055083277`). Artifact `12322049463` is 22,879,860 bytes; ZIP SHA-256:
+`2b4e4fe43bee64c80b854f26c622ff363010ebc99092635a9d5cfd94a97bddb2`.
+Runtime manifest SHA-256:
+`ffcfb1b32290ab09cc294d2043c3b271059d73983e789264cc26faaa61db2dd2`.
+The archive inventory contains 307 logical assets and 36 physical runtime payloads,
+excluding frontend files. These are whole-artifact counts, not a selected browser download total.
+Site source: `8af7951e0f42187521006a1c0850eb88e3601a63`.
+Owner-private deployment `appgdep_6ad84e4742748191a8d36aa5aa7c2884`
+succeeded on 2026-10-21 at 05:32:00 UTC.
 
-The runtime inventory has 297 logical assets and 33 physical runtime payloads. Its manifest
-SHA-256 is `da3ba5a0ba9c3143b8649a0bd9d85f89fd9ee8c42e662d0d61d3f275d240e145`;
-frontend files are excluded from runtime inventory totals.
-This publication includes canonical Warlock preselection and removal of 48 unused
-raw-source payload assets. The SDK cache recorded an actual hit; no build-time
-or browser-RAM improvement is measured or claimed.
-
-The deployed shader changes tighten final output accounting, bound replay
-copies to 64 KiB and shorten source/replay object lifetimes. All 23 targeted
-shader tests, frontend checks and the full CI passed. The Site source revision
-is `bdbbacb62b0f36abc5766a3faafad5f850cae035`. No browser-RAM measurement or
-real-game/device proof is added, and parity scores are unchanged.
-
-The native fast/thorough option is now live. Revised actual WASM tests passed
-32 synthetic fixtures / 80 calls with opaque-module-URL execution verified in CI;
-this does not establish browser, decode, real-game or device behavior. Cache
-metadata changes are included; observed paired stability is distinguished below
-from universal determinism.
-
-Download-preparation retry, UI/cleanup/RPC race fixes, stream cancellation and
-committed IPA recovery after cleanup failure are now live, alongside batch suffix
-lookup and art-buffer lifetime improvements. Cleanup failure remains visible;
-a genuinely completed IPA can be saved before reloading without regeneration.
-Evidence is synthetic testing, not browser RAM, timing or real-game measurement.
-After project-only SourceLink opt-out, local symbols remain and remote source
-retrieval is removed. The observed `e93a15a` / `32e9717` artifact pair has identical
-297 logical assets and 33 runtime payloads, including .NET boot/main and SPIRV;
-only outer `build.sourceRevision` changed. This establishes stability for that
-pair, not universal build determinism.
-
-The `db94` 1 MiB filesystem write batching and thresholded CFT index changes
-are now live. This release also includes the user's `32a9` RomFS tail-metadata
-and unnamed-CASC handling, the sealed tessellation gate's explicit opt-in fix,
-digest allocation improvements, and removal of the dead orphan Python adapter.
-No browser speed/RAM proof is claimed.
-
-The next uncommitted source changes are not live: 64 KiB archive second-pass
-read windows, prepared-code buffer wiping on abort, stable log identifiers,
-and owned supplemental-pack index handling. They still require their own build
-and publication; this deployment receipt does not cover them.
+Historical paired-build evidence remains limited to `e93a15a` / `32e9717`:
+all 297 logical assets and 33 runtime payloads in that pair were identical,
+including .NET boot/main and SPIRV; only outer `build.sourceRevision` changed.
+That observed pair does not establish universal determinism or certify later builds.
 
 ## Historical baseline: 42 / 100
 
