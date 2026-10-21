@@ -97,7 +97,10 @@ export async function createBoundary(factory) {
       return guard(() => {
         generation++;
         module._nsp_close();
-        if (mounted) module.FS.unmount("/input");
+        if (mounted) {
+          module.FS.unmount("/input");
+          mounted = false;
+        }
         if (
           !Array.isArray(blobs) ||
           blobs.length > 100000 ||
@@ -119,18 +122,28 @@ export async function createBoundary(factory) {
       // ArrayBuffers into this Worker; both arrays are wiped in every path.
       try {
         return guard(() => {
-          if (
-            !(prod instanceof Uint8Array) ||
-            !(title instanceof Uint8Array) ||
-            prod.length > MAX_KEYS ||
-            title.length > MAX_KEYS ||
-            !prod.length
-          )
-            throw new Error("Invalid key input");
+          // 失败的替换也必须撤销旧读取器并擦除旧密钥。
+          // Even a failed replacement revokes old readers and clears old keys.
           generation++;
-          module.FS.writeFile("/secret/prod.keys", prod);
-          module.FS.writeFile("/secret/title.keys", title);
-          return check(module._nsp_load_keys());
+          module._nsp_reset();
+          try {
+            if (
+              !(prod instanceof Uint8Array) ||
+              !(title instanceof Uint8Array) ||
+              prod.length > MAX_KEYS ||
+              title.length > MAX_KEYS ||
+              !prod.length
+            )
+              throw new Error("Invalid key input");
+            module.FS.writeFile("/secret/prod.keys", prod);
+            module.FS.writeFile("/secret/title.keys", title);
+            return check(module._nsp_load_keys());
+          } catch (error) {
+            // 原生加载也可能在已解析部分密钥后失败。
+            // Native loading can fail after parsing some key material.
+            module._nsp_reset();
+            throw error;
+          }
         });
       } finally {
         prod?.fill?.(0);

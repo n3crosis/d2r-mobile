@@ -94,7 +94,12 @@ const pyStrip = (text) =>
 // Python 整数无精度损失；接受 Unicode 十进制数字。 | Preserve Python integer precision and Unicode decimal digits.
 function integer(value) {
   requireValue(typeof value === "string", "ASSET_INTEGER");
-  let text = pyStrip(value);
+  // int() 不接受 str.strip() 允许的 ASCII 分隔控制符。 | int() excludes the ASCII separator controls accepted by str.strip().
+  let text = value.replace(
+    // eslint-disable-next-line no-control-regex -- 精确 Python 整数空白集合。 | Exact Python integer whitespace set.
+    /^[\u0009-\u000d\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+|[\u0009-\u000d\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+$/gu,
+    "",
+  );
   text = text.replace(/\p{Decimal_Number}/gu, (digit) => {
     const cp = digit.codePointAt(0);
     let first = cp;
@@ -112,26 +117,35 @@ function tsvRecords(text) {
   const rows = [];
   let row = [],
     field = "",
+    fieldLength = 0,
     quoted = false,
     start = true,
     touched = false;
+  const append = (character) => {
+    field += character;
+    requireValue(++fieldLength <= 131072, "ASSET_CSV_FIELD_LIMIT");
+  };
   const finish = () => {
     row.push(field);
     rows.push(row);
     row = [];
     field = "";
+    fieldLength = 0;
     start = true;
     touched = false;
   };
   for (let i = 0; i < text.length; i++) {
-    const c = text[i];
+    let c = text[i];
+    // 按 Unicode 码点计数，与 Python csv.field_size_limit 一致。 | Count Unicode code points, as Python's csv.field_size_limit does.
+    if (c.charCodeAt(0) >= 0xd800 && c.charCodeAt(0) <= 0xdbff && i + 1 < text.length)
+      c += text[++i];
     if (quoted) {
       if (c === '"') {
         if (text[i + 1] === '"') {
-          field += '"';
+          append('"');
           i++;
         } else quoted = false;
-      } else field += c;
+      } else append(c);
       touched = true;
     } else if (c === '"' && start) {
       quoted = true;
@@ -140,21 +154,22 @@ function tsvRecords(text) {
     } else if (c === "\t") {
       row.push(field);
       field = "";
+      fieldLength = 0;
       start = true;
       touched = true;
     } else if (c === "\n" || c === "\r") {
       if (c === "\r") {
+        while (text[i + 1] === "\r") i++;
         requireValue(text[i + 1] === "\n" || i + 1 === text.length, "ASSET_CSV_NEWLINE");
         if (text[i + 1] === "\n") i++;
       }
       if (touched || row.length || field) finish();
       else rows.push([]);
     } else {
-      field += c;
+      append(c);
       start = false;
       touched = true;
     }
-    requireValue(field.length <= 131072, "ASSET_CSV_FIELD_LIMIT");
   }
   if (touched || row.length || field) finish();
   return rows;

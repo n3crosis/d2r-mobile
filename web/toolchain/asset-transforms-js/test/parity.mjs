@@ -34,6 +34,20 @@ add(
   true,
 );
 add("experience-table", exp.replaceAll("\r\n", "\r"), {}, true);
+// Python 整数空白与 CSV 码点/换行边界。 | Python int whitespace and csv code-point/newline boundaries.
+for (const separator of ["\u001c", "\u001d", "\u001e", "\u001f"])
+  add("experience-table", exp.replace("1\t123", `1\t${separator}123`), {}, true);
+add("experience-table", exp.replaceAll("\r\n", "\r\r\n"));
+for (const length of [65537, 131072, 131073])
+  add(
+    "experience-table",
+    exp
+      .replace("Level\tAmazon", "Level\tAmazon\tUnused")
+      .replace("1\t123", `1\t123\t${"😀".repeat(length)}`),
+    {},
+    length > 131072,
+  );
+
 add("overlay-paths", [
   "DATA/GLOBAL/UI/LAYOUTS/CONTROLLER/HUD.JSON",
   "data/global/ui/layouts/controller/console/foo.json",

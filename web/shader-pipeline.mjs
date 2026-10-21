@@ -252,7 +252,9 @@ export function createShaderPipeline({
       const remaining = () => Math.max(1, deadline - Date.now());
       let bytes, jobBytes, spirv, mslBytes;
       try {
-        bytes = code.slice();
+        // Buffer.slice() 与输入共享内存；始终分配独立的普通字节副本。
+        // Buffer.slice() aliases its input; always allocate a plain owned byte copy.
+        bytes = new Uint8Array(code);
         const codeSha256 = await hash(bytes);
         jobBytes = encoder.encode(JSON.stringify(requestJob));
         const jobSha256 = await hash(jobBytes);

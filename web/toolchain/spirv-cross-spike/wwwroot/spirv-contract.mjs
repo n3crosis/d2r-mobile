@@ -23,5 +23,7 @@ export function validateSpirv(input) {
       throw new Error("Invalid SPIR-V instruction size");
     offset += words * 4;
   }
-  return input.slice();
+  // Buffer 等 Uint8Array 子类的 slice() 可能返回借用视图。
+  // Buffer and other Uint8Array subclasses may implement slice() as a borrowed view.
+  return new Uint8Array(input);
 }

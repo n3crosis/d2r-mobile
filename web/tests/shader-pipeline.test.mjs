@@ -6,7 +6,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { createShaderPipeline } from "../shader-pipeline.mjs";
-import { CROSS_COMMIT, MSL_ARGUMENTS } from "../toolchain/spirv-cross-spike/wwwroot/convert.mjs";
+import {
+  CROSS_COMMIT,
+  MSL_ARGUMENTS,
+  validateSpirv,
+} from "../toolchain/spirv-cross-spike/wwwroot/convert.mjs";
 import { fixtures as graphicsFixtures } from "../toolchain/shader-pipeline-spike/graphics-fixtures.mjs";
 import { replayFields } from "../toolchain/spirv-cross-spike/wwwroot/replay-reflection.mjs";
 const key = "0000000000000001",
@@ -424,4 +428,41 @@ test("compiled stage mismatch is rejected even if hashes and replay are otherwis
     /stage does not match/,
   );
   pipeline.dispose();
+});
+
+test("SPIR-V validation owns an exact copy of Buffer subviews", () => {
+  const backing = Buffer.alloc(spv.length + 8, 7),
+    input = backing.subarray(4, -4);
+  input.set(spv);
+  const before = Buffer.from(backing),
+    validated = validateSpirv(input);
+  assert.equal(Object.getPrototypeOf(validated), Uint8Array.prototype);
+  assert.notEqual(validated.buffer, input.buffer);
+  assert.equal(validated.buffer.byteLength, input.byteLength);
+  assert.deepEqual(validated, spv);
+  validated.fill(0);
+  assert.deepEqual(backing, before);
+});
+
+test("Buffer caller bytes survive shader transfers and all cleanup outcomes", async () => {
+  for (const transferInputs of [true, false]) {
+    for (const outcome of ["success", "abort", "crash"]) {
+      const backing = Buffer.alloc(24, 7),
+        code = backing.subarray(4, 20),
+        before = Buffer.from(backing),
+        controller = new AbortController(),
+        { pipeline, workers } = setup({ transferInputs, crash: outcome === "crash" });
+      try {
+        const pending = pipeline.translate({ job, code, signal: controller.signal });
+        if (outcome === "abort") controller.abort();
+        if (outcome === "success") assert.equal((await pending).msl, msl);
+        else await assert.rejects(pending, outcome === "abort" ? /cancelled/ : /worker failed/);
+        assert.deepEqual(backing, before);
+        assert.equal(code.byteLength, 16);
+        assert.ok(workers.every((worker) => worker.terminated));
+      } finally {
+        pipeline.dispose();
+      }
+    }
+  }
 });

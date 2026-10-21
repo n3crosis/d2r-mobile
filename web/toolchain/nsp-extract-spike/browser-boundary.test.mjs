@@ -169,3 +169,108 @@ test("failed RomFS open options revoke the previous reader", async () => {
     else globalThis.FileReaderSync = previous;
   }
 });
+
+test("failed key replacement revokes readers and clears native and temporary key state", async () => {
+  const previous = globalThis.FileReaderSync;
+  globalThis.FileReaderSync = class {};
+  try {
+    const files = new Map();
+    const writes = [];
+    let nativeKeys = false;
+    let nativeReads = 0;
+    let failure;
+    const boundary = await createBoundary(async () => ({
+      FS: {
+        mkdir() {},
+        writeFile(path, bytes) {
+          if (failure === "write" && path.endsWith("title.keys")) throw new Error("I/O");
+          const contents = bytes.slice();
+          files.set(path, { contents });
+          writes.push(contents);
+        },
+        lookupPath(path) {
+          if (!files.has(path)) throw new Error("Not found");
+          return { node: files.get(path) };
+        },
+        unlink(path) {
+          files.delete(path);
+        },
+      },
+      WORKERFS: { stream_ops: { read: () => 0 } },
+      HEAPU8: new Uint8Array(16),
+      _malloc: () => 1,
+      _free() {},
+      _nsp_zero() {},
+      _nsp_reset() {
+        nativeKeys = false;
+      },
+      _nsp_load_keys() {
+        nativeKeys = true;
+        if (failure === "throw") throw new Error("Native load failed");
+        return failure === "native" ? -5 : 0;
+      },
+      _nsp_read_romfs() {
+        nativeReads++;
+        return 1;
+      },
+      ccall(_operation, _returnType, _argumentTypes, args) {
+        assert.equal(nativeKeys, true);
+        new DataView(this.HEAPU8.buffer).setBigUint64(args[1], 100n, true);
+        return 0;
+      },
+    }));
+    for (const mode of ["invalid", "write", "native", "throw"]) {
+      failure = undefined;
+      assert.equal(boundary.loadKeys(new Uint8Array([1]), new Uint8Array()), 0);
+      const reader = boundary.openRomfs(0);
+      failure = mode;
+      const prod = mode === "invalid" ? new Uint8Array() : new Uint8Array([2]);
+      const title = new Uint8Array([3]);
+      assert.throws(() => boundary.loadKeys(prod, title), /Local extraction operation failed/);
+      assert.throws(() => reader.readAt(0n, 1), /Local extraction operation failed/);
+      assert.equal(nativeReads, 0);
+      assert.equal(nativeKeys, false);
+      assert.equal(files.size, 0);
+      assert.ok([prod, title, ...writes].every((bytes) => bytes.every((value) => value === 0)));
+    }
+    boundary.dispose();
+  } finally {
+    if (previous === undefined) delete globalThis.FileReaderSync;
+    else globalThis.FileReaderSync = previous;
+  }
+});
+
+test("mount can recover after invalid replacement input or a failed replacement mount", async () => {
+  const previous = globalThis.FileReaderSync;
+  globalThis.FileReaderSync = class {};
+  try {
+    let mounted = false;
+    let failMount = false;
+    const boundary = await createBoundary(async () => ({
+      FS: {
+        mkdir() {},
+        mount() {
+          assert.equal(mounted, false);
+          if (failMount) throw new Error("Mount failed");
+          mounted = true;
+        },
+        unmount() {
+          assert.equal(mounted, true);
+          mounted = false;
+        },
+      },
+      _nsp_close() {},
+    }));
+    boundary.mount([new Blob(["old"])]);
+    assert.throws(() => boundary.mount(null), /Local extraction operation failed/);
+    boundary.mount([new Blob(["new"])]);
+    failMount = true;
+    assert.throws(() => boundary.mount([]), /Local extraction operation failed/);
+    failMount = false;
+    boundary.mount([new Blob(["retry"])]);
+    assert.equal(mounted, true);
+  } finally {
+    if (previous === undefined) delete globalThis.FileReaderSync;
+    else globalThis.FileReaderSync = previous;
+  }
+});
