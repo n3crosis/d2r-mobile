@@ -195,6 +195,40 @@ test("reject symlinks, special files, credentials, signing and bulk archives", (
     assert.throws(() => validateShellContract(f.shell), /Forbidden/);
   }
 });
+test("only bounded generated overlay delta archives are allowed", () => {
+  const allowOverlay = (value) => {
+    value.shell.trustedRecipe.requiredPaths = [
+      ...value.shell.trustedRecipe.requiredPaths,
+      "romfs_overlay/",
+    ];
+    value.shell.shellManifestText += "\nromfs_overlay/";
+  };
+  const f = fixture();
+  allowOverlay(f);
+  f.generatedEntries.push(entry("romfs_overlay/data/00-00000002.data", 1024));
+  assert.equal(validateAssemblyInventory(f).status, "assembly-inventory-valid");
+
+  const shellArchive = fixture();
+  shellArchive.shell.entries.push(entry(base + "romfs_overlay/data/00-00000002.data"));
+  assert.throws(() => validateShellContract(shellArchive.shell), /Forbidden/);
+
+  for (const path of [
+    "dm/data/00-00000002.data",
+    "romfs_overlay/other/00-00000002.data",
+    "romfs_overlay/data/00-00000002.data/child",
+  ]) {
+    const bad = fixture();
+    allowOverlay(bad);
+    bad.generatedEntries.push(entry(path, 1024));
+    assert.throws(() => validateAssemblyInventory(bad));
+  }
+  const oversized = fixture();
+  allowOverlay(oversized);
+  oversized.generatedEntries.push(
+    entry("romfs_overlay/data/00-00000002.data", 128 * 1024 * 1024 + 1),
+  );
+  assert.throws(() => validateAssemblyInventory(oversized), /Forbidden/);
+});
 test("manifest completeness, no empty directories and no shell overwrite", () => {
   for (const remove of [
     "dm/derived.tsv",

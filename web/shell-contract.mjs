@@ -94,7 +94,16 @@ function recipe(value) {
     extraFiles: value.extraFiles?.length ? paths(value.extraFiles) : [],
   };
 }
-function inventory(entries) {
+function generatedOverlayArchive(name, size) {
+  return (
+    size > 0 &&
+    size <= 128 * 1024 * 1024 &&
+    /^(?:Payload\/DmIOS\.app\/)?romfs_overlay(?:_astc)?(?:_variants\/item_notes)?\/data\/[0-9]{2}-[0-9]{8}\.data$/.test(
+      name,
+    )
+  );
+}
+function inventory(entries, { allowOverlayArchives = false } = {}) {
   if (!Array.isArray(entries) || !entries.length || entries.length > SHELL_LIMITS.entries)
     fail("Inventory entry limit");
   const nodes = new Map(),
@@ -133,7 +142,10 @@ function inventory(entries) {
           "exefs",
         ].includes(p),
       ) ||
-      /(?:\.(?:nsp|xci|nca|p12|pfx|pem|key|keys|mobileprovision)|\d{2}-\d{8}\.data)$/i.test(name)
+      /\.(?:nsp|xci|nca|p12|pfx|pem|key|keys|mobileprovision)$/i.test(name) ||
+      ((/\d{2}-\d{8}\.data$/i.test(name) ||
+        components.some((component) => /^[0-9]{2}-[0-9]{8}\.data$/i.test(component))) &&
+        !(allowOverlayArchives && generatedOverlayArchive(name, entry.size)))
     )
       fail("Forbidden signing, credential or bulk RomFS archive path");
     for (let i = 0; i < components.length; i++) {
@@ -256,7 +268,7 @@ export function validateAssemblyInventory({ shell, generatedEntries, observedOut
   const validated = validateShellContract(shell),
     r = recipe(shell.trustedRecipe);
   matchTarget(observedOutputTargetOS, r.targetOS);
-  const generated = inventory(generatedEntries);
+  const generated = inventory(generatedEntries, { allowOverlayArchives: true });
   for (const entry of generated.entries) {
     const allowed = [...r.requiredPaths, ...r.extraFiles].some((p) =>
       p.endsWith("/") ? entry.path.startsWith(p) : entry.path === p,
@@ -277,10 +289,13 @@ export function validateAssemblyInventory({ shell, generatedEntries, observedOut
   const guest = generated.entries.find((e) => e.path === "Frameworks/Guest.framework/Guest");
   if (!guest || (guest.mode & 0o111) !== 0o111 || !guest.signature)
     fail("Guest needs executable mode and structural ad-hoc signature metadata");
-  const joined = inventory([
-    ...validated.entries,
-    ...generated.entries.map((e) => ({ ...e, path: validated.base + e.path })),
-  ]);
+  const joined = inventory(
+    [
+      ...validated.entries,
+      ...generated.entries.map((e) => ({ ...e, path: validated.base + e.path })),
+    ],
+    { allowOverlayArchives: true },
+  );
   baseOf(joined);
   return {
     status: "assembly-inventory-valid",
