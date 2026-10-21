@@ -692,5 +692,13 @@ export const catalog = Object.freeze({
   "dmWebRetryDownloadPreparation": [
     "Retry IPA download preparation",
     "重试准备 IPA 下载"
+  ],
+  "dmWebCommittedCleanupWarning": [
+    "The unsigned IPA is complete and available to save, but cleanup failed. Save the IPA, then reload before another attempt.",
+    "未签名 IPA 已完成并可保存，但清理失败。请先保存 IPA，再重新载入后进行下一次尝试。"
+  ],
+  "dmWebResourcesSaved": [
+    "Game resources saved in %s inside the selected folder.",
+    "游戏资源已保存到所选文件夹内的 %s 中。"
   ]
 });

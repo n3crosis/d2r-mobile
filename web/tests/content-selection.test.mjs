@@ -290,3 +290,66 @@ test("malformed arrays, inventory, non-default DLC accessibility, and oversized 
   d[44] = 1;
   assert.throws(() => parseCnmt(d), code("UNSUPPORTED_DLC_ACCESS"));
 });
+
+// 显式版本请求不能被静默忽略；这里只验证元数据策略，不授予认证。
+// Explicit version requests must not be silently ignored; this tests metadata policy, not authentication.
+test("DLC version requests reject absent titles without changing optional defaults", () => {
+  const rows = [base(), patch()];
+  const id = (app + 0x1001n).toString(16);
+  for (const options of [{}, { dlcVersions: {} }, { dlcVersions: Object.create(null) }])
+    assert.deepEqual(resolveContentSelection(rows, inv(...rows), options).dlc, []);
+  assert.throws(
+    () => resolveContentSelection(rows, inv(...rows), { dlcVersions: { [id]: 0n } }),
+    code("MISSING_VERSION"),
+  );
+  const withDlc = [...rows, dlc(2n)];
+  assert.throws(
+    () =>
+      resolveContentSelection(withDlc, inv(...withDlc), {
+        dlcVersions: { [id]: 2n, ["0000000000000001"]: 0n },
+      }),
+    code("MISSING_VERSION"),
+  );
+});
+test("DLC version map types, canonical keys and exact uint32 values fail closed", () => {
+  const id = (app + 0x1001n).toString(16);
+  const rows = [base(), patch(), dlc(2n)];
+  const run = (dlcVersions) => resolveContentSelection(rows, inv(...rows), { dlcVersions });
+  for (const value of [null, [], "not a map", new Map(), new Date(), 2, true])
+    assert.throws(() => run(value), code("INVALID_INPUT"));
+  for (const key of [id.toUpperCase(), "1", "g".repeat(16), Symbol("id")])
+    assert.throws(() => run({ [key]: 2n }), code("INVALID_IDENTITY"));
+  for (const value of [undefined, "2", -1, 1.5, 2 ** 32, 1n << 32n, Number.MAX_SAFE_INTEGER + 1])
+    assert.throws(() => run({ [id]: value }), code("INVALID_INTEGER"));
+  let getterCalled = false;
+  assert.throws(
+    () =>
+      run(
+        Object.defineProperty({}, id, {
+          get() {
+            getterCalled = true;
+            return 2n;
+          },
+        }),
+      ),
+    code("INVALID_INPUT"),
+  );
+  assert.equal(getterCalled, false);
+  assert.throws(
+    () =>
+      run(
+        Object.fromEntries(
+          Array.from({ length: 4097 }, (_, i) => [i.toString(16).padStart(16, "0"), 0]),
+        ),
+      ),
+    code("INVALID_INPUT"),
+  );
+  for (const version of [2, 2n]) {
+    const map = Object.assign(Object.create(null), { [id]: version });
+    assert.equal(run(map).dlc[0].version, 2n);
+  }
+  assert.throws(
+    () => resolveContentSelection([{}], [], { dlcVersions: [] }),
+    code("INVALID_INPUT"),
+  );
+});

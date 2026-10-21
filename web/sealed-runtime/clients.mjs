@@ -201,17 +201,32 @@ export function validateRuntimeProfileSelection(manifest, profileId, { optionalG
 // Only verified public inventory assets enter this cache, before private inputs are opened.
 const PUBLIC_CACHE = "d2r-public-runtime-sha256-v1";
 const DOWNLOAD_CONCURRENCY = 4;
-async function responseBytes(response, cap, onChunk, exactSize = false) {
+async function responseBytes(response, cap, onChunk, exactSize = false, signal) {
   if (!response.ok || !response.body) fail("Missing public runtime asset");
-  // 已知大小的资源直接写入最终缓冲区，避免同时保留完整分块和合并副本。
-  // Write known-size assets into the final buffer instead of retaining chunks plus a full copy.
-  const output = exactSize ? new Uint8Array(cap) : undefined;
   const reader = response.body.getReader();
-  const chunks = [];
-  let size = 0;
+  let cancelled = false;
+  const cancel = () => {
+    if (cancelled) return;
+    cancelled = true;
+    try {
+      // 清理失败或永不完成都不能掩盖原始错误或扣留输出缓冲区。
+      // Failed or nonsettling cleanup must not mask the primary error or retain the output buffer.
+      void Promise.resolve(reader.cancel()).catch(() => {});
+    } catch {
+      // 同步清理错误同样只是尽力而为。 | Synchronous cleanup failure is also best effort.
+    }
+  };
   try {
+    signal?.addEventListener("abort", cancel, { once: true });
+    signal?.throwIfAborted();
+    // 已知大小的资源直接写入最终缓冲区，避免同时保留完整分块和合并副本。
+    // Write known-size assets into the final buffer instead of retaining chunks plus a full copy.
+    const output = exactSize ? new Uint8Array(cap) : undefined;
+    const chunks = [];
+    let size = 0;
     for (;;) {
       const { done, value } = await reader.read();
+      signal?.throwIfAborted();
       if (done) break;
       size += value.length;
       if (size > cap) fail("Public runtime byte cap");
@@ -219,20 +234,25 @@ async function responseBytes(response, cap, onChunk, exactSize = false) {
       else chunks.push(value);
       onChunk?.(value.length);
     }
+    if (output) return size === cap ? output : output.subarray(0, size);
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.length;
+    }
+    return bytes;
   } catch (error) {
-    await reader.cancel();
+    cancel();
     throw error;
   } finally {
-    reader.releaseLock();
+    signal?.removeEventListener("abort", cancel);
+    try {
+      reader.releaseLock();
+    } catch {
+      // 锁释放也不得替换读取或容量错误。 | Lock cleanup must not replace read or byte-cap errors.
+    }
   }
-  if (output) return size === cap ? output : output.subarray(0, size);
-  const bytes = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return bytes;
 }
 async function read(url, cap, signal, onChunk, exactSize = false) {
   const controller = new AbortController();
@@ -252,7 +272,7 @@ async function read(url, cap, signal, onChunk, exactSize = false) {
       cache: "no-store",
       signal: controller.signal,
     });
-    return await responseBytes(response, cap, onChunk, exactSize);
+    return await responseBytes(response, cap, onChunk, exactSize, controller.signal);
   } finally {
     clearTimeout(timeout);
     signal?.removeEventListener("abort", abort);
@@ -513,24 +533,48 @@ export async function prepareSealedRuntime({
       let bytes;
       if (cache) {
         const publicCache = cache;
-        const cached = await optionalStorage(async () => {
-          const response = await publicCache.match(key);
+        const cacheRead = new AbortController();
+        const cancelCacheRead = () => cacheRead.abort(downloads.signal.reason);
+        downloads.signal.addEventListener("abort", cancelCacheRead, { once: true });
+        if (downloads.signal.aborted) cancelCacheRead();
+        const checkCacheRead = () => {
           checkDownloadCancellation();
-          if (!response) return { value: undefined };
-          try {
-            const value = await responseBytes(response, record.bytes, undefined, true);
-            checkDownloadCancellation();
-            const digest = await hash(value);
-            checkDownloadCancellation();
-            if (value.length === record.bytes && digest === record.sha256) return { value };
-          } catch {
-            checkDownloadCancellation();
-            // 截断或超大的缓存记录绝不会被信任或保留。
-            // A truncated or oversized cache record is never trusted or retained.
-          }
-          await publicCache.delete(key);
-          return { value: undefined };
-        });
+          cacheRead.signal.throwIfAborted();
+        };
+        let cached;
+        try {
+          cached = await optionalStorage(async () => {
+            const response = await publicCache.match(key);
+            if (!response) {
+              checkCacheRead();
+              return { value: undefined };
+            }
+            try {
+              const value = await responseBytes(
+                response,
+                record.bytes,
+                undefined,
+                true,
+                cacheRead.signal,
+              );
+              checkCacheRead();
+              const digest = await hash(value);
+              checkCacheRead();
+              if (value.length === record.bytes && digest === record.sha256) return { value };
+            } catch {
+              checkCacheRead();
+              // 截断或超大的缓存记录绝不会被信任或保留。
+              // A truncated or oversized cache record is never trusted or retained.
+            }
+            await publicCache.delete(key);
+            return { value: undefined };
+          });
+        } finally {
+          downloads.signal.removeEventListener("abort", cancelCacheRead);
+          // 超时后取消读取，并拒绝晚到的响应或哈希；不回滚已经开始的缓存写入。
+          // Cancel abandoned reads and reject late responses/hashes; never roll back already-started cache writes.
+          cacheRead.abort();
+        }
         checkDownloadCancellation();
         if (!cached) cache = undefined;
         if (cached?.value) {
@@ -612,7 +656,9 @@ export async function prepareSealedRuntime({
           file.decodedBytes,
           undefined,
           true,
+          signal,
         );
+        signal?.throwIfAborted();
         if (decoded.length !== file.decodedBytes) fail("Decoded runtime size mismatch");
         downloadedAssets.set(file.path, decoded);
       }

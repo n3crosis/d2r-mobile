@@ -174,6 +174,30 @@ export function parseCnmt(bytes) {
     deltaFragmentCount,
   };
 }
+// 显式 DLC 版本要求必须完整满足；先验证并快照，不能静默忽略未知标题或错误键名。
+// Explicit DLC version requests must all be satisfied; validate and snapshot before selection, never silently ignore unknown titles or malformed keys.
+function dlcVersionRequests(value) {
+  const requested = new Map();
+  if (value === undefined) return requested;
+  if (
+    !value ||
+    typeof value !== "object" ||
+    ![Object.prototype, null].includes(Object.getPrototypeOf(value))
+  )
+    fail("INVALID_INPUT", "DLC versions must be a plain keyed object.");
+  const keys = Reflect.ownKeys(value);
+  if (keys.length > MAX_RECORDS)
+    fail("INVALID_INPUT", "DLC version request count exceeds supported bounds.");
+  for (const id of keys) {
+    if (typeof id !== "string" || !/^[0-9a-f]{16}$/.test(id))
+      fail("INVALID_IDENTITY", "DLC version keys must be lowercase 16-character hexadecimal IDs.");
+    const property = Object.getOwnPropertyDescriptor(value, id);
+    if (!Object.hasOwn(property, "value"))
+      fail("INVALID_INPUT", "DLC versions must be data properties.");
+    requested.set(id, uint(property.value, 32, "DLC version"));
+  }
+  return requested;
+}
 const fingerprint = (value) =>
   JSON.stringify(value, (_, v) => (typeof v === "bigint" ? v.toString() : v));
 function choose(candidates, requested, label) {
@@ -211,6 +235,7 @@ export function resolveContentSelection(records, inventory, options = {}) {
     fail("INVALID_INPUT", "Bounded metadata and inventory arrays are required.");
   if (!options || typeof options !== "object" || Array.isArray(options))
     fail("INVALID_INPUT", "Options must be an object.");
+  const requestedDlcVersions = dlcVersionRequests(options.dlcVersions);
   const unique = new Map();
   for (const raw of records) {
     const r = record(raw),
@@ -220,6 +245,14 @@ export function resolveContentSelection(records, inventory, options = {}) {
     unique.set(key, r);
   }
   const all = [...unique.values()];
+  const availableDlcIds = new Set(
+    all
+      .filter((r) => r.type === "AddOnContent")
+      .map((r) => r.titleId.toString(16).padStart(16, "0")),
+  );
+  for (const id of requestedDlcVersions.keys())
+    if (!availableDlcIds.has(id))
+      fail("MISSING_VERSION", "An explicitly requested DLC title is absent.");
   const bases = all.filter((r) => r.type === "Application");
   if (!bases.length) fail("MISSING_BASE", "An application base is required.");
   if (new Set(bases.map((r) => r.titleId)).size !== 1)
@@ -251,7 +284,7 @@ export function resolveContentSelection(records, inventory, options = {}) {
   }
   const dlc = [...dlcGroups]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([id, rows]) => choose(rows, options.dlcVersions?.[id], `DLC ${id}`));
+    .map(([id, rows]) => choose(rows, requestedDlcVersions.get(id), `DLC ${id}`));
   for (const r of dlc)
     if (r.requiredApplicationVersion > effectiveVersion)
       fail("INCOMPATIBLE_DLC", "DLC requires a newer application version.");

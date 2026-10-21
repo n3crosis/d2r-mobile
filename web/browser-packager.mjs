@@ -379,19 +379,22 @@ export async function prepareBrowserPackager({
         ];
         let result;
         try {
-          result = await withLegacyAstcProducerLease(producerLease, () =>
-            runPackagingJob({
-              input,
-              selectedNspNames,
-              adapters,
-              signal,
-              onProgress,
-              archiveFormat,
-              maxOutputBytes,
-              selectionOptions: { contentMode: profile.contentMode },
-              secretLifetime: "archive",
-              concurrency: 1,
-            }),
+          result = await withLegacyAstcProducerLease(
+            producerLease,
+            () =>
+              runPackagingJob({
+                input,
+                selectedNspNames,
+                adapters,
+                signal,
+                onProgress,
+                archiveFormat,
+                maxOutputBytes,
+                selectionOptions: { contentMode: profile.contentMode },
+                secretLifetime: "archive",
+                concurrency: 1,
+              }),
+            () => output.getDownload(),
           );
         } catch (error) {
           if (
@@ -410,6 +413,8 @@ export async function prepareBrowserPackager({
               }),
             );
             if (error.cleanupErrors) reported.cleanupErrors = error.cleanupErrors;
+            const recovery = takeCommittedDownload(error);
+            if (recovery) committedDownloads.set(reported, recovery);
             throw reported;
           }
           throw error;
@@ -468,7 +473,15 @@ export const LEGACY_ASTC_PRODUCTION_LIMITS = Object.freeze({
 
 // 作业清理结束后才释放文件租约；清理错误不能掩盖原始失败。
 // Release the File lease only after job cleanup; cleanup failures must not hide the primary failure.
-export async function withLegacyAstcProducerLease(producer, operation) {
+// 恢复对象只存在于弱映射中，绝不进入错误属性、报告或 JSON 日志。
+// Recovery lives only in a weak map, never in error properties, reports or JSON logs.
+const committedDownloads = new WeakMap();
+export function takeCommittedDownload(error) {
+  const download = committedDownloads.get(error);
+  committedDownloads.delete(error);
+  return download;
+}
+export async function withLegacyAstcProducerLease(producer, operation, getCommittedDownload) {
   let result, primary;
   let failed = false;
   try {
@@ -492,6 +505,21 @@ export async function withLegacyAstcProducerLease(producer, operation) {
         }),
       );
       error.cleanupErrors = Object.freeze([cleanup]);
+      // 只有本次成功返回的作业及其已提交输出可恢复；错误报告中的标志不能授权恢复。
+      // Only this successful job and its committed output permit recovery; report flags cannot authorize it.
+      if (result?.committed === true && typeof getCommittedDownload === "function") {
+        try {
+          const download = getCommittedDownload();
+          if (download?.blob instanceof Blob && typeof download.fileName === "string")
+            committedDownloads.set(
+              error,
+              Object.freeze({ blob: download.blob, fileName: download.fileName }),
+            );
+        } catch {
+          // 输出不可取回时保留原清理错误，不提供未完成的下载。
+          // Preserve the cleanup error without offering an unavailable output.
+        }
+      }
       throw error;
     }
     const combined = new AggregateError([primary, cleanup], "LEGACY_ASTC_CLEANUP_FAILED", {

@@ -4,7 +4,7 @@ import { t, browserLanguage } from "../i18n.mjs";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { prepareBrowserPackager } from "../browser-packager.mjs";
+import { prepareBrowserPackager, takeCommittedDownload } from "../browser-packager.mjs";
 import { DEFAULT_SHELL_PROFILE_ID } from "../shell-profiles.mjs";
 import { discoverNspFolder } from "../nsp-input.mjs";
 import { selectDefaultNspNames } from "../nsp-default-selection.mjs";
@@ -15,6 +15,7 @@ import {
   packagingActivity,
   packagingFailureMessage,
   packagingFailureSummary,
+  committedCleanupWarning,
   resourceProgressLabel,
 } from "../packaging-diagnostics.mjs";
 
@@ -453,7 +454,7 @@ export default function App() {
             detailCode?: string;
             outputStarted?: boolean;
             legacyPack?: { status?: string; directoryName?: string };
-            resources?: { status?: string };
+            resources?: { status?: string; directoryName?: string };
           };
         }
       )?.report;
@@ -464,6 +465,17 @@ export default function App() {
             ? t("dmWebLegacyComplete", report.legacyPack.directoryName ?? "")
             : t("dmWebLegacyIncomplete"),
         );
+      const recovered = takeCommittedDownload(error);
+      if (recovered) {
+        if (report?.resources?.status === "complete")
+          setResourceOutcome(t("dmWebResourcesSaved", report.resources.directoryName ?? ""));
+        downloadPreparation.current.retain(recovered);
+        const warning = committedCleanupWarning();
+        appendActivity(warning, true);
+        setStatus(warning);
+        prepareDownload();
+        return;
+      }
       appendActivity(packagingFailureSummary(report), true);
       setStatus(packagingFailureMessage(report));
     } finally {

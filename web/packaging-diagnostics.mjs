@@ -160,3 +160,9 @@ export function packagingFailureMessage(report) {
     );
   return `${packagingFailureSummary(report)}${output}${t("dmWebFailureRetry")}`;
 }
+
+// 仅在已取回真实提交的下载后使用；不要根据报告标志推断下载可用。
+// Use only after recovering an actual committed download, never from a report flag.
+export function committedCleanupWarning() {
+  return t("dmWebCommittedCleanupWarning");
+}
