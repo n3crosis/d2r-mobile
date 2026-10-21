@@ -11,6 +11,8 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createAnnotations, annotationSources } from "../annotations.mjs";
 const root = fileURLToPath(new URL("../../../../", import.meta.url));
+// 非 BMP 字符使用 Python 转义，避免 Bun 1.4.3 将 raw 模板字面量改写为 JS 专用转义。
+// Use Python escapes for non-BMP characters; Bun 1.4.3 rewrites raw-template literals to JS-only escapes.
 const program = String.raw`
 import os,sys,json,base64,csv,io,tempfile,contextlib,hashlib
 sys.path.insert(0,sys.argv[1]+'/dm/ios/tools')
@@ -26,12 +28,12 @@ for file, items in touch_strings.TABLE.items():
         row=add(file,key)
         for lang,tab in [('zhCN',touch_strings.TABLE)]+list(touch_strings.EXTRA):
             if key in tab.get(file,{}): row[lang]=('%s\n命中值' if key in touch_strings.FILE_ONLY else '\ue013' if key=='ControllerInteractButton' else 'HASH:'+tab[file][key][0]+':'+lang+':'+key)
-add('ui.json','untouched','原文\n换行\\制表\t😀','[fs]Intacto')
+add('ui.json','untouched','原文\n换行\\制表\t\U0001f600','[fs]Intacto')
 for i in range(1,34):
     key='r%02d'%i; en='Rune'+chr(65+(i-1)//26)+chr(65+(i-1)%26)
     add('item-runes.json',key,'符文'+str(i),'[fs]Runa '+en,'[fs]Runa '+en)
     add('item-runes.json',key+'L','符'+str(i),en,en,en)
-for i,name in enumerate(['冰球','长长长长长名','技能😀','技能四字']): add('skills.json','skillname'+str(i),name,['Orbe','A skill name that is long','Skill😀','Cuatro'][i])
+for i,name in enumerate(['冰球','长长长长长名','技能\U0001f600','技能四字']): add('skills.json','skillname'+str(i),name,['Orbe','A skill name that is long','Skill\U0001f600','Cuatro'][i])
 add('item-modifiers.json','toa','赦免','[ms]Absolución','[ms]Absolución MX')
 weapons=[]; armor=[]; misc=[]
 def base(tab,code,type,norm=None,uber='',ultra='',**extra):
@@ -58,7 +60,7 @@ for type in annot_drop.GEM_COLOR:
 for i in range(1,34):miscadd('r%02d'%i,'rune')
 for code in annot_drop.SOURCE_NOTE:miscadd(code)
 for i in range(1,6):miscadd('ua'+str(i),'ques',name='Act '+str(i)+' item')
-for key in ['Hellfire Torch','UniqueThree','UniqueSkip','SetOne','Unicode😀','Quoted"Key','Already']:
+for key in ['Hellfire Torch','UniqueThree','UniqueSkip','SetOne','Unicode\U0001f600','Quoted"Key','Already']:
     add('item-names.json',key, 'ÿc5[prior]\nÿc4Existing' if key=='Already' else None)
 # Duplicate keys are rewritten in-place, not parsed through a deduplicating object.
 add('item-names.json','UniqueThree','重复名','[ms][mp]Duplicado')
@@ -79,7 +81,7 @@ tables['skills.txt']=[{'*Id':str(i),'skill':'skill'+str(i)} for i in range(4)]
 tables['properties.txt']=[{'code':c,'func1':f} for c,f in [('ac','1'),('dmg%','7'),('skill','22'),('oskill','22'),('ignored','15'),('charged','11'),('mystery','2'),('abs-cold','8')]]
 def ranged(key,**extra):
     row={'index':key,'spawnable':'1','disabled':'','prop1':'ac','min1':'1','max1':'20','prop2':'dmg%','min2':'10','max2':'55','prop3':'skill','par3':'skill0','min3':'1','max3':'3','prop4':'mystery','min4':'2','max4':'9'};row.update(extra);return row
-tables['uniqueitems.txt']=[ranged('Hellfire Torch'),ranged('UniqueThree'),ranged('UniqueSkip',disabled='1'),ranged('Already'),ranged('Unicode😀',prop1='ignored',prop2='*oskill',par2='skill1',prop3='mystery'),ranged('Quoted"Key',prop1='abs-cold',min1='5',max1='5')]
+tables['uniqueitems.txt']=[ranged('Hellfire Torch'),ranged('UniqueThree'),ranged('UniqueSkip',disabled='1'),ranged('Already'),ranged('Unicode\U0001f600',prop1='ignored',prop2='*oskill',par2='skill1',prop3='mystery'),ranged('Quoted"Key',prop1='abs-cold',min1='5',max1='5')]
 tables['setitems.txt']=[ranged('SetOne',prop1='charged',prop2='*skill',par2='skill2')]
 tables['runes.txt']=[{'*Rune Name':key,'Name':key,'complete':'0' if key=='Incomplete' else '1','itype1':'axe','T1Code1':'skill','T1Param1':'skill3','T1Min1':'1','T1Max1':'3'} for key in ['Oath','Death','Breath of the Dying','Incomplete']]
 tables['cubemain.txt']=[{'input 1':'r01,qty=3','input 2':next(r['code'] for r in misc if r['type']=='gema'),'output':'r02'},{'input 1':'glv,mag','mod 1':'crush'},{'input 1':'glc,mag','mod 1':'mana-kill'}]

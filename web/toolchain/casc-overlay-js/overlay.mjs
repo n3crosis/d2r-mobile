@@ -928,14 +928,14 @@ function pinnedOverlayTransform({ codec, SparkMD5 } = {}, factory) {
   );
   return factory({
     md5(bytes) {
-      // SparkMD5 仅读取完整缓冲区；子视图仍复制精确范围，避免散列额外字节。
-      // SparkMD5 only reads full buffers; copy subviews to avoid hashing unrelated bytes.
+      // SparkMD5 仅读取完整缓冲区；用普通数组复制子视图，避免 Buffer.slice 共享额外字节。
+      // SparkMD5 reads full buffers; copy subviews to plain arrays because Buffer.slice aliases backing bytes.
       const buffer =
         bytes.buffer instanceof ArrayBuffer &&
         bytes.byteOffset === 0 &&
         bytes.byteLength === bytes.buffer.byteLength
           ? bytes.buffer
-          : bytes.slice().buffer;
+          : new Uint8Array(bytes).buffer;
       const raw = SparkMD5.ArrayBuffer.hash(buffer, true);
       return Uint8Array.from(raw, (c) => c.charCodeAt(0));
     },
