@@ -383,18 +383,21 @@ export async function createBoundary(factory) {
     },
     dispose() {
       if (disposed) return;
+      disposed = true;
       try {
         module._nsp_reset();
       } finally {
         wipeFile("/secret/prod.keys");
         wipeFile("/secret/title.keys");
-        if (mounted) module.FS.unmount("/input");
-        // 原生层销毁后，擦除持有的线性内存视图。所有者随后必须终止
-        // 这个一次性 Worker；不要再次调用 C。
-        // After native teardown, erase the owned linear-memory view. The owner
-        // must terminate this one-shot Worker next; do not call C again.
-        module.HEAPU8.fill(0);
-        disposed = true;
+        try {
+          if (mounted) module.FS.unmount("/input");
+        } finally {
+          // 即使销毁或卸载失败，也擦除持有的线性内存视图。所有者随后必须终止
+          // 这个一次性 Worker；不要再次调用 C。
+          // Even if teardown or unmount fails, erase the owned linear-memory view. The owner
+          // must terminate this one-shot Worker next; do not call C again.
+          module.HEAPU8.fill(0);
+        }
       }
     },
   };

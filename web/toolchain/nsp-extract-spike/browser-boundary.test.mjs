@@ -274,3 +274,64 @@ test("mount can recover after invalid replacement input or a failed replacement 
     else globalThis.FileReaderSync = previous;
   }
 });
+
+for (const failure of ["reset", "unmount", "both"]) {
+  test(`disposal remains irreversible and wipes the heap when ${failure} fails`, async () => {
+    const previous = globalThis.FileReaderSync;
+    globalThis.FileReaderSync = class {};
+    try {
+      const heap = new Uint8Array(32).fill(0xa5);
+      const files = new Map([
+        ["/secret/prod.keys", { contents: new Uint8Array([1, 2]) }],
+        ["/secret/title.keys", { contents: new Uint8Array([3, 4]) }],
+      ]);
+      const secretBytes = [...files.values()].map((node) => node.contents);
+      const calls = [];
+      const resetError = new Error("Synthetic reset failure");
+      const unmountError = new Error("Synthetic unmount failure");
+      const boundary = await createBoundary(async () => ({
+        FS: {
+          mkdir() {},
+          mount() {},
+          unmount() {
+            calls.push("unmount");
+            if (failure !== "reset") throw unmountError;
+          },
+          lookupPath(path) {
+            return { node: files.get(path) };
+          },
+          unlink(path) {
+            files.delete(path);
+          },
+        },
+        HEAPU8: heap,
+        _nsp_close() {
+          calls.push("close");
+        },
+        _nsp_reset() {
+          calls.push("reset");
+          if (failure !== "unmount") throw resetError;
+        },
+        _nsp_crypto_fixture() {
+          calls.push("fixture");
+          return 0;
+        },
+      }));
+      boundary.mount([new Blob(["synthetic input"])]);
+      assert.throws(
+        () => boundary.dispose(),
+        (error) => error === (failure === "reset" ? resetError : unmountError),
+      );
+      assert.ok(heap.every((byte) => byte === 0));
+      assert.equal(files.size, 0);
+      assert.ok(secretBytes.every((bytes) => bytes.every((byte) => byte === 0)));
+      assert.throws(() => boundary.mount([]), /Extractor has been disposed/);
+      assert.throws(() => boundary.cryptoFixture(), /Extractor has been disposed/);
+      assert.doesNotThrow(() => boundary.dispose());
+      assert.deepEqual(calls, ["close", "reset", "unmount"]);
+    } finally {
+      if (previous === undefined) delete globalThis.FileReaderSync;
+      else globalThis.FileReaderSync = previous;
+    }
+  });
+}
