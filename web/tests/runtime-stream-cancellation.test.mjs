@@ -17,5 +17,5 @@ test("public runtime stream cancellation and cleanup (isolated module mocks)", (
   );
   assert.equal(result.error, undefined);
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  assert.match(result.stdout, /tests 8/);
+  assert.match(result.stdout, /tests 13/);
 });

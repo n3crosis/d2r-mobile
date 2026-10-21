@@ -422,6 +422,64 @@ function cftPosition(raw, start, end, key, search = byteKey(raw.subarray(start, 
   requireValue(first >= 0 && table.indexOf(needle, first + 1) === -1);
   return start + first;
 }
+// 只保留对齐记录的紧凑索引，但逐字节扫描所有候选位置以保留非对齐重复检测。
+// Index aligned records compactly, but scan every byte position to retain unaligned duplicate detection.
+function compactCftPosition(raw, start, end) {
+  const bytes = raw.subarray(start, end),
+    count = bytes.length / 25,
+    hashes = new Uint32Array(count),
+    order = new Uint32Array(count),
+    occurrences = new Uint8Array(count);
+  let multiplier = 1;
+  for (let i = 0; i < 15; i++) multiplier = Math.imul(multiplier, 31);
+  const fingerprint = (source, at = 0) => {
+    let hash = 0;
+    for (let i = 0; i < 16; i++) hash = (Math.imul(hash, 31) + source[at + i]) >>> 0;
+    return hash;
+  };
+  const compare = (position, source, at) => {
+    for (let i = 0; i < 16; i++) {
+      const difference = bytes[position + i] - source[at + i];
+      if (difference) return difference;
+    }
+    return 0;
+  };
+  for (let i = 0; i < count; i++) {
+    order[i] = i;
+    hashes[i] = fingerprint(bytes, i * 25);
+  }
+  // 指纹碰撞也按完整键排序和二分，不扫描碰撞桶或重复键组。
+  // Break fingerprint ties with full keys and binary search, never scan collision buckets or duplicate groups.
+  order.sort((a, b) => hashes[a] - hashes[b] || compare(a * 25, bytes, b * 25));
+  const find = (hash, source, at) => {
+    let low = 0,
+      high = count;
+    while (low < high) {
+      const middle = low + Math.floor((high - low) / 2),
+        index = order[middle],
+        difference = hashes[index] - hash || compare(index * 25, source, at);
+      if (difference < 0) low = middle + 1;
+      else high = middle;
+    }
+    const index = order[low];
+    return low < count && hashes[index] === hash && compare(index * 25, source, at) === 0
+      ? index
+      : -1;
+  };
+  let hash = fingerprint(bytes);
+  for (let at = 0; at + 16 <= bytes.length; at++) {
+    const index = find(hash, bytes, at);
+    if (index >= 0 && occurrences[index] < 2) occurrences[index]++;
+    if (at + 16 < bytes.length)
+      hash =
+        (Math.imul((hash - Math.imul(bytes[at], multiplier)) >>> 0, 31) + bytes[at + 16]) >>> 0;
+  }
+  return (key) => {
+    const index = find(fingerprint(key), key, 0);
+    requireValue(index >= 0 && occurrences[index] === 1);
+    return start + index * 25;
+  };
+}
 // 对原始 CFT 统一解析请求，防止写入的新键影响后续旧键查找。
 // Resolve all requests against the original CFT so newly written keys cannot alter later old-key lookup.
 function resolveCascPackRecords(vfs, entries, prepared) {
@@ -433,7 +491,9 @@ function resolveCascPackRecords(vfs, entries, prepared) {
       entries.length <= CASC_PACK_METADATA_LIMITS.entries,
   );
   const layout = prepared?.layout ?? table(vfs),
-    search = prepared?.search ?? byteKey(vfs.subarray(layout.cft, layout.end));
+    search = prepared?.position
+      ? undefined
+      : (prepared?.search ?? byteKey(vfs.subarray(layout.cft, layout.end)));
   const paths = new Set(),
     keys = new Set();
   let pathBytes = 0;
@@ -449,7 +509,9 @@ function resolveCascPackRecords(vfs, entries, prepared) {
     );
     paths.add(path);
     keys.add(oldEkey);
-    const position = cftPosition(vfs, layout.cft, layout.end, key, search);
+    const position = prepared?.position
+      ? prepared.position(key)
+      : cftPosition(vfs, layout.cft, layout.end, key, search);
     requireValue((position - layout.cft) % 25 === 0 && position + 25 <= layout.end);
     const specIndex = vfs[position + 20];
     return {
@@ -470,16 +532,24 @@ function resolveCascPackRecords(vfs, entries, prepared) {
  */
 // 对单次资源流水线仅快照一次；闭包不暴露可变表或重复建立整张 CFT 字符串。
 // Snapshot once per asset pipeline; expose neither mutable tables nor repeated whole-CFT string construction.
-export function createCascPackStorageLookup(vfs) {
+// 查询提示仅用于选择算法；小批量与未指定提示保持原字符串路径。
+// The query hint only selects the algorithm; small batches and omitted hints keep the original string path.
+export function createCascPackStorageLookup(vfs, { expectedQueries = 0 } = {}) {
   requireValue(
     vfs instanceof Uint8Array &&
       vfs.buffer instanceof ArrayBuffer &&
       !vfs.buffer.resizable &&
-      vfs.length <= MAX_TABLE,
+      vfs.length <= MAX_TABLE &&
+      Number.isSafeInteger(expectedQueries) &&
+      expectedQueries >= 0 &&
+      expectedQueries <= CASC_PACK_METADATA_LIMITS.entries,
   );
   const snapshot = new Uint8Array(vfs),
     layout = table(snapshot),
-    prepared = { layout, search: byteKey(snapshot.subarray(layout.cft, layout.end)) };
+    prepared =
+      expectedQueries >= 2048 && layout.cftSize / 25 >= 2048
+        ? { layout, position: compactCftPosition(snapshot, layout.cft, layout.end) }
+        : { layout, search: byteKey(snapshot.subarray(layout.cft, layout.end)) };
   return Object.freeze((entries) =>
     Object.freeze(
       resolveCascPackRecords(snapshot, entries, prepared).map(

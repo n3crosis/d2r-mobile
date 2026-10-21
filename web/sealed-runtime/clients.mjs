@@ -202,7 +202,16 @@ export function validateRuntimeProfileSelection(manifest, profileId, { optionalG
 const PUBLIC_CACHE = "d2r-public-runtime-sha256-v1";
 const DOWNLOAD_CONCURRENCY = 4;
 async function responseBytes(response, cap, onChunk, exactSize = false, signal) {
-  if (!response.ok || !response.body) fail("Missing public runtime asset");
+  if (!response.ok || !response.body) {
+    try {
+      // 拒绝的响应不读取正文；取消失败或挂起都不能阻塞原始错误。
+      // Never read a rejected response body; failed or stalled cancellation must not delay the original error.
+      void Promise.resolve(response.body?.cancel()).catch(() => {});
+    } catch {
+      // 同步取消失败不替换缺失资源错误。 | Synchronous cancellation failure does not replace the missing-asset error.
+    }
+    fail("Missing public runtime asset");
+  }
   const reader = response.body.getReader();
   let cancelled = false;
   const cancel = () => {

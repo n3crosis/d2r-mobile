@@ -140,6 +140,7 @@ test("independent metadata count supports 27000 entries without raising overlay 
   const { bytes, entries } = fixture(27000);
   const actual = inspectCascPackStorageSpecs(bytes, entries);
   assert.equal(actual.length, 27000);
+  assert.deepEqual(createCascPackStorageLookup(bytes, { expectedQueries: 27000 })(entries), actual);
   assert.equal(actual.at(-1).oldEkey, entries.at(-1).oldEkey);
   assert.throws(
     () =>
@@ -170,4 +171,91 @@ test("reusable lookup snapshots once and preserves exact occurrence rejection", 
   const duplicate = createCascPackStorageLookup(malformed.bytes);
   assert.throws(() => duplicate([malformed.entries[0]]));
   assert.throws(() => createCascPackStorageLookup(new Uint8Array(16 * 1024 * 1024 + 1)));
+});
+
+// 紧凑索引与原有字符串查询必须逐项一致，指纹绝不代替完整键比较。
+// Compact indexing must match the original string lookup; fingerprints never replace full-key comparison.
+test("compact storage lookup matches default lookup and snapshots Buffer inputs", () => {
+  const { bytes, entries } = fixture(2048),
+    source = Buffer.from(bytes),
+    indexed = createCascPackStorageLookup(source, { expectedQueries: 2048 }),
+    original = createCascPackStorageLookup(bytes);
+  source.fill(0);
+  assert.deepEqual(indexed(entries), original(entries));
+  assert.ok(Object.isFrozen(indexed(entries.slice(0, 1))[0]));
+  for (const lookup of [indexed, original]) {
+    assert.throws(() => lookup([{ path: "data/absent", oldEkey: "ff".repeat(16) }]));
+    assert.throws(() => lookup([entries[0], entries[0]]));
+    assert.throws(() => lookup([{ ...entries[0], add: true }]));
+    assert.throws(() => lookup([{ ...entries[0], path: "../unsafe" }]));
+    assert.throws(() => lookup([{ ...entries[0], oldEkey: "bad" }]));
+  }
+});
+
+test("compact lookup rejects aligned, unaligned, crossing and all-identical duplicate keys", () => {
+  for (const offset of [25, 26, 46, "all"]) {
+    const { bytes, entries } = fixture(2048),
+      duplicate = bytes.slice(46, 62);
+    if (offset === "all") {
+      for (let i = 1; i < 2048; i++) bytes.set(duplicate, 46 + i * 25);
+    } else bytes.set(duplicate, 46 + offset);
+    for (const expectedQueries of [0, 2048]) {
+      const lookup = createCascPackStorageLookup(bytes, { expectedQueries });
+      assert.throws(() => lookup([entries[0]]), /CASC_OVERLAY_INVALID/);
+    }
+  }
+});
+
+test("compact lookup resolves many genuine fingerprint collisions by exact key", () => {
+  const { bytes, entries } = fixture(2048);
+  // 每一对 (0,31)/(1,0) 的多项式指纹相同；组合成 256 个不同完整键。
+  // Each (0,31)/(1,0) pair has the same polynomial fingerprint, yielding 256 distinct full keys.
+  for (let i = 0; i < 256; i++) {
+    const keyBytes = new Uint8Array(16);
+    for (let pair = 0; pair < 8; pair++) {
+      keyBytes[pair * 2] = (i >> pair) & 1;
+      keyBytes[pair * 2 + 1] = keyBytes[pair * 2] ? 0 : 31;
+    }
+    bytes.set(keyBytes, 46 + i * 25);
+    entries[i].oldEkey = Buffer.from(keyBytes).toString("hex");
+  }
+  const original = createCascPackStorageLookup(bytes),
+    indexed = createCascPackStorageLookup(bytes, { expectedQueries: 2048 });
+  let accepted = 0;
+  for (const entry of entries.slice(0, 256)) {
+    let expected;
+    try {
+      expected = original([entry]);
+    } catch {
+      assert.throws(() => indexed([entry]), /CASC_OVERLAY_INVALID/);
+      continue;
+    }
+    assert.deepEqual(indexed([entry]), expected);
+    accepted++;
+  }
+  assert.ok(accepted > 0);
+});
+
+test("compact lookup requires both thresholds and rejects unbounded query hints", () => {
+  for (const count of [2047, 2048]) {
+    const { bytes, entries } = fixture(count);
+    for (const expectedQueries of [undefined, 2047, 2048]) {
+      const originalIndexOf = String.prototype.indexOf;
+      let searches = 0;
+      String.prototype.indexOf = function (needle, from) {
+        if (this.length === count * 25 && needle.length === 16) searches++;
+        return originalIndexOf.call(this, needle, from);
+      };
+      try {
+        const lookup = createCascPackStorageLookup(bytes, { expectedQueries });
+        lookup([entries[0]]);
+      } finally {
+        String.prototype.indexOf = originalIndexOf;
+      }
+      assert.equal(searches, count >= 2048 && expectedQueries >= 2048 ? 0 : 2);
+    }
+  }
+  const { bytes } = fixture();
+  for (const expectedQueries of [-1, 1.5, NaN, Infinity, "2048", 32769])
+    assert.throws(() => createCascPackStorageLookup(bytes, { expectedQueries }));
 });

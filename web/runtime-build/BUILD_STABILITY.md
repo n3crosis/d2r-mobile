@@ -1,5 +1,7 @@
 # Runtime build metadata stability
 
+中文: [BUILD_STABILITY.zh-CN.md](BUILD_STABILITY.zh-CN.md)
+
 The public runtime keeps its source/compiler provenance in
 `runtime-manifest.json` (`build.sourceRevision`, `sourceDirty`, `crossCommit`,
 `emscripten`, and `dotnet`). Asset hashes, component manifests, transport hashes
@@ -45,8 +47,13 @@ PDB byte. The project-only SourceLink opt-out follows that observation.
 The bounded build-only diagnostic remains in CI logs, outside the public
 payload. A fresh build should report `status: "absent"` after this opt-out;
 an old local `obj` file may otherwise produce a stale observation. No paths,
-URLs, PDB contents or environment values are logged. A later clean artifact
-comparison must still establish whether the .NET bytes stabilize.
+URLs, PDB contents or environment values are logged.
+
+The observed public artifact pair `e93a15a` / `32e9717` has identical bytes for
+all 297 logical assets and all 33 runtime payloads, including .NET boot/main
+assembly and SPIRV-Cross. Only the outer manifest's `build.sourceRevision`
+changed. This pair demonstrates stability after the controls, not a guarantee
+across all future source, compiler, environment or dependency changes.
 
 The focused test runs the build wrapper with mock Git/CMake tools and checks the
 .NET configuration and retained provenance. It does not compile anything.

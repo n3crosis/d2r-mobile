@@ -1,5 +1,6 @@
 // 按 main.m 的改名目录查找及 astc_pack.py finalize 布局导出补充包，只删除已跟踪的自有条目。
 // Export supplemental packs using main.m renamed-folder lookup and astc_pack.py finalize layout, removing only tracked owned entries.
+import { createResourceWriteBuffer } from "./resource-write-buffer.mjs";
 import { validateLegacyPackMetadata } from "./astc-output-validator.mjs";
 export const LEGACY_PACK_EXPORT_MARKER = ".d2rm-legacy-pack-export.json";
 export const LEGACY_PACK_EXPORT_CHUNK_BYTES = 64 * 1024;
@@ -30,6 +31,7 @@ export async function exportLegacyDevicePack({
     folder,
     marker,
     activeWriter,
+    writeBuffer,
     markerPresent = false,
     bytesWritten = 0,
     filesWritten = 0,
@@ -60,6 +62,14 @@ export async function exportLegacyDevicePack({
       /* 观察者不影响导出。 | Observers do not affect export. */
     }
   };
+  writeBuffer = createResourceWriteBuffer({
+    check,
+    write: (bytes) => activeWriter.write(bytes),
+    written: (count) => {
+      bytesWritten += count;
+      emit("running");
+    },
+  });
   async function create(parent, name, kind) {
     check();
     try {
@@ -190,15 +200,14 @@ export async function exportLegacyDevicePack({
       )
         fail("LEGACY_PACK_READ_RANGE");
       try {
-        await activeWriter.write(bytes);
+        await writeBuffer.append(bytes);
         offset += count;
-        bytesWritten += count;
         check();
-        emit("running");
       } finally {
         bytes.fill(0);
       }
     }
+    await writeBuffer.flush();
     check();
     await activeWriter.close();
     activeWriter = undefined;
@@ -218,6 +227,7 @@ export async function exportLegacyDevicePack({
     await writeMarker("complete");
     // 最终标记成功关闭是提交边界；之后发生的取消不会把完整输出误报为失败。
     // Successful final-marker close is the commit boundary; later cancellation does not misreport complete output as failure.
+    writeBuffer.dispose();
     emit("complete", true);
     return Object.freeze({
       status: "complete",
@@ -230,6 +240,7 @@ export async function exportLegacyDevicePack({
       totalBytes: pack.size,
     });
   } catch (cause) {
+    writeBuffer.dispose();
     const cleanupCodes = [];
     let writerStopped = true;
     if (activeWriter) {

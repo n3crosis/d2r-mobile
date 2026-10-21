@@ -33,6 +33,30 @@ import {
   isLegacyAstcDiagnosticCode,
 } from "./packaging-diagnostics.mjs";
 import { inspectGuestTarget, inspectGuestPlist } from "./guest-target-stream.mjs";
+// 检查 API 存在性和 gzip 格式；权限、配额和实际可用性仍在使用时验证。
+// Check API presence and gzip format; permissions, quota and actual usability remain checked at use.
+export function assertBrowserPackagerCapabilities(environment = globalThis) {
+  if (
+    !environment.isSecureContext ||
+    typeof environment.navigator?.storage?.getDirectory !== "function" ||
+    typeof environment.navigator?.storage?.estimate !== "function" ||
+    typeof environment.Worker !== "function" ||
+    typeof environment.DecompressionStream !== "function" ||
+    !environment.crypto?.subtle ||
+    typeof environment.crypto?.randomUUID !== "function" ||
+    typeof environment.AbortSignal?.any !== "function" ||
+    typeof environment.AbortSignal?.prototype?.throwIfAborted !== "function"
+  )
+    throw new Error("BROWSER_UNSUPPORTED");
+  // 所有密封运行时均为 gzip；构造空流探测格式，不下载或读取任何输入。
+  // All sealed runtimes use gzip; construct an empty stream to probe the format without downloads or reads.
+  try {
+    new environment.DecompressionStream("gzip");
+  } catch {
+    throw new Error("BROWSER_UNSUPPORTED");
+  }
+}
+
 /**
  * 可选补充包在公开引导阶段选择，私有输入开始后不再联网。
  * Select the optional pack during public bootstrap; no networking after private inputs begin.
@@ -49,13 +73,7 @@ export async function prepareBrowserPackager({
   if (astcPreset !== "thorough" && astcPreset !== "fast") throw new Error("ASTC_PRESET_OPTION");
   if (typeof legacyAstc !== "boolean") throw new Error("LEGACY_ASTC_OPTION");
   const selectedProfile = resolveShellProfile(profileId);
-  if (
-    !globalThis.isSecureContext ||
-    !navigator.storage?.getDirectory ||
-    !globalThis.Worker ||
-    !globalThis.crypto?.subtle
-  )
-    throw new Error("BROWSER_UNSUPPORTED");
+  assertBrowserPackagerCapabilities();
   const runtime = await prepareSealedRuntime({
     baseUrl: "./runtime/",
     profileId: selectedProfile.id,

@@ -41,9 +41,11 @@ file-size checks are not claims of end-to-end on-device compatibility.
 
 ## Bounded I/O and completion
 
-- Reads and awaited writes are sequential, at most 64 KiB each. No whole game,
-  archive or full resource file is buffered. Read buffers are cleared after the
-  writable has consumed them. Progress is throttled between file transitions.
+- Authenticated reads remain sequential and capped at 64 KiB. A fixed 1 MiB
+  buffer coalesces serial filesystem writes, deliberately replacing the former
+  64 KiB write cap only. Sources are cleared after copying, and byte progress
+  advances only after a successful flush. See the paired
+  [write-batching contract](RESOURCE_WRITE_BATCHING.md) for memory and cancellation limits.
 - Offsets, sizes and aggregate counters use BigInt. Each file and the aggregate
   are limited to `Number.MAX_SAFE_INTEGER` bytes because browser File sizes use
   exact JavaScript numbers. Other bounds reuse the RomFS policy: 100,000 total

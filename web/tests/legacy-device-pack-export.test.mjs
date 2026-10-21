@@ -290,7 +290,7 @@ test("abort during streaming reports written bytes and preserves no owned leftov
     exportLegacyDevicePack({ ...fs.options, signal: controller.signal }),
     (error) =>
       error.report.code === "CANCELLED" &&
-      error.report.bytesWritten === 65536 &&
+      error.report.bytesWritten === fs.content.length &&
       error.report.cleanupComplete,
   );
   assert.deepEqual([...fs.root.entries.keys()], ["unrelated"]);

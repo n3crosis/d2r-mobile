@@ -34,13 +34,13 @@ Every file and backing buffer is capped at 64 MiB, total visible bytes at 128 Mi
 
 The exporter creates `Legacy Device Pack-<UUID>` beneath that destination, containing:
 
-- `data/<pack.name>`: exact staged bytes, copied in at most 64 KiB owned chunks.
+- `data/<pack.name>`: exact staged bytes, read in at most 64 KiB owned chunks and written in serial batches up to 1 MiB.
 - `manifest.json`: native `{ "files": [pack] }` shape.
 - `.d2rm-legacy-pack-export.json`: incomplete/complete marker and counts, explicitly separate from IPA status.
 
 The native iOS host searches renamed directories and one nested level for `data/<name>` and validates size/SHA-256 against bundled ASTC `pack.json`; therefore the UUID folder need not use the fixed `Legacy Device Pack` name. The exporter uses finalized metadata rather than recomputing a hash, and makes no authentication claim. The native host performs its own check when loading. Staged-source integrity and location allocation remain internal caller responsibilities.
 
-There is no overwrite, upload, source-folder mutation, ZIP, RAM fallback or whole-pack buffering. The source remains caller-owned and is not disposed. Callers must retain it through export and dispose it afterward as appropriate. Input chunks must be owned ordinary non-resizable `Uint8Array` buffers no larger than 64 KiB; they are wiped after writes.
+There is no overwrite, upload, source-folder mutation, ZIP, RAM fallback or whole-pack buffering. The source remains caller-owned and is not disposed. Callers must retain it through export and dispose it afterward as appropriate. Input chunks must be owned ordinary non-resizable `Uint8Array` buffers no larger than 64 KiB; they are wiped after copying into the fixed 1 MiB write buffer. See [write batching](RESOURCE_WRITE_BATCHING.md); read and pack-size limits are unchanged.
 
 ## Completion, cancellation and cleanup
 

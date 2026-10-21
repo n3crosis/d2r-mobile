@@ -77,7 +77,9 @@ export function createAstcPackJobsCore(
   const controller = new AbortController();
   signal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
   signal.throwIfAborted();
-  let lookupStorage = createCascPackStorageLookup(vfs);
+  // 只传递已选令牌数量，不复制清单或提前打开记录。
+  // Pass only the selected token count, without copying a manifest or opening records early.
+  let lookupStorage = createCascPackStorageLookup(vfs, { expectedQueries: tokens.length });
   const converted = new Map();
   let used = false,
     activeClose;

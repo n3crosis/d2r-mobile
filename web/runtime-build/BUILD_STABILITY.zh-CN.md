@@ -1,5 +1,7 @@
 # 运行时构建元数据稳定性
 
+English: [BUILD_STABILITY.md](BUILD_STABILITY.md)
+
 公开运行时继续在 `runtime-manifest.json` 中保留源码与编译器来源信息：
 `build.sourceRevision`、`sourceDirty`、`crossCommit`、`emscripten` 和 `dotnet`。
 资源哈希、组件清单、传输哈希和页面完整性锚点仍按原流程生成并验证。
@@ -36,7 +38,12 @@
 
 有界的构建诊断继续保留在 CI 日志中，不进入公开载荷。设置生效后的干净构建应报告
 `status: "absent"`；旧的本地 `obj` 文件可能导致过时观察。日志不包含路径、URL、
-PDB 内容或环境值。仍需后续干净产物比较，才能确认 .NET 字节是否稳定。
+PDB 内容或环境值。
+
+已观察的公开产物对 `e93a15a` / `32e9717` 中，全部 297 个逻辑资源和 33 个运行时载荷
+字节完全相同，包括 .NET 启动/主程序集与 SPIRV-Cross。
+仅外层清单的 `build.sourceRevision` 改变。这证明这些控制应用后的该产物对稳定，
+并不保证未来所有源码、编译器、环境或依赖变化下的结果。
 
 定向测试使用模拟 Git/CMake 工具执行构建脚本，并检查 .NET 配置与保留的来源信息，
 不会实际编译。上述修改**尚未证明输出完全确定**：调试标识或其他构建输入

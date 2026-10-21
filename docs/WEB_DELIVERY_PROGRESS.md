@@ -4,11 +4,11 @@
 
 ## Latest verified publication
 
-[Commit e93a15a](https://github.com/n3crosis/d2r-mobile/commit/e93a15a1cb29c6bb84c86eeea53d9d130d143b73)
-passed the [full Verify build](https://github.com/n3crosis/d2r-mobile/actions/runs/39503950310)
-and was published on 2026-10-20 at 22:00:20 UTC to the existing private
+[Commit 594b650](https://github.com/n3crosis/d2r-mobile/commit/594b6503bf80437d15bbbcb4ea2545358cf7e236)
+passed the [full Verify build](https://github.com/n3crosis/d2r-mobile/actions/runs/39533724417)
+and was published on 2026-10-21 at 02:42:39 UTC to the existing private
 [preview Site](https://d2r-ipa-packager.nicekrill34.chatgpt.site).
-The verified artifact is 21,981,932 bytes (about 20.96 MiB compressed ZIP, containing both shell targets), includes
+The verified artifact is 21,985,830 bytes (about 20.97 MiB compressed ZIP, containing both shell targets), includes
 .NET, and contains no Python runtime, packages or scripts. This is archive size,
 not a browser RAM measurement.
 
@@ -34,14 +34,14 @@ Later source edits need their own build/publication; no new percentage is claime
 
 ## Publication receipt and pending source changes
 
-The published revision is `e93a15a1cb29c6bb84c86eeea53d9d130d143b73`.
-Verify run `39503950310` succeeded. Artifact `12302183509` has ZIP SHA-256
-`f1fae625845fec902fb644a7bd6d92bdc13d518d012b20783e8f6fcb02ca7947`.
-The owner-private Site deployment `appgdep_6ad7e46a8c6481919ff9779bc8c1bc1f`
-succeeded at 22:00:20 UTC on 2026-10-20.
+The published revision is `594b6503bf80437d15bbbcb4ea2545358cf7e236`.
+Verify run `39533724417` succeeded. Artifact `12317320493` has ZIP SHA-256
+`97c6e0c856e9cb36e06c38d7d4997ba84ffd47bca13f24a487c66748838616c6`.
+The owner-private Site deployment `appgdep_6ad826962c248191b6648e5785358511`
+succeeded at 02:42:39 UTC on 2026-10-21.
 
-The runtime inventory has 297 logical assets and 38 physical files. Its manifest
-SHA-256 is `9585c1e3afbf7d7c1531d86afd53277eddf7451a3ff023056f6b842ad5d16aba`;
+The runtime inventory has 297 logical assets and 33 physical runtime payloads. Its manifest
+SHA-256 is `b989627422a3988802d7bf44d40277beaa346d7c243034cc2d3981e9126c5b3a`;
 frontend files are excluded from runtime inventory totals.
 This publication includes canonical Warlock preselection and removal of 48 unused
 raw-source payload assets. The SDK cache recorded an actual hit; no build-time
@@ -50,22 +50,28 @@ or browser-RAM improvement is measured or claimed.
 The deployed shader changes tighten final output accounting, bound replay
 copies to 64 KiB and shorten source/replay object lifetimes. All 23 targeted
 shader tests, frontend checks and the full CI passed. The Site source revision
-is `ba230f16f48d37899c6f89256a56fd0a69b81930`. No browser-RAM measurement or
+is `12512da3c34f2a6f5e9be73b7706852d63cfee02`. No browser-RAM measurement or
 real-game/device proof is added, and parity scores are unchanged.
 
 The native fast/thorough option is now live. Revised actual WASM tests passed
 32 synthetic fixtures / 80 calls with opaque-module-URL execution verified in CI;
 this does not establish browser, decode, real-game or device behavior. Cache
-metadata changes are included but deterministic builds are not yet proven.
+metadata changes are included; observed paired stability is distinguished below
+from universal determinism.
 
-Download-preparation retry and cleanup/cache cancellation fixes are live; batch
-suffix lookup and art-buffer lifetime improvements are now published too.
-Evidence consists of synthetic operation-count and lifetime tests, not measured
-browser RAM, timing or real-game benefits. After the project-only SourceLink
-opt-out, CI no longer reports that diagnostic; local symbols remain and remote
-source retrieval is removed. Final cross-build .NET stability remains unverified,
-so full build determinism is not claimed. Apart from that evidence check, the
-implementations above are no longer listed as pending publication.
+Download-preparation retry, UI/cleanup/RPC race fixes, stream cancellation and
+committed IPA recovery after cleanup failure are now live, alongside batch suffix
+lookup and art-buffer lifetime improvements. Cleanup failure remains visible;
+a genuinely completed IPA can be saved before reloading without regeneration.
+Evidence is synthetic testing, not browser RAM, timing or real-game measurement.
+After project-only SourceLink opt-out, local symbols remain and remote source
+retrieval is removed. The observed `e93a15a` / `32e9717` artifact pair has identical
+297 logical assets and 33 runtime payloads, including .NET boot/main and SPIRV;
+only outer `build.sourceRevision` changed. This establishes stability for that
+pair, not universal build determinism.
+
+The 1 MiB filesystem batching and thresholded CFT index changes remain
+uncommitted and are not part of this deployment. No browser speed/RAM proof is claimed.
 
 ## Historical baseline: 42 / 100
 

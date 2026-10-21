@@ -1,5 +1,6 @@
 // 依据 dm/host/romfs_validate.c 验收表及 File System Access 句柄语义导出独立资源。
 // Export separate resources using the dm/host/romfs_validate.c acceptance table and File System Access handle semantics.
+import { createResourceWriteBuffer } from "./resource-write-buffer.mjs";
 import { indexFiles, safeRelativePath } from "./preflight.mjs";
 import { ROMFS_LIMITS } from "./romfs-tree.mjs";
 
@@ -143,7 +144,8 @@ export async function exportRomfsResources({
   let directoryName = null,
     folder,
     marker,
-    activeWriter;
+    activeWriter,
+    writeBuffer;
   let filesWritten = 0,
     bytesWritten = 0n,
     totalBytes = 0n,
@@ -176,6 +178,14 @@ export async function exportRomfsResources({
       /* 观察者绝不会更改已认证导出。 | Observers never alter an authenticated export. */
     }
   };
+  writeBuffer = createResourceWriteBuffer({
+    check,
+    write: (bytes) => activeWriter.write(bytes),
+    written: (count) => {
+      bytesWritten += BigInt(count);
+      emit("resources");
+    },
+  });
   async function absent(parent, name, kind) {
     check();
     try {
@@ -310,17 +320,16 @@ export async function exportRomfsResources({
             bytes instanceof Uint8Array && bytes.byteLength === count,
             "RESOURCE_SHORT_READ",
           );
-          await activeWriter.write(bytes);
+          await writeBuffer.append(bytes);
           offset += BigInt(count);
-          bytesWritten += BigInt(count);
           check();
-          emit("resources");
         } finally {
-          // 已认证 RomFS 读取器返回独立拥有的副本，而非共享缓存视图。
-          // Authenticated RomFS readers return owned copies, not shared cache views.
+          // 写缓冲已复制来源；已认证读取器返回独立副本，而非共享缓存视图。
+          // The write buffer copied the source; authenticated readers return owned copies, not shared cache views.
           if (bytes instanceof Uint8Array) bytes.fill(0);
         }
       }
+      await writeBuffer.flush();
       check();
       await activeWriter.close();
       activeWriter = undefined;
@@ -338,6 +347,7 @@ export async function exportRomfsResources({
       "RESOURCE_EXPORT_INCOMPLETE",
     );
     await writeMarker("complete");
+    writeBuffer.dispose();
     emit("complete", true);
     return Object.freeze({
       status: "complete",
@@ -349,6 +359,7 @@ export async function exportRomfsResources({
       totalBytes,
     });
   } catch (cause) {
+    writeBuffer.dispose();
     const cleanupCodes = [];
     let writerStopped = true;
     if (activeWriter) {

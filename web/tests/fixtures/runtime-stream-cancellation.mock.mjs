@@ -367,3 +367,53 @@ test("normal gzip decoding retains size and integrity validation", async (t) => 
   await runtime.close();
   assert.equal(state.timers.size, 0);
 });
+
+for (const cleanup of ["resolve", "reject", "pending", "throw"])
+  test(`non-OK public response cancels its unread body with ${cleanup} cleanup`, async (t) => {
+    let cancels = 0,
+      pulls = 0,
+      readers = 0;
+    const stream = new ReadableStream(
+      {
+        pull() {
+          pulls++;
+        },
+        cancel() {
+          cancels++;
+          if (cleanup === "reject") return Promise.reject(new Error("synthetic cleanup failure"));
+          if (cleanup === "pending") return new Promise(() => {});
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    if (cleanup === "throw")
+      t.mock.method(stream, "cancel", () => {
+        cancels++;
+        throw new Error("synthetic synchronous cleanup failure");
+      });
+    t.mock.method(stream, "getReader", () => {
+      readers++;
+      throw new Error("Rejected response must not be read");
+    });
+    const { state, start, controller } = await setup(t, {
+      manifestResponse: new ResponseClass(stream, { status: 503 }),
+    });
+    await assert.rejects(start(), /^Error: Missing public runtime asset$/);
+    assert.equal(cancels, 1);
+    assert.equal(pulls, 0);
+    assert.equal(readers, 0);
+    assert.equal(stream.locked, false);
+    assert.equal(state.hashes, 0);
+    assert.equal(state.workers.length, 0);
+    assert.equal(state.timers.size, 0);
+    assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+  });
+
+test("missing public response body preserves the existing rejection", async (t) => {
+  const { state, start } = await setup(t, {
+    manifestResponse: new ResponseClass(null, { status: 503 }),
+  });
+  await assert.rejects(start(), /^Error: Missing public runtime asset$/);
+  assert.equal(state.hashes, 0);
+  assert.equal(state.timers.size, 0);
+});
