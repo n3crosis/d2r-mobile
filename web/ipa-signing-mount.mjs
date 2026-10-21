@@ -102,7 +102,10 @@ export function mountSigningArchive(module, archive, options = {}) {
         if (node.directory || parent.contents[name]?.directory) error(63);
         const previous = node.path,
           path = pathFor(parent, name);
-        store.rename(external(previous), external(path));
+        const mode = store.rename(external(previous), external(path));
+        // 保持挂载 stat 与最终 ZIP 的原始可执行权限一致。
+        // Keep mounted stat permissions consistent with the original executable mode in the final ZIP.
+        node.mode = 0o100000 | mode;
         delete node.parent.contents[node.name];
         nodes.delete(previous);
         node.parent = parent;
