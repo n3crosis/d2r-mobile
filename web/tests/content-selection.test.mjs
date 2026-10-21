@@ -248,6 +248,25 @@ test("required content existence, computed hash, size, and inventory conflicts a
     code("INVALID_INTEGER"),
   );
 });
+test("explicit quick mode accepts only unverified unique content IDs with matching sizes", () => {
+  const unverified = { ...c(), sha256: null, hashVerified: false };
+  assert.equal(
+    resolveContentSelection([base()], [unverified], { skipContentHashes: true }).base.titleId,
+    base().titleId,
+  );
+  assert.throws(() => resolveContentSelection([base()], [unverified]), code("INVALID_IDENTITY"));
+  assert.throws(
+    () => resolveContentSelection([base()], [unverified, unverified], { skipContentHashes: true }),
+    code("CONFLICTING_CONTENT"),
+  );
+  assert.throws(
+    () =>
+      resolveContentSelection([base()], [{ ...unverified, size: 99n }], {
+        skipContentHashes: true,
+      }),
+    code("CONTENT_IDENTITY_MISMATCH"),
+  );
+});
 test("multiple DLC versions require explicit choice and DLC is never merged", () => {
   const rows = [base(), patch(), dlc(2n), dlc(10n)],
     id = (app + 0x1001n).toString(16);

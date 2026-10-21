@@ -702,18 +702,19 @@ static int open_romfs(const char *path, unsigned char *out_size, int verify) {
 int nsp_open_romfs(const char *path, unsigned char *out_size) {
     return open_romfs(path, out_size, 1);
 }
-/* 快速路径仅适用于已将完整 NCA 摘要与已认证 CNMT 元数据进行比对的调用方。
- * 原生边界自身无法证明该前提；为独立调用方保留 nsp_open_romfs。
- * Fast path is only for a caller that has already checked the full NCA digest
- * against authenticated CNMT metadata. The native boundary cannot prove that
- * precondition itself; retain nsp_open_romfs for independent callers. */
+/* 此入口跳过完整 IVFC 扫描。默认调用方已将完整 NCA 摘要与 CNMT 比对；
+ * 显式快速模式则接受未经完整验证的内容。独立调用方仍可使用严格入口。
+ * This entrypoint skips the full IVFC scan. Default callers have checked the
+ * whole-NCA digest against CNMT; explicit quick mode accepts unverified content.
+ * Independent callers can use the strict entrypoint. */
 int nsp_open_romfs_hash_verified(const char *path, unsigned char *out_size) {
     return open_romfs(path, out_size, 0);
 }
-/* 严格入口分别认证基础与合并后的 IVFC。
- * 快速入口依赖先前针对已签名 CNMT 完成的完整 NCA 摘要检查。
+/* 严格入口分别认证基础与合并后的 IVFC。快速入口跳过这两次扫描；
+ * 调用方必须明确决定是否接受未经完整验证的内容。
  * The strict entrypoint authenticates base and merged IVFC independently. The
- * fast entrypoint relies on prior whole-NCA digest checks against signed CNMT.
+ * fast entrypoint skips both scans; callers decide whether unverified content
+ * is acceptable.
  */
 static int open_patched_romfs(const char *base_path, const char *patch_path,
                               unsigned char *out_size, int verify) {

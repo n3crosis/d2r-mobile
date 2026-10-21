@@ -85,7 +85,8 @@ function setup({
     active,
     disposed = false,
     keyArrays,
-    loadedTitle;
+    loadedTitle,
+    hashCalls = 0;
   const metadata = [cnmt(0), cnmt(1), cnmt(2)],
     calls = [];
   const boundary = {
@@ -98,6 +99,7 @@ function setup({
       assert.equal(blobs.length, 6);
     },
     hashInput(index) {
+      hashCalls++;
       return (index === 5 && wrongHash ? "ff" : hashes[index].toString(16)).repeat(32);
     },
     inspect(index) {
@@ -160,13 +162,15 @@ function setup({
     keys: () => keyArrays,
     title: () => loadedTitle,
     disposed: () => disposed,
+    hashCalls: () => hashCalls,
   };
 }
-const initialize = (engine, fixtureOptions) =>
+const initialize = (engine, fixtureOptions, skipContentHashes = false) =>
   engine.execute("initialize", {
     nsps: [fixture(fixtureOptions)],
     prodKeys: new Blob([`header_key = ${"12".repeat(32)}\n`]),
     titleKeys: new Blob([`${"34".repeat(16)} = ${"56".repeat(16)}\n`]),
+    skipContentHashes,
   });
 test("package tickets supply title keys when title.keys has no matching rights ID", async () => {
   const { engine, title, keys } = setup();
@@ -239,6 +243,21 @@ test("fast RomFS mode requires measured package evidence", async () => {
   });
   assert.deepEqual(env.calls.at(-1), ["romfs", false]);
   assert.equal(romfs.size, 10n);
+  await env.engine.execute("dispose");
+});
+test("explicit quick mode skips full content hashes and retains signed-header selection", async () => {
+  const env = setup();
+  const inspected = await initialize(env.engine, undefined, true);
+  assert.equal(env.hashCalls(), 0);
+  assert(inspected.inventory.every((entry) => entry.sha256 === null && !entry.hashVerified));
+  await assert.rejects(env.engine.execute("select", { options: {} }));
+  const selected = await env.engine.execute("select", { options: { skipContentHashes: true } });
+  const romfs = await env.engine.execute("openRomfs", {
+    token: selected.token,
+    verifyRomfs: false,
+  });
+  assert.equal(romfs.size, 10n);
+  assert.deepEqual(env.calls.at(-1), ["romfs", false]);
   await env.engine.execute("dispose");
 });
 test("engine rejects content hash mismatch and arbitrary operation/fields", async () => {

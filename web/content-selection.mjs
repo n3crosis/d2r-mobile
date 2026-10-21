@@ -235,6 +235,9 @@ export function resolveContentSelection(records, inventory, options = {}) {
     fail("INVALID_INPUT", "Bounded metadata and inventory arrays are required.");
   if (!options || typeof options !== "object" || Array.isArray(options))
     fail("INVALID_INPUT", "Options must be an object.");
+  if (options.skipContentHashes !== undefined && typeof options.skipContentHashes !== "boolean")
+    fail("INVALID_INPUT", "skipContentHashes must be a boolean.");
+  const skipContentHashes = options.skipContentHashes === true;
   const requestedDlcVersions = dlcVersionRequests(options.dlcVersions);
   const unique = new Map();
   for (const raw of records) {
@@ -294,16 +297,18 @@ export function resolveContentSelection(records, inventory, options = {}) {
       fail("INVALID_INPUT", "Inventory entry must be an object.");
     const c = {
       contentId: digest(raw.contentId, 32, "inventory content ID"),
-      sha256: digest(raw.sha256, 64, "inventory SHA-256"),
+      sha256: skipContentHashes ? null : digest(raw.sha256, 64, "inventory SHA-256"),
       size: uint(raw.size, 40, "inventory size"),
     };
-    if (raw.hashVerified !== true)
+    if (raw.hashVerified !== !skipContentHashes)
       fail(
         "UNVERIFIED_CONTENT",
-        "Inventory hashes must be independently verified, not copied from CNMT or filenames.",
+        "Inventory hash status does not match the selected verification mode.",
       );
-    if (available.has(c.contentId) && fingerprint(available.get(c.contentId)) !== fingerprint(c))
-      fail("CONFLICTING_CONTENT", "Same content ID has conflicting inventory identity.");
+    if (available.has(c.contentId)) {
+      if (skipContentHashes || fingerprint(available.get(c.contentId)) !== fingerprint(c))
+        fail("CONFLICTING_CONTENT", "Same content ID has conflicting inventory identity.");
+    }
     available.set(c.contentId, c);
   }
   const required = new Map();
@@ -311,7 +316,7 @@ export function resolveContentSelection(records, inventory, options = {}) {
     for (const c of r.contents) {
       const found = available.get(c.contentId);
       if (!found) fail("MISSING_CONTENT", `Required content ${c.contentId} is absent.`);
-      if (found.sha256 !== c.sha256 || found.size !== c.size)
+      if ((!skipContentHashes && found.sha256 !== c.sha256) || found.size !== c.size)
         fail(
           "CONTENT_IDENTITY_MISMATCH",
           `Required content ${c.contentId} does not match CNMT hash/size.`,

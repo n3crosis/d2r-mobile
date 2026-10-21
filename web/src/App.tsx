@@ -61,6 +61,9 @@ export default function App() {
   const [legacyAstc] = useState(
     () => new URLSearchParams(window.location.search).get("legacyAstc") === "1",
   );
+  const [skipContentHashes] = useState(
+    () => new URLSearchParams(window.location.search).get("skipContentHashes") === "1",
+  );
   const [astcPreset] = useState<"thorough" | "fast">(() =>
     new URLSearchParams(window.location.search).get("astcPreset") === "fast" ? "fast" : "thorough",
   );
@@ -183,6 +186,7 @@ export default function App() {
       profileId,
       legacyAstc,
       astcPreset,
+      skipContentHashes,
       signal: controller.signal,
       onProgress: (event: LoadingProgress) => {
         if (!controller.signal.aborted) {
@@ -240,7 +244,7 @@ export default function App() {
       packager.current?.close();
       preparedDownload.dispose();
     };
-  }, [appendActivity, profileId, legacyAstc, astcPreset]);
+  }, [appendActivity, profileId, legacyAstc, astcPreset, skipContentHashes]);
   async function choose() {
     if (!ready || busy || !browser.showDirectoryPicker) return;
     const operation = operationGate.current.begin();
@@ -354,7 +358,7 @@ export default function App() {
     setStatus(t("dmWebStarting"));
     if (legacyAstc) setLegacyStatus(t("dmWebLegacyPreparing"));
     appendActivity(t("dmWebGenerationStarted"), true);
-    appendActivity(t("dmWebFastMode"), true);
+    appendActivity(t(skipContentHashes ? "dmWebSkipHashActive" : "dmWebFastMode"), true);
     let acceptingProgress = true;
     let generationCompleted = false;
     try {
@@ -558,6 +562,33 @@ export default function App() {
             </p>
           </div>
           <div className="space-y-2">
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={skipContentHashes}
+                aria-describedby="skip-content-hashes-help"
+                disabled={hasSelectedFolder || busy || generating || download !== null}
+                onChange={(event) => {
+                  if (
+                    operationGate.current.busy ||
+                    hasSelectedFolder ||
+                    busy ||
+                    generating ||
+                    download !== null
+                  )
+                    return;
+                  const url = new URL(window.location.href);
+                  if (event.target.checked) url.searchParams.set("skipContentHashes", "1");
+                  else url.searchParams.delete("skipContentHashes");
+                  window.location.assign(url.href);
+                }}
+              />
+              {t("dmWebSkipHashOption")}
+            </label>
+            <p id="skip-content-hashes-help" className="text-xs text-muted-foreground">
+              {t("dmWebSkipHashHelp")}
+            </p>
             <label className="flex items-start gap-2 text-sm">
               <input
                 type="checkbox"

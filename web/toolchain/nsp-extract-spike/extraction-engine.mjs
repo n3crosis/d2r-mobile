@@ -186,7 +186,8 @@ export function createExtractionEngine(
   let entries = [],
     romfs,
     baseIndex,
-    programIndex;
+    programIndex,
+    skipContentHashes = false;
   const revoke = () => {
     token = newToken();
     return token;
@@ -220,7 +221,7 @@ export function createExtractionEngine(
       fields(
         payload,
         operation === "initialize"
-          ? ["nsps", "prodKeys", "titleKeys"]
+          ? ["nsps", "prodKeys", "titleKeys", "skipContentHashes"]
           : operation === "select"
             ? ["options"]
             : operation === "openRomfs"
@@ -233,6 +234,12 @@ export function createExtractionEngine(
       );
       if (operation === "initialize") {
         requireState("new");
+        if (
+          payload.skipContentHashes !== undefined &&
+          typeof payload.skipContentHashes !== "boolean"
+        )
+          fail();
+        skipContentHashes = payload.skipContentHashes === true;
         state = "initializing";
         if (
           !Array.isArray(payload.nsps) ||
@@ -326,15 +333,23 @@ export function createExtractionEngine(
         if (!blobs.length) diagnostic("PACKAGE_INDEX_INVALID");
         checked("CONTENT_READ_FAILED", () => boundary.mount(blobs));
         for (let i = 0; i < blobs.length; i++) {
-          progress("content-hash", i, blobs.length, blobs[i].size);
-          const sha256 = checked("CONTENT_READ_FAILED", () => boundary.hashInput(i));
+          let sha256 = null;
+          if (!skipContentHashes) {
+            progress("content-hash", i, blobs.length, blobs[i].size);
+            sha256 = checked("CONTENT_READ_FAILED", () => boundary.hashInput(i));
+          }
           progress("content-header", i, blobs.length);
           const header = checked("CONTENT_AUTHENTICATION_FAILED", () => boundary.inspect(i));
           if (!header.fixedSignatureValid || header.size !== BigInt(blobs[i].size))
             diagnostic("CONTENT_AUTHENTICATION_FAILED");
-          const record = { contentId: ids[i], sha256, size: header.size, hashVerified: true };
+          const record = {
+            contentId: ids[i],
+            sha256,
+            size: header.size,
+            hashVerified: !skipContentHashes,
+          };
           const old = contents.get(ids[i]);
-          if (old && (old.sha256 !== sha256 || old.size !== record.size))
+          if (old && (skipContentHashes || old.sha256 !== sha256 || old.size !== record.size))
             diagnostic("CONTENT_METADATA_INVALID");
           if (old) continue;
           contents.set(ids[i], { ...record, index: i, ncaType: header.contentType });
@@ -364,7 +379,9 @@ export function createExtractionEngine(
           "patchVersion",
           "dlcVersions",
           "contentMode",
+          "skipContentHashes",
         ]);
+        if ((payload.options?.skipContentHashes ?? false) !== skipContentHashes) fail();
         selection = resolveD2rExpansionSelection(records, inventory, payload.options);
         // 要求已知附加内容的完整实测 NCA 证据与已签名 Data 头部。
         // 这是包输入校验，并非授权或所有权检查。
@@ -382,6 +399,7 @@ export function createExtractionEngine(
         };
         baseIndex = program(selection.base);
         programIndex = selection.patch ? program(selection.patch) : baseIndex;
+        progress("exefs-open");
         const count = boundary.open(programIndex, "program-exefs");
         entries = Array.from({ length: count }, (_, index) => ({
           index,
@@ -406,7 +424,7 @@ export function createExtractionEngine(
         requireState("exefs");
         checkToken(payload.token);
         if (typeof payload.verifyRomfs !== "boolean") fail();
-        if (!payload.verifyRomfs) {
+        if (!payload.verifyRomfs && !skipContentHashes) {
           // 只有所有选定 Program NCA 的实测全文件摘要均匹配
           // 各自已认证的 CNMT 条目后，快速路径才有效。
           // The fast path is valid only after every selected Program NCA's
@@ -422,6 +440,9 @@ export function createExtractionEngine(
               fail();
           }
         }
+        // 显式快速模式允许跳过这两种完整性扫描，但不放宽签名头部和结构检查。
+        // Explicit quick mode skips both full-content scans while retaining
+        // signed-header and structural checks in the native reader.
         revoke();
         const reportVerification = ({ phase, completed, total }) => {
           if (phase === "read") {

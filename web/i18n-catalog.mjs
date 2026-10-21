@@ -361,6 +361,38 @@ export const catalog = Object.freeze({
     "Fast mode: full RomFS scan will be skipped after package hashes match",
     "快速模式：软件包哈希匹配后将跳过完整 RomFS 扫描"
   ],
+  "dmWebSkipHashOption": [
+    "Skip full content hashes (experimental)",
+    "跳过完整内容哈希（实验性）"
+  ],
+  "dmWebSkipHashHelp": [
+    "Speeds up retries, but package contents are not fully verified; damaged inputs may fail later.",
+    "加快重试，但无法确认软件包内容是否完整；损坏的输入可能在稍后失败。"
+  ],
+  "dmWebSkipHashActive": [
+    "Experimental quick mode: skipping full content hashes and RomFS scan; signed headers and structure are still checked",
+    "实验性快速模式：跳过完整内容哈希及 RomFS 扫描；仅检查签名头部和结构"
+  ],
+  "dmWebProgresslabelsExefsOpen": [
+    "Opening selected executable content",
+    "打开选定的可执行内容"
+  ],
+  "dmWebProgresslabelsExefsRead": [
+    "Reading executable modules",
+    "读取可执行模块"
+  ],
+  "dmWebProgresslabelsRomfsOpen": [
+    "Opening selected RomFS",
+    "打开选定的 RomFS"
+  ],
+  "dmWebProgresslabelsRomfsIndex": [
+    "Indexing RomFS files",
+    "索引 RomFS 文件"
+  ],
+  "dmWebProgresslabelsLogicalIndex": [
+    "Indexing game assets",
+    "索引游戏资源"
+  ],
   "dmWebUnsignedReady": [
     "Unsigned IPA ready; resources saved locally",
     "未签名 IPA 已就绪；资源已保存到本地"

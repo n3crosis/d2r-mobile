@@ -234,10 +234,10 @@ export function createExtractionWorkerClient({
     );
   };
   return Object.freeze({
-    initialize: ({ nsps, prodKeys, titleKeys }, options) =>
+    initialize: ({ nsps, prodKeys, titleKeys, skipContentHashes }, options) =>
       request(
         "initialize",
-        { nsps, prodKeys, titleKeys },
+        { nsps, prodKeys, titleKeys, skipContentHashes },
         (result) =>
           keys(result, ["records", "inventory"]) &&
           Array.isArray(result.records) &&

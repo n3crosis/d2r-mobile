@@ -62,6 +62,9 @@ Inventory entries must contain `contentId`, independently computed whole-NCA
 `sha256`, measured `size`, and `hashVerified: true`. The flag is a caller contract,
 not cryptographic proof: copying hashes from CNMT or deriving IDs from filenames
 must never set it. Every required selected content is matched by ID, hash and size.
+The explicit `skipContentHashes: true` option instead accepts only unique
+`hashVerified: false` inventory entries and matches ID and size without claiming
+whole-content integrity. It is intended only for the browser's experimental quick mode.
 NCA-header identity, sections and signatures remain upstream responsibilities.
 No content ID is inferred from the filename and no NCA is chosen by array order.
 

@@ -128,6 +128,7 @@ export function createExtractionJobAdapter({
   createWorker,
   contentMode = "warlock",
   verifyRomfs = true,
+  skipContentHashes = false,
   maxProgramBytes = 32 * 1024 * 1024,
   timeoutMs,
   operationTimeoutMs,
@@ -137,6 +138,7 @@ export function createExtractionJobAdapter({
     typeof createWorker !== "function" ||
     !D2R_CONTENT_MODES.includes(contentMode) ||
     typeof verifyRomfs !== "boolean" ||
+    typeof skipContentHashes !== "boolean" ||
     !Number.isSafeInteger(maxProgramBytes) ||
     maxProgramBytes < 1 ||
     maxProgramBytes > 64 * 1024 * 1024
@@ -196,7 +198,10 @@ export function createExtractionJobAdapter({
       sessions.set(session, state);
       signal?.addEventListener("abort", abort, { once: true });
       try {
-        state.inspected = await client.initialize(inputs, { signal, onProgress: onDiagnostic });
+        state.inspected = await client.initialize(
+          { ...inputs, skipContentHashes },
+          { signal, onProgress: onDiagnostic },
+        );
         if (signal?.aborted) fail("EXTRACTION_CANCELLED");
         return session;
       } catch (error) {
@@ -224,6 +229,7 @@ export function createExtractionJobAdapter({
     },
     async extractSelected({ session, selection, signal, onDiagnostic } = {}) {
       const state = lookup(session);
+      const phase = (stage) => onDiagnostic?.({ stage, completed: 0, total: 0, bytes: 0 });
       try {
         signal?.throwIfAborted();
         if (
@@ -236,6 +242,7 @@ export function createExtractionJobAdapter({
         state.extracted = true;
         const options = {
           contentMode,
+          ...(skipContentHashes ? { skipContentHashes: true } : {}),
           baseVersion: selection.base.version,
           patchVersion: selection.patch?.version,
           dlcVersions: Object.fromEntries(
@@ -253,7 +260,7 @@ export function createExtractionJobAdapter({
         );
         const expectedSelection = canonical(authenticated);
         if (expectedSelection !== canonical(selection)) fail("EXTRACTION_SELECTION_MISMATCH");
-        const selected = await state.client.select(options, { signal });
+        const selected = await state.client.select(options, { signal, onProgress: onDiagnostic });
         if (canonical(selected.selection) !== expectedSelection)
           fail("EXTRACTION_SELECTION_MISMATCH");
         const names = new Set();
@@ -280,6 +287,7 @@ export function createExtractionJobAdapter({
         }
         if (total > BigInt(maxProgramBytes)) fail("EXTRACTION_PROGRAM_BUDGET");
         const programModules = Object.create(null);
+        phase("exefs-read");
         for (const name of REQUIRED_NSO_MODULES) {
           const entry = modules.get(name),
             bytes = new Uint8Array(Number(entry.size));
@@ -304,6 +312,7 @@ export function createExtractionJobAdapter({
         }
         // 这会撤销 ExeFS 生成；先暂存所有必需模块。
         // This revokes the ExeFS generation; all required modules are staged first.
+        phase("romfs-open");
         const opened = await state.client.openRomfs(selected.token, {
           signal,
           onProgress: onDiagnostic,
@@ -340,6 +349,7 @@ export function createExtractionJobAdapter({
             return result;
           },
         });
+        phase("romfs-index");
         const indexed = await indexRomfs(source, { signal });
 
         // 暴露有界只读能力，而非元数据行、令牌、密钥文件、
@@ -379,6 +389,7 @@ export function createExtractionJobAdapter({
             });
           },
         });
+        phase("logical-index");
         const logical = await createCascLogicalAssets(romfs, { signal });
         const logicalAssets = Object.freeze({
           lookup(path) {

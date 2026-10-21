@@ -30,7 +30,7 @@ Format evidence: pinned [hactool ivfc.h](https://github.com/SciresM/hactool/blob
 
 `openPatchedRomfs(baseIndex,patchIndex)` now has a native implementation using simultaneous authenticated base/patch contexts, bounded relocation/subsection parsing, split CTR-Ex reads and mandatory patch-root IVFC verification over the merged virtual section. It returns the same bounded, generation-guarded final-RomFS reader. Modern/unknown variants remain rejected. The native synthetic counter/routing/integrity fixtures and unsigned-base rejection passed [run 39398141322](https://github.com/n3crosis/d2r-mobile/actions/runs/39398141322); no valid signed base/update extraction is proven. See [BKTR_SCOPE.md](BKTR_SCOPE.md) for supported layouts, source mapping and remaining integration requirements. Prior JS planner tests passed run 39396778480.
 
-The web packager now uses a separate fast entrypoint after full NCA hashes match authenticated CNMT metadata. That entrypoint retains signed-header and structural checks and skips the redundant whole-RomFS IVFC pass. The strict API and its IVFC fixture remain available for independent callers.
+The default web path checks full NCA hashes against authenticated CNMT metadata, then uses a fast RomFS entrypoint to avoid a second whole-content scan. An explicit experimental option skips both full scans to attempt extraction sooner; it still checks signed headers and structure, but cannot establish whole-content integrity. The strict API and its IVFC fixture remain available for independent callers.
 
 ## Pending strict extraction Worker integration
 

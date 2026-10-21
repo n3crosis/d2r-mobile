@@ -61,7 +61,7 @@ export function assertBrowserPackagerCapabilities(environment = globalThis) {
 /**
  * 可选补充包在公开引导阶段选择，私有输入开始后不再联网。
  * Select the optional pack during public bootstrap; no networking after private inputs begin.
- * @param {{manifestSha256?: string, signal?: AbortSignal, onProgress?: (event: any) => void, profileId?: string, legacyAstc?: boolean, astcPreset?: "thorough"|"fast"}} [options]
+ * @param {{manifestSha256?: string, signal?: AbortSignal, onProgress?: (event: any) => void, profileId?: string, legacyAstc?: boolean, astcPreset?: "thorough"|"fast", skipContentHashes?: boolean}} [options]
  */
 export async function prepareBrowserPackager({
   manifestSha256,
@@ -70,9 +70,11 @@ export async function prepareBrowserPackager({
   profileId,
   legacyAstc = false,
   astcPreset = "thorough",
+  skipContentHashes = false,
 } = {}) {
   if (astcPreset !== "thorough" && astcPreset !== "fast") throw new Error("ASTC_PRESET_OPTION");
   if (typeof legacyAstc !== "boolean") throw new Error("LEGACY_ASTC_OPTION");
+  if (typeof skipContentHashes !== "boolean") throw new Error("CONTENT_HASH_OPTION");
   const selectedProfile = resolveShellProfile(profileId);
   assertBrowserPackagerCapabilities();
   const runtime = await prepareSealedRuntime({
@@ -136,11 +138,12 @@ export async function prepareBrowserPackager({
     const extraction = createExtractionJobAdapter({
       createWorker: runtime.createExtractionWorker,
       contentMode: profile.contentMode,
-      // 完整 NCA 摘要已按已认证 CNMT 检查。
-      // 避免再次扫描两个数 GB 的 RomFS 视图。
-      // Full NCA digests were already checked against authenticated CNMT.
-      // Avoid scanning both multi-gigabyte RomFS views a second time.
+      // 默认路径已对照 CNMT 检查完整 NCA 摘要；显式快速路径
+      // 则跳过完整性扫描，以便先尝试提取。
+      // The default path checks whole-NCA digests against CNMT. Explicit quick
+      // mode skips full-content integrity scans to attempt extraction sooner.
       verifyRomfs: false,
+      skipContentHashes,
     });
     program = createProgramRewriterAdapter({
       profileId: profile.profileId,
@@ -413,7 +416,7 @@ export async function prepareBrowserPackager({
                 onProgress,
                 archiveFormat,
                 maxOutputBytes,
-                selectionOptions: { contentMode: profile.contentMode },
+                selectionOptions: { contentMode: profile.contentMode, skipContentHashes },
                 secretLifetime: "archive",
                 concurrency: 1,
               }),

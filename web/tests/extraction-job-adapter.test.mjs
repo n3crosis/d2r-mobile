@@ -64,6 +64,29 @@ test("stages main and sdk before token transition and returns only plaintext cap
   assert.ok(extracted.programModules.main.every((x) => x === 0));
   assert.ok(extracted.programModules.sdk.every((x) => x === 0));
 });
+test("explicit quick mode stays bound across initialization, selection, and RomFS opening", async () => {
+  const inspected = inspectedFixture();
+  inspected.inventory = inspected.inventory.map((entry) => ({
+    ...entry,
+    sha256: null,
+    hashVerified: false,
+  }));
+  const selected = resolveD2rExpansionSelection(inspected.records, inspected.inventory, {
+    skipContentHashes: true,
+  });
+  const f = fixture({ inspected, selected, skipContentHashes: true, verifyRomfs: false });
+  const session = await open(f);
+  const extracted = await f.adapter.extractSelected({ session, selection: selected });
+  assert.equal(extracted.romfs.files.length, 1);
+  assert.equal(f.worker.requests[0].payload.skipContentHashes, true);
+  assert.equal(f.worker.requests[1].payload.options.skipContentHashes, true);
+  assert.equal(
+    f.worker.requests.find((r) => r.operation === "openRomfs").payload.verifyRomfs,
+    false,
+  );
+  await session.dispose();
+  await f.adapter.cleanup();
+});
 test("rejects mismatched selection, forged DLC, missing sdk, aggregate budgets before RomFS", async () => {
   for (const config of [
     { selected: { ...selection, effectiveVersion: 2 } },
