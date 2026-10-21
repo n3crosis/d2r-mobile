@@ -23,9 +23,16 @@ export const RUNTIME_SEALED_WORKERS = Object.freeze([
   "sealed-workers/cross-worker.mjs",
   "sealed-workers/program-worker.mjs",
 ]);
-// 只移除经过消费路径审计的 48 个逻辑副本；不泛化为拒绝所有源码或证明清单资源。
-// Remove only the 48 audited logical copies, not all source files or proof-manifest assets.
+// 只移除经过消费路径审计的 已审计的逻辑副本；不泛化为拒绝所有源码或证明清单资源。
+// Remove only the audited logical copies, not all source files or proof-manifest assets.
 export const SOURCE_ONLY_RUNTIME_ASSETS = Object.freeze([
+  "ipa-signing-client.mjs",
+  "ipa-signing-contract.mjs",
+  "ipa-signing-fs.mjs",
+  "ipa-signing-zip.mjs",
+  "ipa-signing-worker-core.mjs",
+  "runtime-sealing/signing-worker.mjs",
+  "toolchain/zsign-wasm/dist/zsign.mjs",
   "archive-read-rpc.mjs",
   "archive-reader.mjs",
   "astc-job-directory.mjs",

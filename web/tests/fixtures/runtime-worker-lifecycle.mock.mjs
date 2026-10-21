@@ -24,17 +24,29 @@ Object.defineProperty(globalThis, "navigator", { value: {}, configurable: true }
 let serial = 0;
 async function setup(
   t,
-  { components = ["program"], initialize = true, sendError, producer = false } = {},
+  {
+    components = ["program"],
+    initialize = true,
+    sendError,
+    producer = false,
+    signing = false,
+  } = {},
 ) {
   const controller = new AbortController();
   const state = {
     workers: [],
+    revokedUrls: [],
     timers: new Map(),
     initialize,
     sendError,
     firstInitialize: Promise.withResolvers(),
     producerInitialize: Promise.withResolvers(),
   };
+  const revokeObjectURL = URL.revokeObjectURL.bind(URL);
+  t.mock.method(URL, "revokeObjectURL", (url) => {
+    state.revokedUrls.push(url);
+    revokeObjectURL(url);
+  });
   let timerId = 0;
   t.mock.method(globalThis, "setTimeout", (callback, delay) => {
     const id = ++timerId;
@@ -62,10 +74,16 @@ async function setup(
     for (const path of OPTIONAL_RUNTIME_ASSET_GROUPS["legacy-astc"])
       data.set(path, encode(`synthetic ${path}`));
   }
+  if (signing)
+    for (const path of OPTIONAL_RUNTIME_ASSET_GROUPS["ipa-signing"])
+      data.set(path, encode(`synthetic ${path}`));
   const assets = [...data].map(([path, bytes]) => ({
     path,
     bytes: bytes.length,
     sha256: sha(bytes),
+    ...(OPTIONAL_RUNTIME_ASSET_GROUPS["ipa-signing"].includes(path)
+      ? { optionalGroup: "ipa-signing" }
+      : {}),
     ...(OPTIONAL_RUNTIME_ASSET_GROUPS["legacy-astc"].includes(path)
       ? { optionalGroup: "legacy-astc" }
       : {}),
@@ -83,8 +101,9 @@ async function setup(
   globalThis.Worker = class extends EventTarget {
     requests = [];
     terminations = 0;
-    constructor() {
+    constructor(url) {
       super();
+      this.url = url;
       state.workers.push(this);
     }
     dispatchEvent(event) {
@@ -124,7 +143,7 @@ async function setup(
         baseUrl: "https://example.test/runtime/",
         manifestSha256: sha(manifest),
         components,
-        optionalGroups: producer ? ["legacy-astc"] : [],
+        optionalGroups: [...(producer ? ["legacy-astc"] : []), ...(signing ? ["ipa-signing"] : [])],
         signal: controller.signal,
       });
       return runtime;
@@ -358,4 +377,49 @@ test("producer proof resolution followed by close before parent continuation sti
   for (const event of ["message", "error", "messageerror"])
     assert.equal(getEventListeners(producer, event).length, 0);
   stopped(state, controller);
+});
+
+test("claimed preloaded IPA signer survives conversion runtime cleanup and closes independently", async (t) => {
+  const setupState = await setup(t, { signing: true });
+  const runtime = await setupState.start();
+  assert.equal(runtime.initialized.ipaSigning.initialized, true);
+  const signer = runtime.takeIpaSigningClient();
+  assert.throws(() => runtime.takeIpaSigningClient(), /already acquired/);
+  const worker = setupState.state.workers.at(-1);
+  assert.ok(setupState.state.revokedUrls.includes(worker.url));
+  await runtime.close();
+  assert.equal(worker.terminations, 0);
+  assert.ok(setupState.state.workers[0].terminations > 0);
+  const signing = signer.sign({
+    ipa: new Blob([new Uint8Array(22)]),
+    credentials: {
+      kind: "p12",
+      identity: new ArrayBuffer(2),
+      profile: new ArrayBuffer(2),
+      password: "",
+    },
+  });
+  const result = new Blob([new Uint8Array(23)]);
+  worker.reply({ id: 1, ok: true, result: { blob: result } });
+  assert.equal((await signing).blob, result);
+  assert.equal(worker.terminations, 1);
+  signer.close();
+  assert.equal(worker.terminations, 1);
+});
+
+test("unclaimed preloaded IPA signer closes with its runtime", async (t) => {
+  const setupState = await setup(t, { signing: true });
+  const runtime = await setupState.start();
+  const worker = setupState.state.workers.at(-1);
+  await runtime.close();
+  assert.ok(worker.terminations > 0);
+  assert.throws(() => runtime.takeIpaSigningClient(), /unavailable/);
+});
+
+test("default runtime has no signing worker or signable lease", async (t) => {
+  const setupState = await setup(t);
+  const runtime = await setupState.start();
+  assert.equal(runtime.initialized.ipaSigning, undefined);
+  assert.equal(setupState.state.workers.length, 1);
+  assert.throws(() => runtime.takeIpaSigningClient(), /unavailable/);
 });

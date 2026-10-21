@@ -9,6 +9,7 @@ import {
   OPTIONAL_RUNTIME_ASSET_GROUPS,
   runtimeContentKey,
   validateRuntimeAssetGroups,
+  selectRuntimeAssetGroups,
 } from "../runtime-asset-groups.mjs";
 import {
   createRuntimeTransport,
@@ -129,4 +130,49 @@ test("full validator rejects a syntactically valid mixed payload and incomplete 
     () => validateRuntimeTransport(manifest(changed, valid.transport)),
     /optional runtime asset/,
   );
+});
+
+test("shared signing and ASTC bytes cannot drag an unselected optional payload into downloads", () => {
+  const { assets, contents } = fixture();
+  // Share one optional-only content record with a signing license, not with common bytes.
+  const shared = contents.get(runtimeContentKey(assets[4]));
+  OPTIONAL_RUNTIME_ASSET_GROUPS["ipa-signing"].forEach((path, i) => {
+    const data = i === 2 ? shared.data : Buffer.from(`signing asset ${i}`);
+    const record = { path, optionalGroup: "ipa-signing", bytes: data.length, sha256: sha(data) };
+    assets.push(record);
+    contents.set(runtimeContentKey(record), { ...record, data });
+  });
+  const first = createRuntimeTransport(contents, { assets });
+  assert.deepEqual(createRuntimeTransport(contents, { assets: [...assets].reverse() }), first);
+  validateRuntimeTransport(manifest(assets, first.transport));
+  for (const optionalGroups of [
+    [],
+    ["ipa-signing"],
+    ["legacy-astc"],
+    ["ipa-signing", "legacy-astc"],
+  ]) {
+    const selectedKeys = new Set(
+      selectRuntimeAssetGroups(assets, optionalGroups).map(runtimeContentKey),
+    );
+    const selectedFiles = new Set(
+      first.transport.entries
+        .filter((entry) => selectedKeys.has(runtimeContentKey(entry)))
+        .map((entry) => entry.file),
+    );
+    for (const entry of first.transport.entries)
+      if (selectedFiles.has(entry.file))
+        assert.ok(
+          selectedKeys.has(runtimeContentKey(entry)),
+          "selected physical payload contains only selected content",
+        );
+  }
+  const ownership = validateRuntimeAssetGroups(assets);
+  assert.equal(ownership.get(runtimeContentKey(shared)), "ipa-signing|legacy-astc");
+  const common = { ...shared, path: "common/shared-license.txt" };
+  delete common.optionalGroup;
+  for (const records of [
+    [common, ...assets],
+    [...assets, common],
+  ])
+    assert.equal(validateRuntimeAssetGroups(records).get(runtimeContentKey(shared)), "");
 });

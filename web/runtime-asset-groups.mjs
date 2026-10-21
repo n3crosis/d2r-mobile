@@ -1,6 +1,18 @@
 // 根据固定编译输出划分可选公开资产；不允许把通用依赖或外壳移入可选组。
 // Partition optional public assets by fixed compiler outputs; common dependencies and shells cannot become optional.
 export const OPTIONAL_RUNTIME_ASSET_GROUPS = Object.freeze({
+  "ipa-signing": Object.freeze([
+    "sealed-workers/signing-worker.mjs",
+    "toolchain/zsign-wasm/dist/zsign.wasm",
+    "toolchain/zsign-wasm/dist/ZSIGN-LICENSE.txt",
+    "toolchain/zsign-wasm/dist/PORT-LICENSE.txt",
+    "toolchain/zsign-wasm/dist/OPENSSL-LICENSE.txt",
+    "toolchain/zsign-wasm/dist/OPENSSL-NOTICE.txt",
+    "toolchain/zsign-wasm/dist/pins.json",
+    "toolchain/zsign-wasm/dist/patch-report.json",
+    "toolchain/zsign-wasm/dist/compiler-version.txt",
+    "toolchain/zsign-wasm/dist/build-report.json",
+  ]),
   "legacy-astc": Object.freeze([
     "sealed-workers/astc-producer-worker.mjs",
     "toolchain/astc-encoder-wasm/dist/astc-encoder.mjs",
@@ -41,6 +53,11 @@ export function validateRuntimeAssetGroups(assets) {
     }
     const key = runtimeContentKey(asset);
     if (!ownership.has(key) || group === undefined) ownership.set(key, group ?? "");
+    else if (ownership.get(key) !== "") {
+      // 两个可选闭包共用的内容必须独立分包，不得夹带任一未选组的独有字节。
+      // Shared optional-only bytes get their own partition, never either group's unique payload.
+      ownership.set(key, [...new Set([...ownership.get(key).split("|"), group])].sort().join("|"));
+    }
   }
   for (const [group, paths] of found)
     if (paths.size !== OPTIONAL_RUNTIME_ASSET_GROUPS[group].length)

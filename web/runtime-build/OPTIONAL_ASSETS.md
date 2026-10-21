@@ -83,3 +83,47 @@ client at frontend build time; its runtime plans consume only verified worker,
 codec and data bytes. The current assembly omits 48 audited source-only copies,
 while retaining every component-submanifest asset, license, WASM and provenance
 record. See `runtime-build/payload-policy.mjs` for the exact build-only policy.
+
+## Optional browser-local IPA signing
+
+The separate `ipa-signing` group contains the closed `signing-worker.mjs`,
+`zsign.wasm`, zsign/port/OpenSSL licenses and notice, source pins, patch report,
+compiler version, and native build report. The generated `zsign.mjs` factory is
+statically bundled into that worker, not shipped as a second logical runtime
+asset. Assembly checks its receipt too. Missing, partial, stale or mismatched
+native outputs fail packaging; source-only integration is not a usable signer.
+Existing manifests without this group remain valid for unsigned generation.
+
+Select `prepareBrowserPackager({ signing: true })` before private input. Public
+bootstrap verifies the complete selected closure and initializes zsign with its
+transferred WASM bytes before exposing `signingReady`. It revokes the startup
+Blob URL after initialization. `session.takeIpaSigningClient()` transfers worker
+ownership once, so conversion runtime cleanup does not terminate the signer.
+The packager's internal conversion cleanup preserves it, while explicit
+`packager.close()` releases it, including after setup failure. Its combined
+cleanup promise is idempotent and rejection-observed for fire-and-forget callers;
+awaiters still receive cleanup failures. The UI closes it on every terminal
+conversion/signing path.
+
+`packager.sign({ ipa, credentials, signal, onProgress })` accepts a caller-owned
+unsigned Blob and explicit local P12/profile/password inputs only after public
+preparation. It returns a separate signed Blob and filename. Signing is one-shot;
+cancellation, failure and completion terminate its worker. The original unsigned
+result remains available if signing fails or is cancelled. No account login,
+upload, persistent credential storage, lazy runtime download or automatic
+certificate lookup is part of this flow. JavaScript password strings cannot be
+reliably zeroized; the UI clears its references and inputs after the attempt.
+
+This is an architectural no-network-request boundary for the signing code, not
+page-level CSP lockdown or a claim of universal browser network containment.
+The prototype intentionally does not reintroduce page-level CSP sealing. Native
+build/smoke receipts and synthetic lifecycle tests do not establish browser
+signing, Apple profile acceptance, device installation or real-game parity.
+
+Both optional groups can be selected independently or together. Identical bytes
+shared only by optional groups use their own deterministic transport partition,
+not either group's unique payload and not the default common partition. This
+prevents selecting one group from downloading the other's unique bytes.
+Identical content that also has a common owner still belongs to common storage.
+The source-only policy now lists 55 audited logical copies, including the seven
+signing client, contract, helper, worker-entry and generated-factory modules.

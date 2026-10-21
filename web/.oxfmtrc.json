@@ -18,6 +18,8 @@
     "vendor/spark-md5-3.0.2/LICENSE2",
     "toolchain/**/dist/",
     "toolchain/**/.build/",
+    "toolchain/zsign-wasm/bounded-map.inc",
+    "toolchain/zsign-wasm/stream-sha.inc",
     "toolchain/program-rewrite-spike/deps/",
     "toolchain/asset-generation-spike/public/generated/",
     "toolchain/asset-generation-spike/public/vendor/",

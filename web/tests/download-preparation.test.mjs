@@ -89,7 +89,7 @@ test("all automatic download DOM failures are contained and never revoke URL", (
 test("UI retry never reruns conversion and completed outcomes bypass conversion-failure catch", async () => {
   const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
   const retry = app.slice(
-    app.indexOf("  function prepareDownload()"),
+    app.indexOf("  function prepareDownload("),
     app.indexOf("  async function generate()"),
   );
   assert.match(retry, /downloadPreparation.current.prepare\(\)/);
@@ -103,5 +103,5 @@ test("UI retry never reruns conversion and completed outcomes bypass conversion-
     /if \(generationCompleted\) \{[\s\S]*?dmWebDownloadPreparationFailed[\s\S]*?return;\s+\}\s+const report/,
   );
   assert.match(app, /preparedDownload.dispose\(\)/);
-  assert.match(app, /<Button onClick=\{prepareDownload\}>/);
+  assert.match(app, /<Button onClick=\{\(\) => prepareDownload\(\)\}>/);
 });

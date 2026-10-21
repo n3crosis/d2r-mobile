@@ -96,3 +96,23 @@ test("mixed physical payloads reject, including when optional groups are not sel
   entries[1] = { ...entries[1], sha256: "f".repeat(64) };
   assert.throws(() => validateRuntimeTransportGroups(assets, entries), /Unknown/);
 });
+
+test("signing and legacy texture closures select independently and together", () => {
+  const signing = OPTIONAL_RUNTIME_ASSET_GROUPS["ipa-signing"].map((path, i) => ({
+    path,
+    optionalGroup: "ipa-signing",
+    bytes: i + 100,
+    sha256: "b".repeat(64),
+  }));
+  const legacy = optional();
+  const assets = [common, ...legacy, ...signing];
+  assert.deepEqual(selectRuntimeAssetGroups(assets), [common]);
+  assert.deepEqual(selectRuntimeAssetGroups(assets, ["ipa-signing"]), [common, ...signing]);
+  assert.deepEqual(selectRuntimeAssetGroups(assets, ["legacy-astc"]), [common, ...legacy]);
+  assert.deepEqual(selectRuntimeAssetGroups(assets, ["legacy-astc", "ipa-signing"]), assets);
+  assert.throws(
+    () => selectRuntimeAssetGroups([common, ...legacy, ...signing.slice(1)]),
+    /Incomplete/,
+  );
+  assert.throws(() => selectRuntimeAssetGroups([common], ["ipa-signing"]), /unavailable/);
+});

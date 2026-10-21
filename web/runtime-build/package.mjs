@@ -122,6 +122,40 @@ export function validateOptionalCodecReceipts({
     throw new Error("Invalid optional codec build receipt");
   return { bytes: shaReport.bytes, sha256: shaReport.sha256 };
 }
+// Validate real native output receipts; a source-only or partial signing build must not publish.
+export function validateSigningBuildReceipt({ report, pins, compiler }) {
+  const names = [
+    "zsign.mjs",
+    "zsign.wasm",
+    "ZSIGN-LICENSE.txt",
+    "PORT-LICENSE.txt",
+    "OPENSSL-LICENSE.txt",
+    "OPENSSL-NOTICE.txt",
+    "pins.json",
+    "patch-report.json",
+    "compiler-version.txt",
+  ];
+  if (
+    pins?.zsign?.commit !== "9299685bab7ef99827e06e5dfda93af747386590" ||
+    pins?.port?.commit !== "0fb14887c61716508088e365447ffdedf7a1837d" ||
+    pins?.openssl?.commit !== "45e844fa2a14ec92d146bd8f5778ac130b6625fb" ||
+    pins?.emscripten !== "4.0.20" ||
+    !isDeepStrictEqual(report?.sourcePins, pins) ||
+    report.browserExecutionVerified !== false ||
+    report.deviceInstallVerified !== false ||
+    !/^emcc .* 4\.0\.20(?:\s|$)/.test(compiler?.split("\n")[0] ?? "") ||
+    !isDeepStrictEqual(Object.keys(report.files ?? {}).sort(), names.sort()) ||
+    Object.values(report.files).some(
+      (record) =>
+        !Number.isSafeInteger(record?.bytes) ||
+        record.bytes < 1 ||
+        record.bytes > maximumFile ||
+        !/^[a-f0-9]{64}$/.test(record?.sha256),
+    )
+  )
+    throw new Error("Invalid signing build receipt");
+  return report.files;
+}
 export async function assembleRuntime({ build } = {}) {
   if (
     build?.emscripten !== "4.0.20" ||
@@ -310,6 +344,50 @@ export async function assembleRuntime({ build } = {}) {
       else if ([`${sha}/dist/LICENSE`, `${sha}/dist/apache-2.0.txt`].includes(path))
         expected = shaSourcePin.files[`mbedtls/${path.split("/").at(-1)}`];
       await copy(source, expected, path, "legacy-astc");
+    }
+    const signingDirectory = "toolchain/zsign-wasm/dist";
+    const signingPins = JSON.parse(
+      await readFile(resolve(web, "toolchain/zsign-wasm/pins.json"), "utf8"),
+    );
+    const signingReport = JSON.parse(
+      await readFile(resolve(web, `${signingDirectory}/build-report.json`), "utf8"),
+    );
+    const signingFiles = validateSigningBuildReceipt({
+      report: signingReport,
+      pins: signingPins,
+      compiler: await readFile(resolve(web, `${signingDirectory}/compiler-version.txt`), "utf8"),
+    });
+    // The JS factory is bundled into the closed worker, but its receipt must still match.
+    for (const [name, expected] of Object.entries(signingFiles)) {
+      const file = resolve(web, signingDirectory, name);
+      const info = await lstat(file);
+      if (
+        !info.isFile() ||
+        info.isSymbolicLink() ||
+        info.size !== expected.bytes ||
+        hash(await readFile(file)) !== expected.sha256
+      )
+        throw new Error("Signing output receipt mismatch");
+    }
+    if (
+      !isDeepStrictEqual(
+        JSON.parse(await readFile(resolve(web, `${signingDirectory}/pins.json`), "utf8")),
+        signingPins,
+      )
+    )
+      throw new Error("Signing source pins mismatch");
+    const signingPatches = JSON.parse(
+      await readFile(resolve(web, `${signingDirectory}/patch-report.json`), "utf8"),
+    );
+    for (const name of ["prepare-source.py", "stream-sha.inc", "bounded-map.inc"])
+      if (
+        hash(await readFile(resolve(web, "toolchain/zsign-wasm", name))) !==
+        signingPatches.patches?.[name]
+      )
+        throw new Error("Signing local source receipt mismatch");
+    for (const path of OPTIONAL_RUNTIME_ASSET_GROUPS["ipa-signing"]) {
+      const source = path.startsWith("sealed-workers/") ? `runtime-build/.build/${path}` : path;
+      await copy(source, signingFiles[path.split("/").at(-1)], path, "ipa-signing");
     }
     // 大外壳文件各自生成独立传输载荷；客户端只选择需要的配置。
     // Large shell archives receive separate transport payloads; clients select only the needed profile.

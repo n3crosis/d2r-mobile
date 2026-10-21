@@ -14,6 +14,13 @@ const workspace = resolve(root, "web/runtime-build/.build");
 const sdk = "10.0.402";
 const crossCommit = "f11ba9f0b21ba8fc15153d50a2a1ae31ab1cf8f7";
 const stages = [
+  ["optional local IPA signer", ".", "bash", ["web/toolchain/zsign-wasm/build.sh"]],
+  [
+    "optional local IPA signer WASM smoke",
+    ".",
+    "node",
+    ["web/toolchain/zsign-wasm/wasm-smoke.mjs"],
+  ],
   [
     "program dependencies",
     "web/toolchain/program-rewrite-spike",
