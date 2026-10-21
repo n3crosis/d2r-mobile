@@ -2,6 +2,7 @@
 import { defaultState, clearCircles, silhouette, metal } from "../art-kernels/kernels.mjs";
 import { ordered, put, roundEven as round, float, stringifyPython } from "./python-values.mjs";
 import { requireValue as require, vitalCharacters, generateLayout } from "./support.mjs";
+import { acceptsNativeArtPngDigest } from "../../native-art-png-digests.mjs";
 const FONTS = ["blizzardglobal-v5_81.ttf", "exocetblizzardot-medium.otf"];
 const IMAGE_NAMES = ["front_panel", "levelupbutton", "greater_healing_potion"];
 const SIZES = {
@@ -119,7 +120,7 @@ export async function generateHud(payload, options, { codec, kernels: k, font })
   }
   for (const a of atlases) {
     const raw = base64(bundle.atlases[a.asset], MAX_PIXELS * 4 + 131072, "HUD_ATLAS_SIZE");
-    require((await sha256(raw)) === a.decoded_png_sha256, "HUD_ATLAS_HASH");
+    require(acceptsNativeArtPngDigest(a, await sha256(raw)), "HUD_ATLAS_HASH");
     const image = codec.decodeRgba(raw);
     require(Array.isArray(a.atlas_px) &&
       a.atlas_px.length === 2 &&

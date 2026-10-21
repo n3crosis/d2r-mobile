@@ -4,6 +4,7 @@
  * 完整的 Switch 放大原生 HUD。字体通过逻辑归档读取，绝非操作系统文件。
  * Complete Switch-upscaled native HUD. Fonts are logical archive reads, never OS files.
  */
+import { acceptsNativeArtPngDigest } from "./native-art-png-digests.mjs";
 const IMAGE_PATHS = Object.freeze({
   front_panel: "hd/global/ui/PANEL/HUD_02/front_panel.sprite",
   levelupbutton: "hd/global/ui/Controller/HUD/LevelUpButton.sprite",
@@ -137,7 +138,7 @@ export async function generateHud({
       if (
         !(bytes instanceof Uint8Array) ||
         bytes.length > 16 * 1024 * 1024 ||
-        (await hash(bytes)) !== asset.decoded_png_sha256
+        !acceptsNativeArtPngDigest(asset, await hash(bytes))
       )
         fail("HUD_ATLAS_HASH");
       const [w, h] = asset.atlas_px;

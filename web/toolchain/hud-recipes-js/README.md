@@ -24,7 +24,7 @@ The existing guards remain mandatory:
 - `options.mode === "switch-upscaled"`; no silent PC-art or font fallback.
 - 64 MiB JSON payload; 2 MiB per metadata item/layout; exact metadata/image/font/atlas key sets.
 - All three metadata SHA-256 checks against caller-provided trusted pins. Those pins must still come from the source-pinned packaging boundary, not the untrusted game input.
-- Exactly nine skill atlas PNGs; **whole encoded PNG SHA-256** and declared dimensions rechecked before use. Hashes are not replaced with pixel digests.
+- Exactly nine skill atlas PNGs; **whole encoded PNG SHA-256** and declared dimensions rechecked before use. For the verified 3.3.94012 atlases, explicitly pinned browser PNG digests are paired with their frozen digests. Hashes are not replaced with pixel digests.
 - 16 MiB per archive font; combined source/atlas pixel budget 4,194,304; bounded image dimensions; 512 files and 32 MiB total output.
 - Source and metadata pins checked by `verify-sources.mjs`. The pins remain identical to `asset-generation-spike/hud-provenance.json`.
 

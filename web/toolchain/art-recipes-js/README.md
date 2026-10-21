@@ -3,7 +3,7 @@
 Callable ports of three existing bounded Python operations, not yet imported by the production worker:
 
 - `image-default-frame`: validate v31, crop the requested frame, apply the existing default-state numeric kernel, emit identical RGBA/PNG/v31 files and receipt.
-- `native-art`: verify trusted metadata, original SHA-256/MD5 and complete encoded-PNG SHA-256, then emit the nine class atlases plus any other declared atlases and the exact generated C index. No PNG guard is weakened to a pixel digest.
+- `native-art`: verify trusted metadata, original SHA-256/MD5 and complete encoded-PNG SHA-256, then emit the nine class atlases plus any other declared atlases and the exact generated C index. The verified 3.3.94012 atlases also accept explicitly pinned browser PNG digests paired with their frozen digests. No PNG guard is weakened to a pixel digest.
 - `map-goal`: crop seven symbols, halve cross alpha with integer flooring, render 155 current-name localized labels, and emit the original 164-file set and JSON layout. Text uses exact FreeType BASIC direct drawing, not Canvas/source-over.
 
 `createArtRecipes({codec,kernels,defaultState,font,md5,sha256})` returns an async `execute(operation,payload,options)` function. `payload` is a `Uint8Array`; options and return receipts retain the existing operation contracts. Files are a plain filename-to-`Uint8Array` object. `isArtRecipeOperation` is available for dispatch. Dependencies are injected so this module neither fetches artifacts nor initializes Python:

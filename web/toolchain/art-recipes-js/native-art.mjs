@@ -15,6 +15,7 @@ import {
   utf8,
   utf8Decoder,
 } from "./native-art-util.mjs";
+import { acceptsNativeArtPngDigest } from "../../native-art-png-digests.mjs";
 
 const METADATA_KEYS = ["manifest", "geometry", "binding", "implementation"];
 const CLASS_CODES = new Map(
@@ -145,7 +146,7 @@ export async function generateNativeArt(payload, options, { codec, sha256, md5 }
     const { rgba, width, height } = images.get(path);
     const png = await codec.encodeRgba(rgba, width, height);
     requireValue(
-      png instanceof Uint8Array && (await sha256(png)) === asset.decoded_png_sha256,
+      png instanceof Uint8Array && acceptsNativeArtPngDigest(asset, await sha256(png)),
       `native_art：${asset.asset} 解出的 PNG 与冻结的不一致（Pillow 版本？）`,
     );
     files[asset.asset] = png.slice();
