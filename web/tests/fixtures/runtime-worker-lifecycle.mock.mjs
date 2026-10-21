@@ -834,3 +834,57 @@ for (const mode of ["throw", "reject", "thenable"]) {
     assert.notEqual(progress.at(-1), progress.at(-2));
   });
 }
+
+test("program retirement releases only the completed component and is idempotent", async (t) => {
+  const { start, state, assertSealedRuntime } = await setup(t, {
+    components: ["program", "texture"],
+  });
+  const runtime = await start();
+  const client = runtime.createProgramWorker();
+  const pending = runProgram(client);
+  assert.equal(runtime.retireProgramWorker(), false);
+  state.workers[1].reply({ id: 1, ok: true, files: {} });
+  await pending;
+  assert.equal(runtime.retireProgramWorker(), false);
+  client.close();
+  client.close();
+  assert.ok(state.workers.every((worker) => worker.terminations === 0));
+  assert.equal(runtime.retireProgramWorker(), true);
+  assert.equal(runtime.retireProgramWorker(), true);
+  assert.equal(state.workers[1].terminations, 1);
+  assert.equal(state.workers[0].terminations, 0);
+  assert.doesNotThrow(() => assertSealedRuntime(runtime));
+  assert.throws(() => runtime.createProgramWorker(), /Program worker retired/);
+  const texture = runTexture(runtime.createTextureClient());
+  state.workers[0].reply({ id: 1, ok: true, result: { sprite: new Uint8Array([7]) } });
+  assert.deepEqual(await texture, { sprite: new Uint8Array([7]) });
+  await runtime.close();
+  assert.equal(state.workers[1].terminations, 1);
+  assert.equal(state.workers[0].terminations, 1);
+});
+
+test("program retirement preserves idle siblings and their future requests", async (t) => {
+  const { start, state } = await setup(t);
+  const runtime = await start();
+  const first = runtime.createProgramWorker();
+  const sibling = runtime.createProgramWorker();
+  first.close();
+  assert.equal(runtime.retireProgramWorker(), false);
+  assert.equal(state.workers[0].terminations, 0);
+  const pending = runProgram(sibling);
+  state.workers[0].reply({ id: 1, ok: true, files: {} });
+  await pending;
+  sibling.close();
+  assert.equal(runtime.retireProgramWorker(), true);
+});
+
+test("program retirement after cancelled active work is a harmless no-op", async (t) => {
+  const { start, state } = await setup(t);
+  const runtime = await start();
+  const client = runtime.createProgramWorker();
+  const pending = runProgram(client);
+  client.close();
+  await assert.rejects(pending, /Sealed runtime closed/);
+  assert.equal(runtime.retireProgramWorker(), false);
+  assert.equal(state.workers[0].terminations, 1);
+});

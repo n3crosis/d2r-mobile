@@ -1296,8 +1296,13 @@ export async function prepareSealedRuntime({
         "spirv",
       );
     }
+    let programClients = 0,
+      programRetired = false;
     function createProgramWorker() {
+      if (programRetired) fail("Program worker retired");
       const l = lease("program");
+      programClients++;
+      let released = false;
       return {
         run({ bytes, moduleName, releaseId, caseName }) {
           if (caseName !== undefined)
@@ -1305,8 +1310,22 @@ export async function prepareSealedRuntime({
           const copy = input(bytes, 32 * 1024 * 1024);
           return l.request({ bytes: copy, moduleName, releaseId }, [copy.buffer]);
         },
-        close: l.close,
+        close() {
+          if (released) return;
+          released = true;
+          programClients--;
+          l.close();
+        },
       };
+    }
+    // 一次性程序阶段完成后显式释放 WASM；不能撤销仍存活的共享客户端。
+    // Explicitly release WASM after the one-shot stage, never revoking live shared clients.
+    function retireProgramWorker() {
+      if (programRetired) return true;
+      if (closed || !channels.program || programClients || channels.program.busy) return false;
+      programRetired = true;
+      channels.program.stop();
+      return true;
     }
     let extractionTaken = false;
     function createExtractionWorker() {
@@ -1352,6 +1371,7 @@ export async function prepareSealedRuntime({
       createTranslatorWorker,
       createCrossWorker,
       createProgramWorker,
+      retireProgramWorker,
       createExtractionWorker,
       createAstcProducerClient,
       takeIpaSigningFactory,

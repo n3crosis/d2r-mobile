@@ -68,6 +68,42 @@ test("tampered source and missing pack cannot become a job", async () => {
     /Explicit/,
   );
 });
+test("pinned catalog sources retain their checked bytes when Buffer inputs change during hashing", async (t) => {
+  const expected = await loadShaderCatalog(input());
+  const expectedEntries = expected.keys.map((key) => expected.describe(key));
+  for (const [name, from, to] of [
+    ["map", "cs_assao_clear_load_counter_c.bin", "cs_xssao_clear_load_counter_c.bin"],
+    ["facts", '"2d"', '"3d"'],
+    ["conflicts", "67c858efc3fcf781", "07c858efc3fcf781"],
+  ])
+    await t.test(name, async (t) => {
+      const data = input();
+      const backing = Buffer.alloc(data[name].length + 2, 0xa5);
+      const borrowed = backing.subarray(1, -1);
+      borrowed.set(data[name]);
+      data[name] = borrowed;
+      const at = borrowed.indexOf(from);
+      assert.ok(at >= 0);
+      const nativeDigest = crypto.subtle.digest.bind(crypto.subtle);
+      let mutated = false;
+      t.mock.method(crypto.subtle, "digest", async (algorithm, bytes) => {
+        const digest = await nativeDigest(algorithm, bytes);
+        if (bytes.byteLength === borrowed.byteLength) {
+          borrowed.write(to, at);
+          mutated = true;
+        }
+        return digest;
+      });
+      const actual = await loadShaderCatalog(data);
+      assert.equal(mutated, true);
+      assert.deepEqual(
+        actual.keys.map((key) => actual.describe(key)),
+        expectedEntries,
+      );
+      assert.equal(backing[0], 0xa5);
+      assert.equal(backing.at(-1), 0xa5);
+    });
+});
 function fixture(stage, c1Length) {
   const length = (stage === "cs" ? 16 : 0x90) + c1Length;
   const rec = new Uint8Array(0x38 + length + 0x880);
@@ -120,8 +156,70 @@ test("authored cs/vs/ps records and c1 match original native job_for exactly", a
       );
     }
 });
-test("record snapshots always wipe without altering borrowed input or successful code", async () => {
+test("record decoding owns exact copies of Buffer and Uint8Array subviews", async (t) => {
+  for (const stage of ["cs", "vs", "ps"])
+    for (const kind of ["uint8-subview", "buffer", "buffer-subview"])
+      await t.test(`${stage} ${kind}`, async () => {
+        const { rec, descriptor } = fixture(stage, 256);
+        rec[stage === "cs" ? 0x38 : 0x70] = 7;
+        rec[rec.length - 0x880 - 256] = 9;
+        const offset = kind === "buffer" ? 0 : 13;
+        const backing = new Uint8Array(rec.length + offset * 2).fill(0xa5);
+        backing.set(rec, offset);
+        const borrowed =
+          kind === "uint8-subview"
+            ? backing.subarray(offset, offset + rec.length)
+            : Buffer.from(backing.buffer, offset, rec.length);
+        const before = backing.slice();
+        const result = await decodeShaderRecord(descriptor, borrowed, {
+          debug: true,
+          reduced: false,
+        });
+        const start = stage === "cs" ? 0x38 : 0x68;
+        assert.deepEqual(result.code, rec.subarray(start, rec.length - 0x880));
+        assert.equal(result.job.c1, "09" + "00".repeat(255));
+        assert.equal(result.code.byteOffset, 0);
+        assert.equal(result.code.byteLength, result.code.buffer.byteLength);
+        assert.notEqual(result.code.buffer, borrowed.buffer);
+        assert.deepEqual(backing, before);
+        borrowed.fill(0);
+        assert.deepEqual(result.code, rec.subarray(start, rec.length - 0x880));
+      });
+});
+test("record Buffer mutation during hashing cannot change the checked snapshot", async (t) => {
+  const { rec, descriptor } = fixture("vs", 256);
+  rec[0x70] = 7;
+  const backing = Buffer.alloc(rec.length + 2, 0xa5);
+  const borrowed = backing.subarray(1, -1);
+  borrowed.set(rec);
+  const nativeDigest = crypto.subtle.digest.bind(crypto.subtle);
+  t.mock.method(crypto.subtle, "digest", async (algorithm, bytes) => {
+    const digest = await nativeDigest(algorithm, bytes);
+    borrowed.fill(0x55);
+    return digest;
+  });
+  const result = await decodeShaderRecord(descriptor, borrowed, { debug: true, reduced: false });
+  assert.deepEqual(result.code, rec.subarray(0x68, rec.length - 0x880));
+  assert.ok(borrowed.every((byte) => byte === 0x55));
+  assert.equal(backing[0], 0xa5);
+  assert.equal(backing.at(-1), 0xa5);
+});
+test("failed record decoding does not wipe borrowed Buffer storage", async () => {
+  const { rec, descriptor } = fixture("cs", 0);
+  const backing = Buffer.alloc(rec.length + 2, 0xa5);
+  const borrowed = backing.subarray(1, -1);
+  borrowed.set(rec);
+  const before = Buffer.from(backing);
+  descriptor.key = "0".repeat(16);
+  await assert.rejects(
+    decodeShaderRecord(descriptor, borrowed, { debug: true, reduced: false }),
+    /Control hash/,
+  );
+  assert.deepEqual(backing, before);
+});
+test("record snapshots always wipe without altering borrowed input or successful code", async (t) => {
   const originalSlice = Uint8Array.prototype.slice;
+  const nativeDigest = crypto.subtle.digest.bind(crypto.subtle);
   for (const outcome of ["success", "control", "stage", "facts"]) {
     const { rec, descriptor } = fixture("vs", 0);
     rec[0x70] = 7;
@@ -130,10 +228,13 @@ test("record snapshots always wipe without altering borrowed input or successful
     if (outcome === "facts") descriptor.facts = null;
     const before = rec.slice();
     let snapshot, code;
+    const digest = t.mock.method(crypto.subtle, "digest", (algorithm, data) => {
+      snapshot = new Uint8Array(data.buffer);
+      return nativeDigest(algorithm, data);
+    });
     Uint8Array.prototype.slice = function (...args) {
       const result = originalSlice.apply(this, args);
-      if (this === rec) snapshot = result;
-      else if (this === snapshot) code = result;
+      if (this.buffer === snapshot?.buffer) code = result;
       return result;
     };
     try {
@@ -159,6 +260,7 @@ test("record snapshots always wipe without altering borrowed input or successful
       assert.deepEqual(rec, before);
     } finally {
       Uint8Array.prototype.slice = originalSlice;
+      digest.mock.restore();
     }
   }
 });

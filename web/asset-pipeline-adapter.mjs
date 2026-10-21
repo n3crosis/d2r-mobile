@@ -263,13 +263,28 @@ export function createAssetPipelineAdapter({
         fail("ASSET_PIPELINE_CLIENT");
       return result;
     };
-    const append = (name, value) => {
+    const append = (name, value, adopt = false) => {
       const bytes = view(value);
       if (!bytes?.length || (outputBytes += bytes.length) > ASSET_PIPELINE_LIMITS.outputBytes)
         fail("ASSET_PIPELINE_OUTPUT_LIMIT");
-      let stored = bytes.slice();
+      if (adopt) {
+        // 仅接管内部原生覆盖生成器的独占完整缓冲区，其他调用保持快照语义。
+        // Adopt only exclusive full buffers from the internal native overlay generator.
+        if (
+          !owned.has(bytes) ||
+          Object.getPrototypeOf(bytes) !== Uint8Array.prototype ||
+          !(bytes.buffer instanceof ArrayBuffer) ||
+          Object.getPrototypeOf(bytes.buffer) !== ArrayBuffer.prototype ||
+          bytes.buffer.resizable === true ||
+          bytes.byteOffset !== 0 ||
+          bytes.byteLength !== bytes.buffer.byteLength
+        )
+          fail("ASSET_PIPELINE_BYTES");
+      }
+      let stored = adopt ? bytes : new Uint8Array(bytes);
       const size = stored.length;
       outputs.push(stored);
+      if (adopt) owned.delete(bytes);
       releaseEntries.push(() => {
         stored = undefined;
       });
@@ -494,7 +509,7 @@ export function createAssetPipelineAdapter({
           });
         } else if (overlay.astc !== undefined || Object.keys(astcFiles).length)
           fail("ASSET_PIPELINE_ASTC_BINDING");
-        for (const [name, value] of generatedFiles) append(name, value);
+        for (const [name, value] of generatedFiles) append(name, value, true);
       }
       check();
       closeClients();

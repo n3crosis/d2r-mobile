@@ -24,6 +24,12 @@ mock.module("../../sealed-runtime/clients.mjs", {
     async prepareSealedRuntime(options) {
       state.options = options;
       return {
+        retireProgramWorker() {
+          assert.equal(state.programCompleted, true);
+          assert.equal(state.runtimeClosed, false);
+          state.programRetirements = (state.programRetirements ?? 0) + 1;
+          return !state.programSibling;
+        },
         takeIpaSigningFactory() {
           state.taken++;
           return signer;
@@ -70,7 +76,16 @@ mock.module("../../extraction-job-adapter.mjs", {
   },
 });
 mock.module("../../program-rewriter-adapter.mjs", {
-  namedExports: { createProgramRewriterAdapter: () => ({ dispose() {} }) },
+  namedExports: {
+    createProgramRewriterAdapter: () => ({
+      async generateProgram() {
+        if (state.programFailure) throw new Error("PROGRAM_FAILED");
+        state.programCompleted = true;
+        return [];
+      },
+      dispose() {},
+    }),
+  },
 });
 mock.module("../../production-assets.mjs", {
   namedExports: { createProductionAssetAdapter: () => ({ dispose() {} }) },
@@ -93,6 +108,7 @@ mock.module("../../packaging-job.mjs", {
       const context = { selection: {}, manifest: {} };
       await adapters.extractSelected(context);
       await adapters.createOutput(context);
+      await adapters.generateProgram(context);
       await adapters.cleanup(context);
       return { committed: true };
     },
@@ -220,4 +236,30 @@ test("closing during permission query prevents generation after permission resol
   grant("granted");
   await rejected;
   assert.equal(state.jobs ?? 0, 0);
+});
+
+test("successful program stage requests retirement before conversion cleanup", async () => {
+  reset();
+  const packager = await prepareBrowserPackager();
+  assert.equal((await generate(packager)).committed, true);
+  assert.equal(state.programRetirements, 1);
+  await packager.close();
+});
+
+test("a live program sibling makes retirement optional without failing packaging", async () => {
+  reset();
+  state.programSibling = true;
+  const packager = await prepareBrowserPackager();
+  assert.equal((await generate(packager)).committed, true);
+  assert.equal(state.programRetirements, 1);
+  await packager.close();
+});
+
+test("failed program generation does not retire the program component", async () => {
+  reset();
+  state.programFailure = true;
+  const packager = await prepareBrowserPackager();
+  await assert.rejects(generate(packager), /PROGRAM_FAILED/);
+  assert.equal(state.programRetirements ?? 0, 0);
+  await packager.close();
 });

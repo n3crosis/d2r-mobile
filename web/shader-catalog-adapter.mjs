@@ -58,9 +58,9 @@ export async function decodeShaderRecord(descriptor, input, flags) {
   supported(descriptor.stage, flags.allowUnverifiedTessellation);
   options(flags);
   if (!HEX.test(descriptor.key)) throw new Error("Invalid control key");
-  // 等待哈希前先拍快照，避免调用方修改已检查字节。
-  // Snapshot before awaiting the hash, so a caller cannot mutate checked bytes.
-  const rec = bytes(input, 2 * 1024 * 1024, "shader record").slice();
+  // 哈希等待前复制到独立的普通字节数组；Buffer.slice() 仅借用原存储。
+  // Copy into an owned plain byte array before hashing; Buffer.slice() only borrows storage.
+  const rec = new Uint8Array(bytes(input, 2 * 1024 * 1024, "shader record"));
   let code,
     returned = false;
   try {
@@ -219,7 +219,9 @@ function createOwnedPackSource(name, input, entries, maximumIndex) {
 export async function loadShaderCatalog(input) {
   const texts = {};
   for (const [name, expected] of Object.entries(SHADER_CATALOG_SOURCES)) {
-    const data = bytes(input[name], 8 * 1024 * 1024, name).slice();
+    // Buffer 输入也必须持有独立快照，保证解析字节与摘要检查一致。
+    // Buffer inputs also require owned snapshots so parsed bytes match the checked digest.
+    const data = new Uint8Array(bytes(input[name], 8 * 1024 * 1024, name));
     if ((await sha(data)) !== expected) throw new Error(`Pinned ${name} source digest mismatch`);
     texts[name] = new TextDecoder("utf-8", { fatal: true }).decode(data);
   }

@@ -218,3 +218,33 @@ test("pre-abort never authenticates or constructs clients; invalid dimensions st
   );
   assert.ok(!f.calls.includes("encode"));
 });
+
+test("custom worker Buffer map-goal outputs are snapshotted before scratch cleanup", async () => {
+  const f = await setup();
+  const createWorker = f.options.createAssetWorker;
+  const returned = [];
+  f.options.createAssetWorker = () => {
+    const worker = createWorker();
+    const run = worker.run;
+    worker.run = async (...args) => {
+      const result = await run(...args);
+      if (args[0] === "map-goal")
+        for (const name of Object.keys(result.files)) {
+          const bytes = Buffer.from(result.files[name]);
+          returned.push(bytes);
+          result.files[name] = bytes;
+        }
+      return result;
+    };
+    return worker;
+  };
+  const adapter = createAssetPipelineAdapter(f.options);
+  const entries = await adapter.generateAssets(f.auth);
+  assert.equal(returned.length, MAP_GOAL_OUTPUTS.length);
+  for (const buffer of returned) assert.ok(buffer.every((value) => value === 0));
+  const mapEntries = entries.filter((entry) => entry.path.startsWith("mapgoal/"));
+  for (const entry of mapEntries) assert.deepEqual([...(await bytes(entry))], [1, 2]);
+  const { value: chunk } = await mapEntries[0].chunks().next();
+  adapter.dispose();
+  assert.deepEqual([...chunk], [1, 2]);
+});

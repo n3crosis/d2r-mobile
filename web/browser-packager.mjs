@@ -306,8 +306,13 @@ export async function prepareBrowserPackager({
             return output.createOutput(context);
           },
           validateArchive: (context) => output.validateArchive(context),
-          generateProgram: async (context) =>
-            (await program.generateProgram(context)).filter((e) => allowed(e.path)),
+          async generateProgram(context) {
+            const entries = await program.generateProgram(context);
+            // 已完成的程序阶段不再使用 WASM；保留其他转换及签名线程。
+            // The completed program stage no longer needs WASM; preserve other workers and signing.
+            runtime.retireProgramWorker();
+            return entries.filter((e) => allowed(e.path));
+          },
           async generateAssets(context) {
             if (producer) {
               const root = await navigator.storage.getDirectory();

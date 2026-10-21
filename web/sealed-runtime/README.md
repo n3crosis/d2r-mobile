@@ -66,6 +66,13 @@ network-loading worker constructors. Multiple lightweight clients may share a
 component, but each component permits only one in-flight request; concurrent
 work rejects instead of building an unbounded queue. Closing an idle client
 releases that client; closing one during its own request terminates the session.
+After a completed one-shot program stage has closed all its program clients,
+`runtime.retireProgramWorker()` permanently terminates only that component to
+release its WASM memory before later packaging stages. It returns false without retiring
+while any program client remains open, including idle sibling clients (or when
+the session/component is unavailable), and true after successful retirement. Generic
+client `close()` semantics are unchanged; retirement is idempotent and future
+program clients are unavailable.
 Call `runtime.close()` on completion, cancellation or disposal to terminate all
 workers and revoke bootstrap blob URLs.
 
