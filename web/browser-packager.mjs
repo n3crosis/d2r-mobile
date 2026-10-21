@@ -165,6 +165,7 @@ export async function prepareBrowserPackager({
       profileId: profile.profileId,
       verifyProvenance: readAuthenticatedProgramModules,
       createWorker: runtime.createProgramWorker,
+      workerOutputOwnership: "owned",
     });
     if (!legacyAstc) assets = createProductionAssetAdapter({ runtime, profile });
     shaders = createProductionShaderAdapter({

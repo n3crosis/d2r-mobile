@@ -73,9 +73,10 @@ async function fixture(t) {
   });
   return { inputs, outputs, snapshots, copiedFiles, guest, plist, catalog };
 }
-function adapterFor(f, run, close = () => {}) {
+function adapterFor(f, run, close = () => {}, workerOutputOwnership = "borrowed") {
   return createProgramRewriterAdapter({
     trustedCatalog: f.catalog,
+    workerOutputOwnership,
     resolveInput: () => ({ versionId: "lifetime", programModules: f.inputs }),
     createWorker: () => ({
       run:
@@ -233,4 +234,144 @@ test("Buffer inputs and worker outputs stay borrowed and emitted chunks survive 
   assert.deepEqual(borrowed.map(sha), expected);
   for (const { bytes, digest } of chunks) assert.equal(sha(bytes), digest);
   for (const bytes of [...f.snapshots.values(), ...f.copiedFiles.values()]) empty(bytes);
+});
+
+test("owned worker outputs are adopted by identity and retained only until consumed", async (t) => {
+  const f = await fixture(t);
+  const originalInputs = Object.values(f.inputs).map(sha);
+  const adapter = adapterFor(f, undefined, undefined, "owned");
+  const entries = await adapter.generateProgram();
+  for (const [module, files] of Object.entries(f.outputs))
+    for (const [name, bytes] of Object.entries(files)) {
+      assert.equal(f.copiedFiles.get(`${module}/${name}`), bytes);
+      const retained =
+        name.endsWith("fixups.tsv") || name.endsWith("gates.tsv") || name === "main.cuts.tsv";
+      if (retained) assert.ok(bytes.some((value) => value !== 0));
+      else empty(bytes);
+    }
+  const chunks = [];
+  for (const entry of entries)
+    for await (const bytes of entry.chunks()) chunks.push({ bytes, digest: sha(bytes) });
+  adapter.dispose();
+  for (const files of Object.values(f.outputs))
+    for (const bytes of Object.values(files)) empty(bytes);
+  for (const { bytes, digest } of chunks) assert.equal(sha(bytes), digest);
+  assert.deepEqual(Object.values(f.inputs).map(sha), originalInputs);
+});
+
+test("owned digest failure wipes even response files not yet hashed", async (t) => {
+  const f = await fixture(t);
+  f.catalog.versions[0].modules[0].files["build_src.sha256"] = "0".repeat(64);
+  const adapter = adapterFor(f, undefined, undefined, "owned");
+  await assert.rejects(adapter.generateProgram(), { code: "PROGRAM_OUTPUT_DIGEST_MISMATCH" });
+  for (const bytes of Object.values(f.outputs.main)) empty(bytes);
+  for (const bytes of Object.values(f.outputs.sdk)) assert.ok(bytes.some((value) => value !== 0));
+});
+
+test("owned malformed response shape still wipes transferred eligible files", async (t) => {
+  const f = await fixture(t);
+  const adapter = adapterFor(
+    f,
+    () => ({ ok: true, status: "invalid", files: f.outputs.main }),
+    undefined,
+    "owned",
+  );
+  await assert.rejects(adapter.generateProgram(), { code: "PROGRAM_REWRITE_REJECTED" });
+  for (const bytes of Object.values(f.outputs.main)) empty(bytes);
+});
+
+for (const kind of ["buffer", "subview", "shared", "resizable", "alias"])
+  test(`owned output rejects ${kind} without wiping ineligible storage`, async (t) => {
+    const f = await fixture(t);
+    const original = f.outputs.main["main.gates.tsv"];
+    let invalid;
+    if (kind === "buffer") invalid = Buffer.from(original);
+    if (kind === "subview") {
+      invalid = new Uint8Array(original.length + 1).fill(7).subarray(1);
+    }
+    if (kind === "shared") invalid = new Uint8Array(new SharedArrayBuffer(original.length)).fill(7);
+    if (kind === "resizable")
+      invalid = new Uint8Array(
+        new ArrayBuffer(original.length, { maxByteLength: original.length + 1 }),
+      ).fill(7);
+    if (kind === "alias") invalid = f.outputs.main["main.cuts.tsv"];
+    const expected = sha(invalid);
+    f.outputs.main["main.gates.tsv"] = invalid;
+    const adapter = adapterFor(f, undefined, undefined, "owned");
+    await assert.rejects(adapter.generateProgram(), { code: "PROGRAM_INVALID_OUTPUT" });
+    if (kind !== "alias") assert.equal(sha(invalid), expected);
+    for (const bytes of Object.values(f.outputs.main))
+      if (bytes !== invalid || kind === "alias") empty(bytes);
+  });
+
+for (const workerOutputOwnership of ["borrowed", "owned"])
+  for (const interruption of ["abort", "dispose"])
+    test(`${workerOutputOwnership} late successful response after ${interruption} respects ownership`, async (t) => {
+      const f = await fixture(t);
+      let resolveResult, started;
+      const running = new Promise((resolve) => {
+        started = resolve;
+      });
+      const controller = new AbortController();
+      const adapter = adapterFor(
+        f,
+        () => {
+          started();
+          return new Promise((resolve) => {
+            resolveResult = resolve;
+          });
+        },
+        undefined,
+        workerOutputOwnership,
+      );
+      const generation = adapter.generateProgram({ signal: controller.signal });
+      await running;
+      if (interruption === "abort") controller.abort();
+      else adapter.dispose();
+      await assert.rejects(generation, {
+        code: interruption === "abort" ? "PROGRAM_CANCELLED" : "PROGRAM_DISPOSED",
+      });
+      const before = Object.values(f.outputs.main).map(sha);
+      resolveResult({ ok: true, status: "synthetic-only", files: f.outputs.main });
+      await new Promise((resolve) => setImmediate(resolve));
+      if (workerOutputOwnership === "owned")
+        for (const bytes of Object.values(f.outputs.main)) empty(bytes);
+      else assert.deepEqual(Object.values(f.outputs.main).map(sha), before);
+      for (const bytes of Object.values(f.inputs)) assert.ok(bytes.some((value) => value !== 0));
+    });
+
+test("owned Guest verification failure wipes both modules", async (t) => {
+  const f = await fixture(t);
+  f.catalog.versions[0].guestSha256 = "0".repeat(64);
+  const adapter = adapterFor(f, undefined, undefined, "owned");
+  await assert.rejects(adapter.generateProgram(), { code: "PROGRAM_GUEST_DIGEST_MISMATCH" });
+  for (const files of Object.values(f.outputs))
+    for (const bytes of Object.values(files)) empty(bytes);
+  for (const bytes of f.snapshots.values()) empty(bytes);
+});
+
+test("owned unexpected file is also wiped on file-set rejection", async (t) => {
+  const f = await fixture(t);
+  f.outputs.main["unexpected.bin"] = new Uint8Array([7, 8]);
+  const adapter = adapterFor(f, undefined, undefined, "owned");
+  await assert.rejects(adapter.generateProgram(), { code: "PROGRAM_REWRITE_REJECTED" });
+  for (const bytes of Object.values(f.outputs.main)) empty(bytes);
+});
+
+test("owned detached output cannot interrupt cleanup of later files", async (t) => {
+  const f = await fixture(t);
+  const detached = f.outputs.main["build_src.sha256"];
+  structuredClone(detached, { transfer: [detached.buffer] });
+  const adapter = adapterFor(f, undefined, undefined, "owned");
+  await assert.rejects(adapter.generateProgram(), { code: "PROGRAM_INVALID_OUTPUT" });
+  for (const bytes of Object.values(f.outputs.main)) if (bytes !== detached) empty(bytes);
+});
+
+test("owned genuine empty sidecars remain valid", async (t) => {
+  const f = await fixture(t);
+  f.outputs.main["main.sites.tsv"] = new Uint8Array();
+  f.catalog.versions[0].modules[0].files["main.sites.tsv"] = sha(new Uint8Array());
+  const adapter = adapterFor(f, undefined, undefined, "owned");
+  await adapter.generateProgram();
+  adapter.dispose();
 });

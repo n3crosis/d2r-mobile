@@ -159,6 +159,13 @@ function layout(bytes, imageSize) {
  * from a separately trusted CI/release registry, NEVER extracted content or UI.
  * resolveInput(extracted, selection) -> {versionId, bytes}. createWorker() must
  * return {run({bytes,caseName}): Promise<worker response>, close()}.
+ * 输出默认按借用处理；仅可信连接可选择 "owned"。每个响应文件必须交出独占、
+ * 普通、覆盖完整缓冲区的 Uint8Array，底层 ArrayBuffer 不可共享或调整大小；
+ * 晚到响应也遵守此约定。适配器可在失败、取消或销毁时擦除这些输出。
+ * Outputs are borrowed by default. Only trusted wiring may opt into "owned":
+ * every response file must relinquish a distinct, plain, full-span Uint8Array
+ * backed by a nonshared, nonresizable ArrayBuffer, including late responses.
+ * The adapter may wipe owned outputs on failure, cancellation, or disposal.
  * The original worker's exact synthetic fixture gate remains mandatory.
  */
 export function createProgramRewriterAdapter({
@@ -167,21 +174,25 @@ export function createProgramRewriterAdapter({
   resolveInput,
   verifyProvenance,
   createWorker,
+  workerOutputOwnership = "borrowed",
 } = {}) {
   const shellProfile = resolveShellProfile(profileId);
   const versions = catalogFor(trustedCatalog);
   const registered = trustedCatalog === REGISTERED_PROGRAM_CATALOG;
   if (
     (registered ? typeof verifyProvenance !== "function" : typeof resolveInput !== "function") ||
-    typeof createWorker !== "function"
+    typeof createWorker !== "function" ||
+    !["borrowed", "owned"].includes(workerOutputOwnership)
   )
     fail("PROGRAM_RUNTIME_REQUIRED");
   let used = false,
     disposed = false,
     activeWorker,
-    rejectActive;
+    rejectActive,
+    acceptingOutputs = false;
   const owned = [],
     releaseEntries = [];
+  const outputBuffers = new WeakSet();
   const own = (bytes) => {
     owned.push(bytes);
     return bytes;
@@ -196,6 +207,47 @@ export function createProgramRewriterAdapter({
       for (const release of releaseEntries.splice(0)) release();
     }
   };
+  // 密封工作线程已转移独占缓冲区；默认自定义客户端仍保留借用语义。
+  // Sealed workers transfer exclusive buffers; custom clients remain borrowed by default.
+  function receiveOwnedOutput(result) {
+    let invalid = false;
+    for (const value of Object.values(result?.files ?? {})) {
+      if (
+        !(value instanceof Uint8Array) ||
+        Object.getPrototypeOf(value) !== Uint8Array.prototype ||
+        !(value.buffer instanceof ArrayBuffer) ||
+        Object.getPrototypeOf(value.buffer) !== ArrayBuffer.prototype ||
+        value.buffer.resizable === true ||
+        value.byteOffset !== 0 ||
+        value.byteLength !== value.buffer.byteLength
+      ) {
+        invalid = true;
+        continue;
+      }
+      // 已分离的视图也报告零长度，但不能擦除；真正的空辅助文件仍有效。
+      // Detached views also report zero lengths, but cannot be wiped. Empty sidecars are valid.
+      if (value.byteLength === 0) {
+        try {
+          Uint8Array.prototype.subarray.call(value, 0, 0);
+        } catch {
+          invalid = true;
+          continue;
+        }
+      }
+      if (!acceptingOutputs || disposed) {
+        value.fill(0);
+      } else if (outputBuffers.has(value.buffer)) {
+        invalid = true;
+      } else {
+        outputBuffers.add(value.buffer);
+        own(value);
+      }
+    }
+    // 拒绝前登记所有可接管文件，使清理也覆盖后面的条目。
+    // Register every eligible file before rejecting, so cleanup covers later entries too.
+    if (invalid && acceptingOutputs && !disposed) fail("PROGRAM_INVALID_OUTPUT");
+    return result;
+  }
   function close() {
     const worker = activeWorker;
     activeWorker = undefined;
@@ -216,6 +268,7 @@ export function createProgramRewriterAdapter({
     check(signal);
     if (used || disposed) fail("PROGRAM_SINGLE_USE");
     used = true;
+    acceptingOutputs = true;
     let abort;
     const interrupted = new Promise((_, reject) => {
       rejectActive = reject;
@@ -292,11 +345,15 @@ export function createProgramRewriterAdapter({
         sidecars = Object.create(null);
       for (const { module, bytes } of staged) {
         const result = await race(() =>
-          activeWorker.run({
-            bytes,
-            moduleName: module.name,
-            ...(registered ? { releaseId: version.id } : { caseName: module.caseName }),
-          }),
+          Promise.resolve(
+            activeWorker.run({
+              bytes,
+              moduleName: module.name,
+              ...(registered ? { releaseId: version.id } : { caseName: module.caseName }),
+            }),
+          ).then((result) =>
+            workerOutputOwnership === "owned" ? receiveOwnedOutput(result) : result,
+          ),
         );
         check(signal);
         const expected = filesFor(module.name, registered);
@@ -318,7 +375,7 @@ export function createProgramRewriterAdapter({
             fail("PROGRAM_INVALID_OUTPUT");
           outputTotal += value.length;
           if (outputTotal > PROGRAM_REWRITE_LIMITS.totalOutputBytes) fail("PROGRAM_OUTPUT_BUDGET");
-          files[name] = own(new Uint8Array(value));
+          files[name] = workerOutputOwnership === "owned" ? value : own(new Uint8Array(value));
           if (!registered && (await race(() => sha256(files[name]))) !== module.files[name])
             fail("PROGRAM_OUTPUT_DIGEST_MISMATCH");
           check(signal);
@@ -412,6 +469,7 @@ export function createProgramRewriterAdapter({
       if (error instanceof ProgramAdapterError) throw error;
       fail("PROGRAM_GENERATION_FAILED");
     } finally {
+      acceptingOutputs = false;
       rejectActive = undefined;
       signal?.removeEventListener("abort", abort);
       try {
