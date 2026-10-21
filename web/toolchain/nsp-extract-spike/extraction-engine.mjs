@@ -344,14 +344,14 @@ export function createExtractionEngine(
           const warlock = header.applicationId === D2R_WARLOCK_ID.toString(16).padStart(16, "0");
           if (
             header.size !== BigInt(blobs[i].size) ||
-            (!header.fixedSignatureValid && (!warlock || ![1, 2].includes(header.contentType)))
+            (!header.fixedSignatureValid && (!warlock || ![1, 5].includes(header.contentType)))
           )
             diagnostic("CONTENT_AUTHENTICATION_FAILED");
           // The small, unlock-only add-on can have repacked NCA headers. Always
           // measure both files and bind each digest to its content ID, even in
           // fast mode; executable base/update headers still require signatures.
           if (warlock) {
-            if (blobs[i].size > META_LIMIT || ![1, 2].includes(header.contentType))
+            if (blobs[i].size > META_LIMIT || ![1, 5].includes(header.contentType))
               diagnostic("CONTENT_AUTHENTICATION_FAILED");
             if (sha256 === null) {
               progress("content-hash", i, blobs.length, blobs[i].size);
@@ -418,7 +418,7 @@ export function createExtractionEngine(
         for (const addOn of selection.dlc)
           for (const content of addOn.contents)
             if (
-              contents.get(content.contentId)?.ncaType !== 2 ||
+              contents.get(content.contentId)?.ncaType !== 5 ||
               warlockHashes.get(content.contentId) !== content.sha256
             )
               diagnostic("CONTENT_AUTHENTICATION_FAILED");

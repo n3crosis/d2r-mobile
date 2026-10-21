@@ -114,7 +114,7 @@ function setup({
             : index % 2 === 0
               ? 1
               : index === 5 && !wrongDlcHeader
-                ? 2
+              ? 5
                 : 0,
       };
     },
