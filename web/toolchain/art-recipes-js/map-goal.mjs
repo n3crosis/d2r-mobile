@@ -118,6 +118,16 @@ export function generateMapGoal(payload, options, { codec, kernels, font }) {
   const fontBytes = base64(bundle.font, "MAP_GOAL_FONT_ENCODING");
   requireValue(fontBytes.length > 0 && fontBytes.length <= 9 * 1024 * 1024, "MAP_GOAL_FONT_LIMIT");
   font.open(fontBytes, 48);
+  const files = {};
+  let outputBytes = 0,
+    success = false;
+  const add = (name, bytes) => {
+    // 先接管新输出，再检查累计预算；失败时包括触发超限的缓冲区也须擦除。
+    // Own each output before checking the aggregate budget, including the buffer that exceeds it.
+    files[name] = bytes;
+    outputBytes += bytes.length;
+    requireValue(outputBytes <= 16 * 1024 * 1024, "MAP_GOAL_OUTPUT_LIMIT");
+  };
   try {
     // 原适配器也检查别表中同名的键。 | The original adapter also checks matching keys in other tables.
     for (const indexed of strings.values())
@@ -127,16 +137,18 @@ export function generateMapGoal(payload, options, { codec, kernels, font }) {
             const width = font.measure(indexed.get(key)[lang]).length;
             requireValue(width >= 0 && width <= 8172, "MAP_GOAL_RENDER_WIDTH");
           }
-    const files = {};
     for (let i = 0; i < 7; i++)
-      files[`sym_${i}.png`] = png(
-        codec,
-        kernels.crop(
-          images.symbols,
-          i * images.symbols.pitch,
-          0,
-          images.symbols.fw,
-          images.symbols.height,
+      add(
+        `sym_${i}.png`,
+        png(
+          codec,
+          kernels.crop(
+            images.symbols,
+            i * images.symbols.pitch,
+            0,
+            images.symbols.fw,
+            images.symbols.height,
+          ),
         ),
       );
     let cross = kernels.crop(
@@ -151,7 +163,7 @@ export function generateMapGoal(payload, options, { codec, kernels, font }) {
       Uint8Array.from({ length: 256 }, (_, n) => Math.floor(n / 2)),
     );
     cross = kernels.putAlpha(cross, alpha);
-    files["cross.png"] = png(codec, cross);
+    add("cross.png", png(codec, cross));
     const manifest = [];
     for (const [i, [table, key, color]] of LABELS.entries()) {
       const row = strings.get(table).get(key);
@@ -167,7 +179,7 @@ export function generateMapGoal(payload, options, { codec, kernels, font }) {
           fill: [...color, 255],
           anchor: "mm",
         });
-        files[`label_${i}${SUFFIXES[j]}.png`] = png(codec, { width, height, data: drawn });
+        add(`label_${i}${SUFFIXES[j]}.png`, png(codec, { width, height, data: drawn }));
       }
       manifest.push({
         id: i,
@@ -182,16 +194,15 @@ export function generateMapGoal(payload, options, { codec, kernels, font }) {
         color: [...color],
       });
     }
-    files["mapgoal.json"] = utf8(
-      JSON.stringify({ text_px: 48, symbol_frames: 7, labels: manifest }, null, 1),
+    add(
+      "mapgoal.json",
+      utf8(JSON.stringify({ text_px: 48, symbol_frames: 7, labels: manifest }, null, 1)),
     );
     requireValue(Object.keys(files).length === 164, "MAP_GOAL_OUTPUT_SET");
-    requireValue(
-      Object.values(files).reduce((sum, bytes) => sum + bytes.length, 0) <= 16 * 1024 * 1024,
-      "MAP_GOAL_OUTPUT_LIMIT",
-    );
+    success = true;
     return { files, backend: { ...backend } };
   } finally {
+    if (!success) for (const bytes of Object.values(files)) bytes.fill(0);
     font.close();
   }
 }
