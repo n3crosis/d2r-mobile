@@ -76,7 +76,7 @@ export async function generateMapGoal({ logicalAssets, assetWorker, decodeAtlas,
         fail("MAP_GOAL_FRAME_LAYOUT");
       images[name] = { size: [width, height], frameWidth, frames, rgba: encode(decoded.pixels) };
     }
-    const font = encode(await read(MAP_GOAL_FONT, 8 * 1024 * 1024));
+    const font = encode(await read(MAP_GOAL_FONT, 9 * 1024 * 1024));
     for (const name of MAP_GOAL_TABLES)
       strings[name] = new TextDecoder("utf-8", { fatal: true }).decode(
         await read(`local/lng/strings/${name}.json`, 2 * 1024 * 1024),

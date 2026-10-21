@@ -54,6 +54,20 @@ bun run build
 bun run preview
 ```
 
+The Bun end-to-end command runs the same packager against a complete local
+`web-preview` build and a local NSP folder. It verifies the public runtime,
+generates an unsigned IPA, and checks the ZIP payload. Pass the selected package
+filenames explicitly; private inputs stay on the machine. Add
+`--export-resources` to write a new resource folder beside the inputs.
+
+```sh
+bun run test:e2e:bun -- \
+  --preview-dir /path/to/web-preview \
+  --input-dir /path/to/nsp-folder \
+  --nsp base.nsp --nsp update.nsp \
+  --output /path/to/unsigned.ipa
+```
+
 The frontend uses React, TypeScript, Tailwind and shadcn/ui source components;
 [component provenance and licenses](SHADCN_PROVENANCE.md) are retained.
 Bun's HTML bundler emits static HTML, JavaScript and CSS to `dist/`. Frontend

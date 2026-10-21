@@ -12,8 +12,8 @@ import { MAX_READ_BYTES, readRange } from "./preflight.mjs";
 export const ARCHIVE_LIMITS = Object.freeze({
   encodedRecord: 16 * 1024 * 1024,
   decodedRecord: 16 * 1024 * 1024,
-  encodedBlock: MAX_READ_BYTES,
-  decodedBlock: 4 * 1024 * 1024,
+  encodedBlock: 16 * 1024 * 1024,
+  decodedBlock: 16 * 1024 * 1024,
   blocks: 4096,
   compressedSlice: 1024,
 });
@@ -143,7 +143,20 @@ export async function decodeArchiveRecord(source, record, { verifyMd5, signal } 
     encodedSize > source.size - offset
   )
     throw new Error("Record outside source");
-  const read = (position, length) => readRange(source, offset + position, length, signal);
+  const read = async (position, length) => {
+    if (length <= MAX_READ_BYTES) return readRange(source, offset + position, length, signal);
+    const bytes = new Uint8Array(length);
+    for (let at = 0; at < length; at += MAX_READ_BYTES) {
+      const part = await readRange(
+        source,
+        offset + position + at,
+        Math.min(MAX_READ_BYTES, length - at),
+        signal,
+      );
+      bytes.set(part, at);
+    }
+    return bytes;
+  };
   const verify = async (bytes, expected, context) => {
     signal?.throwIfAborted();
     const ok = await verifyMd5(bytes, expected.toLowerCase(), { ...context, signal });

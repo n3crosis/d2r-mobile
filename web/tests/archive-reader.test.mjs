@@ -79,6 +79,24 @@ test("40-bit locator and sparse >4 GiB reads preserve exact offsets", async () =
   assert.ok(input.reads.every(([offset]) => offset >= base));
   assert.throws(() => archiveLocator("bad"), /EKey/);
 });
+test("large raw records are read in bounded chunks", async () => {
+  const bytes = Buffer.alloc(4 * 1024 * 1024 + 257, 0x5a);
+  const input = source(bytes);
+  const decoded = await decodeArchiveRecord(
+    input,
+    {
+      offset: 0,
+      encodedSize: bytes.length,
+      decodedSize: bytes.length,
+      encoding: "n",
+      ckey: md5(bytes),
+    },
+    { verifyMd5 },
+  );
+  assert.equal(Buffer.compare(Buffer.from(decoded), bytes), 0);
+  assert.ok(input.reads.length >= 3);
+  assert.ok(input.reads.every(([, length]) => length <= 4 * 1024 * 1024));
+});
 test("MD5 is mandatory, includes BLTE mode byte, and checks final CKey", async () => {
   const bytes = Buffer.from(blte.raw, "hex");
   await assert.rejects(decodeArchiveRecord(source(bytes), blte.record), /verifier is required/);

@@ -18,6 +18,9 @@ test("whole-atlas retains padded dimensions and accepts a final unpadded frame",
   assert.equal(a.frameWidth, 65);
   assert.equal(a.framePitch, 68);
   assert.equal(nativeArtAtlasDescriptor(sprite(155, 155, 1)).descriptor.width, 155);
+  const packed = nativeArtAtlasDescriptor(sprite(124, 62, 2));
+  assert.equal(packed.descriptor.width, 124);
+  assert.equal(packed.framePitch, 62);
   assert.throws(() => nativeArtAtlasDescriptor(sprite(130)), /GEOMETRY/);
   assert.throws(() => nativeArtAtlasDescriptor(sprite(137)), /GEOMETRY/);
   assert.throws(() => nativeArtAtlasDescriptor(sprite(136, 65, 0)), /GEOMETRY/);

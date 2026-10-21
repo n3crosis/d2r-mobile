@@ -14,7 +14,12 @@ export function nativeArtAtlasDescriptor(bytes) {
     height = h.getUint32(12, true),
     frameWidth = h.getUint16(6, true),
     frameCount = h.getUint16(20, true);
-  const framePitch = Math.ceil(frameWidth / 4) * 4;
+  // Some source atlases pack adjacent frames without BC3 block padding.
+  // Their full texture width is still block aligned and decodes as one image.
+  const framePitch =
+    width % 4 === 0 && width === frameWidth * frameCount
+      ? frameWidth
+      : Math.ceil(frameWidth / 4) * 4;
   // 原始 gen_widestash_art.py 的 main 显式验证此双面板
   // 存储几何。解码整个图集，绝不裁掉面板间图像。
   // Original gen_widestash_art.py main explicitly validates this two-panel

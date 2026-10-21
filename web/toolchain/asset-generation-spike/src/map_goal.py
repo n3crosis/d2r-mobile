@@ -80,7 +80,7 @@ def generate(payload, options):
                 w // frames,
             )
         font = base64.b64decode(bundle["font"], validate=True)
-        require(0 < len(font) <= 8 * 1024 * 1024, "MAP_GOAL_FONT_LIMIT")
+        require(0 < len(font) <= 9 * 1024 * 1024, "MAP_GOAL_FONT_LIMIT")
         # Validate allocation geometry before entering the unchanged original renderer.
         measured_font = ImageFont.truetype(io.BytesIO(font), original.TEXT_PX)
         for text in strings.values():
