@@ -1,6 +1,7 @@
 // 仅用于构建的流程；复用现有 CI 的 emsdk 4.0.20，不创建新 CI 作业。
 // Build-only recipe. Uses the existing CI emsdk 4.0.20; creates no new CI job.
 import process from "node:process";
+import { downloadPinnedZlib } from "./source-download.mjs";
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, mkdirSync, existsSync, cpSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -15,11 +16,7 @@ async function source(pinName) {
   const pin = JSON.parse(readFileSync(new URL(pinName, import.meta.url)));
   const tar = join(vendor, `zlib-${pin.version}.tar.gz`);
   if (!existsSync(tar)) {
-    const response = await fetch(pin.url);
-    if (!response.ok) throw new Error(`zlib source fetch ${response.status}`);
-    const raw = new Uint8Array(await response.arrayBuffer());
-    if (raw.length !== pin.bytes || hash(raw) !== pin.sha256)
-      throw new Error("Pinned zlib source mismatch");
+    const raw = await downloadPinnedZlib(pin);
     writeFileSync(tar, raw);
   }
   const archive = readFileSync(tar);

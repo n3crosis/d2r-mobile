@@ -140,11 +140,15 @@ export function logical(path) {
   if (path.includes(":")) path = path.slice(path.indexOf(":") + 1);
   requireValue(
     path.startsWith("data/") &&
-      [...path].length <= 4096 &&
-      path.split("/").every((p) => p && p !== "." && p !== "..") &&
-      [...path].every((char) => char.codePointAt(0) >= 32),
+      path.length <= 8192 &&
+      path.split("/").every((p) => p && p !== "." && p !== ".."),
     "OVERLAY_PATH",
   );
+  // 在规范化之后检查码点，保留前缀剥除语义且不展开长路径。
+  // Count after normalization to preserve prefix stripping without expanding long paths.
+  let count = 0;
+  for (const char of path)
+    requireValue(++count <= 4096 && char.codePointAt(0) >= 32, "OVERLAY_PATH");
   return path;
 }
 function decodeMap(value, limit) {

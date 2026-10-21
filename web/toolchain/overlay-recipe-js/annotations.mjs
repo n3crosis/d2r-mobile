@@ -20,6 +20,14 @@ const D = DATA.drop;
 const own = (o, k) => Object.hasOwn(o, k);
 const get = (o, k, fallback = "") => (own(o, k) ? o[k] : fallback);
 const points = (s) => Array.from(s);
+// 每个码点至多占两个 UTF-16 单元，无需为长度判断展开整个字符串。
+// Each code point takes at most two UTF-16 units; length checks need no full character array.
+const withinCodePoints = (text, limit) => {
+  if (text.length > limit * 2) return false;
+  let count = 0;
+  for (const _char of text) if (++count > limit) return false;
+  return true;
+};
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const newline = (s) => s.replace(/\r\n?/g, "\n");
 const validUnicode = (text) => {
@@ -280,7 +288,7 @@ function ranges(s, excel) {
       skill = get(row, "skill").trim();
     if (id && skill) {
       const value = s.get("skills.json", "skillname" + id);
-      skills.set(skill, value && points(value).length <= maxlen ? value : generic);
+      skills.set(skill, value && withinCodePoints(value, maxlen) ? value : generic);
     }
   }
   const props = indexBy(excel("properties.txt"), "code");
@@ -499,8 +507,8 @@ function miscRule(t, s, code, name) {
   const match = own(words.strip, code) ? new RegExp(words.strip[code]).exec(name) : null;
   if (match) {
     const result = name.slice(0, match.index) + name.slice(match.index + match[0].length);
-    const chars = points(result);
-    return (chars.shift() || "").toUpperCase() + chars.join("");
+    const first = result[Symbol.iterator]().next().value || "";
+    return first.toUpperCase() + result.slice(first.length);
   }
   if (["hpot", "mpot"].includes(type) && /\d$/.test(code)) {
     const i = integer(code.at(-1)) - 1;

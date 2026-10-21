@@ -361,10 +361,18 @@ export function vaultTab(text) {
   const i = index(text, '"name": "BankTabs"'),
     key = '"tabRightIndicatorPosition": "$HalfPanelRightTabButtonPromptPosition",',
     j = text.indexOf(key, i);
-  requireValue(
-    j >= 0 && Array.from(text.slice(i, j)).length <= 2500,
-    "wide_stash：BankTabs 的右端键帽位置不是原样（原版布局变了？）",
-  );
+  // 先检查 UTF-16 范围，避免为超长布局创建切片及逐字符数组。
+  // Check the UTF-16 span before slicing or expanding an oversized layout.
+  let withinLimit = j >= 0 && j - i <= 5000;
+  if (withinLimit) {
+    let count = 0;
+    for (const _char of text.slice(i, j))
+      if (++count > 2500) {
+        withinLimit = false;
+        break;
+      }
+  }
+  requireValue(withinLimit, "wide_stash：BankTabs 的右端键帽位置不是原样（原版布局变了？）");
   text =
     text.slice(0, j) +
     '"tabRightIndicatorPosition": { "x": 920, "y": -2 },' +

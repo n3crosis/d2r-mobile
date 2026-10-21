@@ -71,10 +71,13 @@ const compareUnicode = (a, b) => {
   return x.length - y.length;
 };
 function utf8(value) {
-  requireValue(
-    typeof value === "string" &&
-      Array.from(value).every((c) => c.codePointAt(0) < 0xd800 || c.codePointAt(0) > 0xdfff),
-  );
+  requireValue(typeof value === "string");
+  // 配置可达 MiB 级别；直接验证码点，不创建逐字符数组。
+  // Configs can reach MiB scale; validate code points without a character array.
+  for (const char of value) {
+    const point = char.codePointAt(0);
+    requireValue(point < 0xd800 || point > 0xdfff);
+  }
   return encoder.encode(value);
 }
 function checkedPath(path) {

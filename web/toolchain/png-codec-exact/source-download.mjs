@@ -1,0 +1,66 @@
+// 仅对固定公开源码的瞬时下载错误重试；大小或摘要不符立即失败。
+// Retry transient downloads of pinned public source only; size or digest mismatch fails immediately.
+import { createHash } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
+
+const transientStatuses = new Set([408, 429, 500, 502, 503, 504]);
+export async function downloadPinnedZlib(pin, { fetch = globalThis.fetch, sleep = delay } = {}) {
+  if (
+    !Number.isSafeInteger(pin.bytes) ||
+    pin.bytes < 1 ||
+    pin.bytes > 16 * 1024 * 1024 ||
+    !/^[a-f0-9]{64}$/.test(pin.sha256) ||
+    !pin.url.startsWith("https://")
+  )
+    throw new Error("Invalid zlib source pin");
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let retry = false,
+      reader;
+    try {
+      let response;
+      try {
+        response = await fetch(pin.url, { signal: AbortSignal.timeout(120000) });
+      } catch (error) {
+        retry = error instanceof TypeError || ["AbortError", "TimeoutError"].includes(error?.name);
+        throw error;
+      }
+      if (!response.ok) {
+        retry = transientStatuses.has(response.status);
+        await response.body?.cancel().catch(() => {});
+        throw new Error(`zlib source fetch ${response.status}`);
+      }
+      if (!response.body) throw new Error("Missing zlib source body");
+      reader = response.body.getReader();
+      const raw = new Uint8Array(pin.bytes);
+      let offset = 0;
+      for (;;) {
+        let part;
+        try {
+          part = await reader.read();
+        } catch (error) {
+          retry =
+            error instanceof TypeError || ["AbortError", "TimeoutError"].includes(error?.name);
+          throw error;
+        }
+        if (part.done) break;
+        if (!(part.value instanceof Uint8Array) || part.value.length > raw.length - offset)
+          throw new Error("Pinned zlib source mismatch");
+        raw.set(part.value, offset);
+        offset += part.value.length;
+      }
+      if (offset !== pin.bytes || createHash("sha256").update(raw).digest("hex") !== pin.sha256)
+        throw new Error("Pinned zlib source mismatch");
+      return raw;
+    } catch (error) {
+      if (!retry || attempt === 2) throw error;
+    } finally {
+      // 不保留失败响应或部分文件；仅调用方在完整校验后写入缓存。
+      // Retain no failed response or partial file; the caller caches only fully verified bytes.
+      if (reader) {
+        await reader.cancel().catch(() => {});
+        reader.releaseLock();
+      }
+    }
+    await sleep(1000 * (attempt + 1));
+  }
+}
