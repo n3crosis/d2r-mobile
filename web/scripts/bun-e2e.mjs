@@ -94,6 +94,21 @@ async function checkArchive(path) {
     throw new Error("BUN_E2E_IPA_PAYLOAD_MISSING");
 }
 
+// 各项清理独立执行，保留原失败，不让关闭错误跳过后续释放。
+// Run cleanup independently and preserve the primary failure instead of skipping later releases.
+export async function cleanupBunE2e(releases, primary) {
+  const failures = [];
+  for (const release of releases) {
+    try {
+      await release();
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (failures.length)
+    throw new AggregateError(failures, "BUN_E2E_CLEANUP_FAILED", { cause: primary ?? failures[0] });
+}
+
 export async function run(options) {
   const preview = resolve(options.preview);
   const output = resolve(options.output);
@@ -125,7 +140,7 @@ export async function run(options) {
     configurable: true,
     value: await storageAt(staging),
   });
-  let packager;
+  let packager, primary;
   try {
     let last = "";
     const onProgress = (event) => {
@@ -151,12 +166,22 @@ export async function run(options) {
     await checkArchive(output);
     console.log(`IPA complete: ${output} (${size} bytes)`);
     return { output, size, resources: result.resources };
+  } catch (error) {
+    primary = error;
+    throw error;
   } finally {
-    await packager?.close();
-    globalThis.Worker = NativeWorker;
-    URL.revokeObjectURL(readerUrl);
-    server.stop();
-    await rm(staging, { recursive: true, force: true });
+    await cleanupBunE2e(
+      [
+        () => packager?.close(),
+        () => {
+          globalThis.Worker = NativeWorker;
+        },
+        () => URL.revokeObjectURL(readerUrl),
+        () => server.stop(),
+        () => rm(staging, { recursive: true, force: true }),
+      ],
+      primary,
+    );
   }
 }
 

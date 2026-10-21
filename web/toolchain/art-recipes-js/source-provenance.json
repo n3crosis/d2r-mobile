@@ -7,7 +7,7 @@
     "dm/ios/tools/native_art/generate.py": "7a20f945f860a55a756fde685c1ddc4f7a92877b6f46da891437e634780c1992",
     "web/toolchain/asset-generation-spike/src/native_art.py": "159462b6c3c094e46f3fbde40608b33056c65595b6daa419cb9497a36f6fbeb2",
     "dm/ios/tools/gen_map_goal_art.py": "74f80d518c91c2e4b0a9a685da1cddb5ee7623a350ce17603b0f03c29a72126c",
-    "web/toolchain/asset-generation-spike/src/map_goal.py": "6f58bfa36817f3dd955647a171f2c5380216dd19c8022372cabe66fba3a4efc1",
+    "web/toolchain/asset-generation-spike/src/map_goal.py": "70a5975d8a6202c543228f518c60ad4fdf7fde6baf92041e105e6df3bb474cec",
     "dm/ios/tools/native_art/implementation.c.inc": "3bf1a58f9189d7857c4fc666e7044a958eff27cf1b594fd9d1b6c47d381db4b1",
     "dm/ios/Sources/TouchArt/native_art_manifest.json": "edab392805937478af106de6949807bea7f597b8d4a3c3fa208528c5ae53a14a",
     "dm/ios/docs/native_art_v1_geometry.json": "7332bf327af662259cde973d5ed6ba80af472e4f0c232ea4dfe3fcf0a17a4799",

@@ -1,4 +1,15 @@
-import { mkdir, readdir, stat, open, rename, rm, writeFile, statfs } from "node:fs/promises";
+import {
+  mkdir,
+  readdir,
+  stat,
+  open,
+  rename,
+  rm,
+  writeFile,
+  statfs,
+  lstat,
+  rmdir,
+} from "node:fs/promises";
 import { join, basename } from "node:path";
 
 function missing() {
@@ -25,11 +36,31 @@ async function kind(path) {
   }
 }
 
+// 捕获条目身份而非只比较路径，防止清理误删同路径替换项。
+// Capture entry identity rather than just paths so cleanup preserves replacements.
+const identities = new WeakMap();
+const identityAt = (path) => lstat(path, { bigint: true }).catch(() => null);
+const sameIdentity = (a, b) => a !== null && b !== null && a.dev === b.dev && a.ino === b.ino;
+async function sameEntry(left, right) {
+  if (!identities.has(right) || left.kind !== right.kind) return false;
+  const [a, b, currentA, currentB] = await Promise.all([
+    identities.get(left),
+    identities.get(right),
+    identityAt(left.path),
+    identityAt(right.path),
+  ]);
+  return sameIdentity(a, b) && sameIdentity(a, currentA) && sameIdentity(b, currentB);
+}
+
 export class FileHandle {
   kind = "file";
   constructor(path) {
     this.path = path;
     this.name = basename(path);
+    identities.set(this, identityAt(path));
+  }
+  async isSameEntry(other) {
+    return sameEntry(this, other);
   }
   async queryPermission() {
     return "granted";
@@ -42,11 +73,14 @@ export class FileHandle {
     return file;
   }
   async createWritable({ keepExistingData = false } = {}) {
+    await identities.get(this);
+    const owner = this;
     const temporary = `${this.path}.bun-write-${crypto.randomUUID()}`;
     if (keepExistingData) throw new Error("keepExistingData is unsupported in this CLI");
     const file = await open(temporary, "wx");
     let state = "open",
-      position = 0;
+      position = 0,
+      fileClosed = false;
     return {
       async write(bytes) {
         if (state !== "open" || !(bytes instanceof Uint8Array)) throw new Error("Invalid write");
@@ -59,15 +93,24 @@ export class FileHandle {
       },
       async close() {
         if (state !== "open") throw new Error("Writer closed");
-        state = "closed";
+        state = "closing";
         await file.close();
-        await rename(temporary, this.path);
+        fileClosed = true;
+        await rename(temporary, owner.path);
+        // 自有原子提交更新身份；外部替换仍不能通过身份检查。
+        // Refresh identity after our atomic commit; external replacements still fail comparison.
+        identities.set(owner, identityAt(owner.path));
+        await identities.get(owner);
+        state = "closed";
       },
       async abort() {
-        if (state !== "open") return;
-        state = "aborted";
-        await file.close();
+        if (state === "closed" || state === "aborted") return;
+        if (!fileClosed) {
+          await file.close();
+          fileClosed = true;
+        }
         await rm(temporary, { force: true });
+        state = "aborted";
       },
     };
   }
@@ -78,6 +121,10 @@ export class DirectoryHandle {
   constructor(path) {
     this.path = path;
     this.name = basename(path);
+    identities.set(this, identityAt(path));
+  }
+  async isSameEntry(other) {
+    return sameEntry(this, other);
   }
   async queryPermission() {
     return "granted";
@@ -112,8 +159,16 @@ export class DirectoryHandle {
   }
   async removeEntry(name, { recursive = false } = {}) {
     const path = join(this.path, safe(name));
-    if ((await kind(path)) === "directory" && !recursive)
-      throw new DOMException("Directory is not empty", "InvalidModificationError");
+    if ((await kind(path)) === "directory" && !recursive) {
+      try {
+        await rmdir(path);
+      } catch (error) {
+        if (error.code === "ENOTEMPTY" || error.code === "EEXIST")
+          throw new DOMException("Directory is not empty", "InvalidModificationError");
+        throw error;
+      }
+      return;
+    }
     await rm(path, { recursive, force: false });
   }
 }
