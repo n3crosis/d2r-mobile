@@ -109,6 +109,12 @@ export async function generateMercenaryArt({
       // Release request bytes only after worker consumption settles, including failure paths.
       owned.release(payload);
     }
+    // 先接管所有有效返回缓冲区，避免格式错误跳过清理。
+    // Own all returned byte buffers before malformed shapes can bypass cleanup.
+    for (const value of Object.values(result?.files ?? {})) {
+      const data = bytes(value);
+      if (data) owned.add(data);
+    }
     if (
       Object.keys(result.files ?? {})
         .sort()

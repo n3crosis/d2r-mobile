@@ -53,7 +53,14 @@ function decodeBase64(value) {
   const binary = atob(value);
   if (binary.length > SHADER_PIPELINE_LIMITS.spirv) throw error("Oversized translator SPIR-V");
   if (btoa(binary) !== value) throw error("Noncanonical translator SPIR-V base64");
-  return validateSpirv(Uint8Array.from(binary, (x) => x.charCodeAt(0)));
+  const decoded = Uint8Array.from(binary, (x) => x.charCodeAt(0));
+  try {
+    return validateSpirv(decoded);
+  } finally {
+    // 验证器返回独立副本；无论成功与否都清理临时解码缓冲区。
+    // Validation returns a separate copy; always wipe the temporary decoded backing.
+    decoded.fill(0);
+  }
 }
 function metadata(value) {
   const json = JSON.stringify(value);
@@ -243,10 +250,12 @@ export function createShaderPipeline({
       const deadline = Date.now() + timeoutMs,
         requestId = ++sequence;
       const remaining = () => Math.max(1, deadline - Date.now());
+      let bytes, jobBytes, spirv, mslBytes;
       try {
-        const bytes = code.slice(),
-          codeSha256 = await hash(bytes),
-          jobSha256 = await hash(encoder.encode(JSON.stringify(requestJob)));
+        bytes = code.slice();
+        const codeSha256 = await hash(bytes);
+        jobBytes = encoder.encode(JSON.stringify(requestJob));
+        const jobSha256 = await hash(jobBytes);
         const translated = await rpc({
           workerFactory,
           url: translatorUrl,
@@ -261,9 +270,9 @@ export function createShaderPipeline({
             return { matched: true, result: data.result };
           },
         });
-        const resources = resourceFacts(translated.resources, requestJob.key, requestJob.stage),
-          spirv = decodeBase64(translated.spirvBase64),
-          spirvSha256 = await hash(spirv);
+        const resources = resourceFacts(translated.resources, requestJob.key, requestJob.stage);
+        spirv = decodeBase64(translated.spirvBase64);
+        const spirvSha256 = await hash(spirv);
         const converted = await rpc({
           workerFactory,
           url: crossUrl,
@@ -290,7 +299,7 @@ export function createShaderPipeline({
           converted.msl.includes("\r")
         )
           throw error("Invalid or oversized LF Metal source");
-        const mslBytes = encoder.encode(converted.msl);
+        mslBytes = encoder.encode(converted.msl);
         if (
           mslBytes.length > SHADER_PIPELINE_LIMITS.msl ||
           totalMsl + mslBytes.length > SHADER_PIPELINE_LIMITS.totalMsl
@@ -360,6 +369,10 @@ export function createShaderPipeline({
           metalCompiled: false,
         };
       } finally {
+        // 清理仍由本地持有的快照；真实 Worker 已转移的缓冲区不可再写入。
+        // Wipe locally owned snapshots; real-worker transfers may have detached their buffers.
+        for (const owned of [bytes, jobBytes, spirv, mslBytes])
+          if (owned?.byteLength) owned.fill(0);
         signal?.removeEventListener("abort", abort);
         active = null;
       }

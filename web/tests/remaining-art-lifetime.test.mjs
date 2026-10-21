@@ -113,3 +113,56 @@ test("actual generator releases intermediates while preserving shared inputs, va
   empty(previousLinear);
   for (const bytes of shared) empty(bytes);
 });
+
+test("missing or malformed remaining-art RGBA wipes all other worker files", async () => {
+  for (const invalid of [false, true]) {
+    const first = new Uint8Array([7]),
+      last = new Uint8Array([8]);
+    const sources = [];
+    const options = {
+      logicalAssets: {
+        findUniquePathSuffix: (suffix) => suffix,
+        async read(path) {
+          const main = path.endsWith("/mainpanelbg.sprite"),
+            storage = 181 * 28 * 512;
+          const data = new Uint8Array(main ? storage + 40 : 40),
+            view = new DataView(data.buffer);
+          view.setUint32(0, 0x31417053, true);
+          view.setUint16(4, 61, true);
+          view.setUint16(6, main ? 1440 : 652, true);
+          view.setUint32(8, main ? 2888 : 652, true);
+          view.setUint32(12, main ? 881 : 1, true);
+          view.setUint16(20, main ? 2 : 1, true);
+          if (main) view.setUint32(32, storage, true);
+          sources.push(data);
+          return data;
+        },
+      },
+      async decodeAtlas() {
+        const pixels = new Uint8Array(652 * 4).fill(6);
+        sources.push(pixels);
+        return { width: 652, height: 1, pixelFormat: 70, bytesPerPixel: 4, pixels };
+      },
+      textureEncoder: {
+        async packLinearBC3() {
+          return { sprite: new Uint8Array(40) };
+        },
+      },
+      assetWorker: {
+        async run() {
+          return {
+            files: {
+              "first.png": first,
+              ...(invalid ? { "image.rgba": "not bytes" } : {}),
+              "VaultBottom.png": last.buffer,
+            },
+          };
+        },
+      },
+    };
+    await assert.rejects(generateRemainingArt(options), /REMAINING_ART_BYTES/);
+    assert.deepEqual(first, new Uint8Array(1));
+    assert.deepEqual(last, new Uint8Array(1));
+    for (const source of sources) assert.ok(source.every((byte) => byte === 0));
+  }
+});

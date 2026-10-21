@@ -82,3 +82,90 @@ test("Map-goal cancellation prevents any read", async () => {
   );
   assert.equal(f.reads.length, 0);
 });
+
+test("Map-goal owns late decoded pixels before cancellation", async () => {
+  for (const arrayBuffer of [false, true]) {
+    const f = fixture(),
+      controller = new AbortController();
+    const pixels = new Uint8Array([9]);
+    f.decodeAtlas = async () => {
+      controller.abort();
+      return { pixels: arrayBuffer ? pixels.buffer : pixels };
+    };
+    await assert.rejects(
+      generateMapGoal({ ...f, signal: controller.signal }),
+      /MAP_GOAL_CANCELLED/,
+    );
+    assert.deepEqual(pixels, new Uint8Array(1));
+    for (const bytes of f.buffers) assert.ok(bytes.every((byte) => byte === 0));
+  }
+});
+test("Map-goal wipes all returned files on cancellation or rejected output", async () => {
+  for (const failure of ["cancel", "missing", "invalid", "limit"]) {
+    const f = fixture(),
+      controller = new AbortController();
+    const data = new Uint8Array([7]),
+      other = new Uint8Array([8]);
+    const files = Object.fromEntries(MAP_GOAL_OUTPUTS.map((name) => [name, new Uint8Array([1])]));
+    files[MAP_GOAL_OUTPUTS[0]] = data;
+    files[MAP_GOAL_OUTPUTS.at(-1)] = other.buffer;
+    if (failure === "missing") delete files[MAP_GOAL_OUTPUTS[1]];
+    if (failure === "invalid") files[MAP_GOAL_OUTPUTS[1]] = "not bytes";
+    if (failure === "limit")
+      files[MAP_GOAL_OUTPUTS[1]] = new Uint8Array(16 * 1024 * 1024 + 1).fill(2);
+    f.assetWorker.run = async () => {
+      if (failure === "cancel") controller.abort();
+      return { files };
+    };
+    await assert.rejects(
+      generateMapGoal({ ...f, signal: controller.signal }),
+      /MAP_GOAL_(CANCELLED|OUTPUT_SET|OUTPUT_LIMIT)/,
+    );
+    for (const value of Object.values(files)) {
+      const bytes = value instanceof ArrayBuffer ? new Uint8Array(value) : value;
+      if (bytes instanceof Uint8Array) assert.ok(bytes.every((byte) => byte === 0));
+    }
+    assert.deepEqual(data, new Uint8Array(1));
+    assert.deepEqual(other, new Uint8Array(1));
+  }
+});
+test("Map-goal leaves successful worker output ownership with the caller", async () => {
+  const f = fixture();
+  const files = Object.fromEntries(MAP_GOAL_OUTPUTS.map((name) => [name, new Uint8Array([7])]));
+  files[MAP_GOAL_OUTPUTS[0]] = new Uint8Array([8]).buffer;
+  f.assetWorker.run = async () => ({ files });
+  const result = await generateMapGoal(f);
+  assert.equal(result.files, files);
+  for (const value of Object.values(files)) {
+    const bytes = value instanceof ArrayBuffer ? new Uint8Array(value) : value;
+    assert.ok(bytes.every((byte) => byte !== 0));
+  }
+});
+
+test("Map-goal releases input snapshots before worker execution without wiping borrowed originals", async () => {
+  const f = fixture(),
+    original = new Uint8Array([4, 5, 6]);
+  const read = f.logicalAssets.read;
+  f.logicalAssets.read = async (path, options) => {
+    for (const bytes of f.buffers) assert.ok(bytes.every((byte) => byte === 0));
+    if (path === MAP_GOAL_FONT) {
+      const copy = original.slice();
+      f.buffers.push(copy);
+      return copy;
+    }
+    return read(path, options);
+  };
+  let request;
+  const run = f.assetWorker.run;
+  f.assetWorker.run = async (operation, payload, options) => {
+    request = payload;
+    for (const bytes of f.buffers) assert.ok(bytes.every((byte) => byte === 0));
+    assert.ok(payload.some((byte) => byte !== 0));
+    await Promise.resolve();
+    assert.ok(payload.some((byte) => byte !== 0));
+    return run(operation, payload, options);
+  };
+  await generateMapGoal(f);
+  assert.ok(request.every((byte) => byte === 0));
+  assert.deepEqual(original, new Uint8Array([4, 5, 6]));
+});

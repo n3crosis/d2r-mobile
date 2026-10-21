@@ -116,3 +116,20 @@ test("worker rejection still releases request and sources", async () => {
   assert.ok(f.payload.every((byte) => byte === 0));
   for (const value of [...f.raw, ...f.decoded]) assert.ok(value.every((byte) => byte === 0));
 });
+
+test("malformed mercenary worker results wipe every returned byte buffer", async () => {
+  for (const invalid of [false, true]) {
+    const f = fixture(),
+      first = new Uint8Array([4]),
+      last = new Uint8Array([5]);
+    f.options.assetWorker.run = async () => ({
+      files: invalid
+        ? { "mercenary.rgba": null, "HirelingInventoryBG.png": last.buffer }
+        : { unexpected: first, extra: last.buffer },
+    });
+    await assert.rejects(generateMercenaryArt(f.options), /MERCENARY_(OUTPUT_SET|BYTES)/);
+    assert.deepEqual(last, new Uint8Array(1));
+    if (!invalid) assert.deepEqual(first, new Uint8Array(1));
+    for (const value of [...f.raw, ...f.decoded]) assert.ok(value.every((byte) => byte === 0));
+  }
+});

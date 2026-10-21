@@ -166,6 +166,12 @@ export async function generateRemainingArt({
     } finally {
       owned.release(payload);
     }
+    // 先接管有效返回缓冲区；缺失或损坏的 RGBA 也必须清理其余文件。
+    // Own valid returned buffers first so missing/invalid RGBA still cleans up other files.
+    for (const value of Object.values(result?.files ?? {})) {
+      const data = asBytes(value);
+      if (data) owned.add(data);
+    }
     const rgba = own(result.files?.["image.rgba"]);
     for (const bytes of Object.values(result.files ?? {})) own(bytes);
     check();

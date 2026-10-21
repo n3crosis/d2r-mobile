@@ -54,6 +54,7 @@ function setup({
   crash,
   timeoutMs = 500,
   wrongId = false,
+  transferInputs = true,
 } = {}) {
   const workers = [];
   class FakeWorker {
@@ -77,7 +78,7 @@ function setup({
       for (const fn of this.listeners.get(type) ?? []) fn(value);
     }
     postMessage(raw, transfer) {
-      const data = structuredClone(raw, { transfer });
+      const data = structuredClone(raw, transferInputs ? { transfer } : undefined);
       this.request = data;
       queueMicrotask(() => {
         if (hang) return;
@@ -305,6 +306,84 @@ test("abort, disposal, worker crash and deadline terminate workers and release b
     assert.ok(workers.every((x) => x.terminated));
     pipeline.dispose();
     await assert.rejects(pipeline.verifyCompleteSourceSet(), /disposed/);
+  }
+});
+
+test("owned hash snapshots are wiped on cancellation, rejection and successful facade replies", async () => {
+  const originalDigest = crypto.subtle.digest;
+  for (const outcome of ["abort-code", "abort-spirv", "bad-provenance", "success"]) {
+    const captured = [],
+      controller = new AbortController();
+    crypto.subtle.digest = function (algorithm, bytes) {
+      captured.push(bytes);
+      if (
+        (outcome === "abort-code" && captured.length === 1) ||
+        (outcome === "abort-spirv" && captured.length === 3)
+      )
+        controller.abort();
+      return originalDigest.call(this, algorithm, bytes);
+    };
+    const { pipeline, workers } = setup({
+      transferInputs: false,
+      mutateCross:
+        outcome === "bad-provenance" ? (result) => ({ ...result, replay: {} }) : undefined,
+    });
+    const caller = new Uint8Array(16).fill(7);
+    try {
+      const pending = pipeline.translate({ job, code: caller, signal: controller.signal });
+      if (outcome === "success") {
+        assert.equal((await pending).msl, msl);
+      } else {
+        await assert.rejects(pending, outcome.startsWith("abort") ? /cancelled/ : /mismatch/);
+      }
+      assert.equal(
+        captured.length,
+        outcome === "abort-code" ? 2 : outcome === "abort-spirv" ? 3 : 4,
+      );
+      for (const owned of captured) {
+        assert.notEqual(owned, caller);
+        assert.ok(owned.every((byte) => byte === 0));
+      }
+      assert.deepEqual(caller, new Uint8Array(16).fill(7));
+      assert.ok(workers.every((worker) => worker.terminated));
+      crypto.subtle.digest = originalDigest;
+      if (outcome === "success")
+        assert.equal((await pipeline.verifyCompleteSourceSet()).shaderCount, 1);
+      else await assert.rejects(pipeline.verifyCompleteSourceSet(), /Incomplete/);
+    } finally {
+      crypto.subtle.digest = originalDigest;
+      pipeline.dispose();
+    }
+  }
+});
+
+test("temporary decoded SPIR-V is wiped after validation success or rejection", async () => {
+  const originalFrom = Uint8Array.from;
+  for (const valid of [true, false]) {
+    let decoded;
+    Uint8Array.from = function (input, ...args) {
+      const result = originalFrom.call(this, input, ...args);
+      if (typeof input === "string") decoded = result;
+      return result;
+    };
+    const { pipeline } = setup({
+      mutateTranslate: valid
+        ? undefined
+        : (result) => ({
+            ...result,
+            spirvBase64: Buffer.alloc(20, 7).toString("base64"),
+          }),
+    });
+    try {
+      const pending = pipeline.translate({ job, code: new Uint8Array(16) });
+      if (valid) assert.equal((await pending).msl, msl);
+      else await assert.rejects(pending, /SPIR-V magic/);
+      assert.equal(decoded.length, 20);
+      assert.ok(decoded.every((byte) => byte === 0));
+    } finally {
+      Uint8Array.from = originalFrom;
+      pipeline.dispose();
+    }
   }
 });
 

@@ -354,7 +354,7 @@ export function createProgramRewriterAdapter({
             fail("PROGRAM_RULESET_MANIFEST_MISMATCH");
         }
       }
-      const plan = planGuestFramework(modules);
+      const { signatureOffset, signatureSize } = planGuestFramework(modules);
       const guest = own(
         await race(() => buildGuestFramework(modules, { signal, profileId: shellProfile.id })),
       );
@@ -367,6 +367,17 @@ export function createProgramRewriterAdapter({
         fail("PROGRAM_GUEST_DIGEST_MISMATCH");
       check(signal);
       close();
+      // Guest 已复制镜像；只保留调用方会读取的输出，释放输入快照和临时重写文件。
+      // Guest has copied the images; retain only streamed outputs, not snapshots or rewrite scratch.
+      const retained = new Set([guest, plist, ...Object.values(sidecars)]);
+      for (let i = owned.length - 1; i >= 0; i--) {
+        if (!retained.has(owned[i])) {
+          owned[i].fill(0);
+          owned.splice(i, 1);
+        }
+      }
+      staged.length = 0;
+      modules.length = 0;
       const entry = (path, data, mode = 0o644, signature) => {
         const size = data.length;
         releaseEntries.push(() => {
@@ -390,8 +401,8 @@ export function createProgramRewriterAdapter({
       return [
         entry("Frameworks/Guest.framework/Guest", guest, 0o755, {
           kind: "ad-hoc",
-          offset: plan.signatureOffset,
-          size: plan.signatureSize,
+          offset: signatureOffset,
+          size: signatureSize,
         }),
         entry("Frameworks/Guest.framework/Info.plist", plist),
         ...Object.entries(sidecars).map(([name, value]) => entry(`dm/${name}`, value)),
