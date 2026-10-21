@@ -137,7 +137,9 @@ export function createExtractionWorkerClient({
       (active.operation !== "select" || data.progress.stage === "exefs-open")
     ) {
       try {
-        active.onProgress?.(Object.freeze({ ...data.progress }));
+        // 异步观察者拒绝也必须被观察，但绝不等待或续期请求。
+        // Observe async observer rejection without awaiting it or renewing the request.
+        Promise.resolve(active.onProgress?.(Object.freeze({ ...data.progress }))).catch(() => {});
       } catch {
         // 观察者不会更改请求或延长截止时间。
         // Observers do not alter the request or renew its deadline.

@@ -1,7 +1,7 @@
 // Run the production packager against local inputs under Bun. No game files or
 // keys are included in the repository or sent to the preview server.
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, lstat, open, realpath } from "node:fs/promises";
 import { basename, join, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
@@ -57,7 +57,15 @@ async function packageReaderSource(preview) {
   return source.toString("utf8");
 }
 
-function startPreview(preview) {
+// 真实路径检查阻止预览目录内符号链接越界；只打开已检查的目标。
+// Confine real paths so preview symlinks cannot escape; open only the checked target.
+export async function resolvePreviewFile(previewRoot, path) {
+  const target = await realpath(path);
+  if (!target.startsWith(previewRoot + sep) || !(await stat(target)).isFile()) return null;
+  return target;
+}
+async function startPreview(preview) {
+  const previewRoot = await realpath(preview);
   return Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
@@ -74,8 +82,9 @@ function startPreview(preview) {
       const path = resolve(preview, pathname.replace(/^\/+/, "") || "index.html");
       if (!path.startsWith(preview + sep)) return new Response(null, { status: 404 });
       try {
-        if (!(await stat(path)).isFile()) return new Response(null, { status: 404 });
-        return new Response(Bun.file(path));
+        const target = await resolvePreviewFile(previewRoot, path);
+        if (!target) return new Response(null, { status: 404 });
+        return new Response(Bun.file(target));
       } catch {
         return new Response(null, { status: 404 });
       }
@@ -109,39 +118,98 @@ export async function cleanupBunE2e(releases, primary) {
     throw new AggregateError(failures, "BUN_E2E_CLEANUP_FAILED", { cause: primary ?? failures[0] });
 }
 
+// 只安装临时全局属性，恢复原描述符（包括原本不存在的属性）。
+// Install temporary globals and restore exact descriptors, including absent properties.
+export function replaceBunGlobal(target, key, value) {
+  const original = Object.getOwnPropertyDescriptor(target, key);
+  // 不可配置但可写的数据属性仍可替换值，不能改写其描述符标志。
+  // Nonconfigurable writable data properties allow value replacement, not flag changes.
+  Object.defineProperty(
+    target,
+    key,
+    original && Object.hasOwn(original, "value")
+      ? { ...original, value }
+      : { configurable: true, writable: true, enumerable: original?.enumerable ?? false, value },
+  );
+  return () => {
+    if (original) Object.defineProperty(target, key, original);
+    else delete target[key];
+  };
+}
+export async function requireUnusedOutput(path) {
+  try {
+    await lstat(path);
+  } catch (error) {
+    if (error.code === "ENOENT") return;
+    throw error;
+  }
+  throw new Error("BUN_E2E_OUTPUT_EXISTS");
+}
+// 排他创建防止覆盖已有文件或跟随目标符号链接；失败仅删除仍属于本次写入的条目。
+// Exclusive creation prevents overwrite or destination symlink traversal; remove only our own failed entry.
+export async function writeBunOutput(path, blob) {
+  const file = await open(path, "wx");
+  let primary, identity;
+  try {
+    identity = await file.stat({ bigint: true });
+    await file.writeFile(blob.stream());
+    if ((await file.stat()).size !== blob.size) throw new Error("BUN_E2E_IPA_SIZE");
+  } catch (error) {
+    primary = error;
+    throw error;
+  } finally {
+    try {
+      await file.close();
+    } finally {
+      if (primary) {
+        const current = await lstat(path, { bigint: true }).catch(() => null);
+        if (identity && current?.dev === identity.dev && current?.ino === identity.ino)
+          await rm(path).catch(() => {});
+      }
+    }
+  }
+}
+let running = false;
 export async function run(options) {
   const preview = resolve(options.preview);
   const output = resolve(options.output);
-  const manifestBytes = await readFile(join(preview, "runtime/runtime-manifest.json"));
-  const { runtimeManifestSha256 } = await import(
-    pathToFileURL(join(preview, "runtime/runtime-integrity.mjs")).href
-  );
-  if (sha256(manifestBytes) !== runtimeManifestSha256) throw new Error("BUN_E2E_MANIFEST_HASH");
-  const readerSource = await packageReaderSource(preview);
-  const prefix = await Bun.file(
-    new URL("./bun-e2e-file-reader-prefix.mjs", import.meta.url),
-  ).text();
-  const readerUrl = URL.createObjectURL(
-    new Blob([prefix, "\n", readerSource], { type: "text/javascript" }),
-  );
-  const server = startPreview(preview);
-  const staging = await mkdtemp(join(tmpdir(), "d2r-bun-e2e-"));
-  const NativeWorker = globalThis.Worker;
-  let workers = 0;
-  globalThis.Worker = class extends NativeWorker {
-    constructor(url, workerOptions) {
-      workers++;
-      super(workers === 4 ? readerUrl : url, workerOptions);
-    }
-  };
-  globalThis.isSecureContext = true;
-  globalThis.location = server.url;
-  Object.defineProperty(navigator, "storage", {
-    configurable: true,
-    value: await storageAt(staging),
-  });
-  let packager, primary;
+  await requireUnusedOutput(output);
+  if (running) throw new Error("BUN_E2E_ALREADY_RUNNING");
+  running = true;
+  let readerUrl, server, staging, packager, primary;
+  const restore = [];
   try {
+    const manifestBytes = await readFile(join(preview, "runtime/runtime-manifest.json"));
+    const { runtimeManifestSha256 } = await import(
+      pathToFileURL(join(preview, "runtime/runtime-integrity.mjs")).href
+    );
+    if (sha256(manifestBytes) !== runtimeManifestSha256) throw new Error("BUN_E2E_MANIFEST_HASH");
+    const readerSource = await packageReaderSource(preview);
+    const prefix = await Bun.file(
+      new URL("./bun-e2e-file-reader-prefix.mjs", import.meta.url),
+    ).text();
+    readerUrl = URL.createObjectURL(
+      new Blob([prefix, "\n", readerSource], { type: "text/javascript" }),
+    );
+    server = await startPreview(preview);
+    staging = await mkdtemp(join(tmpdir(), "d2r-bun-e2e-"));
+    const NativeWorker = globalThis.Worker;
+    let workers = 0;
+    restore.push(
+      replaceBunGlobal(
+        globalThis,
+        "Worker",
+        class extends NativeWorker {
+          constructor(url, workerOptions) {
+            workers++;
+            super(workers === 4 ? readerUrl : url, workerOptions);
+          }
+        },
+      ),
+    );
+    restore.push(replaceBunGlobal(globalThis, "isSecureContext", true));
+    restore.push(replaceBunGlobal(globalThis, "location", server.url));
+    restore.push(replaceBunGlobal(navigator, "storage", await storageAt(staging)));
     let last = "";
     const onProgress = (event) => {
       const label = `${event.stage ?? event.phase ?? ""}: ${event.label ?? event.state ?? ""}`;
@@ -160,7 +228,7 @@ export async function run(options) {
       exportResources: options.exportResources,
       onProgress,
     });
-    await Bun.write(output, result.download.blob);
+    await writeBunOutput(output, result.download.blob);
     const size = (await stat(output)).size;
     if (size !== result.download.blob.size) throw new Error("BUN_E2E_IPA_SIZE");
     await checkArchive(output);
@@ -173,12 +241,15 @@ export async function run(options) {
     await cleanupBunE2e(
       [
         () => packager?.close(),
+        ...restore.reverse(),
         () => {
-          globalThis.Worker = NativeWorker;
+          if (readerUrl) URL.revokeObjectURL(readerUrl);
         },
-        () => URL.revokeObjectURL(readerUrl),
-        () => server.stop(),
-        () => rm(staging, { recursive: true, force: true }),
+        () => server?.stop(),
+        () => staging && rm(staging, { recursive: true, force: true }),
+        () => {
+          running = false;
+        },
       ],
       primary,
     );

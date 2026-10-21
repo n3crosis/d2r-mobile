@@ -258,3 +258,39 @@ test("ExeFS open progress reaches selection without closing its worker", async (
   assert.deepEqual(await pending, { selection: {}, token: "exefs", entries: [] });
   client.close();
 });
+
+// 进度观察者的异步结果不改变成功、原始失败或现有截止时间。
+// Async progress observers cannot change success, original failure, or existing deadlines.
+test("rejected async extraction progress is observed without replacing worker outcomes", async () => {
+  for (const failed of [false, true]) {
+    const { worker, client } = make();
+    const pending = client.openRomfs("exefs", {
+      onProgress: async () => {
+        throw new Error("synthetic observer failure");
+      },
+    });
+    const checked = failed
+      ? assert.rejects(pending, /^ExtractionClientError: PROD_KEYS_MALFORMED$/)
+      : pending;
+    worker.emit({ id: 1, progress: { stage: "romfs-base", completed: 50, total: 100, bytes: 64 } });
+    if (failed) worker.emit({ id: 1, ok: false, error: "PROD_KEYS_MALFORMED" });
+    else worker.emit({ id: 1, ok: true, result: { token: "romfs", size: 80n } });
+    const result = await checked;
+    if (!failed) assert.equal(result.token, "romfs");
+    await new Promise((resolve) => setImmediate(resolve));
+    client.close();
+    assert.equal(worker.terminated, true);
+    assert.equal(worker.listeners.size, 0);
+  }
+});
+test("unsettled extraction observer does not renew the existing deadline", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { worker, client } = make({ operationTimeoutMs: { openRomfs: 20 } });
+  const pending = client.openRomfs("exefs", { onProgress: () => new Promise(() => {}) });
+  const checked = assert.rejects(pending, /^ExtractionClientError: EXTRACTION_TIMEOUT$/);
+  t.mock.timers.tick(19);
+  worker.emit({ id: 1, progress: { stage: "romfs-base", completed: 50, total: 100, bytes: 64 } });
+  t.mock.timers.tick(1);
+  await checked;
+  assert.equal(worker.terminated, true);
+});

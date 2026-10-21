@@ -132,7 +132,11 @@ export async function runPackagingJob(options) {
   const adapters = options.adapters;
   const emit = (name, state) => {
     try {
-      options.onProgress?.(Object.freeze({ stage: name, state, label: labels[name] }));
+      // 不等待观察者；异步拒绝不能逸出为进程级错误。
+      // Never await observers; async rejection must not escape as a process-level error.
+      Promise.resolve(
+        options.onProgress?.(Object.freeze({ stage: name, state, label: labels[name] })),
+      ).catch(() => {});
     } catch {
       // 观察者不能改变执行、取消任务或暴露回调错误。
       // Observers cannot change execution, cancel the job or expose callback errors.
@@ -143,7 +147,9 @@ export async function runPackagingJob(options) {
     const label = extractionProgressLabel(diagnostic);
     if (!label) return;
     try {
-      options.onProgress?.(Object.freeze({ stage: name, state: "running", label, diagnostic }));
+      Promise.resolve(
+        options.onProgress?.(Object.freeze({ stage: name, state: "running", label, diagnostic })),
+      ).catch(() => {});
     } catch {
       // 只读进度观察者不能影响任务。
       // Read-only progress observers cannot affect the job.

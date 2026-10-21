@@ -547,3 +547,59 @@ test("diagnostics from finished stages cannot overwrite current job progress", a
   savedObserver(diagnostic);
   assert.equal(events.filter((event) => event.diagnostic).length, 1);
 });
+
+// 合成观察者失败必须独立于任务结果，也不能延长任务生命周期。
+// Synthetic observer failures stay independent of the job outcome and cannot extend its lifetime.
+test("rejected async stage and extraction diagnostic observers preserve successful cleanup and commit", async () => {
+  const f = fixture();
+  let stages = 0,
+    diagnostics = 0;
+  f.adapters.extractSelected = async ({ onDiagnostic }) => {
+    onDiagnostic({ stage: "romfs-base", completed: 50, total: 100, bytes: 64 });
+    return {};
+  };
+  const result = await runPackagingJob({
+    ...f,
+    onProgress: async (event) => {
+      if (event.diagnostic) diagnostics++;
+      else stages++;
+      throw new Error("synthetic async observer failure");
+    },
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(result.committed, true);
+  assert.ok(stages > 0);
+  assert.equal(diagnostics, 1);
+  assert.ok(f.calls.includes("dispose"));
+  assert.ok(f.calls.includes("cleanup"));
+});
+test("rejected async observer cannot replace the underlying job failure", async () => {
+  const f = fixture(),
+    primary = new Error("synthetic extraction failure");
+  f.adapters.extractSelected = async ({ onDiagnostic }) => {
+    onDiagnostic({ stage: "romfs-base", completed: 50, total: 100, bytes: 64 });
+    throw primary;
+  };
+  await assert.rejects(
+    runPackagingJob({
+      ...f,
+      onProgress: async () => {
+        throw new Error("synthetic async observer failure");
+      },
+    }),
+    (error) => error instanceof PackagingJobError && error.cause === primary,
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(f.calls.includes("dispose"));
+  assert.ok(f.calls.includes("cleanup"));
+});
+test("unsettled progress observers are never awaited before successful commit", async () => {
+  const f = fixture();
+  f.adapters.extractSelected = async ({ onDiagnostic }) => {
+    onDiagnostic({ stage: "romfs-base", completed: 50, total: 100, bytes: 64 });
+    return {};
+  };
+  const result = await runPackagingJob({ ...f, onProgress: () => new Promise(() => {}) });
+  assert.equal(result.committed, true);
+  assert.ok(f.calls.includes("cleanup"));
+});
