@@ -55,15 +55,15 @@ int texture_info(const nvn_texdesc *d, unsigned level, unsigned layer, uint32_t 
 /* Pillow 10.2 DDS/DXT5 expands 565 endpoints first, then truncates interpolated
  * 8-bit channels. bcdec interpolates in the 565 domain, giving different RGB
  * bytes for valid blocks. Native-art's pinned PNGs require Pillow's result. */
-static void pillow_bc3(const uint8_t *linear, uint32_t pitch, uint32_t width,
-                       uint32_t height, uint8_t *dst) {
+static void pillow_bc3(const uint8_t *linear, uint32_t pitch, uint32_t width, uint32_t height,
+                       uint8_t *dst) {
     for (uint32_t by = 0; by < (height + 3) / 4; by++) {
         for (uint32_t bx = 0; bx < (width + 3) / 4; bx++) {
             const uint8_t *block = linear + by * pitch + bx * 16;
             const uint16_t c0 = (uint16_t)block[8] | ((uint16_t)block[9] << 8);
             const uint16_t c1 = (uint16_t)block[10] | ((uint16_t)block[11] << 8);
             uint8_t color[4][3];
-            const uint16_t endpoints[2] = { c0, c1 };
+            const uint16_t endpoints[2] = {c0, c1};
             for (int i = 0; i < 2; i++) {
                 const uint16_t c = endpoints[i];
                 const uint8_t r = (c >> 11) & 31, g = (c >> 5) & 63, b = c & 31;
@@ -75,7 +75,7 @@ static void pillow_bc3(const uint8_t *linear, uint32_t pitch, uint32_t width,
                 color[2][channel] = (2 * color[0][channel] + color[1][channel]) / 3;
                 color[3][channel] = (color[0][channel] + 2 * color[1][channel]) / 3;
             }
-            uint8_t alpha[8] = { block[0], block[1] };
+            uint8_t alpha[8] = {block[0], block[1]};
             if (alpha[0] > alpha[1]) {
                 for (int i = 2; i < 8; i++)
                     alpha[i] = ((8 - i) * alpha[0] + (i - 1) * alpha[1]) / 7;
@@ -87,14 +87,18 @@ static void pillow_bc3(const uint8_t *linear, uint32_t pitch, uint32_t width,
             }
             uint64_t alpha_indices = 0;
             uint32_t color_indices = 0;
-            for (int i = 0; i < 6; i++) alpha_indices |= (uint64_t)block[2 + i] << (8 * i);
-            for (int i = 0; i < 4; i++) color_indices |= (uint32_t)block[12 + i] << (8 * i);
+            for (int i = 0; i < 6; i++)
+                alpha_indices |= (uint64_t)block[2 + i] << (8 * i);
+            for (int i = 0; i < 4; i++)
+                color_indices |= (uint32_t)block[12 + i] << (8 * i);
             for (uint32_t y = 0; y < 4 && by * 4 + y < height; y++) {
                 for (uint32_t x = 0; x < 4 && bx * 4 + x < width; x++) {
                     const uint32_t index = y * 4 + x;
                     uint8_t *pixel = dst + 4 * ((by * 4 + y) * width + bx * 4 + x);
                     const uint8_t *rgb = color[(color_indices >> (2 * index)) & 3];
-                    pixel[0] = rgb[0]; pixel[1] = rgb[1]; pixel[2] = rgb[2];
+                    pixel[0] = rgb[0];
+                    pixel[1] = rgb[1];
+                    pixel[2] = rgb[2];
                     pixel[3] = alpha[(alpha_indices >> (3 * index)) & 7];
                 }
             }
@@ -126,8 +130,10 @@ static int texture_decode_impl(const nvn_texdesc *d, unsigned level, unsigned la
         status = nvn_deswizzle(d, level, layer, src, linear, m[6]);
     }
     if (!status) {
-        if (pillow) pillow_bc3(linear, m[6], m[2], m[3], dst);
-        else status = nvn_bc_decode(d->format, linear, m[6], m[2], m[3], dst, m[2] * m[5]);
+        if (pillow)
+            pillow_bc3(linear, m[6], m[2], m[3], dst);
+        else
+            status = nvn_bc_decode(d->format, linear, m[6], m[2], m[3], dst, m[2] * m[5]);
     }
     free(linear);
     return status;
