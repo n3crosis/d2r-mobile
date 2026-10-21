@@ -292,3 +292,49 @@ test("explicit parent directories and equivalent target patch zero", () => {
   f.observedOutputTargetOS = { platform: "ios", minimumVersion: "16.0.0" };
   assert.equal(validateAssemblyInventory(f).status, "assembly-inventory-valid");
 });
+
+// 四种生成覆盖路径共享规范 0–255 编号；外壳本身仍不可携带归档。
+// All four generated overlay paths share canonical 0–255 numbering; shell archives remain forbidden.
+for (const root of [
+  "romfs_overlay",
+  "romfs_overlay_variants/item_notes",
+  "romfs_overlay_astc",
+  "romfs_overlay_astc_variants/item_notes",
+]) {
+  test(`generated ${root} accepts canonical two/three-digit chunks only`, () => {
+    const setup = (name, size = 1024) => {
+      const f = fixture();
+      f.shell.trustedRecipe.requiredPaths = [...f.shell.trustedRecipe.requiredPaths, root + "/"];
+      f.shell.shellManifestText += "\n" + root + "/";
+      f.generatedEntries.push(entry(`${root}/data/${name}`, size));
+      return f;
+    };
+    for (const name of [
+      "00-00000002.data",
+      "99-00000255.data",
+      "100-00000002.data",
+      "255-00000255.data",
+    ])
+      assert.equal(validateAssemblyInventory(setup(name)).status, "assembly-inventory-valid");
+    assert.equal(
+      validateAssemblyInventory(setup("255-00000002.data", 128 * 1024 * 1024)).status,
+      "assembly-inventory-valid",
+    );
+    for (const name of [
+      "0-00000002.data",
+      "100-0000002.data",
+      "000-00000002.data",
+      "099-00000002.data",
+      "256-00000002.data",
+      "100-00000256.data",
+      "100-00000002.DATA",
+      "100-00000002.data/child",
+    ])
+      assert.throws(() => validateAssemblyInventory(setup(name)), /Forbidden/);
+    for (const size of [0, 128 * 1024 * 1024 + 1])
+      assert.throws(() => validateAssemblyInventory(setup("100-00000002.data", size)), /Forbidden/);
+    const shell = fixture();
+    shell.shell.entries.push(entry(`${base}${root}/data/100-00000002.data`));
+    assert.throws(() => validateShellContract(shell.shell), /Forbidden/);
+  });
+}

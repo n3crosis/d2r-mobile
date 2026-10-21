@@ -7,6 +7,8 @@
  * 仅元数据的外壳/组装约定。不读取或写入 ZIP，不验证内容或签名。
  * Metadata-only shell/assembly contract. No ZIP reads, writes, content verification or signing.
  */
+import { validateCascArchiveName } from "./astc-output-validator.mjs";
+
 export const SHELL_LIMITS = Object.freeze({
   entries: 20000,
   requiredPaths: 1024,
@@ -95,13 +97,20 @@ function recipe(value) {
   };
 }
 function generatedOverlayArchive(name, size) {
-  return (
-    size > 0 &&
-    size <= 128 * 1024 * 1024 &&
-    /^(?:Payload\/DmIOS\.app\/)?romfs_overlay(?:_astc)?(?:_variants\/item_notes)?\/data\/[0-9]{2}-[0-9]{8}\.data$/.test(
+  if (size <= 0 || size > 128 * 1024 * 1024) return false;
+  const match =
+    /^(?:Payload\/DmIOS\.app\/)?romfs_overlay(?:_astc)?(?:_variants\/item_notes)?\/data\/([0-9]{2,3}-[0-9]{8}\.data)$/.exec(
       name,
-    )
-  );
+    );
+  if (!match) return false;
+  try {
+    // 与覆盖生成器共享规范归档编号，保留根目录和独立大小限制。
+    // Share canonical archive numbering with overlay validation, retaining root and size bounds.
+    validateCascArchiveName(match[1]);
+    return true;
+  } catch {
+    return false;
+  }
 }
 function inventory(entries, { allowOverlayArchives = false } = {}) {
   if (!Array.isArray(entries) || !entries.length || entries.length > SHELL_LIMITS.entries)
@@ -144,7 +153,7 @@ function inventory(entries, { allowOverlayArchives = false } = {}) {
       ) ||
       /\.(?:nsp|xci|nca|p12|pfx|pem|key|keys|mobileprovision)$/i.test(name) ||
       ((/\d{2}-\d{8}\.data$/i.test(name) ||
-        components.some((component) => /^[0-9]{2}-[0-9]{8}\.data$/i.test(component))) &&
+        components.some((component) => /^[0-9]+-[0-9]+\.data$/i.test(component))) &&
         !(allowOverlayArchives && generatedOverlayArchive(name, entry.size)))
     )
       fail("Forbidden signing, credential or bulk RomFS archive path");
