@@ -64,7 +64,8 @@ not cryptographic proof: copying hashes from CNMT or deriving IDs from filenames
 must never set it. Every required selected content is matched by ID, hash and size.
 The explicit `skipContentHashes: true` option instead accepts only unique
 `hashVerified: false` inventory entries and matches ID and size without claiming
-whole-content integrity. It is intended only for the browser's experimental quick mode.
+whole-content integrity. The browser UI enables this fast mode by default; enabling its full-content-hash
+option restores hash matching. Independent callers retain the strict default.
 NCA-header identity, sections and signatures remain upstream responsibilities.
 No content ID is inferred from the filename and no NCA is chosen by array order.
 
