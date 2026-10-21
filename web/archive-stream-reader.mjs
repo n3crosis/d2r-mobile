@@ -191,7 +191,9 @@ export async function stageArchiveRecord(
       bytes.length !== count
     )
       fail("SHORT_READ");
-    return bytes.slice();
+    // 使用基类构造器复制，避免 Buffer 等子类的 slice 保留来源别名。
+    // Copy through the base constructor; subclass slice methods such as Buffer.slice may alias.
+    return new Uint8Array(bytes);
   };
   let total = 0;
   try {

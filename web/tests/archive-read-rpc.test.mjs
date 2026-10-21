@@ -81,6 +81,25 @@ test("opaque source binding preserves BigInt offsets and transfers owned copies"
   detached(s.a);
   detached(s.b);
 });
+test("Buffer subviews transfer only the requested bytes without detaching or mutating the source", async () => {
+  const backing = Buffer.alloc(32, 99);
+  backing.set([1, 2, 3, 4], 9);
+  const before = new Uint8Array(backing);
+  const s = setup({ size: 4n, readAt: () => backing.subarray(9, 13) });
+  try {
+    const bytes = await s.reader.readAt(0n, 4);
+    assert.deepEqual([...bytes], [1, 2, 3, 4]);
+    assert.equal(bytes.buffer.byteLength, 4);
+    assert.equal(backing.byteLength, 32);
+    assert.deepEqual(new Uint8Array(backing), before);
+    bytes.fill(0);
+    assert.deepEqual(new Uint8Array(backing), before);
+    assert.deepEqual([...(await s.reader.readAt(0n, 4))], [1, 2, 3, 4]);
+  } finally {
+    s.client.close();
+    s.host.close();
+  }
+});
 test("bounds reject locally, concurrency has no queue, identifiers are monotonic", async () => {
   const wait = deferred();
   const s = setup({ size: 100n, readAt: () => wait.promise });

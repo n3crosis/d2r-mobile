@@ -13,27 +13,17 @@ const encode = (text) => new TextEncoder().encode(text);
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const empty = (bytes) => assert.ok(bytes.every((value) => value === 0));
 const buildId = "534e5448455449430000000000000000";
-async function fixture() {
+async function fixture(t) {
   const snapshots = new Map(),
     copiedFiles = new Map(),
     inputs = {},
     outputs = {},
     modules = [],
     images = [];
-  const trackCopy = (bytes, name, copies) => {
-    Object.defineProperty(bytes, "slice", {
-      value(...args) {
-        const copy = Uint8Array.prototype.slice.apply(this, args);
-        copies.set(name, copy);
-        return copy;
-      },
-    });
-    return bytes;
-  };
   for (const [index, name] of ["main", "sdk"].entries()) {
     const input = new Uint8Array(128).fill(index + 1);
     input.set(Buffer.from(buildId, "hex"), 0x40);
-    inputs[name] = trackCopy(input, name, snapshots);
+    inputs[name] = input;
     const image = new Uint8Array(65540).fill(index + 3);
     const files = {
       "build_src.sha256": encode(`${PROGRAM_REWRITER_SOURCE}  patch_nso.py\n`),
@@ -44,8 +34,6 @@ async function fixture() {
     };
     for (const suffix of ["gates", "sites", "cuts", "params", "obs"])
       files[`${name}.${suffix}.tsv`] = encode(`${name} ${suffix}\n`);
-    for (const [file, bytes] of Object.entries(files))
-      trackCopy(bytes, `${name}/${file}`, copiedFiles);
     outputs[name] = files;
     modules.push({
       name,
@@ -65,6 +53,24 @@ async function fixture() {
     sourceSha256: PROGRAM_REWRITER_SOURCE,
     versions: [{ id: "lifetime", modules, guestSha256: sha(guest), plistSha256: sha(plist) }],
   };
+  // 在摘要边界观察独占字节，不依赖可重写的 slice 方法。
+  // Observe owned bytes at the digest boundary, without relying on overridable slice methods.
+  const pending = new Map();
+  const observe = (bytes, name, copies) => {
+    const key = sha(bytes);
+    if (!pending.has(key)) pending.set(key, []);
+    pending.get(key).push({ name, copies });
+  };
+  for (const [name, bytes] of Object.entries(inputs)) observe(bytes, name, snapshots);
+  for (const [name, files] of Object.entries(outputs))
+    for (const file of Object.keys(files).sort())
+      observe(files[file], `${name}/${file}`, copiedFiles);
+  const digest = globalThis.crypto.subtle.digest.bind(globalThis.crypto.subtle);
+  t.mock.method(globalThis.crypto.subtle, "digest", (algorithm, bytes) => {
+    const match = pending.get(sha(bytes))?.shift();
+    if (match) match.copies.set(match.name, bytes);
+    return digest(algorithm, bytes);
+  });
   return { inputs, outputs, snapshots, copiedFiles, guest, plist, catalog };
 }
 function adapterFor(f, run, close = () => {}) {
@@ -90,7 +96,7 @@ async function collect(entry) {
 }
 
 test("program generation releases scratch only after Guest consumes it and preserves exact streamed bytes", async (t) => {
-  const f = await fixture();
+  const f = await fixture(t);
   const originalInputs = Object.fromEntries(
     Object.entries(f.inputs).map(([name, bytes]) => [name, sha(bytes)]),
   );
@@ -122,6 +128,8 @@ test("program generation releases scratch only after Guest consumes it and prese
   });
   const entries = await adapter.generateProgram();
   assert.equal(closed, 1);
+  assert.equal(f.snapshots.size, 2);
+  assert.equal(f.copiedFiles.size, 16);
   assert.ok(guestBuffer);
   for (const bytes of f.snapshots.values()) empty(bytes);
   const retained = new Set([
@@ -160,19 +168,21 @@ test("program generation releases scratch only after Guest consumes it and prese
       assert.equal(sha(bytes), originalOutputs[name][file]);
 });
 
-test("failed Guest verification wipes staged inputs and all owned worker copies", async () => {
-  const f = await fixture();
+test("failed Guest verification wipes staged inputs and all owned worker copies", async (t) => {
+  const f = await fixture(t);
   f.catalog.versions[0].guestSha256 = "0".repeat(64);
   const adapter = adapterFor(f);
   await assert.rejects(adapter.generateProgram(), { code: "PROGRAM_GUEST_DIGEST_MISMATCH" });
+  assert.equal(f.snapshots.size, 2);
+  assert.equal(f.copiedFiles.size, 16);
   for (const bytes of f.snapshots.values()) empty(bytes);
   for (const bytes of f.copiedFiles.values()) empty(bytes);
   for (const bytes of Object.values(f.inputs)) assert.ok(bytes.some((value) => value !== 0));
   adapter.dispose();
 });
 
-test("cancellation during rewrite still wipes owned snapshots without mutating borrowed input", async () => {
-  const f = await fixture();
+test("cancellation during rewrite still wipes owned snapshots without mutating borrowed input", async (t) => {
+  const f = await fixture(t);
   const controller = new AbortController();
   const adapter = adapterFor(f, () => {
     controller.abort();
@@ -186,8 +196,8 @@ test("cancellation during rewrite still wipes owned snapshots without mutating b
   adapter.dispose();
 });
 
-test("dispose during rewrite rejects generation and wipes snapshots", async () => {
-  const f = await fixture();
+test("dispose during rewrite rejects generation and wipes snapshots", async (t) => {
+  const f = await fixture(t);
   let started;
   const running = new Promise((resolve) => {
     started = resolve;
@@ -202,4 +212,25 @@ test("dispose during rewrite rejects generation and wipes snapshots", async () =
   await assert.rejects(generation, { code: "PROGRAM_DISPOSED" });
   for (const bytes of f.snapshots.values()) empty(bytes);
   for (const bytes of Object.values(f.inputs)) assert.ok(bytes.some((value) => value !== 0));
+});
+
+test("Buffer inputs and worker outputs stay borrowed and emitted chunks survive disposal", async (t) => {
+  const f = await fixture(t);
+  for (const name of Object.keys(f.inputs)) f.inputs[name] = Buffer.from(f.inputs[name]);
+  for (const files of Object.values(f.outputs))
+    for (const name of Object.keys(files)) files[name] = Buffer.from(files[name]);
+  const borrowed = [...Object.values(f.inputs), ...Object.values(f.outputs).flatMap(Object.values)];
+  const expected = borrowed.map(sha);
+  const adapter = adapterFor(f);
+  const entries = await adapter.generateProgram();
+  assert.deepEqual(borrowed.map(sha), expected);
+  assert.equal(f.snapshots.size, 2);
+  assert.equal(f.copiedFiles.size, 16);
+  const chunks = [];
+  for (const entry of entries)
+    for await (const bytes of entry.chunks()) chunks.push({ bytes, digest: sha(bytes) });
+  adapter.dispose();
+  assert.deepEqual(borrowed.map(sha), expected);
+  for (const { bytes, digest } of chunks) assert.equal(sha(bytes), digest);
+  for (const bytes of [...f.snapshots.values(), ...f.copiedFiles.values()]) empty(bytes);
 });

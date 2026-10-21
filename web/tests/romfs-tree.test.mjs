@@ -204,16 +204,18 @@ test("checks cancellation before/after asynchronous reads and on lazy reads", as
   await assert.rejects(lifetimeIndex.files[0].readAt(0n, 1), /closed/);
 });
 
-test("copies lazy bytes so reusable reader buffers cannot mutate prior results", async () => {
-  const f = fixture();
-  const original = f.source.readAt;
-  const scratch = new Uint8Array([1, 2, 3]);
-  f.source.readAt = (offset, count) => (offset >= f.dataOffset ? scratch : original(offset, count));
-  const index = await indexRomfs(f.source);
-  const result = await index.files[0].readAt(0n, 3);
-  scratch.fill(0);
-  assert.deepEqual(result, new Uint8Array([1, 2, 3]));
-});
+for (const bufferSubclass of [false, true])
+  test(`copies reusable reader ${bufferSubclass ? "Buffer" : "Uint8Array"} without aliasing prior results`, async () => {
+    const f = fixture();
+    const original = f.source.readAt;
+    const scratch = bufferSubclass ? Buffer.from([1, 2, 3]) : new Uint8Array([1, 2, 3]);
+    f.source.readAt = (offset, count) =>
+      offset >= f.dataOffset ? scratch : original(offset, count);
+    const index = await indexRomfs(f.source);
+    const result = await index.files[0].readAt(0n, 3);
+    scratch.fill(0);
+    assert.deepEqual(result, new Uint8Array([1, 2, 3]));
+  });
 
 function multipleFiles({ secondName = "other.bin", secondOffset = 8n } = {}) {
   const f = fixture({ dataOffset: 512n, size: 16n });

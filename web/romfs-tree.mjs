@@ -104,7 +104,9 @@ export async function indexRomfs(source, { signal } = {}) {
     if (!(bytes instanceof Uint8Array) || bytes.byteLength !== count) fail("short read");
     // 将元数据和返回的载荷与读取器可复用的暂存缓冲区隔离。
     // Isolate metadata and returned payload from a reader's reusable scratch buffer.
-    return bytes.slice();
+    // 使用基类构造器复制，避免 Buffer 等子类的 slice 保留来源别名。
+    // Copy through the base constructor; subclass slice methods such as Buffer.slice may alias.
+    return new Uint8Array(bytes);
   }
   let metadataReadBytes = 0;
   async function readMetadata(offset, count) {

@@ -655,3 +655,37 @@ test("cached compressed snapshots are bounded windows without enlarging decoder 
   assert.equal(input.reads.length, 1 + Math.ceil(f.raw.length / 65536));
   await output.dispose();
 });
+
+// Buffer.slice 会保留来源别名；异步暂存期间仍须保持独立的读取快照。
+// Buffer.slice aliases its source; read snapshots must remain independent across asynchronous staging.
+for (const bufferSubclass of [false, true])
+  test(`stream snapshots isolate reusable ${bufferSubclass ? "Buffer" : "Uint8Array"} source storage`, async () => {
+    const f = fixture("n", Buffer.alloc(1024 * 1024 + 17, 42)),
+      scratch = bufferSubclass ? Buffer.alloc(65536) : new Uint8Array(65536),
+      staging = stageFactory();
+    const input = {
+      size: BASE + BigInt(f.raw.length),
+      readAt(at, count) {
+        const offset = Number(at - BASE);
+        scratch.set(f.raw.subarray(offset, offset + count));
+        return scratch.subarray(0, count);
+      },
+    };
+    const output = await stageArchiveRecord(
+      input,
+      f.record,
+      options(async () => {
+        const stage = await staging.createStage();
+        return {
+          ...stage,
+          async append(bytes) {
+            await Promise.resolve();
+            scratch.fill(0);
+            stage.append(bytes);
+          },
+        };
+      }),
+    );
+    assert.deepEqual(Buffer.concat(staging.state.chunks), f.content);
+    await output.dispose();
+  });

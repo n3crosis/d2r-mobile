@@ -62,7 +62,7 @@ function snapshot(bytes, maxBytes = MAX_BYTES) {
     (globalThis.SharedArrayBuffer && bytes.buffer instanceof globalThis.SharedArrayBuffer)
   )
     fail("PROGRAM_INVALID_BYTES");
-  return bytes.slice();
+  return new Uint8Array(bytes);
 }
 function catalogFor(value) {
   if (value === REGISTERED_PROGRAM_CATALOG)
@@ -318,7 +318,7 @@ export function createProgramRewriterAdapter({
             fail("PROGRAM_INVALID_OUTPUT");
           outputTotal += value.length;
           if (outputTotal > PROGRAM_REWRITE_LIMITS.totalOutputBytes) fail("PROGRAM_OUTPUT_BUDGET");
-          files[name] = own(value.slice());
+          files[name] = own(new Uint8Array(value));
           if (!registered && (await race(() => sha256(files[name]))) !== module.files[name])
             fail("PROGRAM_OUTPUT_DIGEST_MISMATCH");
           check(signal);

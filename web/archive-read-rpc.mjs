@@ -119,7 +119,9 @@ export function createArchiveReadRpcHost(port, { signal, maxPending = 1 } = {}) 
           bytes.length !== data.count
         )
           throw error("READ");
-        const buffer = bytes.slice().buffer;
+        // Buffer.slice() 可能共享来源；只传输请求范围的独立普通字节副本。
+        // Buffer.slice() may alias the source; transfer only an owned plain copy of the requested range.
+        const buffer = new Uint8Array(bytes).buffer;
         send({ type: "result", id: data.id, bytes: buffer }, [buffer]);
       })
       .catch(() => send({ type: "failure", id: data.id, code: "READ" }))
