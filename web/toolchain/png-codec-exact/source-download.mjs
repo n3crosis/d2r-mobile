@@ -1,6 +1,8 @@
 // 仅对固定公开源码的瞬时下载错误重试；大小或摘要不符立即失败。
 // Retry transient downloads of pinned public source only; size or digest mismatch fails immediately.
 import { createHash } from "node:crypto";
+import { readFile, writeFile, mkdtemp, rename, rm } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
 const transientStatuses = new Set([408, 429, 500, 502, 503, 504]);
@@ -63,4 +65,30 @@ export async function downloadPinnedZlib(pin, { fetch = globalThis.fetch, sleep 
     }
     await sleep(1000 * (attempt + 1));
   }
+}
+
+// 缓存只有通过固定大小和摘要校验才可复用；完整替换通过同目录原子重命名发布。
+// Reuse only size/digest-verified caches; publish complete replacements by same-directory atomic rename.
+export async function readPinnedZlibSource(path, pin, options) {
+  let cached;
+  try {
+    cached = await readFile(path);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  if (
+    cached?.length === pin.bytes &&
+    createHash("sha256").update(cached).digest("hex") === pin.sha256
+  )
+    return cached;
+  const bytes = await downloadPinnedZlib(pin, options);
+  const staging = await mkdtemp(join(dirname(path), ".zlib-source-"));
+  try {
+    const temporary = join(staging, "archive");
+    await writeFile(temporary, bytes);
+    await rename(temporary, path);
+  } finally {
+    await rm(staging, { recursive: true, force: true }).catch(() => {});
+  }
+  return bytes;
 }

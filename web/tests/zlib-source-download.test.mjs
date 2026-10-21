@@ -3,7 +3,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { downloadPinnedZlib } from "../toolchain/png-codec-exact/source-download.mjs";
+import { mkdtemp, readFile, writeFile, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  downloadPinnedZlib,
+  readPinnedZlibSource,
+} from "../toolchain/png-codec-exact/source-download.mjs";
 const raw = new Uint8Array([1, 2, 3, 4]);
 const pin = {
   url: "https://example.invalid/pinned.tar.gz",
@@ -106,4 +112,37 @@ test("oversized streamed response is cancelled without reading the remaining bod
   );
   await assert.rejects(run([response]).promise, /Pinned zlib source mismatch/);
   assert.equal(cancelled, true);
+});
+
+test("partial and wrong-digest source caches recover, then reuse verified bytes", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "zlib-cache-"));
+  const path = join(directory, "source.tar.gz");
+  let calls = 0;
+  const options = {
+    fetch: async () => {
+      calls++;
+      return new Response(raw);
+    },
+  };
+  try {
+    for (const bad of [raw.slice(1), new Uint8Array([1, 2, 3, 5])]) {
+      await writeFile(path, bad);
+      assert.deepEqual(await readPinnedZlibSource(path, pin, options), raw);
+      assert.deepEqual(new Uint8Array(await readFile(path)), raw);
+    }
+    await readPinnedZlibSource(path, pin, options);
+    assert.equal(calls, 2);
+    await assert.rejects(readPinnedZlibSource(directory, pin, options), { code: "EISDIR" });
+    assert.equal(calls, 2);
+    assert.deepEqual(await readdir(directory), ["source.tar.gz"]);
+    await writeFile(path, raw.slice(1));
+    await assert.rejects(
+      readPinnedZlibSource(path, pin, { fetch: async () => new Response(raw.slice(1)) }),
+      /Pinned zlib source mismatch/,
+    );
+    assert.deepEqual(new Uint8Array(await readFile(path)), raw.slice(1));
+    assert.deepEqual(await readdir(directory), ["source.tar.gz"]);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });

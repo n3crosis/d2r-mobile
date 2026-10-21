@@ -2,7 +2,16 @@ import process from "node:process";
 import { Buffer } from "node:buffer";
 // 仅用于构建：复用现有 CI 的 emsdk 4.0.20，不新增 CI 作业。
 // Build-only: reuse the existing CI emsdk 4.0.20, never add a CI job.
-import { readFileSync, writeFileSync, mkdirSync, existsSync, copyFileSync } from "node:fs";
+import {
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  existsSync,
+  copyFileSync,
+  mkdtempSync,
+  renameSync,
+  rmSync,
+} from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -16,7 +25,13 @@ const vendor = join(root, "vendor"),
 mkdirSync(vendor, { recursive: true });
 mkdirSync(dist, { recursive: true });
 const archive = join(vendor, "freetype.zip");
-if (!existsSync(archive)) {
+const validArchive = (bytes) =>
+  bytes.length === pin.bytes &&
+  hash(bytes) === pin.sha256 &&
+  createHash("sha512").update(bytes).digest("hex") === pin.sha512;
+// 缓存中断或过期时重新获取固定来源；只有完整验证的字节才能原子替换缓存。
+// Refetch interrupted or stale caches from the pinned source; only fully verified bytes replace the cache atomically.
+if (!existsSync(archive) || !validArchive(readFileSync(archive))) {
   const response = await fetch(pin.url);
   if (!response.ok) throw new Error(`FreeType source fetch ${response.status}`);
   const chunks = [];
@@ -27,17 +42,21 @@ if (!existsSync(archive)) {
     chunks.push(chunk);
   }
   const bytes = Buffer.concat(chunks);
-  if (bytes.length !== pin.bytes || hash(bytes) !== pin.sha256)
-    throw new Error("FreeType source mismatch");
-  writeFileSync(archive, bytes);
+  if (!validArchive(bytes)) throw new Error("FreeType source mismatch");
+  const staging = mkdtempSync(join(vendor, ".freetype-"));
+  try {
+    const pending = join(staging, "freetype.zip");
+    writeFileSync(pending, bytes);
+    renameSync(pending, archive);
+  } finally {
+    try {
+      rmSync(staging, { recursive: true, force: true });
+    } catch {
+      // 临时缓存清理失败不得掩盖原始写入或重命名错误。
+      // Temporary cache cleanup failure must not mask the original write or rename error.
+    }
+  }
 }
-const bytes = readFileSync(archive);
-if (
-  bytes.length !== pin.bytes ||
-  hash(bytes) !== pin.sha256 ||
-  createHash("sha512").update(bytes).digest("hex") !== pin.sha512
-)
-  throw new Error("Cached FreeType source mismatch");
 const config = readFileSync(join(root, "reference/ftconfig.h"));
 if (hash(config) !== pin.configSha256) throw new Error("FreeType port configuration mismatch");
 const names = execFileSync("unzip", ["-Z1", archive], { encoding: "utf8" }).trim().split("\n");
