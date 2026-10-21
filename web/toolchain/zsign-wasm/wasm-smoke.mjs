@@ -70,8 +70,12 @@ async function runWorker() {
       return instance.exports;
     },
     print() {},
-    printErr() {},
-    onAbort() {},
+    printErr(message) {
+      process.stderr.write(`Signing WASM diagnostic: ${String(message)}\n`);
+    },
+    onAbort(reason) {
+      throw new Error(`Signing WASM aborted: ${String(reason)}`);
+    },
   });
   try {
     assert.equal(instantiations, 1);
@@ -133,7 +137,19 @@ if (isMainThread) {
   try {
     parentPort.postMessage({ ok: true, result: await runWorker() });
   } catch (error) {
-    parentPort.postMessage({ ok: false, error: String(error.stack || error) });
+    const details =
+      error && typeof error === "object"
+        ? Object.fromEntries(
+            Object.getOwnPropertyNames(error).map((key) => [key, String(error[key])]),
+          )
+        : {};
+    parentPort.postMessage({
+      ok: false,
+      error:
+        error instanceof Error
+          ? String(error.stack || error.message)
+          : `Non-Error rejection (${typeof error}): ${String(error)} ${JSON.stringify(details)}`,
+    });
   } finally {
     parentPort.close();
   }
