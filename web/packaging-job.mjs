@@ -380,7 +380,9 @@ export async function runPackagingJob(options) {
     });
   } catch (cause) {
     const failedStage = stage;
-    const cancelled = signal.aborted && !commitStarted;
+    // close() 仍可能在提交前校验及复制；只把同一取消原因识别为取消，不能掩盖并发的磁盘错误。
+    // close() can still validate and copy before commit; match the exact abort reason without masking a racing disk failure.
+    const cancelled = !committed && signal.aborted && (!commitStarted || cause === signal.reason);
     controller.abort();
     try {
       await dispose();

@@ -319,6 +319,44 @@ test("writes await sink backpressure and cancellation after close begins cannot 
   assert.equal(result.committed, true);
   assert.ok(writes > 0);
 });
+// 提交前的快照与复制仍可取消；无关关闭错误不能被竞态取消掩盖。
+// Snapshot and copy before commit remain cancellable; racing cancellation must not mask unrelated close errors.
+for (const phase of ["snapshot", "copy", "close-failure"]) {
+  test(`pre-commit ${phase} preserves the actual outcome`, async () => {
+    const f = fixture(),
+      controller = new AbortController();
+    const diskFailure = new Error("synthetic close failure");
+    let aborts = 0,
+      committed = false;
+    f.adapters.createOutput = async ({ signal }) => ({
+      async write() {},
+      async close() {
+        // 与实际暂存适配器相同，组合信号保留调用方取消原因的身份。
+        // Like the real staged adapter, a composed signal preserves the caller's abort-reason identity.
+        const transferSignal = AbortSignal.any([signal, new AbortController().signal]);
+        await Promise.resolve();
+        if (phase === "copy") await Promise.resolve();
+        controller.abort();
+        if (phase === "close-failure") throw diskFailure;
+        transferSignal.throwIfAborted();
+        committed = true;
+      },
+      async abort() {
+        aborts++;
+      },
+    });
+    await assert.rejects(runPackagingJob({ ...f, signal: controller.signal }), (error) => {
+      assert.equal(error.report.stage, "commit");
+      assert.equal(error.report.commitStarted, true);
+      assert.equal(error.report.committed, false);
+      assert.equal(error.report.code, phase === "close-failure" ? "STAGE_FAILED" : "CANCELLED");
+      if (phase === "close-failure") assert.equal(error.cause, diskFailure);
+      return true;
+    });
+    assert.equal(committed, false);
+    assert.equal(aborts, 1);
+  });
+}
 test("forged streamed shell inventory is rejected before output creation", async () => {
   const f = fixture(),
     load = f.adapters.loadShell;
