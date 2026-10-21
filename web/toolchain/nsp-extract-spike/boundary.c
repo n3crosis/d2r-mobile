@@ -323,9 +323,10 @@ static int open_authenticated_section(const char *path, int mode, int warlock_me
     /* The known unlock-only Warlock Meta may be repacked without a retail
      * signature. Its caller measures the whole NCA and checks its CNMT content.
      * Never extend this exception to executable or RomFS content. */
-    if (!valid && !(warlock_meta && mode == 0 &&
-                    nca.header.title_id == 0x0100726014353001ULL &&
-                    nca.header.content_type == NCACONTENTTYPE_META))
+    int unsigned_warlock_meta = warlock_meta && mode == 0;
+    unsigned_warlock_meta &= nca.header.title_id == 0x0100726014353001ULL;
+    unsigned_warlock_meta &= nca.header.content_type == NCACONTENTTYPE_META;
+    if (!valid && !unsigned_warlock_meta)
         return -3;
     if (nca.header.content_type != (program ? NCACONTENTTYPE_PROGRAM : NCACONTENTTYPE_META))
         return -4;
