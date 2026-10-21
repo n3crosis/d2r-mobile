@@ -23,13 +23,18 @@ SDKs, use sudo, launch a browser or run the proof suites.
 
 The build reuses these implementations, without copying their logic:
 
-1. Pinned nested asset/program lockfiles, installed with lifecycle scripts disabled.
+1. The pinned nested program lockfile, installed with lifecycle scripts disabled.
 2. Existing texture/BC3, production-trust-root extraction and ARM64 rewrite WASM builds.
 3. SPIRV-Cross at `f11ba9f0b21ba8fc15153d50a2a1ae31ab1cf8f7`, using the existing Wasm build script.
-4. Asset runtime vendoring and all registered source-pinned asset module packagers.
-5. Existing sealed texture and asset Pyodide packagers.
-6. The original source-linked browser shader project, with external boot config,
+4. Exact PNG/zlib, image-kernel and font WASM builds, assembled with source-pinned
+   JavaScript asset recipes. No Pyodide runtime is prepared for release.
+5. The sealed texture packager and closed production worker bundles.
+6. The browser shader project, with external boot config,
    pinned SDK/workload set, analyzers and warnings-as-errors, then its sealed packager.
+
+Native Python build/audit tools, hash-gated recipe sources and explicitly invoked
+Pyodide parity proofs remain development dependencies, not browser runtime files.
+Removing unused browser-only glue is source cleanup, not a new payload or RAM reduction.
 
 The build packages only after every required component succeeds. The output is
 `web/runtime-build/out/`. The logical inventory preserves original `toolchain/...`

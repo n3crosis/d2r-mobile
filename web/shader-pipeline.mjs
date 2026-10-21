@@ -374,19 +374,7 @@ export function createShaderPipeline({
       // 然后取该拼接结果 SHA256 的前 16 个十六进制字符。
       // Exact d2rm_pack.py src_digest: sorted filename UTF-8 + raw SHA256(source),
       // then first 16 hex digits of SHA256 over that concatenation.
-      const chunks = contract.keys.map((k) => {
-        const name = encoder.encode(`${k}_b.metal`),
-          data = new Uint8Array(name.length + 32);
-        data.set(name);
-        data.set(completed.get(k), name.length);
-        return data;
-      });
-      const input = new Uint8Array(chunks.reduce((n, x) => n + x.length, 0));
-      let offset = 0;
-      for (const chunk of chunks) {
-        input.set(chunk, offset);
-        offset += chunk.length;
-      }
+      const input = buildShaderSourceDigestInput(contract.keys, completed);
       const sourceDigest = (await hash(input)).slice(0, 16);
       ensureOpen();
       if (sourceDigest !== contract.shaderDigest)
@@ -410,4 +398,44 @@ export function createShaderPipeline({
       totalMsl = 0;
     },
   });
+}
+
+// 固定 ASCII 文件名和原始摘要直接写入单个缓冲区，不建立逐记录副本。
+// Write fixed ASCII filenames and raw digests directly into one buffer, without per-record copies.
+// 6927 项只分配一个 387912 字节输入；这是显式分配计数，不是浏览器 RAM 测量。
+// 6927 records allocate one 387912-byte input; this is explicit allocation accounting, not browser RAM measurement.
+export function buildShaderSourceDigestInput(keys, completed) {
+  const recordBytes = 56,
+    nameBytes = 24;
+  if (!Array.isArray(keys) || keys.length < 1 || keys.length > SHADER_PIPELINE_LIMITS.shaders)
+    throw error("Invalid shader digest input count");
+  const size = keys.length * recordBytes;
+  if (!Number.isSafeInteger(size) || size > SHADER_PIPELINE_LIMITS.shaders * recordBytes)
+    throw error("Shader digest input exceeds bounds");
+  const input = new Uint8Array(size);
+  let offset = 0,
+    previous;
+  for (const key of keys) {
+    const sourceHash = completed.get(key);
+    if (
+      typeof key !== "string" ||
+      !/^[0-9a-f]{16}$/.test(key) ||
+      (previous !== undefined && previous >= key) ||
+      !(sourceHash instanceof Uint8Array) ||
+      sourceHash.length !== 32 ||
+      offset > size - recordBytes
+    )
+      throw error("Invalid sorted shader digest record");
+    const written = encoder.encodeInto(
+      `${key}_b.metal`,
+      input.subarray(offset, offset + nameBytes),
+    );
+    if (written.read !== nameBytes || written.written !== nameBytes)
+      throw error("Invalid shader digest filename encoding");
+    input.set(sourceHash, offset + nameBytes);
+    offset += recordBytes;
+    previous = key;
+  }
+  if (offset !== size) throw error("Incomplete shader digest input");
+  return input;
 }

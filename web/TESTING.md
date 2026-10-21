@@ -103,11 +103,13 @@ Uploading the artifact does not publish it to the private hosted Site.
 Synthetic component results do not prove complete game processing, shell/device
 compatibility, installation or execution; see the delivery checklist.
 
-The same single GitHub job also builds the pinned public WASM/Pyodide/.NET/Cross
+The same single GitHub job also builds the pinned public JavaScript/WASM/.NET/Cross
 runtimes after frontend verification, then uploads the manifest-verified runtime
 inventory under `web-preview/runtime/`. It adds no browser proof suite, matrix or
 second job. See [runtime assembly](runtime-build/README.md) for exact prerequisites
 and the distinction between built runtime files and a verified usable game IPA.
+Pyodide remains available for explicitly invoked local proofs and parity oracles,
+but it is not installed or packaged by the current public-runtime build.
 
 CI caches only the pinned Emscripten SDK's public download archives, not installed
 tools or project outputs. Fresh SDK source and compiler checks still run; see

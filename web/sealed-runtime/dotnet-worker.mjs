@@ -198,7 +198,10 @@ function run(data) {
     data.payload.byteLength > 1024 * 1024 ||
     !data.job ||
     JSON.stringify(data.job).length > 65536 ||
-    !["cs", "vs", "ps"].includes(data.job.stage)
+    // 密封传输沿用目录与 C# 边界的显式曲面细分许可，不接受几何阶段。
+    // The sealed transport preserves the catalog/C# explicit tessellation opt-in; geometry remains rejected.
+    (!["cs", "vs", "ps"].includes(data.job.stage) &&
+      !(["hs", "ds"].includes(data.job.stage) && data.job.allowUnverifiedTessellation === true))
   )
     throw new Error("Invalid bounded shader input");
   const result = JSON.parse(

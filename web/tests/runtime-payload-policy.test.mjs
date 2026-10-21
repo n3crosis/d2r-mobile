@@ -43,7 +43,10 @@ test("frontend imports the shared client at build time, not through runtime byte
     source("../sealed-runtime/clients.mjs"),
     source("../runtime-build/package.mjs"),
   ]);
-  assert.match(app, /import \{ prepareBrowserPackager \} from "\.\.\/browser-packager\.mjs"/);
+  assert.match(
+    app,
+    /import \{[^}]*\bprepareBrowserPackager\b[^}]*\} from "\.\.\/browser-packager\.mjs"/,
+  );
   assert.match(
     packager,
     /import \{ prepareSealedRuntime \} from "\.\/sealed-runtime\/clients\.mjs"/,

@@ -47,7 +47,6 @@ python_sources=(
   web/toolchain/asset-generation-spike/test/verify-png.py
   web/toolchain/program-rewrite-spike/audit-source.py
   web/toolchain/program-rewrite-spike/make-fixtures.py
-  web/toolchain/program-rewrite-spike/python-adapters.py
   web/toolchain/texture-spike/bounded_encoder.py
   web/toolchain/texture-spike/native-encoder-fixtures.py
   web/toolchain/texture-spike/package-encoder.py
