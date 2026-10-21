@@ -149,6 +149,14 @@ try {
     rejected = true;
   }
   assert(rejected);
+  stage = "unknown-unsigned-meta-rejection";
+  rejected = false;
+  try {
+    boundary.open(0, "warlock-meta");
+  } catch {
+    rejected = true;
+  }
+  assert(rejected);
   stage = "unsigned-program-rejection";
   unsignedHeader[0x205] = 0;
   boundary.mount([new Blob([unsignedHeader])]);

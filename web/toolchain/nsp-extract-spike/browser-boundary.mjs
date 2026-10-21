@@ -162,11 +162,13 @@ export async function createBoundary(factory) {
         const operation =
           kind === "meta"
             ? "nsp_open_meta"
-            : kind === "program-exefs"
-              ? "nsp_open_exefs"
-              : kind === "synthetic-pfs0"
-                ? "nsp_open_pfs0"
-                : null;
+            : kind === "warlock-meta"
+              ? "nsp_open_warlock_meta"
+              : kind === "program-exefs"
+                ? "nsp_open_exefs"
+                : kind === "synthetic-pfs0"
+                  ? "nsp_open_pfs0"
+                  : null;
         if (!operation) throw new Error("Unsupported operation");
         check(module.ccall(operation, "number", ["string"], [path(index)]));
         return check(module._nsp_entry_count());

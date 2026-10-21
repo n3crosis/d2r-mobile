@@ -8,7 +8,7 @@ import {
 } from "../../nsp-input.mjs";
 import { extractionDiagnosticError } from "../../extraction-errors.mjs";
 import { parseCnmt } from "../../content-selection.mjs";
-import { resolveD2rExpansionSelection } from "../../d2r-expansion-policy.mjs";
+import { D2R_WARLOCK_ID, resolveD2rExpansionSelection } from "../../d2r-expansion-policy.mjs";
 const CHUNK = 65536,
   META_LIMIT = 16 * 1024 * 1024,
   MAX_CONTENTS = 4096;
@@ -180,6 +180,7 @@ export function createExtractionEngine(
   let state = "new",
     token,
     contents = new Map(),
+    warlockHashes = new Map(),
     records = [],
     inventory = [],
     selection;
@@ -340,8 +341,25 @@ export function createExtractionEngine(
           }
           progress("content-header", i, blobs.length);
           const header = checked("CONTENT_AUTHENTICATION_FAILED", () => boundary.inspect(i));
-          if (!header.fixedSignatureValid || header.size !== BigInt(blobs[i].size))
+          const warlock = header.applicationId === D2R_WARLOCK_ID.toString(16).padStart(16, "0");
+          if (
+            header.size !== BigInt(blobs[i].size) ||
+            (!header.fixedSignatureValid && (!warlock || ![1, 2].includes(header.contentType)))
+          )
             diagnostic("CONTENT_AUTHENTICATION_FAILED");
+          // The small, unlock-only add-on can have repacked NCA headers. Always
+          // measure both files and bind each digest to its content ID, even in
+          // fast mode; executable base/update headers still require signatures.
+          if (warlock) {
+            if (blobs[i].size > META_LIMIT || ![1, 2].includes(header.contentType))
+              diagnostic("CONTENT_AUTHENTICATION_FAILED");
+            if (sha256 === null) {
+              progress("content-hash", i, blobs.length, blobs[i].size);
+              sha256 = checked("CONTENT_READ_FAILED", () => boundary.hashInput(i));
+            }
+            if (sha256.slice(0, 32) !== ids[i]) diagnostic("CONTENT_AUTHENTICATION_FAILED");
+            warlockHashes.set(ids[i], sha256);
+          }
           const record = {
             contentId: ids[i],
             sha256,
@@ -356,13 +374,21 @@ export function createExtractionEngine(
           inventory.push(record);
           if (header.contentType === 1) {
             progress("content-metadata", i, blobs.length);
-            const count = checked("CONTENT_AUTHENTICATION_FAILED", () => boundary.open(i, "meta"));
+            const count = checked("CONTENT_AUTHENTICATION_FAILED", () =>
+              boundary.open(i, !header.fixedSignatureValid ? "warlock-meta" : "meta"),
+            );
             try {
               const candidates = [];
               for (let j = 0; j < count; j++)
                 if (boundary.entry(j).name.endsWith(".cnmt")) candidates.push(j);
               if (candidates.length !== 1) fail();
-              records.push(await member(candidates[0]));
+              const record = await member(candidates[0]);
+              if (
+                !header.fixedSignatureValid &&
+                (record.type !== "AddOnContent" || record.titleId !== D2R_WARLOCK_ID)
+              )
+                diagnostic("CONTENT_METADATA_INVALID");
+              records.push(record);
             } catch {
               diagnostic("CONTENT_METADATA_INVALID");
             }
@@ -383,15 +409,19 @@ export function createExtractionEngine(
         ]);
         if ((payload.options?.skipContentHashes ?? false) !== skipContentHashes) fail();
         selection = resolveD2rExpansionSelection(records, inventory, payload.options);
-        // 要求已知附加内容的完整实测 NCA 证据与已签名 Data 头部。
+        // 要求已知附加内容的完整实测 NCA 证据与 Data 头部。
         // 这是包输入校验，并非授权或所有权检查。
         // 仅用于解锁的内容绝不会替代 Program RomFS。
-        // Require the known add-on's full measured NCA evidence and signed Data
+        // Require the known add-on's full measured NCA evidence and Data
         // header. This is package-input validation, not entitlement/ownership.
         // Its unlock-only content is never substituted for Program RomFS.
         for (const addOn of selection.dlc)
           for (const content of addOn.contents)
-            if (contents.get(content.contentId)?.ncaType !== 2) fail();
+            if (
+              contents.get(content.contentId)?.ncaType !== 2 ||
+              warlockHashes.get(content.contentId) !== content.sha256
+            )
+              diagnostic("CONTENT_AUTHENTICATION_FAILED");
         const program = (row) => {
           const found = row.contents.filter((c) => c.type === 1);
           if (found.length !== 1 || found[0].idOffset !== 0) fail();

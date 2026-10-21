@@ -312,7 +312,7 @@ int nsp_inspect_nca(const char *path, unsigned char *out) {
  * 3 旧版 BKTR RomFS。这里只读取选定分区的内容。
  * Shared signed section opener: 0 Meta, 1 Program ExeFS, 2 base RomFS,
  * 3 legacy BKTR RomFS. Only selected section content is read here. */
-static int open_authenticated_section(const char *path, int mode) {
+static int open_authenticated_section(const char *path, int mode, int warlock_meta) {
     int program = mode != 0;
     unsigned char public_info[24];
     int rc = nsp_inspect_nca(path, public_info);
@@ -320,7 +320,12 @@ static int open_authenticated_section(const char *path, int mode) {
         return rc;
     uint32_t valid;
     memcpy(&valid, public_info + 20, 4);
-    if (!valid)
+    /* The known unlock-only Warlock Meta may be repacked without a retail
+     * signature. Its caller measures the whole NCA and checks its CNMT content.
+     * Never extend this exception to executable or RomFS content. */
+    if (!valid && !(warlock_meta && mode == 0 &&
+                    nca.header.title_id == 0x0100726014353001ULL &&
+                    nca.header.content_type == NCACONTENTTYPE_META))
         return -3;
     if (nca.header.content_type != (program ? NCACONTENTTYPE_PROGRAM : NCACONTENTTYPE_META))
         return -4;
@@ -418,8 +423,8 @@ static int open_authenticated_section(const char *path, int mode) {
     extent = section->size;
     return 0;
 }
-static int open_authenticated_pfs0(const char *path, int program) {
-    int rc = open_authenticated_section(path, program ? 1 : 0);
+static int open_authenticated_pfs0(const char *path, int program, int warlock_meta) {
+    int rc = open_authenticated_section(path, program ? 1 : 0, warlock_meta);
     if (rc)
         return rc;
     nca_fs_header_t *h = section->header;
@@ -664,7 +669,7 @@ static int read_merged(uint64_t offset, void *output, size_t size) {
 }
 
 static int open_romfs(const char *path, unsigned char *out_size, int verify) {
-    int rc = open_authenticated_section(path, 2);
+    int rc = open_authenticated_section(path, 2, 0);
     if (rc) {
         nsp_close();
         return rc;
@@ -737,7 +742,7 @@ static int open_patched_romfs(const char *base_path, const char *patch_path,
     section = NULL;
     extent = 0;
     romfs_offset = romfs_size = 0;
-    rc = open_authenticated_section(patch_path, 3);
+    rc = open_authenticated_section(patch_path, 3, 0);
     base_nca = saved;
     base_section = &saved->section_contexts[index];
     if (rc) {
@@ -1007,13 +1012,19 @@ done:
 }
 
 int nsp_open_meta(const char *path) {
-    int rc = open_authenticated_pfs0(path, 0);
+    int rc = open_authenticated_pfs0(path, 0, 0);
+    if (rc)
+        nsp_close();
+    return rc;
+}
+int nsp_open_warlock_meta(const char *path) {
+    int rc = open_authenticated_pfs0(path, 0, 1);
     if (rc)
         nsp_close();
     return rc;
 }
 int nsp_open_exefs(const char *path) {
-    int rc = open_authenticated_pfs0(path, 1);
+    int rc = open_authenticated_pfs0(path, 1, 0);
     if (rc)
         nsp_close();
     return rc;

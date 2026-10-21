@@ -9,7 +9,7 @@ import {
   D2R_WARLOCK_ID as dlc,
 } from "../../d2r-expansion-policy.mjs";
 const ids = [0x11, 0x33, 0x44, 0x55, 0x99, 0x77],
-  hashes = [0xaa, 0x22, 0xbb, 0x66, 0xcc, 0x88];
+  hashes = [0xaa, 0x22, 0xbb, 0x66, 0x99, 0x77];
 function fixture({
   ticket = false,
   ticketName = "aa".repeat(16),
@@ -78,6 +78,7 @@ function setup({
   wrongDlcHeader = false,
   missingDlcMeta = false,
   unsignedDlc = false,
+  unsignedBase = false,
   onProgress = () => {},
   failLoad = false,
 } = {}) {
@@ -104,7 +105,8 @@ function setup({
     },
     inspect(index) {
       return {
-        fixedSignatureValid: !(unsignedDlc && index === 5),
+        fixedSignatureValid: !((unsignedDlc && index >= 4) || (unsignedBase && index === 0)),
+        applicationId: (index >= 4 ? dlc : index >= 2 ? patch : app).toString(16).padStart(16, "0"),
         size: 1n,
         contentType:
           index === 4 && missingDlcMeta
@@ -123,13 +125,13 @@ function setup({
       return 1;
     },
     entry() {
-      return mode === "meta"
+      return mode === "meta" || mode === "warlock-meta"
         ? { name: "Content.cnmt", size: BigInt(metadata[active / 2].length), offset: 0n }
         : { name: "main", size: 4n, offset: 0n };
     },
     read(index, offset, count) {
       void index;
-      return mode === "meta"
+      return mode === "meta" || mode === "warlock-meta"
         ? metadata[active / 2].slice(Number(offset), Number(offset) + count)
         : new Uint8Array(count).fill(7);
     },
@@ -245,11 +247,11 @@ test("fast RomFS mode requires measured package evidence", async () => {
   assert.equal(romfs.size, 10n);
   await env.engine.execute("dispose");
 });
-test("explicit quick mode skips full content hashes and retains signed-header selection", async () => {
+test("quick mode hashes only the small DLC and retains signed executable headers", async () => {
   const env = setup();
   const inspected = await initialize(env.engine, undefined, true);
-  assert.equal(env.hashCalls(), 0);
-  assert(inspected.inventory.every((entry) => entry.sha256 === null && !entry.hashVerified));
+  assert.equal(env.hashCalls(), 2);
+  assert(inspected.inventory.every((entry) => !entry.hashVerified));
   await assert.rejects(env.engine.execute("select", { options: {} }));
   const selected = await env.engine.execute("select", { options: { skipContentHashes: true } });
   const romfs = await env.engine.execute("openRomfs", {
@@ -262,22 +264,32 @@ test("explicit quick mode skips full content hashes and retains signed-header se
 });
 test("engine rejects content hash mismatch and arbitrary operation/fields", async () => {
   const { engine } = setup({ wrongHash: true });
-  await initialize(engine);
-  await assert.rejects(engine.execute("select", { options: {} }), /does not match/);
+  await assert.rejects(initialize(engine), { code: "CONTENT_AUTHENTICATION_FAILED" });
   await assert.rejects(engine.execute("ccall", { path: "secret" }));
   await assert.rejects(engine.execute("dispose", { extra: true }));
   await engine.execute("dispose");
 });
 
-test("known DLC requires authenticated Meta evidence and actual signed Data NCA type", async () => {
+test("known DLC requires consistent Meta evidence and Data NCA type", async () => {
   for (const options of [{ wrongDlcHeader: true }, { missingDlcMeta: true }]) {
     const { engine } = setup(options);
-    await initialize(engine);
-    await assert.rejects(engine.execute("select", { options: {} }));
+    await assert.rejects(initialize(engine), { code: "CONTENT_AUTHENTICATION_FAILED" });
     await engine.execute("dispose");
   }
   const { engine } = setup({ unsignedDlc: true });
-  await assert.rejects(initialize(engine));
+  await initialize(engine);
+  await engine.execute("select", { options: {} });
+  await engine.execute("dispose");
+  const unsignedBase = setup({ unsignedBase: true });
+  await assert.rejects(initialize(unsignedBase.engine), { code: "CONTENT_AUTHENTICATION_FAILED" });
+  await unsignedBase.engine.execute("dispose");
+});
+
+test("quick mode rejects a mismatched unsigned DLC hash", async () => {
+  const { engine } = setup({ unsignedDlc: true, wrongHash: true });
+  await assert.rejects(initialize(engine, undefined, true), {
+    code: "CONTENT_AUTHENTICATION_FAILED",
+  });
   await engine.execute("dispose");
 });
 
