@@ -3,6 +3,9 @@
 Components retrieved directly from the official shadcn/ui registry on 2026-10-20.
 These are upstream component sources, not lookalike reimplementations.
 The functional source adaptation is `from "cn"` → `from "@/lib/utils"` for the standard local clsx/tailwind-merge helper.
+已移除未使用的组件与导出；下方来源记录保留作历史归属。
+Unused scaffold was removed: `alert.tsx`, `CardAction`, `CardFooter`, and the public
+`buttonVariants` export. The registry records below remain as historical attribution.
 
 - `button.tsx`: https://ui.shadcn.com/r/styles/new-york-v4/button.json
   Registry response SHA-256: `4b8d7d848742727973c1b088af8d15f0b628272a1316f2d2fa344e73ddff9e9c`
