@@ -45,7 +45,7 @@ function filesystem(faults = {}) {
       assert.equal(closed, true);
       if (faults.file) throw faults.file;
       const blob = new Blob([faults.changedSize ? new Uint8Array(bytes.length + 1) : bytes]);
-      if (!faults.read && !faults.shortRead && !faults.onRead) return blob;
+      if (!faults.read && !faults.shortRead && !faults.onRead && !faults.onReadBuffer) return blob;
       return {
         size: blob.size,
         slice(start, end) {
@@ -54,9 +54,11 @@ function filesystem(faults = {}) {
             async arrayBuffer() {
               await faults.onRead?.();
               if (faults.read) throw faults.read;
-              return blob
+              const buffer = await blob
                 .slice(start, faults.shortRead ? Math.max(start, end - 1) : end)
                 .arrayBuffer();
+              faults.onReadBuffer?.(buffer);
+              return buffer;
             },
           };
         },
@@ -425,4 +427,44 @@ test("small views cannot retain oversized, shared or resizable backing buffers",
       assert.deepEqual([...fs.entries.keys()], ["unrelated"]);
     }
   }
+});
+
+// 失败的读取副本尚未转交调用方；成功读取和空读取保持原有所有权。
+// Failed read copies have not been handed to callers; successful and empty reads retain their ownership contract.
+test("raw stage wipes unreturned read buffers on cancellation and short reads", async () => {
+  for (const mode of ["abort", "shortRead"]) {
+    const controller = new AbortController();
+    let captured;
+    const fs = filesystem({
+      shortRead: mode === "shortRead",
+      onReadBuffer(buffer) {
+        captured = new Uint8Array(buffer);
+        if (mode === "abort") controller.abort();
+      },
+    });
+    const stage = await fs.make({ signal: controller.signal });
+    await stage.append(Uint8Array.of(7, 8, 9));
+    const source = await stage.finalize();
+    await assert.rejects(
+      source.readAt(0, 3),
+      mode === "abort" ? { name: "AbortError" } : /RAW_STAGE_SHORT_READ/,
+    );
+    assert.ok(captured.length > 0);
+    assert.ok(captured.every((value) => value === 0));
+    await stage.dispose();
+    assert.equal(fs.entries.has(name), false);
+    assert.equal(fs.entries.has("unrelated"), true);
+  }
+});
+
+test("successful raw stage reads remain caller-owned after disposal, including empty reads", async () => {
+  const fs = filesystem();
+  const stage = await fs.make();
+  await stage.append(Uint8Array.of(7, 8));
+  const source = await stage.finalize();
+  const bytes = await source.readAt(0, 2);
+  const empty = await source.readAt(2, 0);
+  await stage.dispose();
+  assert.deepEqual([...bytes], [7, 8]);
+  assert.equal(empty.length, 0);
 });

@@ -3,6 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import ts from "typescript";
 import {
   RUNTIME_DIRECT_ASSETS,
   RUNTIME_SEALED_WORKERS,
@@ -11,6 +12,58 @@ import {
 } from "../runtime-build/payload-policy.mjs";
 import { OPTIONAL_RUNTIME_ASSET_GROUPS } from "../runtime-asset-groups.mjs";
 const source = (path) => readFile(new URL(path, import.meta.url), "utf8");
+
+// 检查真实静态值导入，不要求空格、引号样式或本地别名一致。
+// Check real static value imports without requiring whitespace, quote style or local aliases.
+function hasStaticValueImport(text, module, imported) {
+  const file = ts.createSourceFile(
+    "source.tsx",
+    text,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  return file.statements.some((statement) => {
+    if (
+      !ts.isImportDeclaration(statement) ||
+      !ts.isStringLiteral(statement.moduleSpecifier) ||
+      statement.moduleSpecifier.text !== module
+    )
+      return false;
+    const clause = statement.importClause;
+    if (
+      !clause ||
+      clause.isTypeOnly ||
+      !clause.namedBindings ||
+      !ts.isNamedImports(clause.namedBindings)
+    )
+      return false;
+    return clause.namedBindings.elements.some(
+      (binding) => !binding.isTypeOnly && (binding.propertyName ?? binding.name).text === imported,
+    );
+  });
+}
+
+test("static import checks accept equivalent formatting but not comments, types or dynamic imports", () => {
+  for (const text of [
+    'import { prepareBrowserPackager } from "../browser-packager.mjs";',
+    "import{prepareBrowserPackager as prepare}from'../browser-packager.mjs';",
+    "import {\n /* value import */ prepareBrowserPackager,\n} from '../browser-packager.mjs'",
+  ])
+    assert.ok(hasStaticValueImport(text, "../browser-packager.mjs", "prepareBrowserPackager"));
+  for (const text of [
+    '// import { prepareBrowserPackager } from "../browser-packager.mjs";',
+    'import type { prepareBrowserPackager } from "../browser-packager.mjs";',
+    'import { type prepareBrowserPackager } from "../browser-packager.mjs";',
+    'const { prepareBrowserPackager } = await import("../browser-packager.mjs");',
+    'import { anotherValue } from "../browser-packager.mjs";',
+    'import { prepareBrowserPackager } from "../other.mjs";',
+  ])
+    assert.equal(
+      hasStaticValueImport(text, "../browser-packager.mjs", "prepareBrowserPackager"),
+      false,
+    );
+});
 
 test("only the 55 audited source copies are rejected; live assets and proof records remain", () => {
   assert.equal(SOURCE_ONLY_RUNTIME_ASSETS.length, 55);
@@ -43,14 +96,8 @@ test("frontend imports the shared client at build time, not through runtime byte
     source("../sealed-runtime/clients.mjs"),
     source("../runtime-build/package.mjs"),
   ]);
-  assert.match(
-    app,
-    /import \{[^}]*\bprepareBrowserPackager\b[^}]*\} from "\.\.\/browser-packager\.mjs"/,
-  );
-  assert.match(
-    packager,
-    /import \{ prepareSealedRuntime \} from "\.\/sealed-runtime\/clients\.mjs"/,
-  );
+  assert.ok(hasStaticValueImport(app, "../browser-packager.mjs", "prepareBrowserPackager"));
+  assert.ok(hasStaticValueImport(packager, "./sealed-runtime/clients.mjs", "prepareSealedRuntime"));
   assert.match(build, /entrypoints: \[resolve\(root, "index\.html"\)\]/);
   assert.doesNotMatch(build, /\bexternal\s*:/);
   for (const path of SOURCE_ONLY_RUNTIME_ASSETS) assert.ok(!loader.includes(`"${path}"`));

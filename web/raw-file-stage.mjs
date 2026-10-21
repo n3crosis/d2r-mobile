@@ -212,9 +212,16 @@ export async function createRawFileStage({
               const bytes = new Uint8Array(
                 await snapshot.slice(offset, offset + length).arrayBuffer(),
               );
-              check();
-              if (bytes.length !== length) fail("RAW_STAGE_SHORT_READ");
-              return bytes;
+              try {
+                check();
+                if (bytes.length !== length) fail("RAW_STAGE_SHORT_READ");
+                return bytes;
+              } catch (cause) {
+                // 成功返回前仍拥有读取副本；失败时清零，但不修改已交给调用方的缓冲区。
+                // Own the read copy until successful return; wipe failures, never buffers already handed to callers.
+                bytes.fill(0);
+                throw cause;
+              }
             });
           },
         });
