@@ -16,7 +16,7 @@ export const SHADER_PIPELINE_LIMITS = Object.freeze({
   metadata: 65536,
   spirv: 16 * 1024 * 1024,
   msl: 16 * 1024 * 1024,
-  totalMsl: 256 * 1024 * 1024,
+  totalMsl: 512 * 1024 * 1024,
   shaders: 16384,
   timeoutMs: 120000,
 });
