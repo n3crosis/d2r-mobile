@@ -149,7 +149,11 @@ bool D2RConcreteEntitlements(const jvalue &value, size_t depth, size_t &remainin
         return false;
     --remaining;
     if (value.is_string())
-        return value.as_string().find('*') == string::npos;
+        // 上游写入器会将这些确切形式转换为 data/date；不能悄悄改变授权值的类型。
+        // The upstream writer coerces these exact forms to data/date; never silently change grant
+        // types.
+        return !value.is_data_string() && !value.is_date_string() &&
+               value.as_string().find('*') == string::npos;
     if (value.is_array()) {
         if (value.size() > remaining)
             return false;

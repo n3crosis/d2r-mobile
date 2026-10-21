@@ -123,6 +123,34 @@ int main(int argc, char **argv) {
     invalid = base;
     invalid["Entitlements"]["com.apple.developer.icloud-services"].push_back("*");
     reject(invalid);
+    // 上游写入器会将特殊前缀字符串转换为其他类型；门禁不得接受这种静默变化。
+    // The upstream writer coerces sentinel strings to other types; reject silent
+    // type changes.
+    for (const char *text : {"data:YWJj", "data:", "date:2025-01-01T00:00:00Z"}) {
+        invalid = base;
+        invalid["Entitlements"]["com.example.metadata"].push_back(text);
+        reject(invalid);
+    }
+    // 保留普通字符串与显式数据、布尔和整数值，不修改 CodeResources 的写入约定。
+    // Retain ordinary strings and explicit data, bool and integer values without
+    // changing CodeResources.
+    jvalue typed = base;
+    typed["Entitlements"]["com.example.text"] = "date:not-a-date";
+    typed["Entitlements"]["com.example.data"].assign_data("abc", 3);
+    typed["Entitlements"]["com.example.date"].assign_date(1735689600);
+    typed["Entitlements"]["com.example.bool"] = true;
+    typed["Entitlements"]["com.example.int"] = 7;
+    assert(D2RProfileEntitlements(typed, metadata, "com.example.app", expanded, application, team));
+    string serialized;
+    expanded.style_write_plist(serialized);
+    jvalue reparsed;
+    assert(reparsed.read_plist(serialized));
+    assert(reparsed["com.example.text"].is_string());
+    assert(reparsed["com.example.data"].is_data());
+    assert(reparsed["com.example.data"].as_data() == "abc");
+    assert(reparsed["com.example.date"].is_date());
+    assert(reparsed["com.example.bool"].is_bool());
+    assert(reparsed["com.example.int"].is_int());
     size_t remaining = 0;
     assert(!D2RConcreteEntitlements(expanded, 0, remaining));
     remaining = 4096;
