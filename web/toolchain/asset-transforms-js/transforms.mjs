@@ -67,10 +67,12 @@ const exactKeys = (value, names) =>
   Object.keys(value).length === names.length &&
   names.every((name) => Object.hasOwn(value, name));
 function utf8(text) {
-  requireValue(
-    Array.from(text).every((c) => c.codePointAt(0) < 0xd800 || c.codePointAt(0) > 0xdfff),
-    "ASSET_UTF8",
-  );
+  // 逐个码点验证，不为大型清单创建逐字符数组。
+  // Validate code points without allocating a character array for large manifests.
+  for (const c of text) {
+    const code = c.codePointAt(0);
+    requireValue(code < 0xd800 || code > 0xdfff, "ASSET_UTF8");
+  }
   return encoder.encode(text);
 }
 const hash = async (value) =>
@@ -208,13 +210,21 @@ export function touchPath(path) {
   }
   return null;
 }
+// 先限制 UTF-16 单元数，再计数码点，不展开大型无效路径。
+// Bound UTF-16 units before counting code points, without expanding large invalid paths.
+function validPathLength(path) {
+  if (path.length > 2048) return false;
+  let count = 0;
+  for (const _char of path) if (++count > 1024) return false;
+  return true;
+}
 function overlayPaths(payload) {
   const paths = JSON.parse(decoder.decode(payload));
   requireValue(Array.isArray(paths) && paths.length <= 4096, "Expected at most 4096 logical paths");
   const result = paths.map((path) => {
     requireValue(
       typeof path === "string" &&
-        Array.from(path).length <= 1024 &&
+        validPathLength(path) &&
         !path.includes("\\") &&
         !path.includes(":") &&
         path.split("/").every((p) => p && p !== "." && p !== ".."),
@@ -387,9 +397,13 @@ async function derived(payload, options) {
   );
   requireValue(new Set(trows.map((r) => r[0])).size === trows.length, "DERIVED_DUPLICATE_SKILL");
   requireValue(
-    [...parts, ...sets, ...rows.flatMap((r) => r.slice(6))].every((text) =>
-      Array.from(text).every((c) => c.codePointAt(0) >= 32 && c.codePointAt(0) !== 127),
-    ),
+    [...parts, ...sets, ...rows.flatMap((r) => r.slice(6))].every((text) => {
+      for (const char of text) {
+        const point = char.codePointAt(0);
+        if (point < 32 || point === 127) return false;
+      }
+      return true;
+    }),
     "DERIVED_CONTROL_CHARACTER",
   );
   const lines = [];

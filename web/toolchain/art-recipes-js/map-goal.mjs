@@ -81,13 +81,15 @@ export function generateMapGoal(payload, options, { codec, kernels, font }) {
         requireValue(indexed.has(key), "MAP_GOAL_MISSING_KEY");
         for (const lang of LANGUAGES) {
           const value = indexed.get(key)[lang];
+          // 每个码点最多占两个 UTF-16 单元，先拒绝超长输入，再进行有界遍历。
+          // Each code point uses at most two UTF-16 units; reject oversized input before bounded iteration.
           requireValue(
-            typeof value === "string" &&
-              Array.from(value).length > 0 &&
-              Array.from(value).length <= 256 &&
-              Array.from(value).every((char) => char.codePointAt(0) >= 32),
+            typeof value === "string" && value.length > 0 && value.length <= 512,
             "MAP_GOAL_LABEL_LIMIT",
           );
+          let count = 0;
+          for (const char of value)
+            requireValue(++count <= 256 && char.codePointAt(0) >= 32, "MAP_GOAL_LABEL_LIMIT");
         }
       }
     // 后续原配方只剥除一个 UTF-8 BOM，不能把多个 BOM 悄悄接受。 | The original later strips only one UTF-8 BOM, so do not silently accept multiple BOMs.

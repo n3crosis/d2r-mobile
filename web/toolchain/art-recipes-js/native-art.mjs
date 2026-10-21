@@ -39,6 +39,14 @@ const originalPath = (path) => {
   const offset = path.indexOf("data:data/");
   return offset < 0 ? path : path.slice(offset + "data:data/".length);
 };
+// 在码点计数前限制 UTF-16 长度，避免为无效名称分配逐字符数组。
+// Bound UTF-16 length before counting code points, without character arrays for invalid names.
+const validNameLength = (name) => {
+  if (name.length > 254) return false;
+  let count = 0;
+  for (const _char of name) if (++count >= 128) return false;
+  return true;
+};
 const unique = (values) => new Set(values).size === values.length;
 
 export async function generateNativeArt(payload, options, { codec, sha256, md5 }) {
@@ -76,7 +84,7 @@ export async function generateNativeArt(payload, options, { codec, sha256, md5 }
           name.endsWith(".png") &&
           !name.includes("/") &&
           !name.includes("\\") &&
-          Array.from(name).length < 128,
+          validNameLength(name),
       ),
     "NATIVE_ART_OUTPUT_NAME",
   );

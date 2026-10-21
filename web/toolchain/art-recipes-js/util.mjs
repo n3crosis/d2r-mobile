@@ -13,14 +13,13 @@ export const exactKeys = (value, keys) =>
   keys.every((key) => Object.hasOwn(value, key));
 export const positiveInteger = (n) => Number.isSafeInteger(n) && n > 0;
 export function utf8(text) {
-  requireValue(
-    typeof text === "string" &&
-      Array.from(text).every((char) => {
-        const n = char.codePointAt(0);
-        return n < 0xd800 || n > 0xdfff;
-      }),
-    "ART_UTF8",
-  );
+  requireValue(typeof text === "string", "ART_UTF8");
+  // 逐个码点验证，不为大型清单创建逐字符数组。
+  // Validate code points without allocating a character array for large manifests.
+  for (const char of text) {
+    const n = char.codePointAt(0);
+    requireValue(n < 0xd800 || n > 0xdfff, "ART_UTF8");
+  }
   return encoder.encode(text);
 }
 export function payloadBytes(payload, limit, code) {

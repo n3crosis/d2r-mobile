@@ -36,6 +36,9 @@ export async function createFontRasterizer(wasm) {
     if (!opened || typeof text !== "string") throw new TypeError("Open a font and supply text");
     if (!Object.hasOwn(anchors, anchor)) throw new RangeError("Supported anchors: la, ls, mb, mm");
     integer(stroke, 0, 2, "Stroke width");
+    // 每个 Unicode 码点最多占两个 UTF-16 单元；先拒绝明显超限输入，避免展开大数组。
+    // Each Unicode codepoint uses at most two UTF-16 units; reject oversized input before array expansion.
+    if (text.length > 4096) throw new RangeError("Single-line Unicode text limit");
     const points = Array.from(text, (char) => char.codePointAt(0));
     if (
       points.length > 2048 ||
