@@ -204,3 +204,28 @@ test("coalescer enforces serial backpressure and rejects concurrent disposal", a
   await pending;
   buffer.dispose();
 });
+
+test("coalescer clears only used tails while all retained backing bytes remain zero", async (t) => {
+  const fills = [],
+    originalFill = Uint8Array.prototype.fill;
+  t.mock.method(Uint8Array.prototype, "fill", function (value, start = 0, end = this.length) {
+    if (this.length === BATCH && value === 0) fills.push(end - start);
+    return originalFill.call(this, value, start, end);
+  });
+  let retained;
+  const buffer = createResourceWriteBuffer({
+    check() {},
+    written() {},
+    write: async (bytes) => {
+      retained = new Uint8Array(bytes.buffer);
+    },
+  });
+  for (const count of [65536, 17, 1]) {
+    await buffer.append(new Uint8Array(count).fill(7));
+    await buffer.flush();
+    assert.ok(retained.every((value) => value === 0));
+  }
+  assert.deepEqual(fills, [65536, 17, 1]);
+  buffer.dispose();
+  assert.ok(retained.every((value) => value === 0));
+});

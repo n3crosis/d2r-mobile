@@ -602,3 +602,56 @@ test("staged read disposal blocks queued dispatch and late completion without mu
     assert.deepEqual(returned, new Uint8Array([9]));
   }
 });
+
+// 缓存副本按 64 KiB 合并，但解压器仍逐个接收至多 1 KiB。
+// Coalesce cached snapshots at 64 KiB while keeping decoder writes capped at 1 KiB.
+test("cached compressed snapshots are bounded windows without enlarging decoder feeds", async (t) => {
+  const content = Buffer.alloc(1024 * 1024 - 1024, 42),
+    f = fixture("z", content);
+  f.raw = deflateSync(content, { level: 0 });
+  f.record.encodedSize = f.raw.length;
+  f.record.ekey = md5(f.raw).slice(0, 18) + f.record.ekey.slice(18);
+  assert.ok(f.raw.length < 1024 * 1024 && f.raw.length > 65536);
+  const snapshots = [],
+    feeds = [],
+    originalSlice = Uint8Array.prototype.slice,
+    NativeDecompressionStream = globalThis.DecompressionStream;
+  t.mock.method(Uint8Array.prototype, "slice", function (...args) {
+    const result = originalSlice.apply(this, args);
+    if (this.length === f.raw.length) snapshots.push(result.length);
+    return result;
+  });
+  t.mock.method(globalThis, "DecompressionStream", function (format) {
+    const stream = new NativeDecompressionStream(format);
+    return {
+      readable: stream.readable,
+      writable: {
+        getWriter() {
+          const writer = stream.writable.getWriter();
+          return {
+            write(bytes) {
+              feeds.push(bytes.length);
+              assert.ok(bytes.buffer.byteLength <= 65536);
+              return writer.write(bytes);
+            },
+            close: () => writer.close(),
+            abort: (error) => writer.abort(error),
+            releaseLock: () => writer.releaseLock(),
+          };
+        },
+      },
+    };
+  });
+  const input = source(f.raw),
+    staging = stageFactory();
+  const output = await stageArchiveRecord(input, f.record, options(staging.createStage));
+  assert.deepEqual(Buffer.concat(staging.state.chunks), content);
+  assert.equal(snapshots.length, Math.ceil(f.raw.length / 65536));
+  assert.equal(snapshots.length, 16);
+  assert.ok(snapshots.every((count) => count <= 65536));
+  assert.equal(feeds.length, Math.ceil(f.raw.length / 1024));
+  assert.equal(feeds.length, 1024);
+  assert.ok(feeds.every((count) => count <= 1024));
+  assert.equal(input.reads.length, 1 + Math.ceil(f.raw.length / 65536));
+  await output.dispose();
+});

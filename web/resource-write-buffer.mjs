@@ -29,7 +29,9 @@ export function createResourceWriteBuffer({ write, written, check }) {
       written(count);
       check();
     } finally {
-      buffer.fill(0);
+      // 未使用的尾部从初始化或上次刷新起就保持为零。
+      // The unused tail is already zero from initialization or the previous flush.
+      buffer.fill(0, 0, count);
       used = 0;
     }
   }
