@@ -5,8 +5,8 @@ set -euo pipefail
 cd "$(dirname "$0")"
 command -v emcc >/dev/null
 command -v em++ >/dev/null
-command -v emmake >/dev/null
-command -v emconfigure >/dev/null
+command -v emar >/dev/null
+command -v emranlib >/dev/null
 mkdir -p .build dist
 emcc --version > .build/compiler-version.txt
 if ! head -n 1 .build/compiler-version.txt | grep -Eq '^emcc .* 4\.0\.20([[:space:]]|$)'; then
@@ -44,11 +44,15 @@ python3 prepare-source.py .build/zsign-source .build/port-source .build/patched
   # no-module statically includes the legacy provider needed by older P12 files.
   # 不得启用 no-legacy；仅链接 libcrypto，不引入 TLS、libssl 或 WASI 垫片。
   # Do NOT use no-legacy. We link libcrypto only, never TLS/libssl or WASI shims.
-  emconfigure perl ../openssl-source/Configure linux-generic32 \
+  # OpenSSL prepends CROSS_COMPILE to CC. emconfigure supplies both an em-prefix
+  # and an absolute emcc path, producing a nonexistent concatenated path.
+  # Configure all tools explicitly, then invoke the generated Makefile directly.
+  env -u CROSS_COMPILE CC="$(command -v emcc)" AR="$(command -v emar)" \
+    RANLIB="$(command -v emranlib)" perl ../openssl-source/Configure linux-generic32 \
     no-asm no-shared no-module no-dso no-engine no-threads no-async \
     no-sock no-tests no-apps no-ui-console \
     -DOPENSSL_NO_SECURE_MEMORY
-  emmake make -j2 build_libs
+  make -j2 build_libs
 )
 S="$PWD/.build/patched"
 O="$PWD/.build/openssl-build"
