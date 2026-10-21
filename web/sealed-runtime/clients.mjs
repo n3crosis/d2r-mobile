@@ -322,7 +322,14 @@ function progressReporter(onProgress) {
     const now = performance.now();
     if (force || now - last >= 100) {
       last = now;
-      onProgress?.({ ...state });
+      try {
+        // 启动进度仅供观察；同步异常及异步拒绝不能改变运行时生命周期。
+        // Startup progress is advisory; synchronous throws and async rejection cannot change runtime lifetime.
+        Promise.resolve(onProgress?.({ ...state })).catch(() => {});
+      } catch {
+        // 包括调用方 thenable 属性访问异常，保留原始进度和初始化结果。
+        // Preserve progress and initialization results even when caller thenable access throws.
+      }
     }
   };
 }

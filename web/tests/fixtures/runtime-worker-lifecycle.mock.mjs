@@ -28,6 +28,7 @@ async function setup(
     components = ["program"],
     initialize = true,
     sendError,
+    onProgress,
     producer = false,
     signing = false,
   } = {},
@@ -174,6 +175,7 @@ async function setup(
         baseUrl: "https://example.test/runtime/",
         manifestSha256: sha(manifest),
         components,
+        onProgress,
         optionalGroups: [...(producer ? ["legacy-astc"] : []), ...(signing ? ["ipa-signing"] : [])],
         signal: controller.signal,
       });
@@ -793,3 +795,42 @@ test("shader facade rejects object and oversized correlation IDs without cloning
   }
   assert.equal(clones, 0);
 });
+
+// 观察者异常与工作线程初始化结果隔离，进度状态仍继续更新。
+// Observer failures are isolated from worker initialization while progress state keeps advancing.
+for (const mode of ["throw", "reject", "thenable"]) {
+  test(`startup progress observer ${mode} does not interrupt initialization`, async (t) => {
+    const progress = [];
+    let failObserver = false;
+    const { start, state } = await setup(t, {
+      initialize: false,
+      onProgress(value) {
+        progress.push(value);
+        if (!failObserver) return;
+        if (mode === "throw") throw new Error("Synthetic observer throw");
+        if (mode === "reject") return Promise.reject(new Error("Synthetic observer rejection"));
+        return {
+          get then() {
+            throw new Error("Synthetic thenable getter");
+          },
+        };
+      },
+    });
+    const pending = start();
+    const worker = await state.firstInitialize.promise;
+    failObserver = true;
+    assert.doesNotThrow(() =>
+      worker.reply({ type: "initialization-stage", stage: "config-module" }),
+    );
+    assert.match(progress.at(-1).label, /reading configuration/);
+    assert.doesNotThrow(() => worker.reply({ type: "initialization-stage", stage: "probe-after" }));
+    assert.match(progress.at(-1).label, /finishing startup/);
+    worker.reply({ id: 0, ok: true, result: { initialized: true } });
+    const runtime = await pending;
+    assert.equal(runtime.initialized.program.initialized, true);
+    assert.equal(worker.terminations, 0);
+    assert.equal(state.timers.size, 0);
+    assert.ok(progress.length >= 3);
+    assert.notEqual(progress.at(-1), progress.at(-2));
+  });
+}
