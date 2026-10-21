@@ -116,7 +116,7 @@ export function generateMapGoal(payload, options, { codec, kernels, font }) {
     images[name] = { width, height, channels: 4, data, fw, pitch: width / frames };
   }
   const fontBytes = base64(bundle.font, "MAP_GOAL_FONT_ENCODING");
-  requireValue(fontBytes.length > 0 && fontBytes.length <= 8 * 1024 * 1024, "MAP_GOAL_FONT_LIMIT");
+  requireValue(fontBytes.length > 0 && fontBytes.length <= 9 * 1024 * 1024, "MAP_GOAL_FONT_LIMIT");
   font.open(fontBytes, 48);
   try {
     // 原适配器也检查别表中同名的键。 | The original adapter also checks matching keys in other tables.
