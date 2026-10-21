@@ -64,7 +64,7 @@ export default function App() {
     () => new URLSearchParams(window.location.search).get("legacyAstc") === "1",
   );
   const [skipContentHashes] = useState(
-    () => new URLSearchParams(window.location.search).get("skipContentHashes") === "1",
+    () => new URLSearchParams(window.location.search).get("skipContentHashes") !== "0",
   );
   const [astcPreset] = useState<"thorough" | "fast">(() =>
     new URLSearchParams(window.location.search).get("astcPreset") === "fast" ? "fast" : "thorough",
@@ -712,8 +712,8 @@ export default function App() {
               <input
                 type="checkbox"
                 className="mt-1"
-                checked={skipContentHashes}
-                aria-describedby="skip-content-hashes-help"
+                checked={!skipContentHashes}
+                aria-describedby="verify-content-hashes-help"
                 disabled={hasSelectedFolder || busy || generating || download !== null}
                 onChange={(event) => {
                   if (
@@ -725,15 +725,15 @@ export default function App() {
                   )
                     return;
                   const url = new URL(window.location.href);
-                  if (event.target.checked) url.searchParams.set("skipContentHashes", "1");
+                  if (event.target.checked) url.searchParams.set("skipContentHashes", "0");
                   else url.searchParams.delete("skipContentHashes");
                   window.location.assign(url.href);
                 }}
               />
-              {t("dmWebSkipHashOption")}
+              {t("dmWebVerifyHashOption")}
             </label>
-            <p id="skip-content-hashes-help" className="text-xs text-muted-foreground">
-              {t("dmWebSkipHashHelp")}
+            <p id="verify-content-hashes-help" className="text-xs text-muted-foreground">
+              {t("dmWebVerifyHashHelp")}
             </p>
             <label className="flex items-start gap-2 text-sm">
               <input

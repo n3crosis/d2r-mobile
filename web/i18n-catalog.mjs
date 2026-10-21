@@ -361,17 +361,17 @@ export const catalog = Object.freeze({
     "Fast mode: full RomFS scan will be skipped after package hashes match",
     "快速模式：软件包哈希匹配后将跳过完整 RomFS 扫描"
   ],
-  "dmWebSkipHashOption": [
-    "Skip full content hashes (experimental)",
-    "跳过完整内容哈希（实验性）"
+  "dmWebVerifyHashOption": [
+    "Verify full content hashes (slower)",
+    "验证完整内容哈希（较慢）"
   ],
-  "dmWebSkipHashHelp": [
-    "Speeds up retries, but package contents are not fully verified; damaged inputs may fail later.",
-    "加快重试，但无法确认软件包内容是否完整；损坏的输入可能在稍后失败。"
+  "dmWebVerifyHashHelp": [
+    "Off by default for faster generation; signed headers and package structure are still checked. Turn on to hash all package content.",
+    "默认关闭以加快生成；仍会检查签名头部和软件包结构。开启后会读取并验证所有软件包内容。"
   ],
   "dmWebSkipHashActive": [
-    "Experimental quick mode: skipping full content hashes and RomFS scan; signed headers and structure are still checked",
-    "实验性快速模式：跳过完整内容哈希及 RomFS 扫描；仅检查签名头部和结构"
+    "Fast mode: skipping full content hashes and RomFS scan; signed headers and structure are still checked",
+    "快速模式：跳过完整内容哈希及 RomFS 扫描；仍会检查签名头部和结构"
   ],
   "dmWebProgresslabelsExefsOpen": [
     "Opening selected executable content",
