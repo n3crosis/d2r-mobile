@@ -1,10 +1,14 @@
 # Browser production flow
 
-`prepareBrowserPackager` verifies the manifest against the build-substituted HTML
-digest, preloads the complete same-origin runtime inventory, and initializes
-every worker before permitting folder selection. The prototype no longer imposes
-a CSP network lockdown; local processing and no-upload behavior remain.
-Public shell bytes and metadata are included in that inventory. The shell ZIP
+`prepareBrowserPackager` verifies the complete manifest against the build-substituted
+HTML digest, preloads the selected shell profile and required same-origin runtime
+assets, and initializes the requested runtimes before permitting folder selection.
+Experimental older-GPU ASTC support is selected during this public bootstrap; its
+optional assets and producer are loaded only when enabled. The unselected shell
+payload is not downloaded, but its manifest entry remains validated. The prototype
+no longer imposes a CSP network lockdown; local processing and no-upload behavior
+remain. Public shell bytes and metadata are included in the runtime inventory.
+The selected shell ZIP
 additionally matches the independently bundled release SHA-256 and per-entry
 inventory; its actual Mach-O target is inspected.
 
@@ -36,9 +40,11 @@ incomplete transfers; a later IPA failure
 does not invalidate an independently completed resource folder. Users copy the
 resource folder into the installed app’s Files folder. This preserves the native
 shell layout without requiring external extraction tools or bundling huge game
-data into the IPA. Older GPUs'
-optional ASTC resource pack is not produced here. No real game input or device run
-has validated this browser flow. ZIP32, in-memory stage budgets, OPFS quota and
+data into the IPA. Experimental older-GPU mode additionally generates a separate
+Legacy Device Pack and matching ASTC overlays in the IPA; the bulk pack remains
+outside the IPA. Copy both completed resource and Legacy Device Pack folders
+alongside each other into the installed app’s Files folder when this option is used.
+No real game input or device run has validated this browser flow. ZIP32, in-memory stage budgets, OPFS quota and
 adapter limits can reject a genuine large build rather than silently truncate it.
 Production runtime compilation and initialization must still succeed in the
 published artifact; a successful source bundle is not game-compatibility proof.

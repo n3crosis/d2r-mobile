@@ -231,15 +231,19 @@ export async function exportLegacyDevicePack({
     });
   } catch (cause) {
     const cleanupCodes = [];
+    let writerStopped = true;
     if (activeWriter) {
       try {
         await activeWriter.abort();
       } catch {
+        writerStopped = false;
         cleanupCodes.push("LEGACY_PACK_WRITER_ABORT_FAILED");
       }
       activeWriter = undefined;
     }
-    for (const item of [...owned].reverse()) {
+    // abort 失败时无法证明写入已停止；保留全部自有输出及未完成标记。
+    // A failed abort cannot prove writes stopped; retain all owned output and the incomplete marker.
+    for (const item of writerStopped ? [...owned].reverse() : []) {
       if (item === folder || item === marker) continue;
       try {
         await remove(item);

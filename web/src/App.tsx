@@ -9,6 +9,7 @@ import { DEFAULT_SHELL_PROFILE_ID } from "../shell-profiles.mjs";
 import { discoverNspFolder } from "../nsp-input.mjs";
 import { selectDefaultNspNames } from "../nsp-default-selection.mjs";
 import { createDownloadPreparation, attemptAutomaticDownload } from "../download-preparation.mjs";
+import { createUiOperationGate } from "../ui-operation-gate.mjs";
 import { readOpfsStorageAdvisory } from "../opfs-storage-advisory.mjs";
 import {
   packagingActivity,
@@ -97,6 +98,7 @@ export default function App() {
   const downloadPreparation = useRef(createDownloadPreparation());
   const [downloadPreparationFailed, setDownloadPreparationFailed] = useState(false);
   const mounted = useRef(true);
+  const operationGate = useRef(createUiOperationGate());
   const flushActivity = useCallback(() => {
     if (activityTimer.current !== null) {
       clearTimeout(activityTimer.current);
@@ -154,6 +156,7 @@ export default function App() {
     cancellation = useRef<AbortController | null>(null);
   useEffect(() => {
     const preparedDownload = downloadPreparation.current;
+    const operations = operationGate.current;
     mounted.current = true;
     const controller = new AbortController();
     cancellation.current = controller;
@@ -224,6 +227,7 @@ export default function App() {
     return () => {
       mounted.current = false;
       controller.abort();
+      operations.cancel();
       cancellation.current?.abort();
       packager.current?.close();
       preparedDownload.dispose();
@@ -231,8 +235,11 @@ export default function App() {
   }, [appendActivity, profileId, legacyAstc, astcPreset]);
   async function choose() {
     if (!ready || busy || !browser.showDirectoryPicker) return;
+    const operation = operationGate.current.begin();
+    if (!operation) return;
+    const current = () => mounted.current && operation.isCurrent();
     const previousStatus = status;
-    const controller = new AbortController();
+    const controller = operation.controller;
     cancellation.current = controller;
     let selectedName = "";
     let progress: FolderProgress = {
@@ -246,6 +253,7 @@ export default function App() {
     try {
       const selected = await browser.showDirectoryPicker({ mode: "readwrite" });
       controller.signal.throwIfAborted();
+      if (!current()) return;
       setHasSelectedFolder(true);
       setSkipResources(false);
       selectedName = selected.name;
@@ -256,11 +264,13 @@ export default function App() {
       const files = await discoverNspFolder(selected, {
         signal: controller.signal,
         onProgress: (event: FolderProgress) => {
-          if (controller.signal.aborted || !mounted.current) return;
+          if (controller.signal.aborted || !current()) return;
           progress = event;
           setStatus(t("dmWebCheckingProgress", selected.name, folderSummary(event)));
         },
       });
+      controller.signal.throwIfAborted();
+      if (!current()) return;
       const names = files.nsps.map((file) => file.name);
       const selectedNames = selectDefaultNspNames(names);
       setNspNames(names);
@@ -276,7 +286,11 @@ export default function App() {
       );
       setStatus(t("dmWebReviewSelection", selected.name, folderSummary(progress)));
     } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
+      if (!current()) return;
+      if (
+        controller.signal.aborted ||
+        (error instanceof DOMException && error.name === "AbortError")
+      ) {
         setStatus(controller.signal.aborted ? t("dmWebCancelledReload") : previousStatus);
       } else {
         setFolder(null);
@@ -296,9 +310,12 @@ export default function App() {
         setStatus(`${selectedName ? `${selectedName}: ${folderSummary(progress)} ` : ""}${reason}`);
       }
     } finally {
-      setBusy(false);
-      setCancelling(false);
-      if (controller.signal.aborted && mounted.current) setFinished(true);
+      if (current()) {
+        setBusy(false);
+        setCancelling(false);
+        if (controller.signal.aborted) setFinished(true);
+      }
+      operation.finish();
     }
   }
   function prepareDownload() {
@@ -314,6 +331,11 @@ export default function App() {
   }
   async function generate() {
     if (!ready || busy || !folder || !packager.current || !selectedNsps.size) return;
+    const operation = operationGate.current.begin();
+    if (!operation) return;
+    const current = () => mounted.current && operation.isCurrent();
+    const controller = operation.controller;
+    cancellation.current = controller;
     setBusy(true);
     setGenerating(true);
     setResourceOutcome("");
@@ -328,8 +350,6 @@ export default function App() {
     let acceptingProgress = true;
     let generationCompleted = false;
     try {
-      const controller = new AbortController();
-      cancellation.current = controller;
       const result = await packager.current.generate({
         input: folder,
         selectedNspNames: [...selectedNsps],
@@ -356,7 +376,7 @@ export default function App() {
             totalBytes: number;
           };
         }) => {
-          if (!acceptingProgress || controller.signal.aborted || !mounted.current) return;
+          if (!acceptingProgress || controller.signal.aborted || !current()) return;
           // 补充包导出单独显示，不把它的完成状态当作 IPA 完成。
           // Show the supplemental export separately; its completion is not IPA completion.
           if (legacyAstc && event.stage === "assets" && event.diagnostic?.kind === "legacy-astc") {
@@ -403,7 +423,7 @@ export default function App() {
           appendActivity(activityLabel, event.state === "failed" || event.state === "complete");
         },
       });
-      if (!mounted.current) return;
+      if (!current()) return;
       generationCompleted = true;
       if (legacyAstc && result.legacyPack?.status === "complete")
         setLegacyStatus(t("dmWebLegacyComplete", result.legacyPack.directoryName));
@@ -419,6 +439,7 @@ export default function App() {
       // Download preparation failures offer retry only, without rerunning conversion or overwriting completed exports.
       prepareDownload();
     } catch (error) {
+      if (!current()) return;
       if (generationCompleted) {
         setDownloadPreparationFailed(true);
         appendActivity(t("dmWebDownloadPreparationFailed"), true);
@@ -447,13 +468,16 @@ export default function App() {
       setStatus(packagingFailureMessage(report));
     } finally {
       acceptingProgress = false;
-      pendingGenerationStatus.current = null;
-      pendingRomfsProgress.current = undefined;
-      setRomfsProgress(null);
-      setBusy(false);
-      setGenerating(false);
-      setCancelling(false);
-      setFinished(true);
+      if (current()) {
+        pendingGenerationStatus.current = null;
+        pendingRomfsProgress.current = undefined;
+        setRomfsProgress(null);
+        setBusy(false);
+        setGenerating(false);
+        setCancelling(false);
+        setFinished(true);
+      }
+      operation.finish();
     }
   }
   return (
@@ -482,6 +506,7 @@ export default function App() {
                 if (
                   (next !== "ios18" && next !== "ios26") ||
                   next === target ||
+                  operationGate.current.busy ||
                   hasSelectedFolder ||
                   busy ||
                   generating ||
@@ -512,7 +537,14 @@ export default function App() {
                 aria-describedby="legacy-option-help"
                 disabled={hasSelectedFolder || busy || generating || download !== null}
                 onChange={(event) => {
-                  if (hasSelectedFolder || busy || generating || download !== null) return;
+                  if (
+                    operationGate.current.busy ||
+                    hasSelectedFolder ||
+                    busy ||
+                    generating ||
+                    download !== null
+                  )
+                    return;
                   // 在接触私有输入前重载，确保可选资源已预加载。
                   // Reload before private inputs so optional resources are preloaded.
                   const url = new URL(window.location.href);
@@ -538,7 +570,14 @@ export default function App() {
                   aria-describedby="astc-preset-help"
                   disabled={hasSelectedFolder || busy || generating || download !== null}
                   onChange={(event) => {
-                    if (hasSelectedFolder || busy || generating || download !== null) return;
+                    if (
+                      operationGate.current.busy ||
+                      hasSelectedFolder ||
+                      busy ||
+                      generating ||
+                      download !== null
+                    )
+                      return;
                     // 在选择私有输入前重载，使预设在整个作业期间保持固定。
                     // Reload before private input selection so the preset stays fixed for the entire job.
                     const url = new URL(window.location.href);
@@ -607,6 +646,7 @@ export default function App() {
                     aria-describedby="package-selection-help package-selection-count"
                     checked={selectedNsps.has(name)}
                     onChange={(event) => {
+                      if (operationGate.current.busy) return;
                       setSkipResources(false);
                       const checked = event.target.checked;
                       setSelectedNsps((current) => {
@@ -639,7 +679,10 @@ export default function App() {
                   checked={skipResources}
                   disabled={!ready || busy}
                   aria-describedby={skipResources ? "skip-resources-help" : undefined}
-                  onChange={(event) => setSkipResources(event.target.checked)}
+                  onChange={(event) => {
+                    if (operationGate.current.busy) return;
+                    setSkipResources(event.target.checked);
+                  }}
                 />
                 {t("dmWebSkipResources")}
               </label>

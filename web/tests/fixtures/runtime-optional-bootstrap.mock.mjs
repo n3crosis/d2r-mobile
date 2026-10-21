@@ -26,7 +26,8 @@ mock.module("../../astc-producer-client.mjs", {
     async createAstcProducerClient({ worker, assets, signal }) {
       state.helperCalls++;
       assert.equal(state.fetches.length, state.expectedFetches);
-      assert.equal(signal, state.signal);
+      assert.ok(signal instanceof AbortSignal);
+      assert.equal(signal.aborted, state.signal.aborted);
       assert.deepEqual(
         assets.map(([name]) => name),
         ["astc-encoder.mjs", "astc-encoder.wasm", "png-codec.wasm", "sha256.wasm"],

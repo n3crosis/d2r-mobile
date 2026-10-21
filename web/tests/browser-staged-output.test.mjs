@@ -34,6 +34,7 @@ function environment(faults = {}) {
     },
     async createWritable() {
       if (destination) destinationOpens++;
+      else faults.onStageOpen?.();
       const chunks = [];
       return {
         async write(bytes) {
@@ -275,6 +276,10 @@ test("failed writer aborts retain the stream for a later cleanup retry", async (
       await assert.rejects(output.close(), /disk full/);
     }
     await assert.rejects(output.abort(), /OUTPUT_CLEANUP_FAILED/);
+    if (!destination) {
+      assert.equal(env.files.has(name), true, "An unterminated stage writer keeps its target");
+      assert.equal(env.events.includes(`remove:${name}`), false);
+    }
     const attempts = env.events.filter((event) => event === `${kind}-abort`).length;
     faults[`${kind}Abort`] = false;
     await output.abort();
@@ -302,4 +307,23 @@ test("concurrent abort calls share cleanup instead of disposing a writer twice",
   assert.equal(env.events.filter((event) => event === `remove:${name}`).length, 1);
   assert.deepEqual(env.committed, Uint8Array.of(7));
   assert.deepEqual([...env.files.keys()], ["unrelated"]);
+});
+
+test("setup cancellation preserves cleanup failure and does not delete a live stage", async () => {
+  const controller = new AbortController();
+  const faults = { stageAbort: true, onStageOpen: () => controller.abort() };
+  const env = environment(faults);
+  await assert.rejects(
+    adapters(env).createOutput({ manifest, signal: controller.signal }),
+    (error) => {
+      assert.equal(error.message, "OUTPUT_SETUP_CLEANUP_FAILED");
+      assert.equal(error.cause, controller.signal.reason);
+      assert.equal(error.errors[0], controller.signal.reason);
+      assert.equal(error.errors[1].message, "OUTPUT_CLEANUP_FAILED");
+      return true;
+    },
+  );
+  assert.equal(env.files.has(name), true);
+  assert.equal(env.events.includes(`remove:${name}`), false);
+  assert.equal(env.destinationOpens, 0);
 });

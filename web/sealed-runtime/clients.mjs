@@ -338,6 +338,13 @@ function channel(worker, onFatal, onStage) {
       return;
     }
     if (!entry || data?.id !== entry.id) return;
+    // 必须是明确的协议布尔值；程序工作线程仍可返回顶层结果字段。
+    // Require an explicit protocol boolean; program workers may still return top-level result fields.
+    if (typeof data.ok !== "boolean") {
+      stop(new Error("Runtime worker protocol failed"));
+      onFatal();
+      return;
+    }
     const p = entry;
     entry = undefined;
     clearTimeout(p.timer);
@@ -719,12 +726,16 @@ export async function prepareSealedRuntime({
   let closed = false,
     producerClient,
     producerWorker,
+    producerInitialization,
     producerTaken = false,
     closing;
   let session;
   function close() {
     if (closed) return closing;
     closed = true;
+    // 初始化客户端尚未返回时，原生 terminate 不会拒绝其等待；仅取消这段未完成的初始化。
+    // Native terminate cannot reject an initializer that has not returned its client; cancel only that pending initialization.
+    producerInitialization?.abort();
     if (session) sealedRuntimes.delete(session);
     for (const c of Object.values(channels)) c.stop();
     try {
@@ -762,12 +773,19 @@ export async function prepareSealedRuntime({
           buffers = transferred.map(([, buffer]) => buffer);
         plan.assets.length = 0;
         producerWorker = new Worker(url, { type: "module" });
-        producerClient = await initializeAstcProducerClient({
-          worker: producerWorker,
-          assets: transferred,
-          signal,
-        });
-        if (signal?.aborted) throw new DOMException("Runtime cancelled", "AbortError");
+        producerInitialization = new AbortController();
+        try {
+          producerClient = await initializeAstcProducerClient({
+            worker: producerWorker,
+            assets: transferred,
+            signal: signal
+              ? AbortSignal.any([signal, producerInitialization.signal])
+              : producerInitialization.signal,
+          });
+        } finally {
+          producerInitialization = undefined;
+        }
+        if (closed || signal?.aborted) throw new DOMException("Runtime cancelled", "AbortError");
         if (
           producerClient?.initialized !== true ||
           buffers.some((buffer) => buffer.byteLength !== 0)

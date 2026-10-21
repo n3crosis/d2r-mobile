@@ -325,3 +325,26 @@ test("invalid encoding provenance rejects before creating export files", async (
     assert.ok(!fs.root.entries.has(folderName));
   }
 });
+
+// abort 拒绝不证明流已停止；禁止删除可能仍被流使用的目标。
+// A rejected abort does not prove the stream stopped; never remove targets the stream may still use.
+test("failed writer abort preserves owned output instead of deleting ahead of a live stream", async () => {
+  const primary = new Error("write failed");
+  const fs = fixture({
+    write(path) {
+      if (path.endsWith(".data")) throw primary;
+    },
+    abort() {
+      throw new Error("writer still active");
+    },
+  });
+  await assert.rejects(exportLegacyDevicePack(fs.options), (error) => {
+    assert.equal(error.cause, primary);
+    assert.equal(error.report.cleanupComplete, false);
+    assert.equal(error.report.incompleteMarkerPresent, true);
+    assert.deepEqual(error.report.cleanupCodes, ["LEGACY_PACK_WRITER_ABORT_FAILED"]);
+    return true;
+  });
+  assert.equal(fs.events.filter(([type]) => type === "remove").length, 0);
+  assert.ok(fs.root.entries.get(folderName).entries.get("data").entries.has(fs.pack.name));
+});

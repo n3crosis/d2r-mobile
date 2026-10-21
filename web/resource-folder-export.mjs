@@ -350,10 +350,12 @@ export async function exportRomfsResources({
     });
   } catch (cause) {
     const cleanupCodes = [];
+    let writerStopped = true;
     if (activeWriter) {
       try {
         await activeWriter.abort();
       } catch {
+        writerStopped = false;
         cleanupCodes.push("RESOURCE_WRITER_ABORT_FAILED");
       }
       activeWriter = undefined;
@@ -362,7 +364,9 @@ export async function exportRomfsResources({
     // 均被删除。如果清理失败，它仍是明确警告。
     // Keep the incomplete marker until all payload files and child directories
     // have been removed. If cleanup fails it remains an explicit warning.
-    for (const item of [...owned].reverse()) {
+    // abort 失败时无法证明写入已停止；保留全部自有输出及未完成标记。
+    // A failed abort cannot prove writes stopped; retain all owned output and the incomplete marker.
+    for (const item of writerStopped ? [...owned].reverse() : []) {
       if (item === folder || item === marker) continue;
       try {
         await removeOwned(item);

@@ -5,6 +5,10 @@
 // 读取接口：readAt(offset: bigint, size: number) -> Promise<Uint8Array>。
 // Outer-container indexing only. This does NOT decrypt NCA or merge BKTR.
 // readAt(offset: bigint, size: number) -> Promise<Uint8Array>.
+// 此独立辅助函数采用生产 inspectNsp 已有的 255 字节名称与字符串起点约束。
+// This standalone helper adopts the 255-byte name and string-start constraints already enforced by production inspectNsp.
+const MAX_FILENAME_BYTES = 255;
+const MAX_NAME_BYTES = 16 * 1024 * 1024;
 export async function indexPfs0(readAt, size) {
   const fail = () => {
     throw new Error("Invalid or unsupported PFS0 container");
@@ -31,14 +35,22 @@ export async function indexPfs0(readAt, size) {
   const strings = metadata.subarray(count * 24);
   const seen = new Set(),
     entries = [];
+  let nameBytes = 0;
   for (let i = 0; i < count; i++) {
     const at = i * 24;
     const offset = dataStart + view.getBigUint64(at, true);
     const length = view.getBigUint64(at + 8, true);
     const str = view.getUint32(at + 16, true);
-    if (str >= strings.length || offset + length > size) fail();
-    const end = strings.indexOf(0, str);
-    if (end < 0) fail();
+    if (str >= strings.length || (str > 0 && strings[str - 1] !== 0) || offset + length > size)
+      fail();
+    // 解码前限制扫描与累计展开量，不对每条记录反复扫描整个字符串表。
+    // Bound scans and aggregate expansion before decoding, never rescan the full string table per record.
+    const limit = Math.min(strings.length, str + MAX_FILENAME_BYTES + 1);
+    let end = str;
+    while (end < limit && strings[end] !== 0) end++;
+    if (end === limit || end === str) fail();
+    nameBytes += end - str;
+    if (nameBytes > MAX_NAME_BYTES) fail();
     let name;
     try {
       name = new TextDecoder("utf-8", { fatal: true }).decode(strings.subarray(str, end));

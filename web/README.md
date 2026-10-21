@@ -14,8 +14,11 @@ A successful build is not proof that a particular game input completes or plays.
 
 ## Implemented flow
 
-- Check secure-context/browser APIs and preload the same-origin public runtime
-  inventory with exact hashes before accepting private inputs.
+- Check secure-context/browser APIs, validate the complete public runtime manifest,
+  and preload the selected shell profile and required same-origin runtime assets
+  with exact hashes before accepting private inputs. Experimental older-GPU ASTC
+  support is selected during this public bootstrap and loads its optional assets
+  only when enabled.
 - Initialize isolated workers, discover the single input folder, and
   authenticate/select compatible base, update and optional DLC content.
 - Keep game files and keys local. The prototype does not impose a CSP network
@@ -93,7 +96,10 @@ as a current implementation percentage.
   a genuine build rather than truncate it.
 - A completed resource folder may remain if the later IPA stage fails. An
   incomplete marker is not a successful export.
-- The optional ASTC resource pack for older GPUs is not generated here.
+- Experimental older-GPU mode generates a separate Legacy Device Pack alongside
+  the original resources and matching ASTC overlays in the IPA. It is optional,
+  selected before private inputs, and remains unverified with real game inputs
+  or devices.
 
 The [original implementation plan](../docs/WEB_IPA_PACKAGER.md) retains architecture
 and historical milestones; this overview and the production flow describe the

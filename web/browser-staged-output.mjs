@@ -130,10 +130,14 @@ export function createBrowserStagedOutputAdapters({
             }
           }
         }
-        try {
-          await remove();
-        } catch (cause) {
-          failures.push(cause);
+        // 暂存写入器终止失败时保留文件，避免仍存活的写入器与删除操作竞争。
+        // Retain the stage after a failed writer abort; a live writer must not race file removal.
+        if (!stageWriter) {
+          try {
+            await remove();
+          } catch (cause) {
+            failures.push(cause);
+          }
         }
         if (failures.length) throw error("OUTPUT_CLEANUP_FAILED");
       };
@@ -156,9 +160,10 @@ export function createBrowserStagedOutputAdapters({
       } catch (cause) {
         try {
           await release();
-        } catch {
-          // 保留原始错误；最终目标尚未打开。
-          // Preserve failure; no final destination was opened.
+        } catch (cleanup) {
+          // 创建失败尚未返回可重试的输出对象；必须同时报告原始失败与清理失败。
+          // Setup has not returned a retryable output object; report both the original and cleanup failures.
+          throw new AggregateError([cause, cleanup], "OUTPUT_SETUP_CLEANUP_FAILED", { cause });
         }
         throw cause;
       }
