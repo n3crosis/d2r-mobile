@@ -86,6 +86,26 @@ test("all automatic download DOM failures are contained and never revoke URL", (
     );
   }
 });
+// 只放宽 JSX 空白；仍要求零参数箭头回调，不能直接调用或传递点击事件。
+// Allow JSX whitespace only; still require a zero-argument arrow callback, not immediate invocation or event forwarding.
+const downloadRetryButton =
+  /<Button\s+onClick\s*=\s*\{\s*\(\s*\)\s*=>\s*prepareDownload\s*\(\s*\)\s*\}\s*>/;
+test("download retry button check ignores whitespace but rejects event forwarding and immediate calls", () => {
+  for (const source of [
+    "<Button onClick={() => prepareDownload()}>",
+    "<Button\n  onClick = { ( ) => prepareDownload ( ) }\n>",
+    "<Button onClick={()=>prepareDownload()} >",
+  ])
+    assert.match(source, downloadRetryButton);
+  for (const source of [
+    "<Button onClick={prepareDownload}>",
+    "<Button onClick={prepareDownload()}>",
+    "<Button onClick={(event) => prepareDownload(event)}>",
+    "<Button onClick={() => prepareDownload(event)}>",
+    "<Button onClick={() => anotherAction()}>",
+  ])
+    assert.doesNotMatch(source, downloadRetryButton);
+});
 test("UI retry never reruns conversion and completed outcomes bypass conversion-failure catch", async () => {
   const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
   const retry = app.slice(
@@ -103,5 +123,5 @@ test("UI retry never reruns conversion and completed outcomes bypass conversion-
     /if \(generationCompleted\) \{[\s\S]*?dmWebDownloadPreparationFailed[\s\S]*?return;\s+\}\s+const report/,
   );
   assert.match(app, /preparedDownload.dispose\(\)/);
-  assert.match(app, /<Button onClick=\{\(\) => prepareDownload\(\)\}>/);
+  assert.match(app, downloadRetryButton);
 });
