@@ -197,10 +197,18 @@ static int load_directory(void) {
     char *strings = pfs0_get_string_table(directory);
     for (uint32_t i = 0; i < head.num_files; i++) {
         pfs0_file_entry_t *e = pfs0_get_file_entry(directory, i);
-        if (e->string_table_offset >= head.string_table_size)
+        if (e->string_table_offset >= head.string_table_size ||
+            (e->string_table_offset && strings[e->string_table_offset - 1] != 0))
             return -2;
         const char *name = strings + e->string_table_offset;
-        const char *end = memchr(name, 0, head.string_table_size - e->string_table_offset);
+        /* 与生产 JS 输入策略一致：名称最多 255 字节，偏移必须位于字符串起点。
+         * Match production JS input policy: at most 255 name bytes, at a string start.
+         * 限制每项扫描，避免对恶意偏移反复扫描整个元数据表。
+         * Bound each scan instead of repeatedly scanning the full table for hostile offsets. */
+        size_t name_limit = head.string_table_size - e->string_table_offset;
+        if (name_limit > 256)
+            name_limit = 256;
+        const char *end = memchr(name, 0, name_limit);
         if (!end || end == name || !strcmp(name, ".") || !strcmp(name, ".."))
             return -2;
         for (const char *p = name; p < end; p++)
