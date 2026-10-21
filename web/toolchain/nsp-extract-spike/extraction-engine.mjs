@@ -510,6 +510,7 @@ export function createExtractionEngine(
         state = "disposed";
         revoke();
         contents.clear();
+        warlockHashes.clear();
         records = [];
         inventory = [];
         entries = [];
