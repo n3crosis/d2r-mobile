@@ -97,12 +97,37 @@ new = """    bool initialized = zsa.Init(certFile, pkeyFile, provFile, entitleme
     if (!passwd.empty()) OPENSSL_cleanse(&passwd[0], passwd.size());
     if (!initialized) return -203;"""
 replace("zsign_export.cpp", old, new)
+# wasm32 的 int64_t 不一定是 long；使用工具链提供的格式宏。
+# wasm32 int64_t is not necessarily long; use the toolchain's format macro.
+replace(
+    "common/json.cpp",
+    "#ifdef __APPLE__\n#define PRId64",
+    "#ifdef __EMSCRIPTEN__\n#include <inttypes.h>\n#elif defined(__APPLE__)\n#define PRId64",
+)
+replace(
+    "common/util.cpp",
+    "#ifdef _WIN32\n#define PRId64",
+    "#ifdef __EMSCRIPTEN__\n#include <inttypes.h>\n#elif defined(_WIN32)\n#define PRId64",
+)
+# 显式转换日期值，确保可变参数类型与 PRId64 完全一致。
+# Cast dates explicitly so the variadic argument type matches PRId64 exactly.
+replace(
+    "common/json.cpp",
+    '#ifdef _WIN32\n\t\t::snprintf(buf, 256, "%lld", m_value.v_date);',
+    '#ifdef __EMSCRIPTEN__\n\t\t::snprintf(buf, 256, "%" PRId64, static_cast<int64_t>(m_value.v_date));\n#elif defined(_WIN32)\n\t\t::snprintf(buf, 256, "%lld", m_value.v_date);',
+)
 report = {
     "patches": {
         p.name: hashlib.sha256(p.read_bytes()).hexdigest()
         for p in [here / "prepare-source.py", here / "stream-sha.inc", here / "bounded-map.inc"]
     },
-    "modifiedFiles": ["common/sha.cpp", "common/fs.cpp", "zsign_export.cpp"],
+    "modifiedFiles": [
+        "common/sha.cpp",
+        "common/fs.cpp",
+        "zsign_export.cpp",
+        "common/json.cpp",
+        "common/util.cpp",
+    ],
     "portedFiles": ["zsign_export.cpp", "zsign_export.h"],
 }
 (output.parent / "patch-report.json").write_text(json.dumps(report, indent=2) + "\n")

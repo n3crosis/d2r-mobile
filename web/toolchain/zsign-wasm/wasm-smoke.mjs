@@ -11,6 +11,7 @@ import { isMainThread, parentPort, Worker } from "node:worker_threads";
 
 const DEADLINE_MS = 30000;
 const MAX_ARTIFACT_BYTES = 64 * 1024 * 1024;
+let smokeStage = "artifact-validation";
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 async function checkedFile(name) {
   const url = new URL(`./dist/${name}`, import.meta.url);
@@ -42,6 +43,7 @@ async function checkCustomMount(module) {
     { path: appRoot + "resource", mode: 0o644, bytes: resource },
   ];
   let largestRead = 0;
+  smokeStage = "custom-mount";
   const mount = mountSigningArchive(
     module,
     {
@@ -61,7 +63,17 @@ async function checkCustomMount(module) {
     },
   );
   const FS = module.FS;
+  const mountedRoot = FS.lookupPath("/work").node;
+  const mountInfo = mountedRoot.mount;
+  const mountedIds = new Set();
+  const checkOwnership = (node = mountedRoot) => {
+    assert.equal(node.mount, mountInfo);
+    mountedIds.add(node.id);
+    for (const child of Object.values(node.contents ?? {})) checkOwnership(child);
+  };
   try {
+    smokeStage = "custom-read-stat";
+    checkOwnership();
     assert.deepEqual(
       FS.readdir(root).sort(),
       [".", "..", "Info.plist", "Synthetic", "resource"].sort(),
@@ -70,6 +82,7 @@ async function checkCustomMount(module) {
     assert.deepEqual(FS.readFile(root + "resource"), resource);
     assert.ok(largestRead <= 65536);
     assert.throws(() => FS.open(root + "resource", "w"));
+    smokeStage = "custom-truncate-write";
     const stream = FS.open(root + "Info.plist", "w");
     try {
       assert.equal(FS.stat(root + "Info.plist").size, 0);
@@ -78,10 +91,14 @@ async function checkCustomMount(module) {
       FS.close(stream);
     }
     assert.deepEqual(FS.readFile(root + "Info.plist"), new Uint8Array([9, 8]));
+    smokeStage = "custom-signature-create";
     FS.mkdir(root + "_CodeSignature");
     FS.writeFile(root + "_CodeSignature/CodeResources", new Uint8Array([7]));
+    checkOwnership();
+    smokeStage = "custom-temp-replacement";
     for (const suffix of [".archo.0", ".fato"]) {
       FS.writeFile(root + "Synthetic" + suffix, executable);
+      checkOwnership();
       assert.equal(FS.stat(root + "Synthetic" + suffix).mode & 0o777, 0o644);
       FS.unlink(root + "Synthetic");
       FS.rename(root + "Synthetic" + suffix, root + "Synthetic");
@@ -89,6 +106,7 @@ async function checkCustomMount(module) {
       assert.deepEqual(FS.readFile(root + "Synthetic"), executable);
       assert.throws(() => FS.stat(root + "Synthetic" + suffix));
     }
+    smokeStage = "custom-snapshot";
     const snapshot = mount.collectEntries();
     FS.writeFile(root + "Synthetic", new Uint8Array([4, 5, 6]));
     assert.deepEqual(
@@ -105,10 +123,22 @@ async function checkCustomMount(module) {
       resource,
     );
     assert.deepEqual(executable, new Uint8Array([0xcf, 0xfa, 0xed, 0xfe, 1, 2, 3, 4]));
+    smokeStage = "custom-remove";
     FS.unlink(root + "_CodeSignature/CodeResources");
     FS.rmdir(root + "_CodeSignature");
+    smokeStage = "custom-unmount";
   } finally {
     mount.dispose();
+    // 检查真实 Emscripten 哈希链，不能只检查挂载路径不可见。
+    // Inspect the real Emscripten hash chains, not merely whether the mount path is hidden.
+    for (let node of Object.values(FS.nameTable)) {
+      while (node) {
+        assert.equal(mountedIds.has(node.id), false);
+        assert.notEqual(node.mount, mountInfo);
+        node = node.name_next;
+      }
+    }
+    assert.throws(() => FS.stat(root + "Synthetic"));
     FS.rmdir("/work");
   }
 }
@@ -150,6 +180,7 @@ async function runWorker() {
     `data:text/javascript;base64,${javascript.toString("base64")}`
   );
   let instantiations = 0;
+  smokeStage = "wasm-initialize";
   const module = await factory({
     wasmBinary: new Uint8Array(wasm.buffer, wasm.byteOffset, wasm.byteLength),
     locateFile() {
@@ -181,11 +212,13 @@ async function runWorker() {
     assert.ok(module.HEAPU8.byteLength <= 512 * 1024 * 1024);
     // 空路径必须在密码提供程序和随机源检查成功后返回 -201，而不是 -205。
     // Empty paths must return -201 after providers/entropy pass, never -205.
+    smokeStage = "providers-entropy";
     assert.equal(module._zsign_sign_bundle(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0), -201);
     const pointer = module._malloc(32);
     assert.ok(pointer > 0);
     module.HEAPU8.fill(0, pointer, pointer + 32);
     module._free(pointer);
+    smokeStage = "memfs-roundtrip";
     module.FS.mkdirTree("/smoke");
     module.FS.writeFile("/smoke/bytes", new Uint8Array([1, 2, 3]));
     assert.deepEqual(module.FS.readFile("/smoke/bytes"), new Uint8Array([1, 2, 3]));
@@ -215,7 +248,9 @@ if (isMainThread) {
       });
       timer = setTimeout(() => reject(new Error("Signing WASM smoke timed out")), DEADLINE_MS);
       worker.once("message", (message) =>
-        message.ok ? resolve(message.result) : reject(new Error(message.error)),
+        message.ok
+          ? resolve(message.result)
+          : reject(new Error(`[${message.stage ?? "unknown"}] ${message.error}`)),
       );
       worker.once("error", reject);
       worker.once("exit", (code) => reject(new Error(`Smoke exited without result (${code})`)));
@@ -240,6 +275,7 @@ if (isMainThread) {
         : {};
     parentPort.postMessage({
       ok: false,
+      stage: smokeStage,
       error:
         error instanceof Error
           ? String(error.stack || error.message)

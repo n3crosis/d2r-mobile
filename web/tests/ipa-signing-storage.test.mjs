@@ -185,14 +185,16 @@ test("custom mount remaps app root, reads in bounded slices and accepts signed W
   const FS = {
     ErrnoError,
     createNode(parent, name, mode) {
-      return { id: ++id, parent, name, mode };
+      return { id: ++id, parent, name, mode, mount: parent?.mount };
     },
     mkdir(path) {
       assert.equal(path, "/work");
     },
     mount(type, opts, path) {
       assert.equal(path, "/work");
-      rootNode = type.mount();
+      const mountInfo = { mountpoint: path };
+      rootNode = type.mount(mountInfo);
+      rootNode.mount = mountInfo;
     },
     unmount(path) {
       assert.equal(path, "/work");
@@ -213,13 +215,30 @@ test("custom mount remaps app root, reads in bounded slices and accepts signed W
   const mount = mountSigningArchive({ FS }, archive, { readBlobSync: (blob) => blob.bytes });
   const app = rootNode.contents.Payload.contents["App.app"],
     node = app.contents.Test;
+  const assertOwnership = (node) => {
+    assert.equal(node.mount, rootNode.mount);
+    for (const child of Object.values(node.contents ?? {})) assertOwnership(child);
+  };
+  assertOwnership(rootNode);
   const buffer = new Int8Array(8);
   assert.equal(node.stream_ops.read({ node }, buffer, 0, 8, 0), 8);
   assert.equal(buffer[0], -49);
   assert.equal(node.stream_ops.write({ node }, new Int8Array([-1]), 0, 1, 4), 1);
   const signature = app.node_ops.mknod(app, "_CodeSignature", 0o040755);
-  const resources = signature.node_ops.mknod(signature, "CodeResources", 0o100644);
+  // 模拟 Emscripten 4.0.20 open 的 mknod(mode|0777) → chmod(mode) 顺序。
+  // Model Emscripten 4.0.20 open's mknod(mode|0777) → chmod(mode) sequence.
+  const resources = signature.node_ops.mknod(signature, "CodeResources", 0o100777);
+  for (const mode of [0o100755, 0o104644, 0o040644])
+    assert.throws(() => resources.node_ops.setattr(resources, { mode }), ErrnoError);
+  resources.node_ops.setattr(resources, { mode: 0o100666 });
+  assert.equal(resources.mode, 0o100644);
+  assert.throws(() => resources.node_ops.setattr(resources, { mode: 0o100666 }), ErrnoError);
+  const profile = app.node_ops.mknod(app, "embedded.mobileprovision", 0o100777);
+  profile.node_ops.setattr(profile, { mode: 0o100644 });
+  assert.throws(() => profile.node_ops.setattr(profile, { mode: 0o100666 }), ErrnoError);
+  assert.throws(() => node.node_ops.setattr(node, { mode: 0o100666 }), ErrnoError);
   resources.stream_ops.write({ node: resources }, new Int8Array([1]), 0, 1, 0);
+  assertOwnership(rootNode);
   assert.throws(() => app.node_ops.mknod(app, "escape", 0o100644), ErrnoError);
   const output = mount.collectEntries();
   assert.equal(
