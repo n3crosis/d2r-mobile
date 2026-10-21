@@ -172,3 +172,397 @@ test("pack record search keeps native non-overlapping marker boundaries", async 
     /Catalog record absent from pack/,
   );
 });
+
+const ownedFlags = Object.freeze({ debug: true, reduced: false });
+function ownedFixture(catalog, name = "cs_lut_combine_c.bin") {
+  const descriptors = catalog.keys
+    .map((key) => catalog.describe(key))
+    .filter((entry) => entry.name === name)
+    .sort((a, b) => a.index - b.index);
+  assert.ok(descriptors.length);
+  const records = descriptors.map((descriptor) => {
+    const { rec } = fixture(descriptor.stage, 0);
+    // 每个合成控制段均有独立内容，不伪造真实目录或扩大摘要模拟范围。
+    // Distinguish synthetic controls without replacing the pinned catalog or broadening the digest mock.
+    new DataView(rec.buffer).setUint32(rec.length - 0x880 + 8, descriptor.index + 1, true);
+    if (descriptor.stage === "cs") rec[0x38] = descriptor.index + 1;
+    return rec;
+  });
+  return { descriptors, records };
+}
+function joinedBytes(parts) {
+  const result = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
+  let at = 0;
+  for (const part of parts) {
+    result.set(part, at);
+    at += part.length;
+  }
+  return result;
+}
+function mockSyntheticControls(t, { descriptors, records }, beforeReturn = async () => {}) {
+  const nativeDigest = crypto.subtle.digest.bind(crypto.subtle);
+  const controls = new Map(
+    records.map((record, i) => [
+      Buffer.from(record.subarray(record.length - 0x880)).toString("hex"),
+      descriptors[i].key,
+    ]),
+  );
+  let calls = 0;
+  t.mock.method(crypto.subtle, "digest", async (algorithm, data) => {
+    const key =
+      algorithm === "SHA-256" && data.byteLength === 0x880
+        ? controls.get(Buffer.from(data).toString("hex"))
+        : undefined;
+    if (!key) return nativeDigest(algorithm, data);
+    calls++;
+    await beforeReturn();
+    return Uint8Array.from(Buffer.from(key.padEnd(64, "0"), "hex")).buffer;
+  });
+  return {
+    get calls() {
+      return calls;
+    },
+  };
+}
+function observeOwnedStorage(t) {
+  const nativeClone = globalThis.structuredClone;
+  const NativeOffsets = Uint32Array;
+  const transferred = [];
+  const offsets = [];
+  t.mock.method(globalThis, "structuredClone", (value, options) => {
+    const result = nativeClone(value, options);
+    if (options?.transfer?.length) {
+      const buffer = result instanceof ArrayBuffer ? result : result.buffer;
+      assert.ok(buffer instanceof ArrayBuffer);
+      transferred.push(new Uint8Array(buffer));
+    }
+    return result;
+  });
+  t.mock.method(globalThis, "Uint32Array", function (...args) {
+    const result = new NativeOffsets(...args);
+    offsets.push(result);
+    return result;
+  });
+  return { transferred, offsets };
+}
+test("public catalog prepare keeps borrowed subviews attached", async (t) => {
+  const catalog = await loadShaderCatalog(input());
+  const generated = ownedFixture(catalog);
+  mockSyntheticControls(t, generated);
+  const pack = joinedBytes(generated.records);
+  const backing = new Uint8Array(pack.length + 2);
+  backing.set(pack, 1);
+  const borrowed = backing.subarray(1, -1);
+  const result = await catalog.prepare(generated.descriptors[1].key, {
+    ...ownedFlags,
+    packBytes: borrowed,
+  });
+  assert.deepEqual(borrowed, pack);
+  assert.equal(backing.byteLength, pack.length + 2);
+  assert.equal(result.code[0], 2);
+});
+test("owned pack takes exclusive transferred storage and exposes only a frozen source", async (t) => {
+  const catalog = await loadShaderCatalog(input());
+  const generated = ownedFixture(catalog);
+  const digest = mockSyntheticControls(t, generated);
+  const storage = observeOwnedStorage(t);
+  const pack = joinedBytes(generated.records);
+  const alias = new Uint8Array(pack.buffer);
+  const view = new DataView(pack.buffer);
+  const independent = pack.slice();
+  const source = catalog.createOwnedPackSource(generated.descriptors[0].name, pack);
+  try {
+    assert.equal(pack.byteLength, 0);
+    assert.equal(alias.byteLength, 0);
+    assert.throws(() => view.getUint8(0), TypeError);
+    assert.ok(Object.isFrozen(source));
+    assert.deepEqual(Reflect.ownKeys(source).sort(), ["dispose", "prepare"]);
+    assert.equal(storage.transferred.length, 1);
+    assert.deepEqual(storage.transferred[0], independent);
+    assert.equal(storage.offsets.length, 1);
+    assert.equal(storage.offsets[0].length, 3);
+    assert.ok(
+      storage.offsets[0].every((value) => value === 0),
+      "offsets are populated lazily",
+    );
+    const descriptor = generated.descriptors[0];
+    const prepared = await source.prepare(descriptor.key, {
+      ...ownedFlags,
+      packBytes: new Uint8Array(1),
+    });
+    assert.equal(prepared.job.key, descriptor.key);
+    assert.equal(prepared.job.stage, descriptor.stage);
+    assert.equal(prepared.source.name, descriptor.name);
+    assert.equal(prepared.source.index, descriptor.index);
+    assert.equal(prepared.source.pcPaired, descriptor.pcPaired);
+    assert.equal(prepared.source.controlVerified, true);
+    assert.equal(prepared.installable, false);
+    assert.equal(digest.calls, 1);
+  } finally {
+    source.dispose();
+  }
+  source.dispose();
+  assert.ok(storage.transferred[0].every((value) => value === 0));
+  assert.ok(storage.offsets.length > 0);
+  assert.ok(storage.offsets.every((table) => table.every((value) => value === 0)));
+  assert.ok(independent.some((value) => value !== 0));
+  await assert.rejects(source.prepare(generated.descriptors[0].key, ownedFlags), /disposed/i);
+  assert.equal(digest.calls, 1);
+});
+test("owned pack rejects unknown or embedded names and non-exclusive backing stores without detaching", async () => {
+  const catalog = await loadShaderCatalog(input());
+  const name = catalog.describe(catalog.keys[0]).name;
+  const embedded = catalog.keys.map((key) => catalog.describe(key)).find((entry) => entry.embedded);
+  for (const invalidName of ["missing.bin", embedded.name, "../cs_lut_combine_c.bin", null]) {
+    const pack = new Uint8Array([1, 2, 3]);
+    assert.throws(() => catalog.createOwnedPackSource(invalidName, pack));
+    assert.deepEqual(pack, new Uint8Array([1, 2, 3]));
+  }
+  const full = new Uint8Array([1, 2, 3, 4]);
+  const shared = new Uint8Array(new SharedArrayBuffer(4));
+  const resizable = new Uint8Array(new ArrayBuffer(4, { maxByteLength: 8 }));
+  for (const pack of [
+    new Uint8Array(),
+    new Uint16Array(2),
+    [1, 2],
+    full.subarray(1),
+    full.subarray(0, 3),
+    shared,
+    resizable,
+  ]) {
+    assert.throws(() => catalog.createOwnedPackSource(name, pack));
+  }
+  assert.deepEqual(full, new Uint8Array([1, 2, 3, 4]));
+  assert.equal(shared.byteLength, 4);
+  assert.equal(resizable.byteLength, 4);
+  const detached = new Uint8Array(4);
+  structuredClone(detached.buffer, { transfer: [detached.buffer] });
+  assert.throws(() => catalog.createOwnedPackSource(name, detached));
+  const oversized = new Uint8Array(256 * 1024 * 1024 + 1);
+  assert.throws(() => catalog.createOwnedPackSource(name, oversized));
+  assert.equal(oversized.byteLength, 256 * 1024 * 1024 + 1);
+});
+test("owned pack transfer failures have no copy fallback", async (t) => {
+  const catalog = await loadShaderCatalog(input());
+  const name = catalog.describe(catalog.keys[0]).name;
+  const pack = new Uint8Array([1, 2, 3]);
+  const failure = new Error("synthetic transfer unavailable");
+  const clone = t.mock.method(globalThis, "structuredClone", () => {
+    throw failure;
+  });
+  assert.throws(() => catalog.createOwnedPackSource(name, pack));
+  assert.equal(clone.mock.callCount(), 1);
+  assert.deepEqual(pack, new Uint8Array([1, 2, 3]));
+});
+test("owned pack index allocation failure leaves caller ownership intact", async (t) => {
+  const catalog = await loadShaderCatalog(input());
+  const name = catalog.describe(catalog.keys[0]).name;
+  const pack = new Uint8Array([1, 2, 3]);
+  const failure = new Error("synthetic offset allocation failure");
+  const clone = t.mock.method(globalThis, "structuredClone");
+  t.mock.method(globalThis, "Uint32Array", function () {
+    throw failure;
+  });
+  assert.throws(() => catalog.createOwnedPackSource(name, pack), failure);
+  assert.equal(clone.mock.callCount(), 0);
+  assert.deepEqual(pack, new Uint8Array([1, 2, 3]));
+});
+test("owned pack binds its name and catalog key while preserving explicit decoder flags", async (t) => {
+  const catalog = await loadShaderCatalog(input());
+  const generated = ownedFixture(catalog);
+  const digest = mockSyntheticControls(t, generated);
+  const name = generated.descriptors[0].name;
+  const storage = observeOwnedStorage(t);
+  const embedded = catalog.keys.map((key) => catalog.describe(key)).find((entry) => entry.embedded);
+  const other = catalog.keys
+    .map((key) => catalog.describe(key))
+    .find((entry) => !entry.embedded && entry.name !== name);
+  for (const [key, flags, expected] of [
+    ["0000000000000000", ownedFlags, /pack source/i],
+    [embedded.key, ownedFlags, /pack source/i],
+    [other.key, ownedFlags, /pack source/i],
+    [generated.descriptors[0].key, undefined, /Explicit/],
+  ]) {
+    const source = catalog.createOwnedPackSource(name, joinedBytes(generated.records));
+    try {
+      await assert.rejects(source.prepare(key, flags), expected);
+      assert.ok(storage.transferred.at(-1).every((value) => value === 0));
+      await assert.rejects(source.prepare(generated.descriptors[0].key, ownedFlags), /disposed/i);
+    } finally {
+      source.dispose();
+    }
+  }
+  assert.equal(digest.calls, 0);
+  const source = catalog.createOwnedPackSource(name, joinedBytes(generated.records));
+  t.after(() => source.dispose());
+  const result = await source.prepare(generated.descriptors[0].key, {
+    debug: false,
+    reduced: true,
+  });
+  assert.equal(result.job.debug, false);
+  assert.equal(result.job.reduced, true);
+});
+test("owned pack indexes lazily within the selected catalog bound and decodes repeated out-of-order requests", async (t) => {
+  const catalog = await loadShaderCatalog(input());
+  const generated = ownedFixture(catalog);
+  assert.deepEqual(
+    generated.descriptors.map((entry) => entry.index),
+    [0, 1],
+  );
+  const digest = mockSyntheticControls(t, generated);
+  const storage = observeOwnedStorage(t);
+  const suffix = new TextEncoder().encode("BTCDBTCD".repeat(20000));
+  const source = catalog.createOwnedPackSource(
+    generated.descriptors[0].name,
+    joinedBytes([...generated.records, suffix]),
+  );
+  t.after(() => source.dispose());
+  assert.equal(storage.offsets.length, 1);
+  assert.ok(storage.offsets[0].every((value) => value === 0));
+  const nativeIndexOf = Uint8Array.prototype.indexOf;
+  let packSearches = 0;
+  t.mock.method(Uint8Array.prototype, "indexOf", function (...args) {
+    if (this.buffer === storage.transferred[0].buffer) packSearches++;
+    return nativeIndexOf.apply(this, args);
+  });
+  const last = await source.prepare(generated.descriptors[1].key, ownedFlags);
+  assert.equal(last.code[0], 2);
+  assert.ok(storage.offsets.length > 0);
+  assert.ok(storage.offsets.every((table) => table.length <= 3));
+  assert.ok(packSearches <= 3, "unused pack markers must not extend the catalog-bounded scan");
+  const searches = packSearches;
+  const tables = storage.offsets.length;
+  last.code.fill(0);
+  const first = await source.prepare(generated.descriptors[0].key, ownedFlags);
+  const repeated = await source.prepare(generated.descriptors[1].key, ownedFlags);
+  assert.equal(first.code[0], 1);
+  assert.equal(repeated.code[0], 2);
+  assert.notEqual(repeated.code.buffer, last.code.buffer);
+  assert.equal(digest.calls, 3, "every prepare must re-run record integrity checks");
+  assert.equal(packSearches, searches, "indexed requests must not rescan the pack");
+  assert.equal(storage.offsets.length, tables);
+});
+test("owned pack preserves non-overlapping record markers and the final EOF boundary", async (t) => {
+  const catalog = await loadShaderCatalog(input());
+  const generated = ownedFixture(catalog);
+  mockSyntheticControls(t, generated);
+  const name = generated.descriptors[0].name;
+  for (const prefix of [generated.records[0], new TextEncoder().encode("BTCDBTCDBTCD\0")]) {
+    const source = catalog.createOwnedPackSource(name, joinedBytes([prefix, generated.records[1]]));
+    try {
+      const result = await source.prepare(generated.descriptors[1].key, ownedFlags);
+      assert.deepEqual(result.code, generated.records[1].slice(0x38, -0x880));
+    } finally {
+      source.dispose();
+    }
+  }
+  const absent = catalog.createOwnedPackSource(name, new TextEncoder().encode("BTCDBTCDBTCD"));
+  try {
+    await assert.rejects(absent.prepare(generated.descriptors[1].key, ownedFlags), /record absent/);
+  } finally {
+    absent.dispose();
+  }
+});
+test("owned pack retains real control-hash rejection and permits failure cleanup", async (t) => {
+  const catalog = await loadShaderCatalog(input());
+  const generated = ownedFixture(catalog);
+  const storage = observeOwnedStorage(t);
+  const source = catalog.createOwnedPackSource(
+    generated.descriptors[0].name,
+    joinedBytes(generated.records),
+  );
+  try {
+    // 此处使用真实摘要，合成控制段绝不能被认作固定目录中的游戏记录。
+    // Real hashing here must reject synthetic controls as pinned catalog records.
+    await assert.rejects(source.prepare(generated.descriptors[0].key, ownedFlags), /Control hash/);
+    assert.ok(storage.transferred[0].every((value) => value === 0));
+    assert.ok(storage.offsets.every((table) => table.every((value) => value === 0)));
+  } finally {
+    source.dispose();
+  }
+  assert.ok(storage.transferred[0].every((value) => value === 0));
+  assert.ok(storage.offsets.every((table) => table.every((value) => value === 0)));
+  await assert.rejects(source.prepare(generated.descriptors[0].key, ownedFlags), /disposed/i);
+});
+test("owned pack retains stage and c1 guards after a synthetic matching control hash", async (t) => {
+  const catalog = await loadShaderCatalog(input());
+  for (const kind of ["c1", "stage"]) {
+    await t.test(kind, async (t) => {
+      const generated = ownedFixture(catalog, "ps_alpha_threshold_p.bin");
+      const record = generated.records[0];
+      const view = new DataView(record.buffer);
+      if (kind === "c1") view.setUint32(record.length - 0x880 + 0x704, 0xffffffff, true);
+      else view.setUint32(0x68, 0, true);
+      mockSyntheticControls(t, generated);
+      const source = catalog.createOwnedPackSource(generated.descriptors[0].name, record);
+      t.after(() => source.dispose());
+      await assert.rejects(
+        source.prepare(generated.descriptors[0].key, ownedFlags),
+        kind === "c1" ? /c1 range/ : /SPH stage/,
+      );
+    });
+  }
+});
+test("owned pack rejects already-aborted requests before decoding", async (t) => {
+  const catalog = await loadShaderCatalog(input());
+  const generated = ownedFixture(catalog);
+  const digest = mockSyntheticControls(t, generated);
+  const storage = observeOwnedStorage(t);
+  const source = catalog.createOwnedPackSource(
+    generated.descriptors[0].name,
+    joinedBytes(generated.records),
+  );
+  t.after(() => source.dispose());
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(
+    source.prepare(generated.descriptors[0].key, { ...ownedFlags, signal: controller.signal }),
+    { name: "AbortError" },
+  );
+  assert.equal(digest.calls, 0);
+  assert.ok(storage.transferred[0].every((value) => value === 0));
+  assert.ok(storage.offsets.every((table) => table.every((value) => value === 0)));
+  await assert.rejects(source.prepare(generated.descriptors[0].key, ownedFlags), /disposed/i);
+});
+test("owned pack wipes late successful code when disposal or cancellation races decoding", async (t) => {
+  const catalog = await loadShaderCatalog(input());
+  for (const mode of ["dispose", "abort"]) {
+    await t.test(mode, async (t) => {
+      const generated = ownedFixture(catalog);
+      const reached = Promise.withResolvers();
+      const gate = Promise.withResolvers();
+      mockSyntheticControls(t, generated, async () => {
+        reached.resolve();
+        await gate.promise;
+      });
+      const storage = observeOwnedStorage(t);
+      const codeCopies = [];
+      const nativeSlice = Uint8Array.prototype.slice;
+      t.mock.method(Uint8Array.prototype, "slice", function (...args) {
+        const result = nativeSlice.apply(this, args);
+        if (args[0] === 0x38 && result.length === 16) codeCopies.push(result);
+        return result;
+      });
+      const controller = new AbortController();
+      const source = catalog.createOwnedPackSource(
+        generated.descriptors[0].name,
+        joinedBytes(generated.records),
+      );
+      t.after(() => source.dispose());
+      const pending = source.prepare(generated.descriptors[0].key, {
+        ...ownedFlags,
+        signal: controller.signal,
+      });
+      await reached.promise;
+      if (mode === "dispose") source.dispose();
+      else controller.abort();
+      gate.resolve();
+      await assert.rejects(pending, mode === "dispose" ? /disposed/i : { name: "AbortError" });
+      assert.equal(codeCopies.length, 1, "decoder completed after the pending hash settled");
+      assert.ok(codeCopies[0].every((value) => value === 0));
+      source.dispose();
+      assert.ok(storage.transferred[0].every((value) => value === 0));
+      assert.ok(storage.offsets.every((table) => table.every((value) => value === 0)));
+    });
+  }
+});

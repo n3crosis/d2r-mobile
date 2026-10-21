@@ -308,10 +308,17 @@ export async function stageArchiveRecord(
         }
         async function* input() {
           const slice = mode === "z" ? ARCHIVE_LIMITS.compressedSlice : ARCHIVE_STREAM_READ_BYTES;
-          for (let at = 0; at < payloadSize; at += slice) {
-            const bytes = await payloadRead(payloadAt + at, Math.min(slice, payloadSize - at));
-            encodedHash.append(bytes);
-            yield bytes;
+          // 大压缩块按 64 KiB 独立快照读取，仍逐个馈送 1 KiB 并等待解压背压。
+          // Read large compressed blocks as independent 64 KiB snapshots, still feeding 1 KiB with decoder backpressure.
+          const readSize = !cached && mode === "z" ? ARCHIVE_STREAM_READ_BYTES : slice;
+          for (let at = 0; at < payloadSize; at += readSize) {
+            const bytes = await payloadRead(payloadAt + at, Math.min(readSize, payloadSize - at));
+            for (let part = 0; part < bytes.length; part += slice) {
+              abort(signal);
+              const piece = bytes.subarray(part, part + slice);
+              encodedHash.append(piece);
+              yield piece;
+            }
           }
         }
         if (mode === "n") {

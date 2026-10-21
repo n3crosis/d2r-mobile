@@ -76,3 +76,21 @@ test("stale option events cannot change configuration while a lease owns the UI"
     assert.match(source.slice(handler, finish), /operationGate\.current\.busy/);
   }
 });
+
+// 源码契约检查只约束稳定键和复制文本，不宣称实际 React 耗时。
+// Source-contract checks constrain stable keys and copied text, not actual React timing.
+test("bounded activity log keeps monotonic row identities and copies text only", async () => {
+  const source = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  assert.match(
+    source,
+    /activityRevision\.current \+= 1;[\s\S]*?activityBuffer\.current\.push\(\{\s*id: activityRevision\.current,/,
+  );
+  assert.match(
+    source,
+    /if \(activityBuffer\.current\.length > 200\) activityBuffer\.current\.shift\(\)/,
+  );
+  assert.match(source, /<li key=\{line\.id\}>\{line\.text\}<\/li>/);
+  assert.match(source, /activityBuffer\.current\.map\(\(line\) => line\.text\)\.join\("\\n"\)/);
+  assert.match(source, /setTimeout\(flushActivity, 250\)/);
+  assert.doesNotMatch(source, /activityRevision\.current\s*=\s*0/);
+});

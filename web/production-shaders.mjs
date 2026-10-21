@@ -138,11 +138,11 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
         for (const key of keys) {
           check();
           const descriptor = catalog.describe(key);
-          let input;
+          let prepare;
           sources.enter(descriptor);
           if (descriptor.embedded) {
             if (!sources.image) sources.setImage(await mainImage(modules.main, controller.signal));
-            input = { mainImage: sources.image };
+            prepare = (flags) => catalog.prepare(key, { mainImage: sources.image, ...flags });
           } else {
             if (sources.packName !== descriptor.name) {
               const path = pathsByPack.get(descriptor.name);
@@ -153,19 +153,32 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
                 signal: controller.signal,
               });
               if (!(pack instanceof Uint8Array)) fail("Shader pack did not return bytes");
-              sources.setPack(descriptor.name, pack);
+              try {
+                check();
+                sources.setPack(
+                  descriptor.name,
+                  catalog.createOwnedPackSource(descriptor.name, pack),
+                );
+              } catch (error) {
+                // 转移前失败仍由此处清理读取结果；成功转移后的清理由源所有者负责。
+                // Before transfer, failed handoff still owns the read buffer; after transfer, the source owner handles cleanup.
+                if (pack.byteLength) pack.fill(0);
+                throw error;
+              }
             }
-            input = { packBytes: sources.pack };
+            prepare = (flags) => sources.pack.prepare(key, flags);
           }
-          const prepared = await catalog.prepare(key, {
-            ...input,
+          const prepared = await prepare({
             debug: true,
             reduced: true,
             allowUnverifiedTessellation: true,
+            signal: controller.signal,
           });
-          check();
           let converted;
           try {
+            // 准备期间取消也必须清理已返回的独立代码字节。
+            // Cancellation during preparation must also wipe the returned owned code bytes.
+            check();
             converted = await pipeline.translate({
               job: prepared.job,
               code: prepared.code,
@@ -316,8 +329,8 @@ export async function* shaderOutputChunks(bytes, check) {
   }
 }
 
-// 按实际使用次数释放镜像，而非假设嵌入记录连续；切换来源时清空物理包身份。
-// Release the image by actual remaining uses, not assumed contiguous embedded ordering; clear physical-pack identity on source switches.
+// 按实际使用次数释放镜像，而非假设嵌入记录连续；切换来源时释放包所有者及其有界索引。
+// Release the image by actual remaining uses, not assumed contiguous embedded ordering; dispose the pack owner and bounded index on source switches.
 export function createShaderSourceCache(embeddedCount) {
   if (!Number.isSafeInteger(embeddedCount) || embeddedCount < 0)
     fail("Invalid embedded shader count");
@@ -325,7 +338,7 @@ export function createShaderSourceCache(embeddedCount) {
     packName = null,
     image;
   const clearPack = () => {
-    pack?.fill(0);
+    pack?.dispose();
     pack = undefined;
     packName = null;
   };
@@ -342,9 +355,9 @@ export function createShaderSourceCache(embeddedCount) {
     enter(descriptor) {
       if (descriptor.embedded || packName !== descriptor.name) clearPack();
     },
-    setPack(name, bytes) {
+    setPack(name, source) {
       clearPack();
-      pack = bytes;
+      pack = source;
       packName = name;
     },
     setImage(bytes) {

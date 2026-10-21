@@ -5,20 +5,20 @@ English: [WEB_PR_READINESS.md](WEB_PR_READINESS.md)
 本清单补充但不替代或放宽[参与开发要求](../CONTRIBUTING.zh-CN.md)
 与 [PR 模板](../.github/PULL_REQUEST_TEMPLATE.md)，不代表已经可以提交 PR。
 只有在检查准确的改动并记录版本、平台和实际输出后才能勾选。仅下文明示记录的源码检查报告为已执行。
-594b650 的完整浏览器构建与发布已通过；后续修改仍需各自检查。
+f9cb44a 的完整浏览器构建与发布已通过；后续修改仍需各自检查。
 游戏/设备测试和截图仍待补充。本次工作没有创建 PR。
 
 ## 已发布检查点与待验证工作
 
-已验证发布：`594b6503bf80437d15bbbcb4ea2545358cf7e236`，
-[Verify 39533724417](https://github.com/n3crosis/d2r-mobile/actions/runs/39533724417) 成功，
-产物 `12317320493`，仅所有者可访问的站点于 2026-10-21 02:42:39 UTC 部署。
+已验证发布：`f9cb44a0ab5bcde738b55717bce41567b1c72a90`，
+[Verify 39536682757](https://github.com/n3crosis/d2r-mobile/actions/runs/39536682757) 成功，
+产物 `12318171949`，仅所有者可访问的站点于 2026-10-21 03:13:26 UTC 部署。
 精确 ZIP/运行时摘要、产物大小和清单见[交付凭据](WEB_DELIVERY_PROGRESS.zh-CN.md)。
 此次发布包含标准 Warlock 预选、移除 48 个未使用原始源码载荷资源，以及确认 SDK 缓存
 实际命中；不宣称耗时收益。
 
 已发布的着色器改动通过 23 项聚焦着色器测试、前端检查和完整 CI。
-站点源码为 `12512da3c34f2a6f5e9be73b7706852d63cfee02`。
+站点源码为 `bdbbacb62b0f36abc5766a3faafad5f850cae035`。
 这些检查不构成真实游戏/设备验收或 RAM 收益测量。
 原生快速/完整选项已上线。修订后的真实 WASM 测试通过 32 个合成夹具 / 80 次调用，
 已验证不透明 URL 执行，不构成浏览器、解码、真实游戏或设备证明。
@@ -31,8 +31,14 @@ English: [WEB_PR_READINESS.md](WEB_PR_READINESS.md)
 包括 .NET 启动/主程序集与 SPIRV；仅外层 `build.sourceRevision` 改变。
 这证明该产物对的稳定性，不是普遍构建确定性保证。
 
-1 MiB 文件系统批量操作及按阈值建立 CFT 索引的改动仍未提交，不属于本次部署。
+`db94` 的 1 MiB 文件系统批量写入及按阈值建立 CFT 索引现已上线。
+本次发布也包含用户 `32a9` 修订中的 RomFS 尾部元数据及无名 CASC 处理、
+密封曲面细分检查的显式启用修复、摘要分配改进，以及失效孤立 Python 适配器清理。
 不宣称浏览器速度或 RAM 收益已验证。
+
+当前未提交的下一批源码改动尚未上线：归档第二遍 64 KiB 读取窗口、
+已准备代码缓冲区在取消时清零、稳定日志标识，以及自有补充包索引处理。
+这些改动仍需各自构建与发布；本次发布凭据不涵盖它们。
 
 ## 改了什么 / 为什么
 
@@ -55,7 +61,7 @@ python3 dm/ios/tools/dm_i18n.py --header > dm/host/dm_i18n_tab.h
 
 ## 未改动的 PR 模板中的检查
 
-不需要游戏文件：
+不需要游戏文件（下列为历史记录输出，本次文档更新未重新运行）：
 
 - [x] `python3 dm/i18n/scan_literals.py` — `I18N OK：中文字面量 459 条全在白名单（105 行），其余走中英表`
 - [x] `python3 dm/ios/tools/dm_i18n.py --check` — `dm_i18n OK 553 条`

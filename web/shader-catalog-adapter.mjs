@@ -124,6 +124,87 @@ export async function decodeShaderRecord(descriptor, input, flags) {
     installable: false,
   };
 }
+/**
+ * 转移整个独立缓冲区以消除调用方别名；仅缓存固定目录需要的记录边界，不缓存解码结果。
+ * Transfer the complete owned backing to detach caller aliases; cache only catalog-bounded record offsets, never decoded results.
+ */
+function createOwnedPackSource(name, input, entries, maximumIndex) {
+  if (maximumIndex === undefined) throw new Error("Unknown shader pack source");
+  const original = bytes(input, 256 * 1024 * 1024, "shader pack");
+  if (
+    !(original.buffer instanceof ArrayBuffer) ||
+    original.buffer.resizable === true ||
+    original.byteOffset !== 0 ||
+    original.byteLength !== original.buffer.byteLength
+  )
+    throw new Error("Invalid owned shader pack backing");
+  // 先分配小型索引，再转移私有包；分配失败不得剥夺调用方的所有权。
+  // Allocate the small index before transferring the private pack; allocation failure must leave caller ownership intact.
+  let offsets = new Uint32Array(maximumIndex + 2),
+    pack;
+  let count = 0,
+    start = 0,
+    eof = false,
+    disposed = false;
+  const dispose = () => {
+    disposed = true;
+    pack?.fill(0);
+    offsets?.fill(0);
+    pack = offsets = undefined;
+  };
+  try {
+    pack = structuredClone(original, { transfer: [original.buffer] });
+  } catch (error) {
+    dispose();
+    throw error;
+  }
+  const check = (signal) => {
+    signal?.throwIfAborted();
+    if (disposed) throw new Error("Shader pack source is disposed");
+  };
+  return Object.freeze({
+    async prepare(key, flags = {}) {
+      let prepared;
+      try {
+        check(flags.signal);
+        const descriptor = entries.get(key);
+        if (!descriptor || descriptor.embedded || descriptor.name !== name)
+          throw new Error("Shader key does not belong to pack source");
+        supported(descriptor.stage, flags.allowUnverifiedTessellation);
+        options(flags);
+        // 与原生 re.finditer 一样跳过完整标记；末尾只补一次 EOF，不收集目录之外的标记。
+        // Advance past full markers like native re.finditer; memoize EOF and never collect markers beyond the catalog bound.
+        while (count <= descriptor.index + 1 && !eof) {
+          check(flags.signal);
+          const found = find(pack, recordMarker, start);
+          if (found < 0) {
+            eof = true;
+            break;
+          }
+          offsets[count++] = found;
+          start = found + recordMarker.length;
+        }
+        check(flags.signal);
+        if (count <= descriptor.index) throw new Error("Catalog record absent from pack");
+        const end = count > descriptor.index + 1 ? offsets[descriptor.index + 1] : pack.length;
+        prepared = await decodeShaderRecord(
+          descriptor,
+          pack.subarray(offsets[descriptor.index], end),
+          flags,
+        );
+        check(flags.signal);
+        return prepared;
+      } catch (error) {
+        // 哈希等待期间取消或释放时，不能泄漏随后返回的独立代码；失败使此所有者终止。
+        // Cancellation/disposal during hashing must not leak subsequently returned code; a failed owner is terminal.
+        prepared?.code.fill(0);
+        dispose();
+        throw error;
+      }
+    },
+    dispose,
+  });
+}
 export async function loadShaderCatalog(input) {
   const texts = {};
   for (const [name, expected] of Object.entries(SHADER_CATALOG_SOURCES)) {
@@ -180,6 +261,13 @@ export async function loadShaderCatalog(input) {
     "8e91845e3b2e8793a97b7a0e7c33c58ad92761e7d2ed7ffe60f8fb0e196649cf"
   )
     throw new Error("Pinned bf_want source digest mismatch");
+  const packMaximumIndexes = new Map();
+  for (const entry of entries.values())
+    if (!entry.embedded)
+      packMaximumIndexes.set(
+        entry.name,
+        Math.max(packMaximumIndexes.get(entry.name) ?? -1, entry.index),
+      );
   const catalog = Object.freeze({
     bfWant: Object.freeze([]),
     keys: Object.freeze([...entries.keys()]),
@@ -192,6 +280,9 @@ export async function loadShaderCatalog(input) {
       const e = entries.get(key);
       if (!e) throw new Error("Unknown catalog key");
       return structuredClone(e);
+    },
+    createOwnedPackSource(name, packBytes) {
+      return createOwnedPackSource(name, packBytes, entries, packMaximumIndexes.get(name));
     },
     async prepare(
       key,

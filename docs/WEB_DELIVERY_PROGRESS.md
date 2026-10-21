@@ -4,11 +4,11 @@
 
 ## Latest verified publication
 
-[Commit 594b650](https://github.com/n3crosis/d2r-mobile/commit/594b6503bf80437d15bbbcb4ea2545358cf7e236)
-passed the [full Verify build](https://github.com/n3crosis/d2r-mobile/actions/runs/39533724417)
-and was published on 2026-10-21 at 02:42:39 UTC to the existing private
+[Commit f9cb44a](https://github.com/n3crosis/d2r-mobile/commit/f9cb44a0ab5bcde738b55717bce41567b1c72a90)
+passed the [full Verify build](https://github.com/n3crosis/d2r-mobile/actions/runs/39536682757)
+and was published on 2026-10-21 at 03:13:26 UTC to the existing private
 [preview Site](https://d2r-ipa-packager.nicekrill34.chatgpt.site).
-The verified artifact is 21,985,830 bytes (about 20.97 MiB compressed ZIP, containing both shell targets), includes
+The verified artifact is 21,987,036 bytes (about 20.97 MiB compressed ZIP, containing both shell targets), includes
 .NET, and contains no Python runtime, packages or scripts. This is archive size,
 not a browser RAM measurement.
 
@@ -34,14 +34,14 @@ Later source edits need their own build/publication; no new percentage is claime
 
 ## Publication receipt and pending source changes
 
-The published revision is `594b6503bf80437d15bbbcb4ea2545358cf7e236`.
-Verify run `39533724417` succeeded. Artifact `12317320493` has ZIP SHA-256
-`97c6e0c856e9cb36e06c38d7d4997ba84ffd47bca13f24a487c66748838616c6`.
-The owner-private Site deployment `appgdep_6ad826962c248191b6648e5785358511`
-succeeded at 02:42:39 UTC on 2026-10-21.
+The published revision is `f9cb44a0ab5bcde738b55717bce41567b1c72a90`.
+Verify run `39536682757` succeeded. Artifact `12318171949` has ZIP SHA-256
+`efaeb258d6fd383598d9a6c5375282c55bd6ad61bd7aa96270ec2d29c59b7d91`.
+The owner-private Site deployment `appgdep_6ad82dcd4f708191b2fbbf68cc5b004f`
+succeeded at 03:13:26 UTC on 2026-10-21.
 
 The runtime inventory has 297 logical assets and 33 physical runtime payloads. Its manifest
-SHA-256 is `b989627422a3988802d7bf44d40277beaa346d7c243034cc2d3981e9126c5b3a`;
+SHA-256 is `da3ba5a0ba9c3143b8649a0bd9d85f89fd9ee8c42e662d0d61d3f275d240e145`;
 frontend files are excluded from runtime inventory totals.
 This publication includes canonical Warlock preselection and removal of 48 unused
 raw-source payload assets. The SDK cache recorded an actual hit; no build-time
@@ -50,7 +50,7 @@ or browser-RAM improvement is measured or claimed.
 The deployed shader changes tighten final output accounting, bound replay
 copies to 64 KiB and shorten source/replay object lifetimes. All 23 targeted
 shader tests, frontend checks and the full CI passed. The Site source revision
-is `12512da3c34f2a6f5e9be73b7706852d63cfee02`. No browser-RAM measurement or
+is `bdbbacb62b0f36abc5766a3faafad5f850cae035`. No browser-RAM measurement or
 real-game/device proof is added, and parity scores are unchanged.
 
 The native fast/thorough option is now live. Revised actual WASM tests passed
@@ -70,8 +70,16 @@ retrieval is removed. The observed `e93a15a` / `32e9717` artifact pair has ident
 only outer `build.sourceRevision` changed. This establishes stability for that
 pair, not universal build determinism.
 
-The 1 MiB filesystem batching and thresholded CFT index changes remain
-uncommitted and are not part of this deployment. No browser speed/RAM proof is claimed.
+The `db94` 1 MiB filesystem write batching and thresholded CFT index changes
+are now live. This release also includes the user's `32a9` RomFS tail-metadata
+and unnamed-CASC handling, the sealed tessellation gate's explicit opt-in fix,
+digest allocation improvements, and removal of the dead orphan Python adapter.
+No browser speed/RAM proof is claimed.
+
+The next uncommitted source changes are not live: 64 KiB archive second-pass
+read windows, prepared-code buffer wiping on abort, stable log identifiers,
+and owned supplemental-pack index handling. They still require their own build
+and publication; this deployment receipt does not cover them.
 
 ## Historical baseline: 42 / 100
 

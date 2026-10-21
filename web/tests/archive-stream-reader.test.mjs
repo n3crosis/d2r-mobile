@@ -494,3 +494,65 @@ for (const encoding of ["n", "z"])
     assert.equal(staging.state.finalized, 0);
     assert.equal(staging.state.disposed, 1);
   });
+
+// 只统计合成来源调用，不代表浏览器或磁盘耗时；压缩馈送上限保持 1 KiB。
+// Count synthetic source calls only, not browser or disk timing; compressed feed remains capped at 1 KiB.
+test("large compressed second pass reads serial 64 KiB windows with exact decoded bytes", async () => {
+  const content = Buffer.alloc(2 * 1024 * 1024 + 17, 42);
+  const f = fixture("z", content);
+  f.raw = deflateSync(content, { level: 0 });
+  f.record.encodedSize = f.raw.length;
+  f.record.ekey = md5(f.raw).slice(0, 18) + f.record.ekey.slice(18);
+  const input = source(f.raw),
+    staging = stageFactory();
+  const original = input.readAt;
+  let active = 0;
+  input.readAt = async (...args) => {
+    assert.equal(active++, 0);
+    await Promise.resolve();
+    const result = original(...args);
+    active--;
+    return result;
+  };
+  const result = await stageArchiveRecord(input, f.record, options(staging.createStage));
+  assert.deepEqual(Buffer.concat(staging.state.chunks), content);
+  const windows = Math.ceil(f.raw.length / 65536);
+  assert.equal(input.reads.length, 1 + 2 * windows);
+  assert.equal(input.reads.length, 67);
+  assert.ok(input.reads.every(([, count]) => count <= 65536));
+  await result.dispose();
+});
+
+test("abort while draining a large compressed window never finalizes or reads after cancellation", async () => {
+  const f = fixture("z", Buffer.alloc(2 * 1024 * 1024 + 17, 42));
+  f.raw = deflateSync(f.content, { level: 0 });
+  f.record.encodedSize = f.raw.length;
+  f.record.ekey = md5(f.raw).slice(0, 18) + f.record.ekey.slice(18);
+  const controller = new AbortController(),
+    input = source(f.raw),
+    staging = stageFactory();
+  const original = input.readAt;
+  input.readAt = (...args) => {
+    assert.equal(controller.signal.aborted, false);
+    return original(...args);
+  };
+  await assert.rejects(
+    stageArchiveRecord(input, f.record, {
+      ...options(async () => {
+        const stage = await staging.createStage();
+        return {
+          ...stage,
+          append(bytes) {
+            stage.append(bytes);
+            controller.abort();
+          },
+        };
+      }),
+      signal: controller.signal,
+    }),
+    { name: "AbortError" },
+  );
+  assert.ok(staging.state.appended > 0);
+  assert.equal(staging.state.finalized, 0);
+  assert.equal(staging.state.disposed, 1);
+});

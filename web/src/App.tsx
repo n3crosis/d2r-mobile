@@ -41,6 +41,7 @@ type FolderProgress = {
   prodKeysFound: boolean;
   titleKeysFound: boolean;
 };
+type ActivityEntry = { id: number; text: string };
 type RomfsProgress = { phase: "base" | "merged"; percent: number };
 const folderSummary = (progress: FolderProgress) =>
   t(
@@ -72,10 +73,10 @@ export default function App() {
     document.documentElement.lang = browserLanguage();
     document.title = t("dmWebTitle");
   }, []);
-  const [activity, setActivity] = useState<string[]>([]);
+  const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [copyStatus, setCopyStatus] = useState("");
   const lastActivity = useRef("");
-  const activityBuffer = useRef<string[]>([]);
+  const activityBuffer = useRef<ActivityEntry[]>([]);
   const activityRevision = useRef(0);
   const renderedActivityRevision = useRef(0);
   const copiedActivityRevision = useRef<number | null>(null);
@@ -128,9 +129,14 @@ export default function App() {
       if (!mounted.current) return;
       if (text && (force || text !== lastActivity.current)) {
         lastActivity.current = text;
-        activityBuffer.current.push(`${new Date().toLocaleString()} ${text}`);
-        if (activityBuffer.current.length > 200) activityBuffer.current.shift();
         activityRevision.current += 1;
+        // 删除最旧记录时保留其他行的身份，避免按移动后的索引重新挂载。
+        // Preserve surviving row identities when trimming, instead of remounting by shifted indexes.
+        activityBuffer.current.push({
+          id: activityRevision.current,
+          text: `${new Date().toLocaleString()} ${text}`,
+        });
+        if (activityBuffer.current.length > 200) activityBuffer.current.shift();
       }
       // 保留有界日志中的每条记录，但合并短暂的界面更新。
       // 终止事件立即刷新此前的记录。
@@ -774,8 +780,8 @@ export default function App() {
             <summary className="cursor-pointer">{t("dmWebLogCount", activity.length)}</summary>
             <p>{t("dmWebLogHelp")}</p>
             <ol className="max-h-64 overflow-auto break-words space-y-1" aria-label={t("dmWebLog")}>
-              {activity.map((line, index) => (
-                <li key={`${index}-${line}`}>{line}</li>
+              {activity.map((line) => (
+                <li key={line.id}>{line.text}</li>
               ))}
             </ol>
             <Button
@@ -787,7 +793,9 @@ export default function App() {
                 copiedActivityRevision.current = revision;
                 setCopyStatus("");
                 try {
-                  await navigator.clipboard.writeText(activityBuffer.current.join("\n"));
+                  await navigator.clipboard.writeText(
+                    activityBuffer.current.map((line) => line.text).join("\n"),
+                  );
                   if (!mounted.current || request !== copyRequest.current) return;
                   setCopyStatus(
                     revision === activityRevision.current ? t("dmWebCopied") : t("dmWebCopiedNew"),

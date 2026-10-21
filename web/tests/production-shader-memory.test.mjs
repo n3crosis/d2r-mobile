@@ -2,12 +2,19 @@
 // Synthetic bytes test budgets, chunking and lifetimes, not game validation or browser memory measurement.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import {
   createShaderOutputBudget,
   shaderOutputChunks,
   createShaderSourceCache,
 } from "../production-shaders.mjs";
 const encode = (value) => new TextEncoder().encode(value);
+const packOwner = (bytes) =>
+  Object.freeze({
+    dispose() {
+      bytes.fill(0);
+    },
+  });
 
 test("actual post-chain formatted replay rejects a compact-estimate budget bypass", () => {
   const replay = { bindings: [{ name: "value", slot: 1 }], notes: ["synthetic"] };
@@ -58,7 +65,7 @@ test("noncontiguous embedded uses retain image until final completion and invali
   const cache = createShaderSourceCache(2),
     image = new Uint8Array([7, 8]);
   const first = new Uint8Array([1, 2]);
-  cache.setPack("a", first);
+  cache.setPack("a", packOwner(first));
   cache.enter({ embedded: true, name: "embedded-a" });
   assert.deepEqual(first, new Uint8Array(2));
   assert.equal(cache.packName, null);
@@ -68,7 +75,7 @@ test("noncontiguous embedded uses retain image until final completion and invali
   cache.enter({ embedded: false, name: "a" });
   assert.equal(cache.pack, undefined);
   const second = new Uint8Array([3, 4]);
-  cache.setPack("a", second);
+  cache.setPack("a", packOwner(second));
   cache.enter({ embedded: true, name: "embedded-b" });
   assert.deepEqual(second, new Uint8Array(2));
   assert.equal(cache.image, image);
@@ -82,7 +89,7 @@ test("source switches and failure cleanup wipe only retained owned buffers", () 
   const cache = createShaderSourceCache(1),
     pack = new Uint8Array([5]),
     image = new Uint8Array([6]);
-  cache.setPack("a", pack);
+  cache.setPack("a", packOwner(pack));
   cache.setImage(image);
   cache.enter({ embedded: false, name: "b" });
   assert.equal(pack[0], 0);
@@ -91,4 +98,154 @@ test("source switches and failure cleanup wipe only retained owned buffers", () 
   cache.dispose();
   assert.equal(image[0], 0);
   assert.equal(cache.image, undefined);
+});
+test("a pack owner survives same-source entries and is released exactly once on replacement", () => {
+  const cache = createShaderSourceCache(0);
+  let first = 0,
+    second = 0;
+  const source = Object.freeze({ dispose: () => first++ });
+  cache.setPack("a", source);
+  cache.enter({ embedded: false, name: "a" });
+  assert.equal(cache.pack, source);
+  assert.equal(first, 0);
+  cache.setPack("b", Object.freeze({ dispose: () => second++ }));
+  assert.equal(first, 1);
+  cache.dispose();
+  cache.dispose();
+  assert.equal(first, 1);
+  assert.equal(second, 1);
+  assert.equal(cache.pack, undefined);
+  assert.equal(cache.packName, null);
+});
+
+// 执行真实生产循环，验证每个物理包只交接一次，并在下一来源失败时释放两个所有者。
+// Execute the real production loop: hand off each physical pack once and release both owners when the next source fails.
+test("production reuses one owner per pack and releases owners and code on preparation failure", () => {
+  const script = `
+    import assert from "node:assert/strict";
+    import { mock } from "node:test";
+    const reads = [], created = [], disposed = [], code = [];
+    let translated = 0;
+    mock.module("./sealed-runtime/clients.mjs", { namedExports: { assertSealedRuntime() {} } });
+    mock.module("./shader-catalog-adapter.mjs", { namedExports: { assertShaderCatalog() {} } });
+    mock.module("./extraction-job-adapter.mjs", { namedExports: {
+      readAuthenticatedAssets() { return { logicalAssets: { async read(path) {
+        reads.push(path);
+        return new Uint8Array([7, 8]);
+      } } }; },
+      readAuthenticatedProgramModules() { return {}; }
+    } });
+    mock.module("./logical-asset-suffixes.mjs", { namedExports: {
+      resolveLogicalAssetSuffixes() { return ["data:data/hd/shaders/a", "data:data/hd/shaders/b"]; }
+    } });
+    mock.module("./shader-pipeline.mjs", { namedExports: { createShaderPipeline() {
+      return { async translate() {
+        translated++;
+        return { msl: "synthetic", replay: {}, resources: { notes: [] } };
+      }, dispose() {} };
+    } } });
+    const { createProductionShaderAdapter } = await import("./production-shaders.mjs");
+    const keys = Array.from({ length: 6927 }, (_, i) => i.toString(16).padStart(16, "0"));
+    const adapter = createProductionShaderAdapter({
+      runtime: { workerUrls: {}, createShaderWorkerFactory() {} },
+      catalog: { keys, bfWant: [], describe(key) {
+        const index = parseInt(key, 16);
+        return { name: index < 2 ? "a" : "b", index, embedded: false };
+      },
+      prepare() { throw new Error("Pack must use its owned source"); },
+      createOwnedPackSource(name, input) {
+        created.push(name);
+        const owned = structuredClone(input, { transfer: [input.buffer] });
+        assert.equal(input.byteLength, 0);
+        return {
+          async prepare(key, flags) {
+            assert.ok(flags.signal instanceof AbortSignal);
+            if (name === "b") throw new Error("synthetic preparation failure");
+            const bytes = new Uint8Array([1, 2]);
+            code.push(bytes);
+            return { job: { stage: "cs" }, code: bytes };
+          },
+          dispose() { owned.fill(0); disposed.push(name); }
+        };
+      } },
+      trustedShell: { trustedRecipe: { shaderKeys: keys, shaderDigest: "be59c864f087b377" } }
+    });
+    await assert.rejects(adapter.generateShaders(), /synthetic preparation failure/);
+    assert.deepEqual(reads, ["data:data/hd/shaders/a", "data:data/hd/shaders/b"]);
+    assert.deepEqual(created, ["a", "b"]);
+    assert.deepEqual(disposed, ["a", "b"]);
+    assert.equal(translated, 2);
+    for (const bytes of code) assert.deepEqual(bytes, new Uint8Array(2));
+    adapter.dispose();
+    assert.deepEqual(disposed, ["a", "b"]);
+  `;
+  const result = spawnSync(
+    process.execPath,
+    ["--experimental-test-module-mocks", "--input-type=module", "-e", script],
+    { cwd: new URL("../", import.meta.url), encoding: "utf8", timeout: 30000 },
+  );
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+});
+
+// 模拟异步准备结束时的取消，直接执行生产适配器而非复制其清理逻辑。
+// Simulate cancellation as async preparation settles, executing the production adapter rather than copied cleanup logic.
+test("cancellation after preparation wipes owned code without starting translation", () => {
+  const script = `
+    import assert from "node:assert/strict";
+    import { mock } from "node:test";
+    const controller = new AbortController();
+    const code = new Uint8Array([9, 8, 7, 6]);
+    const independent = code.slice();
+    let translated = 0, disposed = 0, prepared = 0, sourceDisposed = 0;
+    mock.module("./sealed-runtime/clients.mjs", { namedExports: { assertSealedRuntime() {} } });
+    mock.module("./shader-catalog-adapter.mjs", { namedExports: { assertShaderCatalog() {} } });
+    mock.module("./extraction-job-adapter.mjs", { namedExports: {
+      readAuthenticatedAssets() { return { logicalAssets: { async read() { return new Uint8Array([1]); } } }; },
+      readAuthenticatedProgramModules() { return {}; }
+    } });
+    mock.module("./logical-asset-suffixes.mjs", { namedExports: {
+      resolveLogicalAssetSuffixes() { return ["data:data/hd/shaders/synthetic"]; }
+    } });
+    mock.module("./shader-pipeline.mjs", { namedExports: { createShaderPipeline() {
+      return { async translate() { translated++; }, dispose() { disposed++; } };
+    } } });
+    const { createProductionShaderAdapter } = await import("./production-shaders.mjs");
+    const keys = Array.from({ length: 6927 }, (_, i) => i.toString(16).padStart(16, "0"));
+    const adapter = createProductionShaderAdapter({
+      runtime: { workerUrls: {}, createShaderWorkerFactory() {} },
+      catalog: { keys, describe() { return { name: "synthetic", index: 0, embedded: false }; },
+        prepare() { throw new Error("Pack must use its owned source"); },
+        createOwnedPackSource() {
+          return {
+            async prepare() {
+              prepared++;
+              await Promise.resolve();
+              controller.abort();
+              return { job: {}, code };
+            },
+            dispose() { sourceDisposed++; }
+          };
+        }
+      },
+      trustedShell: { trustedRecipe: { shaderKeys: keys, shaderDigest: "be59c864f087b377" } }
+    });
+    await assert.rejects(adapter.generateShaders({ signal: controller.signal }), { name: "AbortError" });
+    assert.equal(prepared, 1);
+    assert.equal(translated, 0);
+    assert.equal(sourceDisposed, 1);
+    assert.ok(disposed > 0);
+    assert.deepEqual(code, new Uint8Array(4));
+    assert.deepEqual(independent, new Uint8Array([9, 8, 7, 6]));
+    adapter.dispose();
+  `;
+  const result = spawnSync(
+    process.execPath,
+    ["--experimental-test-module-mocks", "--input-type=module", "-e", script],
+    {
+      cwd: new URL("../", import.meta.url),
+      encoding: "utf8",
+      timeout: 30000,
+    },
+  );
+  assert.equal(result.status, 0, result.stderr || result.stdout);
 });
