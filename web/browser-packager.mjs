@@ -87,7 +87,7 @@ export async function prepareBrowserPackager({
     signal,
     onProgress,
   });
-  let profile, program, assets, shaders, shellVariantBytes, signingClient;
+  let profile, program, assets, shaders, shellVariantBytes, signingFactory;
   let closed = false;
   let deferRuntimeClose = false;
   let closePromise, wholeClosePromise;
@@ -137,8 +137,8 @@ export async function prepareBrowserPackager({
   // Conversion cleanup preserves the independent signer; explicit close releases both owners.
   const close = () => {
     if (wholeClosePromise) return wholeClosePromise;
-    const signer = signingClient;
-    signingClient = undefined;
+    const signer = signingFactory;
+    signingFactory = undefined;
     if (!signer) return closeConversion();
     wholeClosePromise = cleanupPackagingAdapters(() => signer.close(), closeConversion);
     // Unmount may intentionally ignore cleanup; awaiters still receive the original rejection.
@@ -146,7 +146,7 @@ export async function prepareBrowserPackager({
     return wholeClosePromise;
   };
   try {
-    if (signing) signingClient = runtime.takeIpaSigningClient();
+    if (signing) signingFactory = runtime.takeIpaSigningFactory();
     if (legacyAstc && typeof runtime.createAstcProducerClient !== "function")
       throw new Error("LEGACY_ASTC_UNAVAILABLE");
     profile = await loadProductionProfile(runtime, { signal, profileId: selectedProfile.id });
@@ -179,11 +179,15 @@ export async function prepareBrowserPackager({
     return Object.freeze({
       ready: true,
       realGameVerified: false,
-      signingReady: Boolean(signingClient),
+      signingReady: Boolean(signingFactory),
+      async prepareSigning(options) {
+        if (!signingFactory) throw new Error("SIGNING_CLOSED");
+        return signingFactory.prepare(options);
+      },
       // The unsigned Blob remains caller-owned and is never replaced on signing failure.
       async sign(options) {
-        if (!signingClient) throw new Error("SIGNING_CLOSED");
-        return signingClient.sign(options);
+        if (!signingFactory) throw new Error("SIGNING_CLOSED");
+        return signingFactory.sign(options);
       },
       /**
        * 仅允许明确跳过原始资源导出；验证及补充包导出保持不变。

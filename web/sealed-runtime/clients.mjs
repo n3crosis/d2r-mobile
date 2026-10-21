@@ -14,7 +14,7 @@ import {
   validateRuntimeTransportGroups,
 } from "../runtime-asset-groups.mjs";
 import { createAstcProducerClient as initializeAstcProducerClient } from "../astc-producer-client.mjs";
-import { prepareIpaSigningClient } from "../ipa-signing-client.mjs";
+import { prepareVerifiedIpaSigningFactory } from "./ipa-signing-factory.mjs";
 const OFFLINE = "toolchain/offline-runtime-spike";
 const TEXTURE = "toolchain/texture-spike";
 const LIMIT = Object.freeze({
@@ -789,8 +789,7 @@ export async function prepareSealedRuntime({
     producerWorker,
     producerInitialization,
     producerTaken = false,
-    signingClient,
-    signingWorker,
+    signingFactory,
     signingInitialization,
     signingTaken = false,
     closing;
@@ -803,8 +802,7 @@ export async function prepareSealedRuntime({
     producerInitialization?.abort();
     signingInitialization?.abort();
     if (!signingTaken) {
-      signingClient?.close();
-      signingWorker?.terminate();
+      signingFactory?.close();
     }
     if (session) sealedRuntimes.delete(session);
     for (const c of Object.values(channels)) c.stop();
@@ -825,8 +823,11 @@ export async function prepareSealedRuntime({
   try {
     const initialized = {};
     for (const [name, plan] of Object.entries(plans)) {
-      const url = URL.createObjectURL(new Blob([bytes(plan.entry)], { type: "text/javascript" }));
-      urls.push(url);
+      const url =
+        name === "ipaSigning"
+          ? undefined
+          : URL.createObjectURL(new Blob([bytes(plan.entry)], { type: "text/javascript" }));
+      if (url !== undefined) urls.push(url);
       const labels = {
         assets: "game resources",
         texture: "textures",
@@ -840,29 +841,22 @@ export async function prepareSealedRuntime({
       const label = `Preparing ${labels[name] ?? "application"}…`;
       report({ phase: "initializing", label }, true);
       if (name === "ipaSigning") {
-        const transferred = plan.assets.map(([local, value]) => [local, value.slice().buffer]);
-        const buffers = transferred.map(([, buffer]) => buffer);
-        plan.assets.length = 0;
-        signingWorker = new Worker(url, { type: "module" });
+        // 工厂拥有独立公开副本，不依赖转换运行时的生命周期。
+        // The factory owns independent public copies, never this conversion runtime's lifetime.
         signingInitialization = new AbortController();
         try {
-          signingClient = await prepareIpaSigningClient({
-            worker: signingWorker,
-            assets: transferred,
+          signingFactory = await prepareVerifiedIpaSigningFactory({
+            workerBlob: new Blob([bytes(plan.entry)], { type: "text/javascript" }),
+            wasmBytes: plan.assets[0][1],
             signal: signal
               ? AbortSignal.any([signal, signingInitialization.signal])
               : signingInitialization.signal,
           });
         } finally {
           signingInitialization = undefined;
+          plan.assets.length = 0;
         }
         if (closed || signal?.aborted) throw new DOMException("Runtime cancelled", "AbortError");
-        if (buffers.some((buffer) => buffer.byteLength !== 0))
-          fail("Actual signing initialization/transfer failed");
-        // 已启动模块无需保留 Blob URL；转移线程所有权不会留下 URL 生命周期。
-        // The initialized module needs no retained Blob URL, including after ownership transfer.
-        URL.revokeObjectURL(url);
-        urls.splice(urls.indexOf(url), 1);
         initialized.ipaSigning = { initialized: true };
         continue;
       }
@@ -1168,11 +1162,11 @@ export async function prepareSealedRuntime({
       producerTaken = true;
       return producerClient;
     }
-    function takeIpaSigningClient() {
-      if (closed || !signingClient || signingTaken)
+    function takeIpaSigningFactory() {
+      if (closed || !signingFactory || signingTaken)
         fail("IPA signer unavailable or already acquired");
       signingTaken = true;
-      return signingClient;
+      return signingFactory;
     }
     const workerUrls = Object.freeze(
       Object.fromEntries(
@@ -1200,7 +1194,7 @@ export async function prepareSealedRuntime({
       createProgramWorker,
       createExtractionWorker,
       createAstcProducerClient,
-      takeIpaSigningClient,
+      takeIpaSigningFactory,
       createShaderWorkerFactory,
       workerUrls,
       close,

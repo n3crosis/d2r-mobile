@@ -766,12 +766,12 @@ export const catalog = Object.freeze({
     "已签名 IPA 已创建并可下载；这不保证设备可安装或运行。"
   ],
   "dmWebSigningFailed": [
-    "Signing failed. The unsigned IPA and exported resources remain available; save the unsigned IPA, then reload to retry.",
-    "签名失败。未签名 IPA 和已导出的资源仍可使用；请保存未签名 IPA，再重新载入后重试。"
+    "Signing failed. The unsigned IPA and exported resources remain available; select credentials again to retry signing without reconverting.",
+    "签名失败。未签名 IPA 和已导出的资源仍可使用；可重新选择凭据后重试签名，无需重新转换。"
   ],
   "dmWebSigningCancelled": [
-    "Signing cancelled. The unsigned IPA and exported resources remain available; save the IPA before reloading.",
-    "签名已取消。未签名 IPA 和已导出的资源仍可使用；请先保存 IPA，再重新载入。"
+    "Signing cancelled. The unsigned IPA and exported resources remain available; select credentials again to retry signing.",
+    "签名已取消。未签名 IPA 和已导出的资源仍可使用；可重新选择凭据后重试签名。"
   ],
   "dmWebSignedDownload": [
     "Download signed IPA",
@@ -786,7 +786,11 @@ export const catalog = Object.freeze({
     "清理失败。请保存可用的 IPA 后再重新载入。"
   ],
   "dmWebSigningProfileMismatch": [
-    "The identity or profile is mismatched or expired, or this signing tool does not support the profile. Unsigned IPA retained; save it, then reload and select compatible credentials.",
-    "证书或描述文件不匹配、已过期，或此签名工具不支持该描述文件。未签名 IPA 已保留；请先保存，再重新载入并选择兼容凭据。"
+    "The identity or profile is mismatched or expired, or this signing tool does not support the profile. Unsigned IPA retained; select compatible credentials to retry signing.",
+    "证书或描述文件不匹配、已过期，或此签名工具不支持该描述文件。未签名 IPA 已保留；请选择兼容凭据后重试签名。"
+  ],
+  "dmWebRetrySigning": [
+    "Retry signing",
+    "重试签名"
   ]
 });

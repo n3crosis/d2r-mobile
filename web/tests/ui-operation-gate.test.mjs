@@ -49,11 +49,11 @@ test("revocation precedes abort callbacks and repeat cancellation is harmless", 
   lease.finish();
   assert.equal(gate.busy, false);
 });
-test("UI shares operation lease across folder and generation handlers and protects selection events", async () => {
+test("UI shares operation lease across folder, generation and signing retry handlers", async () => {
   const source = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
   assert.equal(
     (source.match(/const operation = operationGate.current.begin\(\)/g) ?? []).length,
-    2,
+    3,
   );
   assert.match(source, /operations\.cancel\(\)/);
   assert.match(source, /if \(operationGate\.current\.busy\) return;\s+setSkipResources\(false\)/);

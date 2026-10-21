@@ -97,14 +97,17 @@ test("UI preloads signing before credentials and keeps signing errors outside pa
   assert.match(source, /get\("signing"\) === "1"/);
   assert.match(source, /astcPreset,[\s\S]*?signing,\s*signal:/);
   assert.match(source, /setSigningReady\(value.signingReady\)/);
-  assert.match(source, /disabled=\{!signingReady \|\| !ready \|\| busy\}/);
+  assert.match(
+    source,
+    /disabled=\{!signingReady \|\| \(!ready && !signingRetryAvailable\) \|\| busy\}/,
+  );
   assert.ok(
     source.indexOf("downloadPreparation.current.retain(result.download)") <
-      source.indexOf("await signWithLocalFiles"),
+      source.indexOf("await runSigning(jobPackager, result.download"),
   );
   const signing = source.slice(
     source.indexOf("await signWithLocalFiles"),
-    source.indexOf("} catch (error) {", source.indexOf("await signWithLocalFiles")),
+    source.indexOf("  async function retrySigning()"),
   );
   assert.match(signing, /dmWebSigningCancelled/);
   assert.match(signing, /dmWebSigningFailed/);
@@ -168,4 +171,57 @@ test("signing mismatch has a fixed actionable label without stronger verificatio
   assert.match(row("dmWebSigningComplete")[2], /created and ready to download.*not guaranteed/);
   assert.doesNotMatch(row("dmWebSigningComplete")[2], /verified/);
   assert.match(row("dmWebSigningWorking")[2], /checking the archive locally/);
+});
+
+// 重试只复用已提交的 Blob，输入与一次性线程每次重新拥有。
+// Retry reuses only the committed Blob; inputs and the one-shot worker have fresh ownership each time.
+test("UI signing retry initializes before reads and retains no conversion lifecycle", async () => {
+  const source = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const attempt = source.slice(
+    source.indexOf("  async function runSigning("),
+    source.indexOf("  async function retrySigning()"),
+  );
+  assert.ok(
+    attempt.indexOf("await jobPackager.prepareSigning") <
+      attempt.indexOf("await signWithLocalFiles"),
+  );
+  assert.match(attempt, /sign: attempt.sign/);
+  assert.match(attempt, /finally \{\s*attempt\?\.close\(\);\s*clearSigningInputs\(\)/);
+  assert.match(attempt, /unsignedForSigning.current = null/);
+  const retry = source.slice(
+    source.indexOf("  async function retrySigning()"),
+    source.indexOf("  async function generate()"),
+  );
+  assert.match(retry, /const unsigned = unsignedForSigning.current/);
+  assert.match(retry, /operationGate.current.begin\(\)/);
+  assert.match(retry, /await runSigning\(jobPackager, unsigned,/);
+  assert.match(retry, /if \(!keepSigningFactory \|\| !current\(\)\) await jobPackager.close\(\)/);
+  assert.doesNotMatch(retry, /\.generate\(|setResourceOutcome|setLegacyStatus|fetch\(/);
+  assert.match(retry, /setCancelling\(false\)/);
+  assert.match(source, /onClick=\{retrySigning\} disabled=\{busy \|\| !credentialsSelected\}/);
+});
+
+test("sequential signing attempts keep the same unsigned Blob and wipe fresh credentials", async () => {
+  const unsigned = inputs().unsigned;
+  const consumed = [];
+  for (let i = 0; i < 2; i++) {
+    const operation = signWithLocalFiles({
+      ...inputs(),
+      unsigned,
+      async sign({ ipa, credentials }) {
+        assert.equal(ipa, unsigned.blob);
+        consumed.push(credentials);
+        if (i === 0) throw new Error("SIGNING_PROFILE_MISMATCH");
+        return { blob: new Blob(["signed"]), fileName: "D2RMobile-signed.ipa" };
+      },
+    });
+    if (i === 0) await assert.rejects(operation, /SIGNING_PROFILE_MISMATCH/);
+    else assert.equal((await operation).fileName, "D2RMobile-signed.ipa");
+  }
+  assert.notEqual(consumed[0].identity, consumed[1].identity);
+  for (const credentials of consumed) {
+    assert.ok(new Uint8Array(credentials.identity).every((byte) => byte === 0));
+    assert.ok(new Uint8Array(credentials.profile).every((byte) => byte === 0));
+  }
+  assert.equal(await unsigned.blob.text(), "unsigned IPA");
 });

@@ -74,6 +74,8 @@ export default function App() {
   );
   const [signingReady, setSigningReady] = useState(false);
   const [signingStatus, setSigningStatus] = useState("");
+  const [signingRetryAvailable, setSigningRetryAvailable] = useState(false);
+  const unsignedForSigning = useRef<{ blob: Blob; fileName: string } | null>(null);
   const identityInput = useRef<HTMLInputElement>(null);
   const profileInput = useRef<HTMLInputElement>(null);
   const passwordInput = useRef<HTMLInputElement>(null);
@@ -257,6 +259,7 @@ export default function App() {
       cancellation.current?.abort();
       packager.current?.close();
       preparedDownload.dispose();
+      unsignedForSigning.current = null;
     };
   }, [appendActivity, profileId, legacyAstc, astcPreset, skipContentHashes, signing]);
   async function choose() {
@@ -361,6 +364,100 @@ export default function App() {
     if (passwordInput.current) passwordInput.current.value = "";
     if (mounted.current) setCredentialsSelected(false);
   }
+  async function runSigning(
+    jobPackager: Packager,
+    unsigned: { blob: Blob; fileName: string },
+    controller: AbortController,
+    current: () => boolean,
+  ): Promise<boolean> {
+    setSigningRetryAvailable(false);
+    setSigningStatus(t("dmWebSigningWorking"));
+    let attempt: Awaited<ReturnType<Packager["prepareSigning"]>> | undefined;
+    try {
+      // 先初始化独立线程，再读取凭据；重试不再运行转换或资源导出。
+      // Initialize the independent worker before reading credentials; retries never rerun conversion or resource export.
+      attempt = await jobPackager.prepareSigning({ signal: controller.signal });
+      controller.signal.throwIfAborted();
+      if (!current()) return false;
+      const signed = await signWithLocalFiles({
+        unsigned,
+        sign: attempt.sign,
+        identityFile: identityInput.current?.files?.[0],
+        profileFile: profileInput.current?.files?.[0],
+        password: passwordInput.current?.value ?? "",
+        signal: controller.signal,
+        onProgress: undefined,
+      });
+      if (!current()) return false;
+      downloadPreparation.current.retain(signed);
+      unsignedForSigning.current = null;
+      setSigningStatus(t("dmWebSigningComplete"));
+      setStatus(t("dmWebSigningComplete"));
+      prepareDownload();
+      return false;
+    } catch (signingError) {
+      if (!current()) return false;
+      // 固定消息不包含凭据；失败不改变未签名 IPA 或已完成的资源导出。
+      // Fixed messages contain no credentials; failure does not change the unsigned IPA or completed resource exports.
+      const signingMessage = t(
+        controller.signal.aborted
+          ? "dmWebSigningCancelled"
+          : signingError instanceof Error && signingError.message === "SIGNING_PROFILE_MISMATCH"
+            ? "dmWebSigningProfileMismatch"
+            : "dmWebSigningFailed",
+      );
+      setSigningStatus(signingMessage);
+      appendActivity(signingMessage, true);
+      setStatus(t("dmWebUnsignedReady"));
+      setSigningRetryAvailable(true);
+      prepareDownload(false);
+      return true;
+    } finally {
+      attempt?.close();
+      clearSigningInputs();
+    }
+  }
+  async function retrySigning() {
+    const unsigned = unsignedForSigning.current;
+    if (
+      !signingRetryAvailable ||
+      !unsigned ||
+      !packager.current ||
+      !signingReady ||
+      !identityInput.current?.files?.[0] ||
+      !profileInput.current?.files?.[0]
+    )
+      return;
+    const operation = operationGate.current.begin();
+    if (!operation) return;
+    const jobPackager = packager.current;
+    const current = () => mounted.current && operation.isCurrent();
+    cancellation.current = operation.controller;
+    setBusy(true);
+    setGenerating(true);
+    setCancelling(false);
+    pendingGenerationStatus.current = null;
+    let keepSigningFactory = false;
+    try {
+      keepSigningFactory = await runSigning(jobPackager, unsigned, operation.controller, current);
+    } finally {
+      try {
+        if (!keepSigningFactory || !current()) await jobPackager.close();
+      } catch {
+        if (current()) {
+          const warning = t("dmWebCleanupWarning");
+          appendActivity(warning, true);
+          setStatus((previous: string) => `${previous} ${warning}`);
+        }
+      }
+      if (current()) {
+        setBusy(false);
+        setGenerating(false);
+        setCancelling(false);
+      }
+      operation.finish();
+    }
+  }
   async function generate() {
     if (!ready || busy || !folder || !packager.current || !selectedNsps.size) return;
     if (
@@ -387,6 +484,7 @@ export default function App() {
     appendActivity(t(skipContentHashes ? "dmWebSkipHashActive" : "dmWebFastMode"), true);
     let acceptingProgress = true;
     let generationCompleted = false;
+    let keepSigningFactory = false;
     try {
       const result = await jobPackager.generate({
         input: folder,
@@ -490,40 +588,8 @@ export default function App() {
       if (signing) {
         acceptingProgress = false;
         pendingGenerationStatus.current = null;
-        setSigningStatus(t("dmWebSigningWorking"));
-        try {
-          const signed = await signWithLocalFiles({
-            unsigned: result.download,
-            sign: (options: Parameters<Packager["sign"]>[0]) => jobPackager.sign(options),
-            identityFile: identityInput.current?.files?.[0],
-            profileFile: profileInput.current?.files?.[0],
-            password: passwordInput.current?.value ?? "",
-            signal: controller.signal,
-            onProgress: undefined,
-          });
-          if (!current()) return;
-          downloadPreparation.current.retain(signed);
-          setSigningStatus(t("dmWebSigningComplete"));
-          setStatus(t("dmWebSigningComplete"));
-          prepareDownload();
-        } catch (signingError) {
-          if (!current()) return;
-          // 签名失败不改变已完成的未签名 IPA 或资源结果，不走打包失败分支。
-          // Signing failure does not change the completed unsigned IPA or resources and bypasses packaging-failure reporting.
-          const signingMessage = t(
-            controller.signal.aborted
-              ? "dmWebSigningCancelled"
-              : signingError instanceof Error && signingError.message === "SIGNING_PROFILE_MISMATCH"
-                ? "dmWebSigningProfileMismatch"
-                : "dmWebSigningFailed",
-          );
-          setSigningStatus(signingMessage);
-          appendActivity(signingMessage, true);
-          setStatus(t("dmWebUnsignedReady"));
-          prepareDownload(false);
-        } finally {
-          clearSigningInputs();
-        }
+        unsignedForSigning.current = result.download;
+        keepSigningFactory = await runSigning(jobPackager, result.download, controller, current);
       }
     } catch (error) {
       if (!current()) return;
@@ -570,10 +636,10 @@ export default function App() {
         if (signing) clearSigningInputs();
         pendingGenerationStatus.current = null;
       }
-      // 终止后关闭本次打包器，包括未进入签名的失败路径；清理错误不覆盖已有产物。
-      // Close this operation's packager on every terminal path, including failures before signing; cleanup errors never replace completed artifacts.
+      // 仅签名失败保留公开签名工厂；转换失败或签名成功关闭全部所有权。
+      // Only signing failure retains the public signing factory; conversion failure or signing success closes every owner.
       try {
-        await jobPackager.close();
+        if (!keepSigningFactory || !current()) await jobPackager.close();
       } catch {
         if (current()) {
           const warning = t("dmWebCleanupWarning");
@@ -763,7 +829,7 @@ export default function App() {
             {signing && (
               <fieldset
                 className="space-y-2 rounded-md border p-3"
-                disabled={!signingReady || !ready || busy}
+                disabled={!signingReady || (!ready && !signingRetryAvailable) || busy}
               >
                 <legend className="px-1 text-sm">{t("dmWebSigningCredentials")}</legend>
                 <label className="block text-sm">
@@ -937,6 +1003,11 @@ export default function App() {
                 {t("dmWebRetryDownloadPreparation")}
               </Button>
             </div>
+          )}
+          {signingRetryAvailable && (
+            <Button onClick={retrySigning} disabled={busy || !credentialsSelected}>
+              {t("dmWebRetrySigning")}
+            </Button>
           )}
           {download && (
             <div className="space-y-2">

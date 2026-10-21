@@ -5,6 +5,9 @@ let state;
 const unsigned = Object.freeze({ blob: new Blob([new Uint8Array(22)]), fileName: "unsigned.ipa" });
 const signed = Object.freeze({ blob: new Blob([new Uint8Array(23)]), fileName: "signed.ipa" });
 const signer = {
+  async prepare() {
+    return { sign: signer.sign, close() {} };
+  },
   close() {
     state.signerClosed = true;
   },
@@ -21,7 +24,7 @@ mock.module("../../sealed-runtime/clients.mjs", {
     async prepareSealedRuntime(options) {
       state.options = options;
       return {
-        takeIpaSigningClient() {
+        takeIpaSigningFactory() {
           state.taken++;
           return signer;
         },
@@ -126,7 +129,9 @@ test("generation cleanup preserves signer, sign preserves unsigned download, exp
   const result = await generate(packager);
   assert.equal(state.runtimeClosed, true);
   assert.equal(state.signerClosed, false);
-  assert.equal(await packager.sign({ ipa: result.download.blob }), signed);
+  const attempt = await packager.prepareSigning();
+  assert.equal(await attempt.sign({ ipa: result.download.blob }), signed);
+  attempt.close();
   assert.equal(result.download, unsigned);
   await packager.close();
   assert.equal(state.signerClosed, true);
@@ -138,6 +143,11 @@ test("signing failure cannot remove the already returned unsigned result", async
   const result = await generate(packager);
   state.signFailure = true;
   await assert.rejects(packager.sign({ ipa: result.download.blob }), /SIGNING_FAILED/);
+  assert.equal(result.download, unsigned);
+  state.signFailure = false;
+  const retry = await packager.prepareSigning();
+  assert.equal(await retry.sign({ ipa: result.download.blob }), signed);
+  retry.close();
   assert.equal(result.download, unsigned);
   await packager.close();
 });

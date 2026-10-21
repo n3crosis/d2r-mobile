@@ -383,14 +383,15 @@ test("claimed preloaded IPA signer survives conversion runtime cleanup and close
   const setupState = await setup(t, { signing: true });
   const runtime = await setupState.start();
   assert.equal(runtime.initialized.ipaSigning.initialized, true);
-  const signer = runtime.takeIpaSigningClient();
-  assert.throws(() => runtime.takeIpaSigningClient(), /already acquired/);
+  const signer = runtime.takeIpaSigningFactory();
+  assert.throws(() => runtime.takeIpaSigningFactory(), /already acquired/);
   const worker = setupState.state.workers.at(-1);
   assert.ok(setupState.state.revokedUrls.includes(worker.url));
   await runtime.close();
   assert.equal(worker.terminations, 0);
   assert.ok(setupState.state.workers[0].terminations > 0);
-  const signing = signer.sign({
+  const attempt = await signer.prepare();
+  const signing = attempt.sign({
     ipa: new Blob([new Uint8Array(22)]),
     credentials: {
       kind: "p12",
@@ -403,6 +404,13 @@ test("claimed preloaded IPA signer survives conversion runtime cleanup and close
   worker.reply({ id: 1, ok: true, result: { blob: result } });
   assert.equal((await signing).blob, result);
   assert.equal(worker.terminations, 1);
+  const retry = await signer.prepare();
+  const retryWorker = setupState.state.workers.at(-1);
+  assert.notEqual(retryWorker, worker);
+  assert.equal(retryWorker.terminations, 0);
+  assert.ok(setupState.state.revokedUrls.includes(retryWorker.url));
+  retry.close();
+  assert.equal(retryWorker.terminations, 1);
   signer.close();
   assert.equal(worker.terminations, 1);
 });
@@ -413,7 +421,7 @@ test("unclaimed preloaded IPA signer closes with its runtime", async (t) => {
   const worker = setupState.state.workers.at(-1);
   await runtime.close();
   assert.ok(worker.terminations > 0);
-  assert.throws(() => runtime.takeIpaSigningClient(), /unavailable/);
+  assert.throws(() => runtime.takeIpaSigningFactory(), /unavailable/);
 });
 
 test("default runtime has no signing worker or signable lease", async (t) => {
@@ -421,5 +429,5 @@ test("default runtime has no signing worker or signable lease", async (t) => {
   const runtime = await setupState.start();
   assert.equal(runtime.initialized.ipaSigning, undefined);
   assert.equal(setupState.state.workers.length, 1);
-  assert.throws(() => runtime.takeIpaSigningClient(), /unavailable/);
+  assert.throws(() => runtime.takeIpaSigningFactory(), /unavailable/);
 });
