@@ -25,6 +25,10 @@ const fileViews = (files) =>
     }),
   );
 
+const failCleanup = () => {
+  throw new Error("PRODUCTION_ASSET_CLEANUP");
+};
+
 export function createProductionAssetAdapter({ runtime, profile, prebuiltPack }) {
   prebuiltPack = snapshotPrebuiltPackMetadata(prebuiltPack);
   let astcBinding;
@@ -52,12 +56,15 @@ export function createProductionAssetAdapter({ runtime, profile, prebuiltPack })
       if (disposed) throw new Error("PRODUCTION_ASSET_DISPOSED");
       astcBinding = undefined;
       const { logicalAssets } = readAuthenticatedAssets(extracted, selection, { signal });
-      const worker = runtime.createAssetWorker(),
-        texture = runtime.createTextureClient(),
-        encoder = runtime.createTextureEncoder();
+      let worker, texture, encoder;
       let completed = false,
-        pendingAstcBinding;
+        pendingAstcBinding,
+        generationFailed = false,
+        generationError;
       try {
+        worker = runtime.createAssetWorker();
+        texture = runtime.createTextureClient();
+        encoder = runtime.createTextureEncoder();
         const decodeAtlas = (bytes) => texture.decodeAtlas(bytes, { signal });
         const art = await generateNativeArt({
           logicalAssets,
@@ -147,10 +154,31 @@ export function createProductionAssetAdapter({ runtime, profile, prebuiltPack })
         pendingAstcBinding = pipeline.getAstcOutputBinding();
         completed = true;
         return entries;
+      } catch (error) {
+        generationFailed = true;
+        generationError = error;
+        throw error;
       } finally {
-        worker.close();
-        texture.close();
-        encoder.close();
+        // 工厂或单个关闭失败也必须释放其他已创建客户端，且不覆盖原始生成错误。
+        // Release every created client even if a factory or close fails; preserve the generation error.
+        let cleanupFailed = false;
+        for (const client of [worker, texture, encoder]) {
+          try {
+            client?.close();
+          } catch {
+            cleanupFailed = true;
+          }
+        }
+        if (cleanupFailed) {
+          if (!generationFailed) failCleanup();
+          try {
+            if (generationError instanceof Error)
+              generationError.cleanupCode = "PRODUCTION_ASSET_CLEANUP";
+          } catch {
+            // 原始错误可能被冻结或包含只读属性；清理标记不能覆盖它。
+            // The primary error may be frozen or read-only; annotation must not replace it.
+          }
+        }
         if (completed && !disposed && !signal?.aborted) astcBinding = pendingAstcBinding;
       }
     },

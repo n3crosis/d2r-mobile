@@ -74,6 +74,24 @@ function checkedRecipes(recipes) {
     return Object.freeze({ input, frame: recipe.frame ?? 0, outputs: Object.freeze(outputs) });
   });
 }
+// 条目仅保留可撤销的所有权槽；释放后不再通过闭包保留输出缓冲区。
+// Entries retain only a revocable ownership slot, not an output buffer after disposal.
+function outputEntry(path, slot, signal, isDisposed) {
+  const size = slot.bytes.byteLength;
+  return Object.freeze({
+    path,
+    size,
+    mode: 0o100644,
+    async *chunks() {
+      if (isDisposed()) fail("ASSET_DISPOSED");
+      for (let offset = 0; offset < size; offset += ASSET_ADAPTER_LIMITS.chunkBytes) {
+        checkAbort(signal);
+        if (isDisposed()) fail("ASSET_DISPOSED");
+        yield slot.bytes.slice(offset, offset + ASSET_ADAPTER_LIMITS.chunkBytes);
+      }
+    },
+  });
+}
 async function abortable(action, signal) {
   checkAbort(signal);
   if (!signal) return action();
@@ -115,6 +133,7 @@ export function createAssetGeneratorAdapter({
     activeWorker,
     workerCleanupFailed = false;
   const ownedOutputs = [];
+  const isDisposed = () => disposed;
   function closeWorker() {
     const worker = activeWorker;
     activeWorker = undefined;
@@ -126,7 +145,10 @@ export function createAssetGeneratorAdapter({
     }
   }
   function wipe() {
-    for (const bytes of ownedOutputs) bytes.fill(0);
+    for (const slot of ownedOutputs) {
+      slot.bytes.fill(0);
+      slot.bytes = null;
+    }
     ownedOutputs.length = 0;
   }
   async function dispose() {
@@ -207,27 +229,9 @@ export function createAssetGeneratorAdapter({
           if (!(buffer instanceof ArrayBuffer) || !buffer.byteLength) fail("ASSET_MISSING_OUTPUT");
           outputTotal += buffer.byteLength;
           if (outputTotal > ASSET_ADAPTER_LIMITS.retainedOutputBytes) fail("ASSET_OUTPUT_LIMIT");
-          const owned = new Uint8Array(buffer.slice(0));
-          ownedOutputs.push(owned);
-          entries.push(
-            Object.freeze({
-              path,
-              size: owned.byteLength,
-              mode: 0o100644,
-              async *chunks() {
-                if (disposed) fail("ASSET_DISPOSED");
-                for (
-                  let offset = 0;
-                  offset < owned.byteLength;
-                  offset += ASSET_ADAPTER_LIMITS.chunkBytes
-                ) {
-                  checkAbort(signal);
-                  if (disposed) fail("ASSET_DISPOSED");
-                  yield owned.slice(offset, offset + ASSET_ADAPTER_LIMITS.chunkBytes);
-                }
-              },
-            }),
-          );
+          const slot = { bytes: new Uint8Array(buffer.slice(0)) };
+          ownedOutputs.push(slot);
+          entries.push(outputEntry(path, slot, signal, isDisposed));
         }
       }
       closeWorker();

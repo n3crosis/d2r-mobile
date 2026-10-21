@@ -19,5 +19,5 @@ test("optional ASTC adapter metadata and lifetime contracts", () => {
   );
   assert.equal(result.error, undefined);
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  assert.match(result.stdout, /tests 6/);
+  assert.match(result.stdout, /tests 8/);
 });

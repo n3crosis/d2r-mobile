@@ -109,3 +109,133 @@ test("v61 packaging requires explicit opt-in and forbids sprite output even when
   assert.equal((await adapter.generateAssets(context))[0].size, 1);
   await adapter.dispose();
 });
+
+test("v61 bridge wipes late decoded pixels after close without starting asset conversion", async () => {
+  const { input, decoded } = fixture();
+  const before = input.slice();
+  let finishDecode,
+    runs = 0;
+  const worker = createV61AssetWorker({
+    textureWorker: {
+      decodeV61: () =>
+        new Promise((resolve) => {
+          finishDecode = resolve;
+        }),
+      close() {},
+    },
+    assetWorker: {
+      run() {
+        runs++;
+      },
+      close() {},
+    },
+  });
+  const pending = worker.run("image-default-frame", input);
+  worker.close();
+  finishDecode(decoded);
+  await assert.rejects(pending, { message: "V61_ASSET_BRIDGE_FAILED" });
+  assert.equal(runs, 0);
+  assert.ok(decoded.pixels.every((value) => value === 0));
+  assert.deepEqual(input, before);
+});
+
+test("v61 bridge wipes decoded pixels when geometry validation rejects before conversion", async () => {
+  for (const mismatch of [{ width: 3 }, { pixelFormat: 1 }, { pixels: new Uint8Array([9]) }]) {
+    const { input, decoded } = fixture();
+    Object.assign(decoded, mismatch);
+    const before = input.slice();
+    let runs = 0;
+    const worker = createV61AssetWorker({
+      textureWorker: { decodeV61: async () => decoded, close() {} },
+      assetWorker: {
+        run() {
+          runs++;
+        },
+        close() {},
+      },
+    });
+    await assert.rejects(worker.run("image-default-frame", input), {
+      message: "V61_ASSET_BRIDGE_FAILED",
+    });
+    assert.equal(runs, 0);
+    assert.ok(decoded.pixels.every((value) => value === 0));
+    assert.deepEqual(input, before);
+    worker.close();
+  }
+});
+
+test("v61 bridge preserves safe rejection for absent or nonbyte decoded pixels", async () => {
+  for (const decoded of [null, {}, { pixels: {} }]) {
+    const { input } = fixture();
+    const worker = createV61AssetWorker({
+      textureWorker: { decodeV61: async () => decoded, close() {} },
+      assetWorker: {
+        run() {
+          assert.fail("invalid decoding must not convert");
+        },
+        close() {},
+      },
+    });
+    await assert.rejects(worker.run("image-default-frame", input), {
+      message: "V61_ASSET_BRIDGE_FAILED",
+    });
+    worker.close();
+  }
+});
+
+test("v61 bridge wipes owned rejected worker outputs but preserves caller aliases", async () => {
+  for (const invalid of [false, true]) {
+    const { input, decoded } = fixture();
+    const before = input.slice();
+    const png = new Uint8Array([8, 9]);
+    const sprite = new Uint8Array([10, 11]);
+    let finish, started;
+    const running = new Promise((resolve) => {
+      started = resolve;
+    });
+    const worker = createV61AssetWorker({
+      textureWorker: { decodeV61: async () => decoded, close() {} },
+      assetWorker: {
+        run() {
+          started();
+          return new Promise((resolve) => {
+            finish = resolve;
+          });
+        },
+        close() {},
+      },
+    });
+    const pending = worker.run("image-default-frame", input);
+    await running;
+    if (!invalid) worker.close();
+    finish({
+      files: {
+        "frame.png": invalid ? png : png.buffer,
+        "frame.sprite": sprite.buffer,
+        "caller-alias": input.buffer,
+      },
+    });
+    await assert.rejects(pending, { message: "V61_ASSET_BRIDGE_FAILED" });
+    assert.ok(png.every((value) => value === 0));
+    assert.ok(sprite.every((value) => value === 0));
+    assert.deepEqual(input, before);
+    worker.close();
+  }
+});
+
+test("accepted v61 PNG output remains intact after bridge cleanup", async () => {
+  const { input, decoded } = fixture();
+  const png = new Uint8Array([1, 2, 3]);
+  const worker = createV61AssetWorker({
+    textureWorker: { decodeV61: async () => decoded, close() {} },
+    assetWorker: {
+      run: async () => ({ files: { "frame.png": png.buffer } }),
+      close() {},
+    },
+  });
+  const result = await worker.run("image-default-frame", input);
+  assert.equal(result.files["frame.png"], png.buffer);
+  assert.deepEqual(png, new Uint8Array([1, 2, 3]));
+  worker.close();
+  assert.deepEqual(png, new Uint8Array([1, 2, 3]));
+});

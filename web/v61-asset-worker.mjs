@@ -130,17 +130,38 @@ export function createV61AssetWorker({ assetWorker, textureWorker }) {
       if (operation !== "image-default-frame") throw failure();
       checkedHeader(bytes);
       const decoded = await textureWorker.decodeV61(bytes);
-      if (closed) throw failure();
-      const intermediate = decodedV61ToInternalRgba(bytes, decoded);
+      let intermediate, result;
+      let accepted = false;
       try {
-        const result = await assetWorker.run(operation, intermediate, options);
+        if (closed) throw failure();
+        intermediate = decodedV61ToInternalRgba(bytes, decoded);
+        result = await assetWorker.run(operation, intermediate, options);
         if (closed || !(result?.files?.["frame.png"] instanceof ArrayBuffer)) throw failure();
         // 绝不将中间 v31 导出为 v61 输入的原生替换品。
         // Never export the intermediate v31 as a native replacement for a v61 input.
-        return { ...result, sourceVersion: 61, files: { "frame.png": result.files["frame.png"] } };
+        const output = {
+          ...result,
+          sourceVersion: 61,
+          files: { "frame.png": result.files["frame.png"] },
+        };
+        accepted = true;
+        return output;
       } finally {
-        intermediate.fill(0);
-        decoded.pixels.fill(0);
+        // 工作线程转移了输出所有权；拒绝时擦除结果，但不触碰调用方输入的别名。
+        // Worker output ownership is transferred; wipe rejected results, excluding caller input aliases.
+        if (!accepted) {
+          for (const value of Object.values(result?.files ?? {})) {
+            const output =
+              value instanceof ArrayBuffer
+                ? new Uint8Array(value)
+                : value instanceof Uint8Array
+                  ? value
+                  : undefined;
+            if (output && output.buffer !== bytes.buffer) output.fill(0);
+          }
+        }
+        intermediate?.fill(0);
+        if (decoded?.pixels instanceof Uint8Array) decoded.pixels.fill(0);
       }
     },
     close() {
