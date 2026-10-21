@@ -338,13 +338,21 @@ export async function prepareBrowserPackager({
               profile = await bindProductionAstcEntries(profile, astcEntries, binding, {
                 signal: context.signal,
               });
+            // 绑定完成后不再使用资产或纹理计算线程；保留提取及补充包输出租约。
+            // Binding is complete; release asset/texture compute while retaining extraction and pack output leases.
+            runtime.retireAssetWorkers();
             return entries.filter((entry) => allowed(entry.path));
           },
-          generateShaders: (context) =>
-            shaders.generateShaders({
+          async generateShaders(context) {
+            const entries = await shaders.generateShaders({
               ...context,
               onProgress: createShaderDiagnosticObserver(onProgress, context.signal),
-            }),
+            });
+            // 完整着色器输出已独立持有，不再依赖翻译器或 Cross 线程。
+            // Completed shader outputs are independently owned and no longer need translator/Cross workers.
+            runtime.retireShaderWorkers();
+            return entries;
+          },
           async loadShell({ signal }) {
             // 选择来自独立认证的提取边界。
             // Selection came from the independently authenticated extraction boundary.

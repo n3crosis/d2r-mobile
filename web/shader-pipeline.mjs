@@ -44,16 +44,22 @@ function assetUrl(value, base) {
   return url.href;
 }
 function decodeBase64(value) {
-  if (
-    typeof value !== "string" ||
-    value.length > Math.ceil(SHADER_PIPELINE_LIMITS.spirv / 3) * 4 ||
-    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)
-  )
+  if (typeof value !== "string" || value.length > Math.ceil(SHADER_PIPELINE_LIMITS.spirv / 3) * 4)
     throw error("Invalid or oversized translator SPIR-V base64");
-  const binary = atob(value);
+  let binary;
+  try {
+    binary = atob(value);
+  } catch {
+    throw error("Invalid or oversized translator SPIR-V base64");
+  }
   if (binary.length > SHADER_PIPELINE_LIMITS.spirv) throw error("Oversized translator SPIR-V");
+  // 精确往返拒绝空白、缺失填充及非零填充位，无需在大输入上反复分组匹配。
+  // Exact round-trip rejects whitespace, missing padding and nonzero pad bits without repeated-group matching on large inputs.
   if (btoa(binary) !== value) throw error("Noncanonical translator SPIR-V base64");
-  const decoded = Uint8Array.from(binary, (x) => x.charCodeAt(0));
+  // 直接填充有界字节数组，避免 from(string) 先展开整个字符迭代列表。
+  // Fill bounded bytes directly, avoiding from(string)'s intermediate full character iterable list.
+  const decoded = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) decoded[i] = binary.charCodeAt(i);
   try {
     return validateSpirv(decoded);
   } finally {

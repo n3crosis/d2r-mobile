@@ -30,6 +30,18 @@ mock.module("../../sealed-runtime/clients.mjs", {
           state.programRetirements = (state.programRetirements ?? 0) + 1;
           return !state.programSibling;
         },
+        retireAssetWorkers() {
+          assert.equal(state.assetsCompleted, true);
+          assert.equal(state.runtimeClosed, false);
+          state.assetRetirements = (state.assetRetirements ?? 0) + 1;
+          return !state.stageSibling;
+        },
+        retireShaderWorkers() {
+          assert.equal(state.shadersCompleted, true);
+          assert.equal(state.runtimeClosed, false);
+          state.shaderRetirements = (state.shaderRetirements ?? 0) + 1;
+          return !state.stageSibling;
+        },
         takeIpaSigningFactory() {
           state.taken++;
           return signer;
@@ -88,10 +100,29 @@ mock.module("../../program-rewriter-adapter.mjs", {
   },
 });
 mock.module("../../production-assets.mjs", {
-  namedExports: { createProductionAssetAdapter: () => ({ dispose() {} }) },
+  namedExports: {
+    createProductionAssetAdapter: () => ({
+      async generateAssets() {
+        if (state.assetFailure) throw new Error("ASSET_FAILED");
+        state.assetsCompleted = true;
+        return [];
+      },
+      dispose() {},
+    }),
+  },
 });
 mock.module("../../production-shaders.mjs", {
-  namedExports: { createProductionShaderAdapter: () => ({ dispose() {} }) },
+  namedExports: {
+    createProductionShaderAdapter: () => ({
+      async generateShaders() {
+        assert.equal(state.assetRetirements, 1);
+        if (state.shaderFailure) throw new Error("SHADER_FAILED");
+        state.shadersCompleted = true;
+        return [];
+      },
+      dispose() {},
+    }),
+  },
 });
 mock.module("../../browser-blob-output.mjs", {
   namedExports: {
@@ -109,6 +140,8 @@ mock.module("../../packaging-job.mjs", {
       await adapters.extractSelected(context);
       await adapters.createOutput(context);
       await adapters.generateProgram(context);
+      await adapters.generateAssets(context);
+      await adapters.generateShaders(context);
       await adapters.cleanup(context);
       return { committed: true };
     },
@@ -263,3 +296,26 @@ test("failed program generation does not retire the program component", async ()
   assert.equal(state.programRetirements ?? 0, 0);
   await packager.close();
 });
+
+for (const stageSibling of [false, true])
+  test(`stage retirement is optional and preserves signing (sibling=${stageSibling})`, async () => {
+    reset();
+    state.stageSibling = stageSibling;
+    const packager = await prepareBrowserPackager({ signing: true });
+    const result = await generate(packager);
+    assert.equal(state.assetRetirements, 1);
+    assert.equal(state.shaderRetirements, 1);
+    assert.equal(state.signerClosed, false);
+    assert.equal(await packager.sign({ ipa: result.download.blob }), signed);
+    await packager.close();
+  });
+
+for (const stage of ["asset", "shader"])
+  test(`failed ${stage} generation does not retire its component group`, async () => {
+    reset();
+    state[`${stage}Failure`] = true;
+    const packager = await prepareBrowserPackager();
+    await assert.rejects(generate(packager), new RegExp(`${stage.toUpperCase()}_FAILED`));
+    assert.equal(state[`${stage}Retirements`] ?? 0, 0);
+    await packager.close();
+  });

@@ -5,7 +5,7 @@ import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { createShaderPipeline } from "../shader-pipeline.mjs";
+import { createShaderPipeline, SHADER_PIPELINE_LIMITS } from "../shader-pipeline.mjs";
 import {
   CROSS_COMMIT,
   MSL_ARGUMENTS,
@@ -267,6 +267,82 @@ test("translator defaults, malformed SPIR-V and wrong resource identity fail clo
     pipeline.dispose();
   }
 });
+test("large bounded SPIR-V decodes without recursive regex or iterable expansion", async (t) => {
+  const bytes = new Uint8Array(4 * 1024 * 1024);
+  bytes.set(spv);
+  const view = new DataView(bytes.buffer);
+  for (let offset = spv.length; offset < bytes.length; offset += 4)
+    view.setUint32(offset, 0x10000, true);
+  const nativeFrom = Uint8Array.from;
+  t.mock.method(Uint8Array, "from", function (value, ...args) {
+    assert.notEqual(typeof value, "string", "do not expand binary strings into iterable lists");
+    return nativeFrom.call(this, value, ...args);
+  });
+  const { pipeline, workers } = setup({
+    timeoutMs: 10000,
+    mutateTranslate: (result) => ({
+      ...result,
+      spirvBase64: Buffer.from(bytes).toString("base64"),
+    }),
+  });
+  try {
+    assert.equal((await pipeline.translate({ job, code: new Uint8Array(16) })).msl, msl);
+    assert.equal(workers.length, 2);
+    assert.deepEqual(new Uint8Array(workers[1].request.spirv), bytes);
+    assert.equal((await pipeline.verifyCompleteSourceSet()).shaderCount, 1);
+  } finally {
+    pipeline.dispose();
+  }
+});
+test("SPIR-V base64 requires canonical alphabet, padding and pad bits", async () => {
+  const canonical = Buffer.from(spv).toString("base64");
+  for (const encoded of [
+    null,
+    7,
+    "",
+    " " + canonical,
+    canonical + "\n",
+    canonical.slice(0, 4) + "\t" + canonical.slice(4),
+    canonical.slice(0, -1),
+    canonical + "=",
+    canonical.slice(0, -2) + "B=",
+    "=" + canonical.slice(1),
+    "-" + canonical.slice(1),
+    "_" + canonical.slice(1),
+    "$" + canonical.slice(1),
+    "A".repeat(Math.ceil(SHADER_PIPELINE_LIMITS.spirv / 3) * 4),
+    "A".repeat(Math.ceil(SHADER_PIPELINE_LIMITS.spirv / 3) * 4 + 4),
+  ]) {
+    const { pipeline, workers } = setup({
+      mutateTranslate: (result) => ({ ...result, spirvBase64: encoded }),
+    });
+    try {
+      await assert.rejects(pipeline.translate({ job, code: new Uint8Array(16) }));
+      assert.equal(workers.length, 1);
+      assert.ok(workers[0].terminated);
+      await assert.rejects(pipeline.verifyCompleteSourceSet(), /Incomplete/);
+    } finally {
+      pipeline.dispose();
+    }
+  }
+  for (const size of [20, 24, 28]) {
+    const bytes = new Uint8Array(size);
+    bytes.set(spv);
+    const view = new DataView(bytes.buffer);
+    for (let offset = spv.length; offset < size; offset += 4) view.setUint32(offset, 0x10000, true);
+    const { pipeline } = setup({
+      mutateTranslate: (result) => ({
+        ...result,
+        spirvBase64: Buffer.from(bytes).toString("base64"),
+      }),
+    });
+    try {
+      assert.equal((await pipeline.translate({ job, code: new Uint8Array(16) })).msl, msl);
+    } finally {
+      pipeline.dispose();
+    }
+  }
+});
 test("forged compiler provenance, output hash and replay are rejected", async () => {
   for (const mutateCross of [
     (r) => ({ ...r, provenance: { ...r.provenance, spirvCrossCommit: "wrong" } }),
@@ -362,13 +438,12 @@ test("owned hash snapshots are wiped on cancellation, rejection and successful f
 });
 
 test("temporary decoded SPIR-V is wiped after validation success or rejection", async () => {
-  const originalFrom = Uint8Array.from;
+  const originalFill = Uint8Array.prototype.fill;
   for (const valid of [true, false]) {
     let decoded;
-    Uint8Array.from = function (input, ...args) {
-      const result = originalFrom.call(this, input, ...args);
-      if (typeof input === "string") decoded = result;
-      return result;
+    Uint8Array.prototype.fill = function (...args) {
+      if (this.length === spv.length) decoded = this;
+      return originalFill.apply(this, args);
     };
     const { pipeline } = setup({
       mutateTranslate: valid
@@ -385,7 +460,7 @@ test("temporary decoded SPIR-V is wiped after validation success or rejection", 
       assert.equal(decoded.length, 20);
       assert.ok(decoded.every((byte) => byte === 0));
     } finally {
-      Uint8Array.from = originalFrom;
+      Uint8Array.prototype.fill = originalFill;
       pipeline.dispose();
     }
   }

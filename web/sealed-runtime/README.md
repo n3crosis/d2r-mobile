@@ -114,3 +114,13 @@ Adapters can import `assertSealedRuntime(value)` from `clients.mjs`. Its private
 WeakSet accepts only live sessions returned after successful initialization by
 this module, not lookalike objects or readiness booleans. This is an application
 provenance guard, not a sandbox against other trusted JavaScript in the page.
+
+The one-shot browser pipeline also calls `runtime.retireAssetWorkers()` after
+asset generation and ASTC binding, then `runtime.retireShaderWorkers()` after
+shader generation. These retire assets/texture and translator/SPIRV-Cross,
+respectively. Each group is checked before any member is stopped: open sibling
+leases, busy requests, unavailable components, or an asset restart make the
+operation return false without retirement. Successful retirement is idempotent,
+and retired asset workers cannot be recycled. Extraction, the independent signer,
+and the ASTC producer's exported-pack lease are not affected. Output adapters
+remain alive until their streamed bytes have been consumed.

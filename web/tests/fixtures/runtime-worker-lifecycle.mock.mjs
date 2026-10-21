@@ -888,3 +888,71 @@ test("program retirement after cancelled active work is a harmless no-op", async
   assert.equal(runtime.retireProgramWorker(), false);
   assert.equal(state.workers[0].terminations, 1);
 });
+
+test("completed asset and shader groups retire without touching extraction", async (t) => {
+  const { start, state, assertSealedRuntime } = await setup(t, {
+    components: ["assets", "texture", "translator", "spirvCross", "extraction"],
+  });
+  const runtime = await start();
+  const asset = runtime.createAssetWorker();
+  const texture = runtime.createTextureEncoder();
+  assert.equal(runtime.retireAssetWorkers(), false);
+  asset.close();
+  assert.equal(runtime.retireAssetWorkers(), false);
+  assert.equal(state.workers.filter((worker) => worker.terminations).length, 0);
+  texture.close();
+  assert.equal(runtime.retireAssetWorkers(), true);
+  assert.equal(runtime.retireAssetWorkers(), true);
+  assert.equal(state.workers.filter((worker) => worker.terminations).length, 2);
+  assert.throws(() => runtime.createAssetWorker(), /retired/);
+  assert.throws(() => runtime.createTextureClient(), /retired/);
+  await assert.rejects(runtime.recycleAssetWorker(), /unavailable/);
+  assert.equal(state.workers.length, 5);
+  const translator = runtime.createTranslator();
+  const cross = runtime.createCrossWorker();
+  const pending = translator.translate({ job: {}, code: new Uint8Array([1]) });
+  assert.equal(runtime.retireShaderWorkers(), false);
+  const worker = state.workers.find((item) => item.requests.at(-1).type === "run");
+  worker.reply({ id: 1, ok: true, result: { translated: true } });
+  assert.deepEqual(await pending, { translated: true });
+  translator.close();
+  assert.equal(runtime.retireShaderWorkers(), false);
+  cross.terminate();
+  cross.terminate();
+  assert.equal(runtime.retireShaderWorkers(), true);
+  assert.equal(runtime.retireShaderWorkers(), true);
+  assert.equal(state.workers.filter((item) => item.terminations).length, 4);
+  assert.throws(() => runtime.createTranslator(), /retired/);
+  assert.throws(() => runtime.createCrossWorker(), /retired/);
+  assert.equal(runtime.createExtractionWorker().terminations, 0);
+  assert.doesNotThrow(() => assertSealedRuntime(runtime));
+});
+
+test("asset retirement skips an in-progress restart and can retire its replacement", async (t) => {
+  const { start, state } = await setup(t, { components: ["assets", "texture"] });
+  const runtime = await start();
+  state.initialize = false;
+  const pending = runtime.recycleAssetWorker();
+  const replacement = state.workers.at(-1);
+  assert.equal(runtime.retireAssetWorkers(), false);
+  assert.equal(replacement.terminations, 0);
+  replacement.reply({ id: 0, ok: true, result: { initialized: true } });
+  await pending;
+  assert.equal(runtime.retireAssetWorkers(), true);
+  assert.equal(replacement.terminations, 1);
+});
+
+test("stage retirement after active cancellation does not stop workers twice", async (t) => {
+  const { start, state } = await setup(t, {
+    components: ["assets", "texture", "translator", "spirvCross"],
+  });
+  const runtime = await start();
+  const asset = runtime.createAssetWorker();
+  const pending = asset.run("overlay-recipe", new Uint8Array([1]));
+  assert.equal(runtime.retireAssetWorkers(), false);
+  asset.close();
+  await assert.rejects(pending, /closed/);
+  assert.equal(runtime.retireAssetWorkers(), false);
+  assert.equal(runtime.retireShaderWorkers(), false);
+  assert.ok(state.workers.every((worker) => worker.terminations === 1));
+});

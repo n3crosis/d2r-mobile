@@ -132,7 +132,11 @@ function b64(text) {
   } catch {
     throw new Error("OVERLAY_BASE64");
   }
-  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+  // 直接填充有界输出，避免字符串迭代器展开为逐字符临时列表。
+  // Fill the bounded output directly, without expanding a string iterator into a character list.
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+  return bytes;
 }
 export function logical(path) {
   requireValue(typeof path === "string", "OVERLAY_PATH");

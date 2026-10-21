@@ -452,12 +452,21 @@ async function derived(payload, options) {
 }
 function base64(value) {
   requireValue(
-    typeof value === "string" &&
-      /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value),
+    typeof value === "string" && value.length % 4 === 0 && !/[^A-Za-z0-9+/=]/.test(value),
+    "VAULT_BASE64",
+  );
+  const padding = value.indexOf("=");
+  requireValue(
+    padding < 0 ||
+      (padding >= value.length - 2 && (value.length - padding === 1 || value.endsWith("=="))),
     "VAULT_BASE64",
   );
   const decoded = atob(value);
-  return Uint8Array.from(decoded, (c) => c.charCodeAt(0));
+  // 直接填充有界输出，避免字符串迭代器展开为逐字符临时列表。
+  // Fill the bounded output directly, without expanding a string iterator into a character list.
+  const bytes = new Uint8Array(decoded.length);
+  for (let i = 0; i < decoded.length; i++) bytes[i] = decoded.charCodeAt(i);
+  return bytes;
 }
 async function vault(payload, options) {
   requireValue(exactKeys(options, []), "VAULT_INPUT_LIMIT");

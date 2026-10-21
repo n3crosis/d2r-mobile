@@ -947,8 +947,12 @@ export async function prepareSealedRuntime({
       if (!safePath(path)) fail("Invalid public asset path");
       return bytes(path).slice();
     }
+    const leaseCounts = new Map(),
+      retiredComponents = new Set();
     function lease(name) {
+      if (retiredComponents.has(name)) fail("Runtime component retired");
       if (closed || !channels[name]) fail("Runtime component unavailable");
+      leaseCounts.set(name, (leaseCounts.get(name) ?? 0) + 1);
       let released = false,
         active = false;
       return {
@@ -963,6 +967,7 @@ export async function prepareSealedRuntime({
         close() {
           if (released) return;
           released = true;
+          leaseCounts.set(name, leaseCounts.get(name) - 1);
           if (active) close();
         },
       };
@@ -994,7 +999,14 @@ export async function prepareSealedRuntime({
       };
     }
     async function recycleAssetWorker({ signal } = {}) {
-      if (closed || !plans.assets || recyclingAssets || channels.assets?.busy || signal?.aborted)
+      if (
+        closed ||
+        retiredComponents.has("assets") ||
+        !plans.assets ||
+        recyclingAssets ||
+        channels.assets?.busy ||
+        signal?.aborted
+      )
         fail("Asset runtime unavailable or busy");
       recyclingAssets = true;
       channels.assets.stop();
@@ -1296,13 +1308,9 @@ export async function prepareSealedRuntime({
         "spirv",
       );
     }
-    let programClients = 0,
-      programRetired = false;
     function createProgramWorker() {
-      if (programRetired) fail("Program worker retired");
+      if (retiredComponents.has("program")) fail("Program worker retired");
       const l = lease("program");
-      programClients++;
-      let released = false;
       return {
         run({ bytes, moduleName, releaseId, caseName }) {
           if (caseName !== undefined)
@@ -1310,23 +1318,33 @@ export async function prepareSealedRuntime({
           const copy = input(bytes, 32 * 1024 * 1024);
           return l.request({ bytes: copy, moduleName, releaseId }, [copy.buffer]);
         },
-        close() {
-          if (released) return;
-          released = true;
-          programClients--;
-          l.close();
-        },
+        close: l.close,
       };
     }
-    // 一次性程序阶段完成后显式释放 WASM；不能撤销仍存活的共享客户端。
-    // Explicitly release WASM after the one-shot stage, never revoking live shared clients.
-    function retireProgramWorker() {
-      if (programRetired) return true;
-      if (closed || !channels.program || programClients || channels.program.busy) return false;
-      programRetired = true;
-      channels.program.stop();
+    // 完成阶段后只释放指定计算线程；整组空闲且没有共享客户端时才退休。
+    // Retire only completed compute stages, atomically checking the whole group's idle leases.
+    function retireComponents(names) {
+      if (names.every((name) => retiredComponents.has(name))) return true;
+      if (
+        closed ||
+        names.some(
+          (name) =>
+            !channels[name] ||
+            leaseCounts.get(name) ||
+            channels[name].busy ||
+            (name === "assets" && recyclingAssets),
+        )
+      )
+        return false;
+      for (const name of names) {
+        retiredComponents.add(name);
+        channels[name].stop();
+      }
       return true;
     }
+    const retireProgramWorker = () => retireComponents(["program"]);
+    const retireAssetWorkers = () => retireComponents(["assets", "texture"]);
+    const retireShaderWorkers = () => retireComponents(["translator", "spirvCross"]);
     let extractionTaken = false;
     function createExtractionWorker() {
       if (closed || !channels.extraction || extractionTaken)
@@ -1372,6 +1390,8 @@ export async function prepareSealedRuntime({
       createCrossWorker,
       createProgramWorker,
       retireProgramWorker,
+      retireAssetWorkers,
+      retireShaderWorkers,
       createExtractionWorker,
       createAstcProducerClient,
       takeIpaSigningFactory,
