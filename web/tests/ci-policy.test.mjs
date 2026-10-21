@@ -32,6 +32,42 @@ test("one GitHub workflow runs only one Linux browser-build job", async () => {
   assert.match(text, /retention-days: 7/);
 });
 
+// 原生编译输入与固定配方来源变更也必须触发同一个构建作业。
+// Native compilation inputs and pinned recipe sources must trigger the same build job.
+test("both workflow triggers cover native and pinned runtime inputs", async () => {
+  const text = await readFile(new URL("verify.yml", workflows), "utf8");
+  const filters = [...text.matchAll(/paths:\s*\[([\s\S]*?)\]/g)].map((match) =>
+    [...match[1].matchAll(/"([^"\n]+)"/g)].map((value) => value[1]),
+  );
+  assert.equal(filters.length, 2);
+  const inputs = new Set([
+    "LICENSE",
+    "dm/third_party/bcdec/bcdec.h",
+    "dm/third_party/bcdec/LICENSE",
+  ]);
+  for (const name of [
+    "asset-transforms-js/source-provenance.json",
+    "casc-overlay-js/source-provenance.json",
+    "art-recipes-js/source-provenance.json",
+    "remaining-art-js/source-provenance.json",
+    "hud-recipes-js/provenance.json",
+    "overlay-recipe-js/source-provenance.json",
+  ]) {
+    const manifest = JSON.parse(
+      await readFile(new URL(`../toolchain/${name}`, import.meta.url), "utf8"),
+    );
+    for (const path of Object.keys(manifest.sources ?? manifest))
+      if (path.startsWith("dm/")) inputs.add(path);
+  }
+  for (const patterns of filters)
+    for (const input of inputs) {
+      const included = patterns.some((pattern) =>
+        pattern.endsWith("/**") ? input.startsWith(pattern.slice(0, -2)) : input === pattern,
+      );
+      assert.ok(included, `Runtime input does not trigger CI: ${input}`);
+    }
+});
+
 test("profile selection rejects arbitrary shell, paths, and prototype names", () => {
   for (const bad of [
     "../quick",

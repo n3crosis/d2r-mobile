@@ -5,7 +5,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createPreviewManifest } from "../verification/preview-manifest.mjs";
-import { productionCsp } from "../scripts/build-policy.mjs";
 
 test("preview manifest accepts only referenced static bundle files", async () => {
   const path = await mkdtemp(join(tmpdir(), "preview-manifest-"));
@@ -13,7 +12,7 @@ test("preview manifest accepts only referenced static bundle files", async () =>
   try {
     await writeFile(
       join(path, "index.html"),
-      `<meta content="${productionCsp}"><link href="./app.css"><script src="./app.js"></script>`,
+      '<meta charset="utf-8"><link href="./app.css"><script src="./app.js"></script>',
     );
     await writeFile(join(path, "app.js"), "console.log('preview');");
     await writeFile(join(path, "app.css"), "body{color:black}");
