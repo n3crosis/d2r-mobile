@@ -17,5 +17,5 @@ test("sealed runtime worker RPC lifecycle (isolated module mocks)", () => {
   );
   assert.equal(result.error, undefined);
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  assert.match(result.stdout, /tests 24/);
+  assert.match(result.stdout, /tests 32/);
 });

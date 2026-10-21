@@ -56,6 +56,10 @@ async function setup(
   t.mock.method(globalThis, "clearTimeout", (id) => state.timers.delete(id));
   const data = new Map(
     [
+      "sealed-runtime/dotnet-worker.mjs",
+      "toolchain/offline-runtime-spike/dotnet-dist/main.mjs",
+      "sealed-workers/cross-worker.mjs",
+      "toolchain/spirv-cross-spike/wwwroot/spirv-cross.wasm",
       "sealed-workers/program-worker.mjs",
       "toolchain/program-rewrite-spike/dist/capstone-lz4.wasm",
       "sealed-runtime/texture-worker.mjs",
@@ -69,6 +73,19 @@ async function setup(
     ].map((path) => [path, encode(`synthetic ${path}`)]),
   );
   data.set(profile.archivePath, shell);
+  if (components.includes("translator")) {
+    const directory = "toolchain/offline-runtime-spike/dotnet-dist";
+    const value = data.get(`${directory}/main.mjs`);
+    data.set(
+      `${directory}/manifest.json`,
+      encode(
+        JSON.stringify({
+          version: 1,
+          assets: [{ path: "main.mjs", bytes: value.length, sha256: sha(value) }],
+        }),
+      ),
+    );
+  }
   if (components.includes("assets")) {
     const directory = "toolchain/asset-runtime-js/dist";
     const records = [
@@ -514,4 +531,265 @@ test("asset restart rejects concurrent restarts and lease operations without dis
   await assert.rejects(runtime.recycleAssetWorker(), /busy/);
   current.reply({ id: 1, ok: true, result: {} });
   await operation;
+});
+
+// 原生 structuredClone 模拟真实转移，断言不触碰借用输入及失败快照清理。
+// Native structuredClone models real transfer, checking borrowed inputs and failed snapshot cleanup.
+test("shader facade transfers owned inputs immediately and snapshots metadata", async (t) => {
+  const { start, state } = await setup(t, { components: ["translator", "spirvCross"] });
+  const runtime = await start();
+  const worker = runtime.createTranslatorWorker();
+  const code = new Uint8Array([1, 2, 3]);
+  const job = { stage: "vertex" };
+  const reply = new Promise((resolve) => {
+    worker.onmessage = resolve;
+  });
+  worker.postMessage({ requestId: 7, code, job }, [code.buffer]);
+  assert.equal(code.byteLength, 0);
+  job.stage = "fragment";
+  await Promise.resolve();
+  const request = state.workers[0].requests.at(-1);
+  assert.deepEqual([...new Uint8Array(request.payload)], [1, 2, 3]);
+  assert.deepEqual(request.job, { stage: "vertex" });
+  state.workers[0].reply({ id: request.id, ok: true, result: { valid: true } });
+  assert.equal((await reply).data.requestId, 7);
+
+  const cross = runtime.createShaderWorkerFactory()(runtime.workerUrls.spirvCross);
+  const spirv = new Uint8Array([4, 5]).buffer;
+  const context = { stage: "vertex" };
+  const crossReply = new Promise((resolve) => {
+    cross.onmessage = resolve;
+  });
+  cross.postMessage({ id: 8, type: "convert", spirv, replayContext: context }, [spirv]);
+  assert.equal(spirv.byteLength, 0);
+  context.stage = "fragment";
+  await Promise.resolve();
+  const crossRequest = state.workers[1].requests.at(-1);
+  assert.deepEqual([...new Uint8Array(crossRequest.spirv)], [4, 5]);
+  assert.equal(crossRequest.replayContext.stage, "vertex");
+  state.workers[1].reply({ id: crossRequest.id, ok: true, result: {} });
+  assert.equal((await crossReply).data.id, 8);
+});
+
+test("shader facade preserves subarray bounds and public borrowed inputs", async (t) => {
+  const { start, state } = await setup(t, { components: ["translator"] });
+  const runtime = await start();
+  const worker = runtime.createTranslatorWorker();
+  const backing = new Uint8Array([9, 1, 2, 9]);
+  const reply = new Promise((resolve) => {
+    worker.onmessage = resolve;
+  });
+  worker.postMessage({ requestId: 1, code: backing.subarray(1, 3), job: {} }, [backing.buffer]);
+  assert.equal(backing.byteLength, 0);
+  await Promise.resolve();
+  const request = state.workers[0].requests.at(-1);
+  assert.deepEqual([...new Uint8Array(request.payload)], [1, 2]);
+  state.workers[0].reply({ id: request.id, ok: true, result: {} });
+  await reply;
+  const borrowed = new Uint8Array([6, 7]);
+  const pending = runtime.createTranslator().translate({ job: {}, code: borrowed });
+  assert.deepEqual([...borrowed], [6, 7]);
+  const next = state.workers[0].requests.at(-1);
+  state.workers[0].reply({ id: next.id, ok: true, result: {} });
+  await pending;
+  assert.deepEqual([...borrowed], [6, 7]);
+});
+
+test("shader facade wipes queued cancellation and busy rejection snapshots", async (t) => {
+  const { start, state } = await setup(t, { components: ["translator"] });
+  const runtime = await start();
+  const clone = globalThis.structuredClone;
+  const snapshots = [];
+  t.mock.method(globalThis, "structuredClone", (value, options) => {
+    const result = clone(value, options);
+    if (result?.requestId) snapshots.push(result);
+    return result;
+  });
+  const cancelled = runtime.createTranslatorWorker();
+  const code = new Uint8Array([1, 2]);
+  cancelled.postMessage({ requestId: 1, code, job: {} }, [code.buffer]);
+  cancelled.terminate();
+  await Promise.resolve();
+  assert.equal(code.byteLength, 0);
+  assert.deepEqual([...snapshots[0].code], [0, 0]);
+  assert.equal(state.workers[0].requests.length, 1);
+
+  const worker = runtime.createTranslatorWorker();
+  worker.postMessage({ requestId: 2, code: new Uint8Array([3]), job: {} });
+  await Promise.resolve();
+  const first = state.workers[0].requests.at(-1);
+  const borrowed = new Uint8Array([4, 5]);
+  const failure = new Promise((resolve) => {
+    worker.onmessage = resolve;
+  });
+  worker.postMessage({ requestId: 3, code: borrowed, job: {} });
+  assert.equal((await failure).data.ok, false);
+  assert.deepEqual([...borrowed], [4, 5]);
+  assert.deepEqual([...snapshots[2].code], [0, 0]);
+  assert.equal(state.workers[0].requests.length, 2);
+  state.workers[0].reply({ id: first.id, ok: true, result: {} });
+});
+
+test("shader facade forwards the owned buffer itself and wipes failed handoffs", async (t) => {
+  const { start, state } = await setup(t, { components: ["translator"] });
+  const runtime = await start();
+  const clone = globalThis.structuredClone;
+  let snapshot;
+  t.mock.method(globalThis, "structuredClone", (value, options) => {
+    const result = clone(value, options);
+    if (result?.requestId === 9) snapshot = result;
+    return result;
+  });
+  let handedOff;
+  t.mock.method(state.workers[0], "postMessage", (message) => {
+    handedOff = message.payload;
+    throw new Error("Synthetic send failure");
+  });
+  const worker = runtime.createTranslatorWorker();
+  const code = new Uint8Array([7, 8]);
+  const failure = new Promise((resolve) => {
+    worker.onmessage = resolve;
+  });
+  worker.postMessage({ requestId: 9, job: {}, code }, [code.buffer]);
+  assert.equal(code.byteLength, 0);
+  assert.equal((await failure).data.ok, false);
+  assert.equal(
+    handedOff,
+    snapshot.code.buffer,
+    "full-span owned buffer is forwarded without another copy",
+  );
+  assert.deepEqual([...new Uint8Array(handedOff)], [0, 0]);
+});
+
+// 在任何结构化复制之前拒绝超限输入，且借用子视图不会放大为底层分配。
+// Reject oversized inputs before any structured clone; borrowed subviews never amplify to their backing allocation.
+test("shader facade caps inputs and metadata before cloning", async (t) => {
+  const { start, state } = await setup(t, { components: ["translator", "spirvCross"] });
+  const runtime = await start();
+  let clones = 0;
+  const clone = globalThis.structuredClone;
+  t.mock.method(globalThis, "structuredClone", (...args) => {
+    clones++;
+    return clone(...args);
+  });
+  const translator = runtime.createTranslatorWorker();
+  const cross = runtime.createShaderWorkerFactory()(runtime.workerUrls.spirvCross);
+  for (const [worker, data] of [
+    [translator, { requestId: 1, code: new Uint8Array(1024 * 1024 + 1), job: {} }],
+    [
+      cross,
+      { id: 2, type: "convert", spirv: new ArrayBuffer(16 * 1024 * 1024 + 1), replayContext: {} },
+    ],
+    [translator, { requestId: 3, code: new Uint8Array([1]), job: { large: "x".repeat(65537) } }],
+    [
+      cross,
+      {
+        id: 4,
+        type: "convert",
+        spirv: new ArrayBuffer(4),
+        replayContext: { large: "x".repeat(65537) },
+      },
+    ],
+  ]) {
+    const reply = new Promise((resolve) => {
+      worker.onmessage = resolve;
+    });
+    assert.doesNotThrow(() => worker.postMessage(data));
+    assert.equal((await reply).data.ok, false);
+  }
+  assert.equal(clones, 0);
+  assert.ok(state.workers.every((worker) => worker.requests.length === 1));
+});
+
+test("borrowed shader subviews clone only their range and ignore unused fields", async (t) => {
+  const { start, state } = await setup(t, { components: ["translator"] });
+  const runtime = await start();
+  const clone = globalThis.structuredClone;
+  let sourceBytes;
+  t.mock.method(globalThis, "structuredClone", (value, options) => {
+    if (value?.requestId === 10) {
+      sourceBytes = value.code.buffer.byteLength;
+      assert.equal(Object.hasOwn(value, "ignored"), false);
+    }
+    return clone(value, options);
+  });
+  const backing = new Uint8Array(2 * 1024 * 1024);
+  backing.set([3, 4], 99);
+  const extraTransfer = new ArrayBuffer(1);
+  const worker = runtime.createTranslatorWorker();
+  const reply = new Promise((resolve) => {
+    worker.onmessage = resolve;
+  });
+  worker.postMessage(
+    { requestId: 10, code: backing.subarray(99, 101), job: {}, ignored: backing },
+    [extraTransfer],
+  );
+  assert.equal(sourceBytes, 2);
+  assert.equal(extraTransfer.byteLength, 0);
+  assert.equal(backing.byteLength, 2 * 1024 * 1024);
+  backing[99] = 8;
+  await Promise.resolve();
+  const request = state.workers[0].requests.at(-1);
+  assert.deepEqual([...new Uint8Array(request.payload)], [3, 4]);
+  state.workers[0].reply({ id: request.id, ok: true, result: {} });
+  await reply;
+  assert.deepEqual([...backing.subarray(99, 101)], [8, 4]);
+});
+
+test("invalid shader transfer lists wipe private subview copies without touching borrowed bytes", async (t) => {
+  const { start } = await setup(t, { components: ["translator"] });
+  const runtime = await start();
+  const clone = globalThis.structuredClone;
+  let privateCode;
+  t.mock.method(globalThis, "structuredClone", (value, options) => {
+    if (value?.requestId === 11) privateCode = value.code;
+    return clone(value, options);
+  });
+  const backing = new Uint8Array([9, 3, 4, 9]);
+  const extra = new ArrayBuffer(1);
+  const worker = runtime.createTranslatorWorker();
+  assert.throws(
+    () =>
+      worker.postMessage({ requestId: 11, code: backing.subarray(1, 3), job: {} }, [extra, extra]),
+    { name: "DataCloneError" },
+  );
+  assert.deepEqual([...privateCode], [0, 0]);
+  assert.deepEqual([...backing], [9, 3, 4, 9]);
+});
+
+test("shader facade rejects object and oversized correlation IDs without cloning or echoing them", async (t) => {
+  const { start } = await setup(t, { components: ["translator", "spirvCross"] });
+  const runtime = await start();
+  const clone = globalThis.structuredClone;
+  let clones = 0;
+  t.mock.method(globalThis, "structuredClone", (...args) => {
+    clones++;
+    return clone(...args);
+  });
+  const translator = runtime.createTranslatorWorker();
+  const cross = runtime.createShaderWorkerFactory()(runtime.workerUrls.spirvCross);
+  for (const id of [{ nested: "id" }, [], new ArrayBuffer(1024 * 1024), "x".repeat(257)]) {
+    for (const [worker, data] of [
+      [translator, { requestId: id, code: new Uint8Array([1]), job: {} }],
+      [cross, { id, type: "convert", spirv: new ArrayBuffer(4), replayContext: {} }],
+    ]) {
+      const reply = new Promise((resolve) => {
+        worker.onmessage = resolve;
+      });
+      worker.postMessage(data);
+      assert.deepEqual((await reply).data, { ok: false, error: "Sealed operation failed" });
+    }
+  }
+  for (const id of [undefined, null, true, 1, "x".repeat(256)]) {
+    const reply = new Promise((resolve) => {
+      translator.onmessage = resolve;
+    });
+    translator.postMessage({ requestId: id, code: null, job: {} });
+    assert.deepEqual((await reply).data, {
+      requestId: id,
+      ok: false,
+      error: "Sealed operation failed",
+    });
+  }
+  assert.equal(clones, 0);
 });

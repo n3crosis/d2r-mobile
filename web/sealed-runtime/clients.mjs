@@ -1110,7 +1110,23 @@ export async function prepareSealedRuntime({
         close: l.close,
       };
     }
-    function workerFacade(client, invoke) {
+    function wipeShaderInput(value) {
+      const buffer = ArrayBuffer.isView(value) ? value.buffer : value;
+      if (!(buffer instanceof ArrayBuffer) || buffer.byteLength === 0) return;
+      new Uint8Array(buffer).fill(0);
+    }
+    function ownedShaderInput(bytes, cap) {
+      if (
+        !(bytes instanceof Uint8Array) ||
+        !(bytes.buffer instanceof ArrayBuffer) ||
+        bytes.length > cap
+      )
+        fail("Runtime input cap");
+      return bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength
+        ? bytes.buffer
+        : bytes.slice().buffer;
+    }
+    function workerFacade(client, invoke, inputField) {
       let stopped = false;
       const events = new Map();
       const bridge = {
@@ -1123,16 +1139,97 @@ export async function prepareSealedRuntime({
         removeEventListener(type, listener) {
           events.get(type)?.delete(listener);
         },
-        postMessage(data) {
+        postMessage(data, transfer = []) {
           if (stopped) fail("Runtime worker closed");
+          // 同步捕获元数据和输入所有权，保持真实 Worker 的复制/转移语义。
+          // Snapshot metadata and input ownership synchronously, matching real Worker semantics.
+          let message;
+          let correlation = {};
+          try {
+            const idField = inputField === "code" ? "requestId" : "id";
+            const id = data?.[idField];
+            // 关联标识只允许有界标量，绝不复制或回显任意对象。
+            // Correlation IDs are bounded scalars; never clone or echo arbitrary objects.
+            if (
+              !(
+                id === undefined ||
+                id === null ||
+                typeof id === "boolean" ||
+                (typeof id === "number" && Number.isFinite(id)) ||
+                (typeof id === "string" && id.length <= 256)
+              )
+            )
+              fail("Invalid shader correlation ID");
+            correlation = { [idField]: id };
+            if (inputField === "code") {
+              const code = data?.code;
+              if (
+                !(code instanceof Uint8Array) ||
+                !(code.buffer instanceof ArrayBuffer) ||
+                code.length > 1024 * 1024
+              )
+                fail("Runtime input cap");
+              message = { ...correlation, code, job: jsonOptions(data.job) };
+            } else {
+              if (
+                data?.type !== "convert" ||
+                !(data.spirv instanceof ArrayBuffer) ||
+                data.spirv.byteLength > 16 * 1024 * 1024
+              )
+                fail("Invalid Cross request");
+              message = {
+                ...correlation,
+                type: "convert",
+                spirv: data.spirv,
+                replayContext: jsonOptions(data.replayContext),
+              };
+            }
+          } catch {
+            const reply = {
+              ...correlation,
+              ok: false,
+              error: "Sealed operation failed",
+            };
+            Promise.resolve().then(() => emit(reply));
+            return;
+          }
+          const transfers = Array.from(transfer);
+          let privateSlice;
+          let snapshot;
+          try {
+            // 借用子视图只复制有效范围，不克隆其可能很大的整个底层缓冲区。
+            // Copy only a borrowed subview's range, not its potentially much larger backing buffer.
+            if (
+              inputField === "code" &&
+              !transfers.includes(message.code.buffer) &&
+              (message.code.byteOffset !== 0 ||
+                message.code.byteLength !== message.code.buffer.byteLength)
+            ) {
+              privateSlice = message.code.slice();
+              message.code = privateSlice;
+              transfers.push(privateSlice.buffer);
+            }
+            snapshot = structuredClone(message, { transfer: transfers });
+          } finally {
+            wipeShaderInput(privateSlice);
+          }
           Promise.resolve()
-            .then(() => invoke(data))
+            .then(async () => {
+              try {
+                if (stopped) return;
+                return await invoke(snapshot);
+              } finally {
+                // 未交给真实工作线程的私有副本仍须清零，包括排队取消和忙碌拒绝。
+                // Wipe private copies not handed to the real worker, including queued cancellation and busy rejection.
+                wipeShaderInput(snapshot?.[inputField]);
+              }
+            })
             .then(
               (reply) => emit(reply),
               () =>
                 emit({
-                  id: data?.id,
-                  requestId: data?.requestId,
+                  id: snapshot?.id,
+                  requestId: snapshot?.requestId,
                   ok: false,
                   error: "Sealed operation failed",
                 }),
@@ -1154,24 +1251,43 @@ export async function prepareSealedRuntime({
       return bridge;
     }
     function createTranslatorWorker() {
-      const client = createTranslator();
-      return workerFacade(client, async (data) => ({
-        requestId: data.requestId,
-        result: await client.translate({ job: data.job, code: data.code }),
-      }));
+      const l = lease("translator");
+      return workerFacade(
+        l,
+        async (data) => {
+          const payload = ownedShaderInput(data.code, 1024 * 1024);
+          try {
+            return {
+              requestId: data.requestId,
+              result: await l.request({ type: "run", job: data.job, payload }, [payload]),
+            };
+          } finally {
+            wipeShaderInput(payload);
+          }
+        },
+        "code",
+      );
     }
     function createCrossWorker() {
       const l = lease("spirvCross");
-      return workerFacade(l, async (data) => {
-        if (data?.type !== "convert" || !(data.spirv instanceof ArrayBuffer))
-          fail("Invalid Cross request");
-        const spirv = input(new Uint8Array(data.spirv), 16 * 1024 * 1024).buffer;
-        const result = await l.request(
-          { type: "convert", spirv, replayContext: jsonOptions(data.replayContext) },
-          [spirv],
-        );
-        return { id: data.id, ok: true, result };
-      });
+      return workerFacade(
+        l,
+        async (data) => {
+          if (data?.type !== "convert" || !(data.spirv instanceof ArrayBuffer))
+            fail("Invalid Cross request");
+          const spirv = ownedShaderInput(new Uint8Array(data.spirv), 16 * 1024 * 1024);
+          try {
+            const result = await l.request(
+              { type: "convert", spirv, replayContext: data.replayContext },
+              [spirv],
+            );
+            return { id: data.id, ok: true, result };
+          } finally {
+            wipeShaderInput(spirv);
+          }
+        },
+        "spirv",
+      );
     }
     function createProgramWorker() {
       const l = lease("program");
