@@ -5,6 +5,8 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { writeCascPack } from "../casc-pack-writer.mjs";
+import { decodeArchiveRecord } from "../archive-reader.mjs";
+import { RAW_FILE_STAGE_CHUNK_BYTES } from "../raw-file-stage.mjs";
 const native = new URL("../../dm/tools/casc_overlay.py", import.meta.url).pathname;
 function python(code, input, args = []) {
   const result = spawnSync("python3", ["-c", code, ...args], { input, maxBuffer: 4 * 1024 * 1024 });
@@ -186,6 +188,156 @@ test("empty pack finalizes and hashing is exact", async () => {
   assert.equal(result.pack.size, 0);
   assert.equal(result.pack.sha256, createHash("sha256").digest("hex"));
   await result.dispose();
+});
+
+// 零长、64 KiB 边界和相邻记录都保留原样 BLTE 编码规格。
+// Empty records, 64 KiB boundaries and neighboring records retain raw BLTE framing.
+test("raw BLTE pack records preserve exact framing, checksums, offsets and decoded bytes", async () => {
+  const inputs = [0, 1, 65535, 65536, 65537, 131073].map((length) =>
+    Uint8Array.from({ length }, (_, i) => (i * 29 + (i >>> 8)) & 255),
+  );
+  const before = Uint8Array.of(17, 18, 19),
+    after = Uint8Array.of(20, 21);
+  const items = [
+    job("n", before, "data/before"),
+    ...inputs.map((bytes, i) => job("b:64K*=n", bytes, `data/raw-${i}`)),
+    job("n", after, "data/after"),
+  ];
+  const stage = memoryStage();
+  const result = await writeCascPack(
+    options(items, stage, {
+      codec: {
+        genericZlibVersion: "1.2.13",
+        compressZlibStream() {
+          assert.fail("Raw BLTE must not invoke zlib");
+        },
+      },
+    }),
+  );
+  const md5 = (bytes) => createHash("md5").update(bytes).digest();
+  let offset = before.length;
+  for (let i = 0; i < inputs.length; i++) {
+    const bytes = inputs[i],
+      count = Math.max(1, Math.ceil(bytes.length / 65536)),
+      header = Buffer.alloc(12 + count * 24),
+      blocks = [];
+    header.write("BLTE");
+    header.writeUInt32BE(header.length, 4);
+    header[8] = 15;
+    header.writeUIntBE(count, 9, 3);
+    for (let index = 0; index < count; index++) {
+      const payload = bytes.subarray(index * 65536, (index + 1) * 65536),
+        block = Buffer.concat([Buffer.from("N"), payload]);
+      header.writeUInt32BE(block.length, 12 + index * 24);
+      header.writeUInt32BE(payload.length, 16 + index * 24);
+      md5(block).copy(header, 20 + index * 24);
+      blocks.push(block);
+    }
+    const encoded = Buffer.concat([header, ...blocks]),
+      record = result.records[i + 1],
+      expectedKey =
+        md5(header).toString("hex").slice(0, 18) + "0008" + offset.toString(16).padStart(10, "0");
+    if (bytes.length === 0)
+      assert.deepEqual(
+        new Uint8Array(encoded),
+        python(
+          "import sys,importlib.util; s=importlib.util.spec_from_file_location('casc',sys.argv[1]); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); sys.stdout.buffer.write(m.encode_by_espec(b'', 'b:64K*=n'))",
+          new Uint8Array(),
+          [native],
+        ),
+      );
+    assert.deepEqual(record, {
+      path: `data/raw-${i}`,
+      newEkey: expectedKey,
+      encodedSize: encoded.length,
+      decodedSize: bytes.length,
+    });
+    assert.deepEqual(await result.source.readAt(offset, encoded.length), new Uint8Array(encoded));
+    const decoded = await decodeArchiveRecord(
+      { size: result.source.size, read: result.source.readAt },
+      {
+        offset,
+        encodedSize: encoded.length,
+        decodedSize: bytes.length,
+        encoding: "b:64K*=n",
+        ckey: md5(bytes).toString("hex"),
+      },
+      { verifyMd5: async (value, expected) => md5(value).toString("hex") === expected },
+    );
+    assert.deepEqual(decoded, bytes);
+    offset += encoded.length;
+  }
+  assert.equal(Number.parseInt(result.records.at(-1).newEkey.slice(22), 16), offset);
+  assert.deepEqual(await result.source.readAt(offset, after.length), after);
+  assert.equal(result.source.size, offset + after.length);
+  assert.equal(stage.log.filter((name) => name === "backpatch").length, inputs.length);
+  assert.equal(
+    result.index,
+    "# pack\t00-00000008.data\n" +
+      result.records
+        .map(
+          (record) =>
+            `${record.path}\t${record.newEkey}\t${record.encodedSize}\t${record.decodedSize}\n`,
+        )
+        .join(""),
+  );
+  await result.dispose();
+});
+
+test("large raw BLTE header reservation stays within bounded stage chunks", async () => {
+  const writes = [];
+  let disposed = false;
+  const item = { ...job("b:64K*=n", new Uint8Array()), decodedSize: 0xf0000000 };
+  await assert.rejects(
+    writeCascPack(
+      options(
+        [item],
+        {},
+        {
+          maxPackBytes: 2 ** 32,
+          createStage: async () => ({
+            async append(bytes) {
+              assert.ok(bytes.buffer.byteLength <= RAW_FILE_STAGE_CHUNK_BYTES);
+              writes.push(bytes.length);
+            },
+            async dispose() {
+              disposed = true;
+            },
+          }),
+        },
+      ),
+    ),
+    /CASC_PACK_DECODED_SIZE/,
+  );
+  assert.deepEqual(writes, [
+    RAW_FILE_STAGE_CHUNK_BYTES,
+    12 + 24 * 61440 - RAW_FILE_STAGE_CHUNK_BYTES,
+  ]);
+  assert.equal(disposed, true);
+});
+
+test("raw BLTE rejects impossible record and remaining pack sizes before consuming input", async () => {
+  for (const [decodedSize, maxPackBytes, prefix, expected] of [
+    [0xffffffff, 2 ** 40, false, /CASC_PACK_ENCODED_SIZE/],
+    [65536, 65573, true, /CASC_PACK_PACK_SIZE/],
+    [0, 36, false, /CASC_PACK_PACK_SIZE/],
+  ]) {
+    let consumed = false;
+    const item = {
+      ...job("b:64K*=n", new Uint8Array()),
+      decodedSize,
+      source: (async function* () {
+        consumed = true;
+        yield new Uint8Array();
+      })(),
+    };
+    const stage = memoryStage();
+    const items = prefix ? [job("n", Uint8Array.of(42), "data/prefix"), item] : [item];
+    await assert.rejects(writeCascPack(options(items, stage, { maxPackBytes })), expected);
+    assert.equal(consumed, false);
+    assert.equal(stage.log.filter((name) => name === "append").length, prefix ? 1 : 0);
+    assert.equal(stage.disposed, true);
+  }
 });
 test("collision rejects before stage creation and source consumption", async () => {
   const stage = memoryStage();

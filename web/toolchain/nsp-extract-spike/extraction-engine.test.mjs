@@ -174,6 +174,50 @@ const initialize = (engine, fixtureOptions, skipContentHashes = false) =>
     titleKeys: new Blob([`${"34".repeat(16)} = ${"56".repeat(16)}\n`]),
     skipContentHashes,
   });
+
+for (const observer of ["throw", "reject", "thenable", "pending"]) {
+  test(`engine ${observer} progress observer cannot alter extraction or native verification`, async () => {
+    const stages = new Set();
+    const { engine, disposed } = setup({
+      onProgress(event) {
+        stages.add(event.stage);
+        const failure = new Error("Synthetic observer failure");
+        if (observer === "throw") throw failure;
+        if (observer === "reject") return Promise.reject(failure);
+        if (observer === "thenable")
+          return {
+            then(resolve, reject) {
+              void resolve;
+              reject(failure);
+            },
+          };
+        return new Promise(() => {});
+      },
+    });
+    try {
+      assert.equal((await initialize(engine)).records.length, 3);
+      const selected = await engine.execute("select", { options: {} });
+      const romfs = await engine.execute("openRomfs", {
+        token: selected.token,
+        verifyRomfs: true,
+      });
+      assert.deepEqual(
+        await engine.execute("readRomfs", { token: romfs.token, offset: 0n, count: 2 }),
+        new Uint8Array([9, 9]),
+      );
+      assert(stages.has("exefs-open"));
+      assert(stages.has("romfs-base"));
+      assert(stages.has("romfs-merged"));
+      // 推进一个事件循环，让未观察到的拒绝使测试失败。
+      // Let unobserved rejections fail the test on the next event-loop turn.
+      await new Promise((resolve) => setImmediate(resolve));
+    } finally {
+      await engine.execute("dispose");
+    }
+    assert(disposed());
+  });
+}
+
 test("package tickets supply title keys when title.keys has no matching rights ID", async () => {
   const { engine, title, keys } = setup();
   await initialize(engine, { ticket: true });
@@ -268,6 +312,21 @@ test("engine rejects content hash mismatch and arbitrary operation/fields", asyn
   await assert.rejects(engine.execute("ccall", { path: "secret" }));
   await assert.rejects(engine.execute("dispose", { extra: true }));
   await engine.execute("dispose");
+});
+
+test("rejected engine progress cannot replace the original authentication failure", async () => {
+  const { engine } = setup({
+    wrongHash: true,
+    async onProgress() {
+      throw new Error("Synthetic observer failure");
+    },
+  });
+  await assert.rejects(initialize(engine), {
+    code: "CONTENT_AUTHENTICATION_FAILED",
+    message: "CONTENT_AUTHENTICATION_FAILED",
+  });
+  await engine.execute("dispose");
+  await new Promise((resolve) => setImmediate(resolve));
 });
 
 test("known DLC requires consistent Meta evidence and Data NCA type", async () => {

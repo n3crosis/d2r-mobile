@@ -94,6 +94,8 @@ test("preflight rejects unsafe paths, duplicates, case collisions and ancestor c
     ["a", "A"],
     ["a", "a/b"],
     ["A/b", "a"],
+    ["Resources/a", "resources/b"],
+    ["Resources/nested/a", "Resources/Nested/b"],
     ["\ud800"],
   ]) {
     const out = await fails(
@@ -122,6 +124,8 @@ test("budgets and modes are validated without reading or writing content", async
     Array.from({ length: 1100 }, (_, i) => fake("x".repeat(4000) + i, 0)),
     [fake("x".repeat(4097), 0)],
     [fake("é".repeat(3000), 0)],
+    [fake("x/".repeat(32) + "file", 0)],
+    Array.from({ length: 16667 }, (_, i) => fake(`d${i}/nested/file`, 0)),
     [{ ...entry("a"), mode: 0o777 }],
     [{ path: "a", size: 0 }],
   ];

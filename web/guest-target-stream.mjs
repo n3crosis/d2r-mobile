@@ -1,7 +1,7 @@
 // 从分块 Guest Mach-O 中检查目标系统，不复制完整可执行文件。
 // Inspect the target OS of a chunked Guest Mach-O without copying the whole executable.
 
-import { guestInfoPlist } from "./guest-framework.mjs";
+import { guestInfoPlist, MAX_GUEST_BYTES } from "./guest-framework.mjs";
 import { resolveShellProfile } from "./shell-profiles.mjs";
 
 /**
@@ -13,12 +13,7 @@ export async function inspectGuestTarget(
   entry,
   { signal, expectedSdkVersion, minimumOSVersion } = {},
 ) {
-  if (
-    !entry ||
-    !Number.isSafeInteger(entry.size) ||
-    entry.size < 0 ||
-    entry.size > 128 * 1024 * 1024
-  )
+  if (!entry || !Number.isSafeInteger(entry.size) || entry.size < 0 || entry.size > MAX_GUEST_BYTES)
     throw new Error("GUEST_MISSING");
   const prefix = new Uint8Array(32);
   const view = new DataView(prefix.buffer);

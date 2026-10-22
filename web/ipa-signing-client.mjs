@@ -30,9 +30,21 @@ export async function prepareIpaSigningClient({
   let closed = false,
     used = false,
     pending;
+  const failedWorker = () => {
+    pending?.reject(signingError("SIGNING_WORKER_FAILED"));
+    close();
+  };
   function close() {
     if (closed) return;
     closed = true;
+    for (const type of ["error", "messageerror"]) {
+      try {
+        worker?.removeEventListener?.(type, failedWorker);
+      } catch {
+        // 监听器清理失败不得阻止终止，也不能替换已脱敏的错误。
+        // Listener cleanup must not prevent termination or replace sanitized errors.
+      }
+    }
     try {
       worker.terminate();
     } catch {
@@ -149,6 +161,10 @@ export async function prepareIpaSigningClient({
     if (!signingFields(initialized, ["initialized"]) || initialized.initialized !== true)
       throw signingError("SIGNING_INITIALIZATION_FAILED");
     if (signal?.aborted) throw aborted();
+    // 转换期间预热线程仍可能失败；保存失败状态，不能等到读取凭据后才发现失效。
+    // Warm workers can fail during conversion; remember failure before credentials are read.
+    worker.addEventListener("error", failedWorker);
+    worker.addEventListener("messageerror", failedWorker);
   } catch (error) {
     close();
     if (error?.name === "AbortError") throw aborted();
@@ -157,6 +173,9 @@ export async function prepareIpaSigningClient({
   }
   return Object.freeze({
     close,
+    get ready() {
+      return !closed && !used;
+    },
     async sign({ ipa, credentials, signal: operationSignal, onProgress } = {}) {
       // 并发调用不接触第一个调用拥有的凭据或工作线程。
       // Concurrent callers must not affect credentials or worker owned by the first call.

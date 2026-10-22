@@ -201,8 +201,10 @@ test("mock ABI: bounded output slices preserve backpressure and failure cleanup"
   const iterator = stream(input, options);
   const first = await iterator.next();
   assert.equal(first.value.length, ZLIB_STREAM_CHUNK_BYTES);
+  assert.ok(first.value.buffer.byteLength <= ZLIB_STREAM_CHUNK_BYTES);
   const second = await iterator.next();
   assert.equal(second.value.length, 7);
+  assert.ok(second.value.buffer.byteLength <= ZLIB_STREAM_CHUNK_BYTES);
   assert.equal(pulls, 1);
   assert.ok(second.value.every((value) => value === 4));
   await iterator.return();
@@ -218,6 +220,34 @@ test("mock ABI: bounded output slices preserve backpressure and failure cleanup"
   });
   await assert.rejects(collect(broken(source(new Uint8Array([1])), options)), /ABI rejected/);
   assert.equal(released, 2);
+});
+
+// 最终输出也必须拥有有界底层缓冲区，避免合法压缩输出被暂存器拒绝。
+// Final output must also own bounded backing buffers so staging accepts valid compressed bytes.
+test("mock ABI: final output chunks own bounded buffers even for Buffer results", async () => {
+  for (const subclass of [false, true]) {
+    const tail = subclass
+      ? Buffer.alloc(ZLIB_STREAM_CHUNK_BYTES + 7, 9)
+      : new Uint8Array(ZLIB_STREAM_CHUNK_BYTES + 7).fill(9);
+    const stream = createZlibStream({
+      begin() {},
+      push(_bytes, finish) {
+        assert.equal(finish, true);
+        return tail;
+      },
+      abort() {},
+    });
+    const chunks = [];
+    for await (const part of stream(source(), options)) {
+      assert.ok(part.buffer.byteLength <= ZLIB_STREAM_CHUNK_BYTES);
+      chunks.push(part);
+    }
+    assert.deepEqual(
+      chunks.map((part) => part.length),
+      [ZLIB_STREAM_CHUNK_BYTES, 7],
+    );
+    assert.deepEqual(Buffer.concat(chunks), Buffer.from(tail));
+  }
 });
 
 test("mock ABI: paused abort closes upstream once even if consumer abandons the iterator", async () => {

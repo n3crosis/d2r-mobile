@@ -2,14 +2,14 @@
 
 English: [CASC_PACK_STREAMING.md](CASC_PACK_STREAMING.md)
 
-`casc-pack-writer.mjs` 是独立内部原语，尚未连接浏览器 UI、壳加载器、资源转换、导出流程或安装。它实现 `dm/tools/casc_overlay.py` 的 `write_pack`、`blte_encode`、`ekey_for` 序列化规则，以及 `dm/tools/astc_pack.py finalize` 的 `{name,size,sha256}` 元数据形状。没有包含或访问任何游戏文件或密钥。
+`casc-pack-writer.mjs` 是生产 ASTC 工作线程使用的内部原语。它实现 `dm/tools/casc_overlay.py` 的 `write_pack`、`blte_encode`、`ekey_for` 序列化规则、覆盖层序列化器也支持的零售版原样 BLTE 规格，以及 `dm/tools/astc_pack.py finalize` 的 `{name,size,sha256}` 元数据形状。写入器本身不安装或发布输出，也不包含游戏文件或密钥。
 
 ## 契约
 
 `writeCascPack({jobs, location, locationAvailable, root, maxPackBytes, expectedEntries?, maxEntries?, codec, hashFile, signal?})` 串行消费异步任务序列。每项为 `{path,spec,decodedSize,source}`：
 
 - `path` 是已存在且规范化的小写逻辑路径，不支持 `+` 新增。拒绝以 `#` 开头的路径，因为原生 `read_prebuilt` 会把该 TSV 行视为注释。拒绝重复、不合法以及 UTF-8 超过 4096 字节的路径。在分配规范化/验证中间结果之前，先以低开销检查 4096 个代码单元上限。写入器不解析或认证路径。先对有界原始 TVFS 使用 `inspectCascPackStorageSpecs`，沿用其 `spec`；`decodedSize` 是替换内容的长度，不是原条目长度。
-- `spec` 必须恰为 `n`、`z` 或 `b:256K*=z`。保留原规格，不默默转换。
+- `spec` 必须恰为 `n`、`z`、`b:64K*=n` 或 `b:256K*=z`。保留原规格，不默默转换。
 - `source` 是普通、不可调整大小的 `Uint8Array` 块组成的异步可迭代对象，完整底层缓冲区最多 1 MiB。在消费推进前，生产者不得修改已产出的缓冲区。即使视图很小，底层缓冲区超限也会拒绝。输入消费量必须恰好等于无符号 32 位的 `decodedSize`。
 - `location` 为 `[chunk,archive]`，两者都是 0 到 255 的整数，符合原生 8/8/40 EKey 布局。`locationAvailable(name,{signal})` 只有在核查原始归档及计划输出均无重名后才能返回严格的 `true`。这个受信任宿主回调不是原子预留或认证边界，必须使用实际源清单，而非未经验证的用户声明。
 - `maxPackBytes` 是显式安全整数，最大 `2**40`；每个条目的偏移必须小于 `2**40`。编码和解码条目长度均保持无符号 32 位。必须显式提供至少一个计数选项：精确计数 `expectedEntries` 或上限 `maxEntries`。每个已提供值都必须是非负安全整数，最多 32,768；同时提供时要求 `expectedEntries <= maxEntries`，且精确计数仍然生效。仅上限模式允许较少任务（包括零项），并报告实际 `count`；超出上限时拒绝，不会完成输出。这样可以单次过滤，不必仅为统计可转换条目而把全部候选解码两次。上限是资源边界，不是完整性声明：调用方负责完整枚举候选，枚举失败必须抛错，而不是静默提前结束。生成器失败仍会拒绝并清理部分输出。路径字节总数仍最多 8 MiB；现有覆盖层上限不变。
@@ -21,7 +21,7 @@ English: [CASC_PACK_STREAMING.md](CASC_PACK_STREAMING.md)
 
 结果为 `{source,count,index,records,pack,dispose}`；两种计数模式下的 `count` 均为实际写入条目数。`source` 是已完成且可重放的原始暂存源（`file`、`size`、有界 `readAt`）；`index` 是兼容原生的 `pack_index.tsv` 文本，以 `# pack\t<name>\n` 开头；每个冻结条目为 `{path,newEkey,encodedSize,decodedSize}`。`pack` 为 `{name,size,sha256}`。调用 `patchCascPrebuiltReferences` 前，将条目与原有 `oldEkey` 关联合并。本模块不修改 TVFS、不创建 ASTC 变体，也不发布或安装数据档。只有在下游消费者完成后才调用 `dispose()`；它会删除拥有的临时暂存。
 
-不拼接完整条目或完整数据档。原样/zlib 流通过串行背压追加。BLTE 使用一个 256 KiB 解码块、一个有界编码块，以及最多 393,228 字节的预留后回填头部。空 BLTE 采用原生单个 `N` 块表示。EKey 使用 BLTE 头部或原始编码字节的 MD5 加上位置。即使 `n` 条目以 `BLTE` 开头，也保留原生按魔数判定的行为，包括零长度哈希前缀。索引文本和条目/路径集合是有界元数据，而非常量内存结构；最终合并索引时，它会与各行字符串短暂并存。输入生产者、编解码器及哈希回调的内存属于独立受信任职责。
+不拼接完整条目或完整数据档。原样/zlib 流通过串行背压追加。BLTE 使用一个 64 KiB 原样块或 256 KiB 压缩前解码块、一个有界编码块，以及不超过 1,572,876 字节的预留后回填头部（压缩块最多 393,228 字节）。头部预留和回填写入使用不超过 1 MiB 的独立块。原样块使用 `N`，不调用 zlib；压缩块使用 `Z`。原样 BLTE 会在消费来源或分配头部前检查精确编码长度是否超过无符号 32 位或数据档剩余容量。空 BLTE 采用原生单个 `N` 块表示。EKey 使用 BLTE 头部或原始编码字节的 MD5 加上位置。即使 `n` 条目以 `BLTE` 开头，也保留原生按魔数判定的行为，包括零长度哈希前缀。索引文本和条目/路径集合是有界元数据，而非常量内存结构；最终合并索引时，它会与各行字符串短暂并存。输入生产者、编解码器及哈希回调的内存属于独立受信任职责。
 
 暴露结果前会检查任务完成、输入耗尽、编码长度、暂存快照大小和最终哈希字节数。取消会与迭代器推进、位置检查、暂存获取/操作、编解码输出和最终哈希的等待竞争，因此挂起的等待不会无限阻止拒绝结果。它请求关闭迭代器并清理拥有的暂存；清理也失败时，以 `cause` 保留主错误。清理等待上限为 1000 ms；若仍未完成，`AggregateError` 包含 `CASC_PACK_CLEANUP_PENDING` 和一个返回全部结算结果的 `cleanup` Promise。这报告的是清理未完成，而不是取消已完成。即使已经拒绝，迟到获取的暂存仍保留清理处理器。不同的迟到获取失败（包括获取时的清理失败）仍在聚合错误或挂起的 `cleanup` 结算结果中可见；仅与主错误为同一对象的错误会去重。原始暂存清理仍会先等进行中的文件系统操作结束再删除；写入器不会抢在挂起写入之前删除。外部回调与源必须配合才能真正释放资源。此机制不能中断同步阻塞的 JavaScript。成功返回后，调用方仍须等待 `dispose()`；其原始暂存排空语义不变。
 

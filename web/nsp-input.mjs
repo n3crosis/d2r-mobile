@@ -104,6 +104,25 @@ export async function discoverNspFolder(directory, { signal, onProgress } = {}) 
   const checkAbort = () => {
     if (signal?.aborted) throw new DOMException("Folder check cancelled.", "AbortError");
   };
+  const readFile = async (handle) => {
+    checkAbort();
+    if (!signal) return handle.getFile();
+    let cancel;
+    try {
+      // 元数据查询不创建文件；取消后仍观察迟到的结果或拒绝。
+      // Metadata lookup creates no files; still observe late results or rejections after cancellation.
+      return await Promise.race([
+        handle.getFile(),
+        new Promise((_, reject) => {
+          cancel = () => reject(new DOMException("Folder check cancelled.", "AbortError"));
+          signal.addEventListener("abort", cancel, { once: true });
+          if (signal.aborted) cancel();
+        }),
+      ]);
+    } finally {
+      if (cancel) signal.removeEventListener("abort", cancel);
+    }
+  };
   checkAbort();
   if (directory?.kind !== "directory" || typeof directory.entries !== "function")
     fail("DIRECTORY", "Select a local folder.");
@@ -112,12 +131,14 @@ export async function discoverNspFolder(directory, { signal, onProgress } = {}) 
   let count = 0;
   const progress = () => {
     try {
-      onProgress?.({
-        scannedEntries: count,
-        nspCount: [...records.keys()].filter((name) => name.endsWith(".nsp")).length,
-        prodKeysFound: records.has("prod.keys"),
-        titleKeysFound: records.has("title.keys"),
-      });
+      Promise.resolve(
+        onProgress?.({
+          scannedEntries: count,
+          nspCount: [...records.keys()].filter((name) => name.endsWith(".nsp")).length,
+          prodKeysFound: records.has("prod.keys"),
+          titleKeysFound: records.has("title.keys"),
+        }),
+      ).catch(() => {});
     } catch {
       /**
        * 只读进度观察器不得改变输入验证。
@@ -135,7 +156,7 @@ export async function discoverNspFolder(directory, { signal, onProgress } = {}) 
       handle.kind === "file" &&
       (folded === "prod.keys" || folded === "title.keys" || folded.endsWith(".nsp"))
     ) {
-      records.set(folded, await handle.getFile());
+      records.set(folded, await readFile(handle));
       checkAbort();
     }
     progress();

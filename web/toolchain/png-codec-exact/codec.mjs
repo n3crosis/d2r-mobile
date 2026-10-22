@@ -123,6 +123,12 @@ export async function createPngCodec(wasmBytes) {
 
 export const ZLIB_STREAM_CHUNK_BYTES = 1024 * 1024;
 const MAX_PUSH_OUTPUT = 16 * 1024 * 1024 + 131072;
+function outputChunk(bytes, offset) {
+  const part = bytes.subarray(offset, offset + ZLIB_STREAM_CHUNK_BYTES);
+  // 不可压缩输入可能略微扩张；暂存器限制整个底层缓冲区，而不只是视图。
+  // Incompressible input can expand; staging bounds the backing buffer, not just the view.
+  return bytes.buffer.byteLength > ZLIB_STREAM_CHUNK_BYTES ? new Uint8Array(part) : part;
+}
 function budget(value) {
   if (!Number.isSafeInteger(value) || value < 0)
     throw new RangeError("Explicit zlib stream budgets required");
@@ -249,7 +255,7 @@ export function createZlibStream({ begin, push, abort }) {
           const encoded = output(part, false);
           for (let offset = 0; offset < encoded.length; offset += ZLIB_STREAM_CHUNK_BYTES) {
             check(signal);
-            yield encoded.subarray(offset, offset + ZLIB_STREAM_CHUNK_BYTES);
+            yield outputChunk(encoded, offset);
           }
         }
         if (++turns % 32 === 0) await new Promise((resolve) => setTimeout(resolve, 0));
@@ -259,7 +265,7 @@ export function createZlibStream({ begin, push, abort }) {
       const tail = output(new Uint8Array(0), true);
       for (let offset = 0; offset < tail.length; offset += ZLIB_STREAM_CHUNK_BYTES) {
         check(signal);
-        yield tail.subarray(offset, offset + ZLIB_STREAM_CHUNK_BYTES);
+        yield outputChunk(tail, offset);
       }
       check(signal);
     } catch (error) {

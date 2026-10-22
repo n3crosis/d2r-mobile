@@ -4,12 +4,58 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import ts from "typescript";
 import { loadProductionProfile } from "../production-profile.mjs";
 import { resolveShellProfile, SHELL_PROFILE_IDS } from "../shell-profiles.mjs";
 
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const moduleURL = (source) =>
   `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
+function rewriteImports(source, resolve) {
+  const file = ts.createSourceFile(
+    "fixture.mjs",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.JS,
+  );
+  assert.equal(file.parseDiagnostics.length, 0);
+  // 只替换真实导入的模块字面量，保留注释、字符串与 JSON 导入属性。
+  // Replace only real import module literals, preserving comments, strings and JSON import attributes.
+  for (const statement of [...file.statements].reverse()) {
+    if (!ts.isImportDeclaration(statement)) continue;
+    const specifier = statement.moduleSpecifier;
+    assert.ok(ts.isStringLiteral(specifier));
+    source =
+      source.slice(0, specifier.getStart(file)) +
+      JSON.stringify(resolve(specifier.text)) +
+      source.slice(specifier.end);
+  }
+  return source;
+}
+
+test("isolated profile imports accept comments, quotes and newlines without rewriting text", async () => {
+  for (const declaration of [
+    'import { value } from "./synthetic.mjs";',
+    "import{value}from'./synthetic.mjs';",
+    "import {\n value,\n} from /* unchanged import */\n './synthetic.mjs';",
+  ]) {
+    const resolved = [];
+    const text = 'from "./text-only.mjs"';
+    const source = `${declaration}\nexport default value;\nexport const text = ${JSON.stringify(text)};\n// from "./comment-only.mjs"`;
+    const rewritten = rewriteImports(source, (specifier) => {
+      resolved.push(specifier);
+      assert.equal(specifier, "./synthetic.mjs");
+      return moduleURL("export const value = 7;");
+    });
+    const loaded = await import(moduleURL(rewritten));
+    assert.equal(loaded.default, 7);
+    assert.equal(loaded.text, text);
+    assert.deepEqual(resolved, ["./synthetic.mjs"]);
+    assert.ok(rewritten.endsWith('// from "./comment-only.mjs"'));
+  }
+});
+
 const syntheticBytes = new Uint8Array([1, 3, 5, 7]);
 function syntheticProfile() {
   return {
@@ -48,10 +94,8 @@ async function isolatedLoader(profile) {
     "./shell-loader.mjs": `export const createShellLoader = ({source, releaseId, resolveTrustedRelease, inspectTargetOS}) => async ({signal}) => ({source, releaseId, trusted: await resolveTrustedRelease(), inspector: inspectTargetOS, signal});`,
   };
   const sourceURL = new URL("../production-profile.mjs", import.meta.url);
-  const source = (await readFile(sourceURL, "utf8")).replace(
-    /from "([^"]+)"/g,
-    (_, specifier) =>
-      `from "${mocks[specifier] ? moduleURL(mocks[specifier]) : new URL(specifier, sourceURL).href}"`,
+  const source = rewriteImports(await readFile(sourceURL, "utf8"), (specifier) =>
+    mocks[specifier] ? moduleURL(mocks[specifier]) : new URL(specifier, sourceURL).href,
   );
   return (await import(moduleURL(source))).loadProductionProfile;
 }

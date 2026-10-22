@@ -9,6 +9,7 @@ import {
   fileSource,
   MAX_READ_BYTES,
   REQUIRED_NSO_MODULES,
+  ZIP_PATH_LIMITS,
 } from "../preflight.mjs";
 
 function fixture() {
@@ -62,6 +63,44 @@ test("indexes metadata without reading bytes and rejects duplicates", () => {
     /conflict/,
   );
   assert.throws(() => indexFiles([{ path: "a", size: NaN }]), /size/);
+});
+test("implicit directories retain one case spelling regardless of entry order", () => {
+  for (const paths of [
+    ["Resources/a", "resources/b"],
+    ["Resources/nested/a", "Resources/Nested/b"],
+    ["Éléments/a", "éléments/b"],
+  ]) {
+    for (const order of [paths, [...paths].reverse()])
+      assert.throws(() => indexFiles(order.map((path) => ({ path, size: 0 }))), /conflict/i);
+  }
+  const files = ["Resources/a", "Resources/b", "Resources/Nested/a", "Resources/Nested/b"].map(
+    (path) => ({ path, size: 0 }),
+  );
+  assert.deepEqual(
+    [...indexFiles(files).keys()],
+    files.map(({ path }) => path),
+  );
+  for (const paths of [
+    ["Resources/a", "resources"],
+    ["Resources", "resources/a"],
+  ])
+    assert.throws(() => indexFiles(paths.map((path) => ({ path, size: 0 }))), /conflict/i);
+});
+test("optional path-index budgets bound depth and all distinct files and directories", () => {
+  const limits = { maxPathDepth: 3, maxPathNodes: 4 };
+  const entries = (paths) => paths.map((path) => ({ path, size: 0 }));
+  assert.equal(indexFiles(entries(["a/b/c", "a/b/d"]), limits).size, 2);
+  assert.throws(() => indexFiles(entries(["a/b/c", "a/b/d", "e"]), limits), /node limit/);
+  assert.throws(() => indexFiles(entries(["a/b/c/d"]), limits), /depth limit/);
+  assert.throws(
+    () => indexFiles(entries(["x/".repeat(2000) + "file"]), ZIP_PATH_LIMITS),
+    /depth limit/,
+  );
+  assert.equal(indexFiles(entries(["x/".repeat(64) + "file"])).size, 1);
+  for (const key of ["maxPathDepth", "maxPathNodes"])
+    for (const value of [-1, 1.5, NaN, -Infinity, Number.MAX_SAFE_INTEGER + 1, "32", null])
+      assert.throws(() => indexFiles([], { [key]: value }), /Invalid path index limit/);
+  assert.equal(indexFiles([], { maxPathDepth: 0, maxPathNodes: 0 }).size, 0);
 });
 test("NSO reads only 256 bytes even for virtual multi-GB input", async () => {
   const calls = [];

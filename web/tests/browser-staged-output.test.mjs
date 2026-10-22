@@ -327,3 +327,128 @@ test("setup cancellation preserves cleanup failure and does not delete a live st
   assert.equal(env.events.includes(`remove:${name}`), false);
   assert.equal(env.destinationOpens, 0);
 });
+
+// 只读查询不拥有文件；取消后不必等浏览器返回，但必须观察迟到的结果或拒绝。
+// Read-only queries own no files; cancellation stops waiting while late results/rejections remain observed.
+for (const phase of ["permission", "estimate", "directory", "probe"])
+  test(`cancellation during a pending ${phase} query does not wait or create files`, async () => {
+    for (const lateFailure of [false, true]) {
+      const controller = new AbortController(),
+        reason = new Error("synthetic setup cancellation"),
+        env = environment(),
+        root = await env.storage.getDirectory();
+      let started,
+        finish,
+        createCalls = 0,
+        laterQueries = 0;
+      const entered = new Promise((resolve) => {
+        started = resolve;
+      });
+      const pending = new Promise((resolve, reject) => {
+        finish = () =>
+          lateFailure
+            ? reject(new Error("late query failure"))
+            : resolve(
+                {
+                  permission: "granted",
+                  estimate: { quota: 10 ** 9, usage: 0 },
+                  directory: root,
+                  probe: { kind: "file" },
+                }[phase],
+              );
+      });
+      let waiting = false;
+      const query =
+        (name, read) =>
+        (...args) => {
+          if (waiting) laterQueries++;
+          if (name !== phase) return read(...args);
+          waiting = true;
+          started();
+          return pending;
+        };
+      env.destinationHandle.queryPermission = query("permission", () => "granted");
+      env.storage.estimate = query("estimate", env.storage.estimate.bind(env.storage));
+      env.storage.getDirectory = query("directory", () => root);
+      const getFile = root.getFileHandle.bind(root),
+        probe = query("probe", getFile);
+      root.getFileHandle = (name, options) => {
+        if (!options?.create) return probe(name, options);
+        createCalls++;
+        return getFile(name, options);
+      };
+      const opening = adapters(env).createOutput({ manifest, signal: controller.signal });
+      const outcome = opening.then(
+        () => "opened",
+        (error) => error,
+      );
+      await entered;
+      controller.abort(reason);
+      await new Promise((resolve) => setImmediate(resolve));
+      const sentinel = Symbol("waiting"),
+        result = await Promise.race([outcome, Promise.resolve(sentinel)]);
+      finish();
+      await outcome;
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(result, reason);
+      assert.equal(laterQueries, 0);
+      assert.equal(createCalls, 0);
+      assert.equal(env.destinationOpens, 0);
+      assert.deepEqual([...env.files.keys()], ["unrelated"]);
+    }
+  });
+
+// 创建文件或写入器会获取资源所有权；取消必须先排空操作，再释放返回的资源。
+// Creating a file or writer acquires ownership; cancellation must drain first, then release returned resources.
+for (const phase of ["file", "writer"])
+  test(`setup cancellation drains pending ${phase} creation before cleanup`, async () => {
+    const env = environment(),
+      controller = new AbortController(),
+      root = await env.storage.getDirectory();
+    let started, finish;
+    const entered = new Promise((resolve) => {
+        started = resolve;
+      }),
+      gate = new Promise((resolve) => {
+        finish = resolve;
+      });
+    const getFile = root.getFileHandle.bind(root);
+    root.getFileHandle = async (name, options) => {
+      if (options?.create && phase === "file") {
+        started();
+        await gate;
+      }
+      const handle = await getFile(name, options);
+      if (options?.create && phase === "writer") {
+        const create = handle.createWritable.bind(handle);
+        handle.createWritable = async (...args) => {
+          started();
+          await gate;
+          return create(...args);
+        };
+      }
+      return handle;
+    };
+    env.storage.getDirectory = async () => root;
+    const outcome = adapters(env)
+      .createOutput({ manifest, signal: controller.signal })
+      .then(
+        () => "opened",
+        (error) => error,
+      );
+    await entered;
+    controller.abort();
+    await new Promise((resolve) => setImmediate(resolve));
+    const waiting = Symbol("waiting");
+    assert.equal(await Promise.race([outcome, Promise.resolve(waiting)]), waiting);
+    assert.equal(env.events.includes(`remove:${name}`), false);
+    finish();
+    assert.equal(await outcome, controller.signal.reason);
+    assert.equal(
+      env.events.filter((event) => event === "stage-abort").length,
+      phase === "writer" ? 1 : 0,
+    );
+    assert.equal(env.events.filter((event) => event === `remove:${name}`).length, 1);
+    assert.equal(env.destinationOpens, 0);
+    assert.deepEqual([...env.files.keys()], ["unrelated"]);
+  });

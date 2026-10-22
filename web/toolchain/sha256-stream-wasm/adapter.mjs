@@ -3,23 +3,34 @@
 export const SHA256_CHUNK_BYTES = 65536;
 export const SHA256_MEMORY_BYTES = 262144;
 const check = (signal) => signal?.throwIfAborted();
+const wipeFileBuffer = (buffer) => {
+  if (buffer instanceof ArrayBuffer && buffer.byteLength) new Uint8Array(buffer).fill(0);
+};
 async function cancellable(read, signal) {
   check(signal);
+  let pending,
+    delivered = false;
   let remove = () => {};
   try {
-    const pending = Promise.resolve().then(read);
-    if (!signal) return await pending;
-    return await Promise.race([
-      pending,
-      new Promise((_, reject) => {
-        const abort = () => reject(signal.reason);
-        signal.addEventListener("abort", abort, { once: true });
-        remove = () => signal.removeEventListener("abort", abort);
-        if (signal.aborted) abort();
-      }),
-    ]);
+    pending = Promise.resolve().then(read);
+    const buffer = await (signal
+      ? Promise.race([
+          pending,
+          new Promise((_, reject) => {
+            const abort = () => reject(signal.reason);
+            signal.addEventListener("abort", abort, { once: true });
+            remove = () => signal.removeEventListener("abort", abort);
+            if (signal.aborted) abort();
+          }),
+        ])
+      : pending);
+    delivered = true;
+    return buffer;
   } finally {
     remove();
+    // 已取消的等待不转移文件缓冲区所有权；迟到结果必须擦除且拒绝必须被观察。
+    // Cancelled waits transfer no File-buffer ownership; wipe late results and observe rejections.
+    if (!delivered && pending) pending.then(wipeFileBuffer).catch(() => {});
   }
 }
 
@@ -87,12 +98,22 @@ export function createSha256FileHasherFromAbi(wasm) {
             () => file.slice(offset, offset + length).arrayBuffer(),
             signal,
           );
-          check(signal);
-          if (current !== owner) throw new Error("SHA-256 ownership lost");
-          if (!(buffer instanceof ArrayBuffer) || buffer.resizable || buffer.byteLength !== length)
-            throw new Error("Invalid or short SHA-256 file slice");
-          range(wasm.sha_input(), length).set(new Uint8Array(buffer));
-          if (wasm.sha_update(owner, length) !== 0) throw new Error("SHA-256 update failed");
+          try {
+            check(signal);
+            if (current !== owner) throw new Error("SHA-256 ownership lost");
+            if (
+              !(buffer instanceof ArrayBuffer) ||
+              buffer.resizable ||
+              buffer.byteLength !== length
+            )
+              throw new Error("Invalid or short SHA-256 file slice");
+            range(wasm.sha_input(), length).set(new Uint8Array(buffer));
+            if (wasm.sha_update(owner, length) !== 0) throw new Error("SHA-256 update failed");
+          } finally {
+            // WASM 已复制输入；成功或失败后均擦除私有读取副本，不修改原始 Blob。
+            // WASM has copied the input; wipe private read copies after success or failure, never the source Blob.
+            wipeFileBuffer(buffer);
+          }
           bytesHashed += length;
           offset += length;
           // 仅在实际散列更新完成后报告计数；观察者失败不影响散列所有权。

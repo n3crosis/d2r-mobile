@@ -295,3 +295,100 @@ test("authenticated base and update without DLC work in both permitted content m
     await f.adapter.cleanup();
   }
 });
+
+for (const revocation of ["cancel", "dispose"])
+  test(`fulfilled private RomFS reads are wiped after ${revocation} before delivery`, async () => {
+    const f = fixture();
+    const session = await open(f);
+    const extracted = await f.adapter.extractSelected({ session, selection });
+    const file = extracted.romfs.getFile("data/build_manifest.psv");
+    const controller = new AbortController();
+    const emit = f.worker.emit.bind(f.worker);
+    let delivered, disposing;
+    f.worker.emit = (message) => {
+      if (message.result instanceof Uint8Array) {
+        delivered = message.result;
+        emit(message);
+        if (revocation === "cancel") controller.abort();
+        else disposing = session.dispose();
+      } else emit(message);
+    };
+    try {
+      await assert.rejects(
+        file.readAt(0n, 1, { signal: controller.signal }),
+        /EXTRACTION_DISPOSED|Abort/,
+      );
+      assert.ok(delivered instanceof Uint8Array);
+      assert.deepEqual([...delivered], [0]);
+      await disposing;
+    } finally {
+      await f.adapter.cleanup();
+    }
+  });
+
+test("cleanup after initialization fulfillment cannot publish a disposed session", async () => {
+  const f = fixture();
+  const emit = f.worker.emit.bind(f.worker);
+  let cleaning;
+  f.worker.emit = (message) => {
+    emit(message);
+    if (message.ok && message.result?.records) cleaning = f.adapter.cleanup();
+  };
+  try {
+    await assert.rejects(open(f), /EXTRACTION_FAILED/);
+    await cleaning;
+    assert.equal(f.worker.terminated, true);
+  } finally {
+    await f.adapter.cleanup();
+  }
+});
+
+for (const kind of ["throw", "reject"])
+  test(`local extraction phase diagnostics isolate observers that ${kind}`, async () => {
+    const f = fixture();
+    const session = await open(f);
+    let phases = 0;
+    try {
+      const extracted = await f.adapter.extractSelected({
+        session,
+        selection,
+        onDiagnostic() {
+          phases++;
+          if (kind === "throw") throw new Error("PRIVATE-OBSERVER");
+          return Promise.reject(new Error("PRIVATE-OBSERVER"));
+        },
+      });
+      assert.ok(phases >= 4);
+      assert.equal(extracted.programModules.main[0], 1);
+      await new Promise((resolve) => setImmediate(resolve));
+    } finally {
+      await f.adapter.cleanup();
+    }
+  });
+
+test("isolating phase diagnostics does not swallow cancellation through the actual signal", async () => {
+  const f = fixture();
+  const session = await open(f);
+  const controller = new AbortController();
+  try {
+    await assert.rejects(
+      f.adapter.extractSelected({
+        session,
+        selection,
+        signal: controller.signal,
+        onDiagnostic() {
+          controller.abort();
+          throw new Error("PRIVATE-OBSERVER");
+        },
+      }),
+      /EXTRACTION_CANCELLED/,
+    );
+    assert.equal(f.worker.terminated, true);
+    assert.equal(
+      f.worker.requests.some((request) => request.operation === "readExefs"),
+      false,
+    );
+  } finally {
+    await f.adapter.cleanup();
+  }
+});

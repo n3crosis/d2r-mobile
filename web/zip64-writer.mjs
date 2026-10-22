@@ -3,7 +3,7 @@
 // Streams explicitly enabled single-disk STORE ZIP64.
 // Based on ZIP64 record layout in PKWARE APPNOTE 6.3.10.
 
-import { indexFiles } from "./preflight.mjs";
+import { indexFiles, ZIP_PATH_LIMITS } from "./preflight.mjs";
 
 /**
  * 选择启用、仅 STORE、单磁盘的 ZIP64。可由封装协调器显式选择。
@@ -26,6 +26,7 @@ import { indexFiles } from "./preflight.mjs";
  * PKWARE APPNOTE 6.3.10 §§4.3.7, 4.3.9, 4.3.12, 4.3.14–16, 4.5.3.
  */
 export const ZIP64_LIMITS = Object.freeze({
+  ...ZIP_PATH_LIMITS,
   maxEntries: 20_000,
   maxChunkBytes: 4 * 1024 * 1024,
   maxPathBytes: 4096,
@@ -85,7 +86,10 @@ function prepare(entries, maxTotalBytes) {
   });
   // 复用路径/冲突策略，不将 BigInt 载荷大小缩窄为 Number。
   // Reuse path/conflict policy without narrowing BigInt payload sizes to Number.
-  indexFiles(files.map(({ path }) => ({ path, size: 0 })));
+  indexFiles(
+    files.map(({ path }) => ({ path, size: 0 })),
+    ZIP64_LIMITS,
+  );
   files.sort(compareNames);
   let offset = 0n;
   for (const file of files) {

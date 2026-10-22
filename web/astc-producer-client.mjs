@@ -22,11 +22,13 @@ const abort = () => new DOMException("Cancelled", "AbortError");
 // 有界文件分片等待可取消，底层 Blob I/O 不被误报为强制停止。
 // Bounded File slice waits are abortable without claiming forced cancellation of underlying Blob I/O.
 async function readFileSlice(file, at, count, signal) {
-  let timer, cancel;
+  let timer, cancel, pending;
+  let delivered = false;
   try {
     signal?.throwIfAborted();
+    pending = file.slice(at, at + count).arrayBuffer();
     const waits = [
-      file.slice(at, at + count).arrayBuffer(),
+      pending,
       new Promise((_, reject) => {
         timer = setTimeout(() => reject(new Error("ASTC_PRODUCER_READ_TIMEOUT")), 30000);
       }),
@@ -39,13 +41,21 @@ async function readFileSlice(file, at, count, signal) {
           if (signal.aborted) cancel();
         }),
       );
-    return await Promise.race(waits);
+    const buffer = await Promise.race(waits);
+    delivered = true;
+    return buffer;
   } catch (error) {
     if (error?.name === "AbortError") throw abort();
     fail("READ_FAILED");
   } finally {
     clearTimeout(timer);
     if (cancel) signal.removeEventListener("abort", cancel);
+    // 失败的等待不转移所有权；擦除迟到的文件缓冲区并观察迟到的拒绝。
+    // A failed wait transfers no ownership; wipe late File buffers and observe late rejections.
+    if (!delivered && pending)
+      Promise.resolve(pending)
+        .then((buffer) => new Uint8Array(buffer).fill(0))
+        .catch(() => {});
   }
 }
 
@@ -333,6 +343,9 @@ export async function createAstcProducerClient({ worker, assets, signal } = {}) 
   }
   return Object.freeze({
     initialized: true,
+    get ready() {
+      return !stopped && !used;
+    },
     close: dispose,
     async produce(extracted, selection, options = {}) {
       if (stopped || used) fail("SINGLE_USE");
@@ -487,10 +500,15 @@ export async function createAstcProducerClient({ worker, assets, signal } = {}) 
             )
               fail("READ_BOUNDS");
             const bytes = new Uint8Array(await readFileSlice(receipt.file, at, count, readSignal));
-            readSignal?.throwIfAborted();
-            if (outputDisposed) fail("DISPOSED");
-            if (bytes.length !== count) fail("SHORT_READ");
-            return bytes;
+            try {
+              readSignal?.throwIfAborted();
+              if (outputDisposed) fail("DISPOSED");
+              if (bytes.length !== count) fail("SHORT_READ");
+              return bytes;
+            } catch (error) {
+              bytes.fill(0);
+              throw error;
+            }
           },
         });
         report("complete", { ...progressCounts, records: receipt.count }, true);

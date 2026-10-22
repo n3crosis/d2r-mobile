@@ -103,15 +103,19 @@ export async function createSignedSigningArchive(entries, { signal } = {}) {
             signal?.throwIfAborted();
             const source = entry.blob.slice(offset, offset + 65536);
             const bytes = new Uint8Array(await source.arrayBuffer());
-            requireValue(
-              source.size === Math.min(65536, entry.size - offset) && bytes.length === source.size,
-            );
-            requireValue(!pendingPayload);
-            pendingPayload = { bytes, source };
             try {
+              requireValue(
+                source.size === Math.min(65536, entry.size - offset) &&
+                  bytes.length === source.size,
+              );
+              requireValue(!pendingPayload);
+              pendingPayload = { bytes, source };
               yield bytes;
             } finally {
               pendingPayload = undefined;
+              // 输出持有不可变 Blob 切片；CRC 临时缓冲区在消费或失败后不再需要。
+              // Output owns immutable Blob slices; CRC scratch bytes are no longer needed after consumption or failure.
+              bytes.fill(0);
             }
           }
         },

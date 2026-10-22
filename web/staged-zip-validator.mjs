@@ -3,7 +3,7 @@
 // Independently validates staged STORE ZIP32/ZIP64 integrity and layout.
 // Based on this application’s canonical STORE ZIP layout and validated manifests.
 
-import { indexFiles, readRange } from "./preflight.mjs";
+import { indexFiles, readRange, ZIP_PATH_LIMITS } from "./preflight.mjs";
 
 /**
  * 严格验证本应用的规范 STORE ZIP32/ZIP64 方言。
@@ -16,6 +16,7 @@ import { indexFiles, readRange } from "./preflight.mjs";
  * This is integrity/layout validation, not authenticity or executable validation.
  */
 export const STAGED_ZIP_LIMITS = Object.freeze({
+  ...ZIP_PATH_LIMITS,
   maxEntries: 20_000,
   maxPathBytes: 4096,
   maxMetadataBytes: 8 * 1024 * 1024,
@@ -69,7 +70,7 @@ export function planStagedZip(manifest, { archiveFormat, maxOutputBytes } = {}) 
       return { path, name, size, mode: mode & 0o777 };
     })
     .sort(byteOrder);
-  indexFiles(entries);
+  indexFiles(entries, STAGED_ZIP_LIMITS);
   for (const entry of entries) {
     entry.offset = safe(offset);
     offset +=

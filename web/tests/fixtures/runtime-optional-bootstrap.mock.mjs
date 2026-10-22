@@ -38,6 +38,7 @@ mock.module("../../astc-producer-client.mjs", {
       if (state.initializationError) throw state.initializationError;
       const client = Object.freeze({
         initialized: !state.badProof,
+        ready: true,
         produce() {
           state.privateCalls++;
         },

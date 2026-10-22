@@ -2,6 +2,7 @@
 // Test boundaries with transferable synthetic credentials, not real identities or claimed Apple verification.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { getEventListeners } from "node:events";
 import { createDownloadPreparation } from "../download-preparation.mjs";
 import { prepareIpaSigningClient } from "../ipa-signing-client.mjs";
 import { validateSigningCredentials, validateSigningProgress } from "../ipa-signing-contract.mjs";
@@ -276,4 +277,53 @@ test("profile mismatch keeps the committed unsigned download available", async (
   assert.equal(retainedBlob, original);
   assert.equal(worker.terminated, 1);
   fallback.dispose();
+});
+
+for (const event of ["error", "messageerror"])
+  test(`lifetime ${event} handling preserves active failure and releases listeners`, async () => {
+    const { client, worker } = await ready();
+    assert.equal(client.ready, true);
+    const pending = client.sign({ ipa: ipa(), credentials: identity() });
+    assert.equal(client.ready, false);
+    worker.dispatchEvent(new Event(event));
+    await assert.rejects(pending, /^Error: SIGNING_WORKER_FAILED$/);
+    assert.equal(worker.terminated, 1);
+    for (const type of ["message", "error", "messageerror"])
+      assert.equal(getEventListeners(worker, type).length, 0);
+    worker.dispatchEvent(new Event(event));
+    assert.equal(worker.terminated, 1);
+  });
+
+test("invalid workers and failed lifetime-listener cleanup preserve safe initialization errors", async () => {
+  for (const worker of [
+    undefined,
+    {},
+    {
+      removeEventListener() {
+        throw new Error("PRIVATE-CANARY");
+      },
+    },
+  ]) {
+    let terminated = false;
+    if (worker) worker.terminate = () => (terminated = true);
+    await assert.rejects(prepareIpaSigningClient({ worker, assets: [] }), {
+      message: "SIGNING_INITIALIZATION_FAILED",
+    });
+    if (worker) assert.equal(terminated, true);
+  }
+});
+
+test("failed lifetime-listener removal still terminates an explicitly closed warm worker", async (t) => {
+  const { client, worker } = await ready();
+  const removed = [];
+  t.mock.method(worker, "removeEventListener", (type) => {
+    removed.push(type);
+    throw new Error("PRIVATE-CANARY");
+  });
+  assert.doesNotThrow(() => client.close());
+  assert.equal(client.ready, false);
+  assert.equal(worker.terminated, 1);
+  assert.deepEqual(removed, ["error", "messageerror"]);
+  client.close();
+  assert.equal(worker.terminated, 1);
 });

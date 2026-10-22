@@ -26,6 +26,17 @@ export const EXTRACTION_ADAPTER_CAPABILITIES = Object.freeze({
 const fail = (code) => {
   throw new ExtractionClientError(code);
 };
+// 异步读取完成后来源可能已撤销；拒绝交付时清零本次独占的明文字节。
+// An async read may finish after revocation; wipe its owned plaintext if delivery is rejected.
+function checkedReadResult(bytes, check) {
+  try {
+    check();
+    return bytes;
+  } catch (error) {
+    bytes.fill(0);
+    throw error;
+  }
+}
 const canonical = (value) =>
   JSON.stringify(value, (_, child) => {
     if (typeof child === "bigint") return `${child}n`;
@@ -110,8 +121,7 @@ export function openAuthenticatedAstcRecord(token, { signal } = {}) {
       async readAt(offset, count, options) {
         proof.check();
         const bytes = await opened.source.readAt(offset, count, options);
-        proof.check();
-        return bytes;
+        return checkedReadResult(bytes, () => proof.check());
       },
     }),
   });
@@ -198,11 +208,15 @@ export function createExtractionJobAdapter({
       sessions.set(session, state);
       signal?.addEventListener("abort", abort, { once: true });
       try {
-        state.inspected = await client.initialize(
+        const inspected = await client.initialize(
           { ...inputs, skipContentHashes },
           { signal, onProgress: onDiagnostic },
         );
         if (signal?.aborted) fail("EXTRACTION_CANCELLED");
+        // 初始化回复兑现期间可能已清理会话；不能重新填充已撤销的缓存。
+        // Cleanup may win after initialization settles; never repopulate a revoked session cache.
+        lookup(session);
+        state.inspected = inspected;
         return session;
       } catch (error) {
         try {
@@ -229,7 +243,17 @@ export function createExtractionJobAdapter({
     },
     async extractSelected({ session, selection, signal, onDiagnostic } = {}) {
       const state = lookup(session);
-      const phase = (stage) => onDiagnostic?.({ stage, completed: 0, total: 0, bytes: 0 });
+      const phase = (stage) => {
+        try {
+          // 本地阶段通知与工作线程进度一样隔离观察者，不等待其异步完成。
+          // Isolate local phase observers like worker progress, without awaiting their completion.
+          Promise.resolve(onDiagnostic?.({ stage, completed: 0, total: 0, bytes: 0 })).catch(
+            () => {},
+          );
+        } catch {
+          // 观察者错误不能撤销已认证提取。 | Observer errors cannot revoke authenticated extraction.
+        }
+      };
       try {
         signal?.throwIfAborted();
         if (
@@ -345,8 +369,7 @@ export function createExtractionJobAdapter({
               { token: opened.token, offset, count },
               { signal: combined },
             );
-            check(options.signal);
-            return result;
+            return checkedReadResult(result, () => check(options.signal));
           },
         });
         phase("romfs-index");
@@ -380,8 +403,7 @@ export function createExtractionJobAdapter({
                 options?.signal?.addEventListener("abort", cancel, { once: true });
                 try {
                   const bytes = await file.readAt(offset, count, options);
-                  check(options?.signal);
-                  return bytes;
+                  return checkedReadResult(bytes, () => check(options?.signal));
                 } finally {
                   options?.signal?.removeEventListener("abort", cancel);
                 }
@@ -437,8 +459,7 @@ export function createExtractionJobAdapter({
           async read(path, options) {
             check(options?.signal);
             const bytes = await logical.read(path, options);
-            check(options?.signal);
-            return bytes;
+            return checkedReadResult(bytes, () => check(options?.signal));
           },
         });
         const extracted = Object.freeze({

@@ -294,3 +294,25 @@ test("unsettled extraction observer does not renew the existing deadline", async
   await checked;
   assert.equal(worker.terminated, true);
 });
+
+test("aborting from an async progress observer still cancels active and queued extraction", async () => {
+  const { worker, client } = make();
+  const controller = new AbortController();
+  const pending = client.openRomfs("exefs", {
+    signal: controller.signal,
+    async onProgress() {
+      controller.abort("Synthetic private abort reason");
+      throw new Error("Synthetic observer failure");
+    },
+  });
+  const checked = Promise.all([
+    assert.rejects(pending, /^ExtractionClientError: EXTRACTION_CANCELLED$/),
+    assert.rejects(read(client), /^ExtractionClientError: EXTRACTION_CANCELLED$/),
+  ]);
+  worker.emit({ id: 1, progress: { stage: "romfs-base", completed: 50, total: 100, bytes: 64 } });
+  await checked;
+  assert.equal(worker.terminated, true);
+  assert.equal(worker.listeners.size, 0);
+  assert.equal(worker.requests.length, 1);
+  await new Promise((resolve) => setImmediate(resolve));
+});

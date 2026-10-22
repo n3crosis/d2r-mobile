@@ -9,6 +9,26 @@ const assert = (value, code) => {
 };
 const sameManifest = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const snapshot = (manifest) => manifest.map(({ path, size, mode }) => ({ path, size, mode }));
+// 仅用于不创建资源的查询；取消等待后仍观察迟到的结果与拒绝。
+// Only for queries that acquire no resources; observe late results/rejections after cancelling the wait.
+async function awaitLookup(read, signal) {
+  signal.throwIfAborted();
+  let cancel;
+  try {
+    const value = await Promise.race([
+      read(),
+      new Promise((_, reject) => {
+        cancel = () => reject(signal.reason);
+        signal.addEventListener("abort", cancel, { once: true });
+        if (signal.aborted) cancel();
+      }),
+    ]);
+    signal.throwIfAborted();
+    return value;
+  } finally {
+    if (cancel) signal.removeEventListener("abort", cancel);
+  }
+}
 
 /**
  * 仅在本地使用 OPFS 的暂存适配器。调用者通过用户操作获得 destinationHandle，
@@ -67,11 +87,15 @@ export function createBrowserStagedOutputAdapters({
         "OUTPUT_DESTINATION_UNAVAILABLE",
       );
       assert(
-        (await destinationHandle.queryPermission({ mode: "readwrite" })) === "granted",
+        (await awaitLookup(
+          () => destinationHandle.queryPermission({ mode: "readwrite" }),
+          signal,
+        )) === "granted",
         "OUTPUT_DESTINATION_PERMISSION_REQUIRED",
       );
       signal?.throwIfAborted();
-      const estimate = await storage.estimate();
+      const estimate = await awaitLookup(() => storage.estimate(), signal);
+      signal.throwIfAborted();
       assert(
         Number.isFinite(estimate.quota) &&
           Number.isFinite(estimate.usage) &&
@@ -80,7 +104,7 @@ export function createBrowserStagedOutputAdapters({
           estimate.quota - estimate.usage >= plan.totalBytes + quotaReserveBytes,
         "OUTPUT_INSUFFICIENT_QUOTA",
       );
-      const root = await storage.getDirectory();
+      const root = await awaitLookup(() => storage.getDirectory(), signal);
       signal?.throwIfAborted();
       const uuid = randomUUID();
       assert(
@@ -95,7 +119,7 @@ export function createBrowserStagedOutputAdapters({
       // existence check avoids reusing existing entries; same-origin scripts
       // remain trusted, as they can modify any OPFS file independently.
       try {
-        await root.getFileHandle(name);
+        await awaitLookup(() => root.getFileHandle(name), signal);
         throw error("OUTPUT_TEMP_COLLISION");
       } catch (cause) {
         if (cause?.name !== "NotFoundError") throw cause;

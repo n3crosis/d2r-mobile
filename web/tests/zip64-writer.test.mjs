@@ -119,6 +119,11 @@ test("declared budgets and paths fail before writes or pulls", async () => {
     [[{ ...file, path: "\ud800" }], options],
     [[{ ...file, path: "x".repeat(4097) }], options],
     [[{ ...file, path: "é".repeat(2049) }], options],
+    [[{ ...file, path: "x/".repeat(32) + "file" }], options],
+    [
+      Array.from({ length: 16667 }, (_, i) => ({ ...file, path: `d${i}/nested/file` })),
+      { maxTotalBytes: 8 * 1024 * 1024 },
+    ],
     [Array(ZIP64_LIMITS.maxEntries + 1).fill(file), options],
     [
       Array.from({ length: 1200 }, (_, i) => ({ ...file, path: `${i}${"x".repeat(4000)}` })),
@@ -133,6 +138,8 @@ test("declared budgets and paths fail before writes or pulls", async () => {
     ["a", "a/b"],
     ["a/b", "a"],
     ["a", "a"],
+    ["Resources/a", "resources/b"],
+    ["Resources/nested/a", "Resources/Nested/b"],
     ["e\u0301"],
   ])
     cases.push([paths.map((path) => ({ ...file, path })), options]);

@@ -893,6 +893,7 @@ export async function prepareSealedRuntime({
         if (closed || signal?.aborted) throw new DOMException("Runtime cancelled", "AbortError");
         if (
           producerClient?.initialized !== true ||
+          producerClient.ready !== true ||
           buffers.some((buffer) => buffer.byteLength !== 0)
         )
           fail("Actual ASTC producer initialization/transfer failed");
@@ -938,6 +939,10 @@ export async function prepareSealedRuntime({
         fail("Actual runtime initialization/transfer failed");
       initialized[name] = result;
     }
+    if (closed || signal?.aborted) throw new DOMException("Runtime cancelled", "AbortError");
+    // 后续可选初始化期间，先完成的 ASTC 线程可能已失败；历史证明不等于当前可用。
+    // An earlier ASTC worker may fail during later optional startup; historical proof is not current readiness.
+    if (producerClient && !producerClient.ready) fail("ASTC producer unavailable");
     // 公开清单字节仍可通过副本访问，绝不通过加载器或 fetch 回调提供。
     // 它们不包含私有任务输入，并在此会话关闭时丢弃。
     // Public inventory bytes remain available by copy, never via a loader/fetch callback.
@@ -1353,7 +1358,7 @@ export async function prepareSealedRuntime({
       return channels.extraction.takeWorker();
     }
     function createAstcProducerClient() {
-      if (closed || !producerClient || producerTaken)
+      if (closed || !producerClient?.ready || producerTaken)
         fail("ASTC producer unavailable or already acquired");
       producerTaken = true;
       return producerClient;
@@ -1401,7 +1406,7 @@ export async function prepareSealedRuntime({
     });
     sealedRuntimes.add(session);
     report({ phase: "initializing", label: "Preparing application profile…" }, true);
-    if (signal?.aborted) throw new DOMException("Runtime cancelled", "AbortError");
+    if (closed || signal?.aborted) throw new DOMException("Runtime cancelled", "AbortError");
     return session;
   } catch (error) {
     try {

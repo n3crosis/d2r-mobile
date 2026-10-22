@@ -171,7 +171,11 @@ export function createExtractionEngine(
 ) {
   const progress = (stage, completed = 0, total = 0, bytes = 0) => {
     try {
-      onProgress(Object.freeze({ stage, completed, total, bytes }));
+      // 观察异步拒绝，但不等待诊断或阻塞同步原生验证。
+      // Observe async rejection without awaiting diagnostics or blocking synchronous native verification.
+      Promise.resolve(onProgress(Object.freeze({ stage, completed, total, bytes }))).catch(
+        () => {},
+      );
     } catch {
       // 诊断不能改变提取结果。
       // Diagnostics cannot change the extraction result.

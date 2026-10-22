@@ -376,3 +376,68 @@ test("signing ZIP rejects interrupted or inconsistent source reads without stale
   const output = await createSignedSigningArchive(entries());
   assert.equal((await inspectUnsignedSigningArchive(output)).entries.length, 3);
 });
+
+function trackedPayload(bytes, onRead = () => {}) {
+  const file = entry("Info.plist", bytes),
+    reads = [];
+  file.blob.slice = (start, end) => {
+    const slice = Blob.prototype.slice.call(file.blob, start, end);
+    slice.arrayBuffer = async () => {
+      const buffer = await Blob.prototype.arrayBuffer.call(slice),
+        owned = new Uint8Array(buffer);
+      reads.push(owned);
+      onRead(owned);
+      return buffer;
+    };
+    return slice;
+  };
+  return { file, reads };
+}
+
+for (const mode of ["abort", "short", "consumer"])
+  test(`signing ZIP wipes private payload reads after ${mode} failure`, async () => {
+    const controller = new AbortController();
+    const { file, reads } = trackedPayload(Uint8Array.of(41, 42), () => {
+      if (mode === "abort") controller.abort();
+    });
+    if (mode === "short") file.size++;
+    if (mode === "short") {
+      const slice = file.blob.slice;
+      file.blob.slice = (start, end) => {
+        const value = slice(start, end);
+        Object.defineProperty(value, "size", { value: value.size + 1 });
+        return value;
+      };
+      Object.defineProperty(file.blob, "size", { value: file.size });
+    }
+    const prototype = Object.getPrototypeOf(Uint8Array.prototype),
+      iterate = prototype[Symbol.iterator];
+    if (mode === "consumer") {
+      prototype[Symbol.iterator] = function () {
+        if (reads.some((bytes) => bytes.buffer === this.buffer))
+          throw new Error("synthetic ZIP consumer failure");
+        return iterate.call(this);
+      };
+    }
+    try {
+      await assert.rejects(
+        createSignedSigningArchive([file], { signal: controller.signal }),
+        mode === "abort" ? { name: "AbortError" } : /SIGNING_OUTPUT_INVALID/,
+      );
+    } finally {
+      prototype[Symbol.iterator] = iterate;
+    }
+    assert.equal(reads.length, 1);
+    assert.ok(reads[0].every((byte) => byte === 0));
+  });
+
+test("signing ZIP wipes consumed payload buffers without changing immutable output", async () => {
+  const input = Uint8Array.from({ length: 65543 }, (_, i) => (i % 251) + 1),
+    { file, reads } = trackedPayload(input);
+  const output = await createSignedSigningArchive([file]);
+  assert.equal(reads.length, 2);
+  assert.ok(reads.every((bytes) => bytes.every((byte) => byte === 0)));
+  const archive = await inspectUnsignedSigningArchive(output);
+  assert.deepEqual(new Uint8Array(await archive.entries[0].blob.arrayBuffer()), input);
+  assert.deepEqual(new Uint8Array(await file.blob.arrayBuffer()), input);
+});

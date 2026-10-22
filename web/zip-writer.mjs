@@ -3,7 +3,7 @@
 // Streams bounded entries into STORE-only ZIP32.
 // Based on ZIP32 STORE record layout and preflight path contracts.
 
-import { indexFiles } from "./preflight.mjs";
+import { indexFiles, ZIP_PATH_LIMITS } from "./preflight.mjs";
 
 /**
  * 仅 STORE 的 ZIP32 原型。不支持压缩、ZIP64、目录或符号链接。
@@ -28,6 +28,7 @@ import { indexFiles } from "./preflight.mjs";
  * cannot undo a committed destination and is not handled by this writer.
  */
 export const ZIP_LIMITS = Object.freeze({
+  ...ZIP_PATH_LIMITS,
   maxTotalBytes: 512 * 1024 * 1024,
   maxFileBytes: 256 * 1024 * 1024,
   maxEntries: 20_000,
@@ -90,7 +91,7 @@ function prepare(entries) {
       throw new Error("ZIP total or metadata limit exceeded");
     return { path: entry.path, size: entry.size, mode, name, chunks: entry.chunks };
   });
-  indexFiles(prepared); // 路径安全、大小写冲突、重复项与祖先冲突。 | Path safety, case collisions, duplicate and ancestor conflicts.
+  indexFiles(prepared, ZIP_LIMITS); // 路径安全、大小写冲突、重复项与祖先冲突。 | Path safety, case collisions, duplicate and ancestor conflicts.
   return prepared.sort(compareNames);
 }
 

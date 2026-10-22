@@ -7,9 +7,9 @@
  * 确定性的浏览器 Guest Mach-O 写入器。仅用于合成数据一致性：
  * 不验证游戏可玩性、iOS 加载、安装或签名。
  * 输入：有序的 {name, image: Uint8Array, textEnd, patchOff} 模块。
- * 策略：最多 48 个模块，输入总量和填充后的映像数据均不超过 128 MiB。
+ * 策略：最多 48 个模块，输入总量、填充后的映像数据和最终文件均不超过 128 MiB。
  * 输出分配或哈希前验证所有大小、名称和布局。
- * 一个输出缓冲区（最大约 130 MiB）；借用输入，不复制。
+ * 一个输出缓冲区（最大 128 MiB）；借用输入，不复制。
  * WebCrypto 在哈希 UUID 时可能复制主体（最多 128 MiB），随后每次最多
  * 复制一个 4 KiB 页。预算约 386 MiB，其中包括调用方紧凑分配的
  * 128 MiB 输入；调用方保留的超大底层缓冲区及浏览器/GC 开销不在此范围。
@@ -20,9 +20,9 @@
  * Deterministic browser Guest Mach-O writer. Synthetic parity only: not a
  * playable-game, iOS loading, installation or signing verification.
  * Input: ordered {name, image: Uint8Array, textEnd, patchOff} modules.
- * Policy: <=48 modules, <=128 MiB aggregate input AND padded image data.
+ * Policy: <=48 modules, <=128 MiB aggregate input, padded image data AND final output.
  * All sizes, names and layout are validated before output allocation/hashing.
- * One output buffer (~130 MiB maximum); inputs are borrowed, not copied.
+ * One output buffer (128 MiB maximum); inputs are borrowed, not copied.
  * WebCrypto may copy the body while hashing UUID (<=128 MiB), then at most
  * one 4 KiB page at a time. Budget roughly 386 MiB including 128 MiB
  * of tightly sized caller inputs; oversized backing buffers retained by the
@@ -36,6 +36,7 @@ import { resolveShellProfile } from "./shell-profiles.mjs";
 
 export const PAGE_SIZE = 0x4000;
 export const MAX_IMAGE_BYTES = 128 * 1024 * 1024;
+export const MAX_GUEST_BYTES = 128 * 1024 * 1024;
 export const MAX_MODULES = 48;
 const enc = new TextEncoder();
 const align = (n, page = PAGE_SIZE) => Math.ceil(n / page) * page;
@@ -99,13 +100,16 @@ export function planGuestFramework(modules) {
   const bodyEnd = PAGE_SIZE + padded,
     signatureOffset = align(bodyEnd + 8, 16);
   const signatureSize = align((Math.floor(signatureOffset / 4096) + 1) * 52, 4096) + 0x40000;
+  const outputSize = signatureOffset + signatureSize;
+  if (outputSize > MAX_GUEST_BYTES)
+    throw new RangeError("Guest framework exceeds 128 MiB output policy");
   return {
     parts,
     commandSize,
     bodyEnd,
     signatureOffset,
     signatureSize,
-    outputSize: signatureOffset + signatureSize,
+    outputSize,
   };
 }
 // 避免引用不存在的浏览器全局对象，同时仍拒绝共享缓冲区。

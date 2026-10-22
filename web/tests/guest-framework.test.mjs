@@ -13,6 +13,7 @@ import {
   planGuestFramework,
   guestInfoPlist,
   MAX_IMAGE_BYTES,
+  MAX_GUEST_BYTES,
   PAGE_SIZE,
 } from "../guest-framework.mjs";
 import { inspectGuestTarget } from "../guest-target-stream.mjs";
@@ -132,6 +133,32 @@ test("16 KiB layout, UUID and structural ad-hoc signature cover the entire unsig
   assert.ok(p.signatureSize - v.getUint32(sig + 4) >= 0x40000);
 });
 
+test("final Guest size includes header and signature within the downstream file budget", () => {
+  const image = new Uint8Array(4 * 1024 * 1024);
+  const modules = Array.from({ length: 31 }, (_, i) => ({
+    name: `m${i}`,
+    image,
+    textEnd: 0,
+    patchOff: 0,
+  }));
+  const tail = { name: "tail", textEnd: 0, patchOff: 0 };
+  // 重用 4 MiB 后备存储来检查大布局，不分配或哈希大文件。
+  // Reuse a 4 MiB backing store to check large layouts without allocating or hashing a large file.
+  const lastSize = 2 * 1024 * 1024 + 8 * PAGE_SIZE;
+  const allowed = planGuestFramework([...modules, { ...tail, image: image.subarray(0, lastSize) }]);
+  assert.ok(allowed.outputSize <= MAX_GUEST_BYTES);
+  assert.ok(MAX_GUEST_BYTES - allowed.outputSize < PAGE_SIZE);
+  assert.throws(
+    () =>
+      planGuestFramework([...modules, { ...tail, image: image.subarray(0, lastSize + PAGE_SIZE) }]),
+    /128 MiB output policy/,
+  );
+  assert.throws(
+    () => planGuestFramework([...modules, { ...tail, image }]),
+    /128 MiB output policy/,
+  );
+});
+
 test("malformed inputs reject before output allocation or hashing", async () => {
   const valid = fixture("a", PAGE_SIZE, 1, PAGE_SIZE);
   const sharedImage = new Uint8Array(new SharedArrayBuffer(1));
@@ -153,6 +180,12 @@ test("malformed inputs reject before output allocation or hashing", async () => 
     [{ ...valid, patchOff: 1 }],
     [{ ...valid, patchOff: 0 }],
     [{ ...valid, patchOff: PAGE_SIZE * 2 }],
+    Array.from({ length: 32 }, (_, i) => ({
+      name: `m${i}`,
+      image: repeatedImage,
+      textEnd: 0,
+      patchOff: 0,
+    })),
     Array.from({ length: 33 }, (_, i) => ({
       name: `m${i}`,
       image: repeatedImage,

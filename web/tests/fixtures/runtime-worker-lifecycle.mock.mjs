@@ -390,6 +390,36 @@ test("external cancellation still reaches a pending producer initializer", async
   stopped(state, controller);
 });
 
+for (const event of ["error", "messageerror"])
+  test(`producer ${event} during later signer initialization cannot return a ready runtime`, async (t) => {
+    const { start, state, controller } = await setup(t, { producer: true, signing: true });
+    const pending = start();
+    const producer = await state.producerInitialize.promise;
+    state.initialize = false;
+    producer.reply({ type: "initialized", version: 1, astc: true, png: true, sha: true });
+    await new Promise(setImmediate);
+    const signer = state.workers.at(-1);
+    assert.notEqual(signer, producer);
+    assert.equal(signer.requests[0].assets[0][0], "zsign.wasm");
+    producer.dispatchEvent(new Event(event));
+    signer.reply({ id: 0, ok: true, result: { initialized: true } });
+    await assert.rejects(pending, /ASTC producer unavailable/);
+    stopped(state, controller);
+  });
+
+test("an idle producer failure cannot be acquired as a live private-input capability", async (t) => {
+  const { start, state, controller } = await setup(t, { producer: true });
+  const pending = start();
+  const producer = await state.producerInitialize.promise;
+  producer.reply({ type: "initialized", version: 1, astc: true, png: true, sha: true });
+  const runtime = await pending;
+  producer.dispatchEvent(new Event("error"));
+  assert.throws(() => runtime.createAstcProducerClient(), /unavailable/);
+  assert.equal(producer.requests.length, 1, "no private operation is sent");
+  await runtime.close();
+  stopped(state, controller);
+});
+
 test("producer proof resolution followed by close before parent continuation still disposes the client", async (t) => {
   const { start, state, controller } = await setup(t, { producer: true });
   const pending = start();

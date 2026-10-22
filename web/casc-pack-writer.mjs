@@ -1,5 +1,5 @@
-// 依据 casc_overlay.py write_pack/ekey_for 与 astc_pack.py finalize，串行暂存补充包；未接入生产。
-// Serial supplemental-pack staging from casc_overlay.py write_pack/ekey_for and astc_pack.py finalize; not production-wired.
+// 依据原生 CASC 规则串行暂存补充包；由生产 ASTC 工作线程调用，保留原样或压缩 BLTE 规格。
+// Serial supplemental-pack staging from native CASC rules, used by the production ASTC worker; preserves raw or compressed BLTE specs.
 import { createRawFileStage, RAW_FILE_STAGE_CHUNK_BYTES } from "./raw-file-stage.mjs";
 import SparkMD5 from "./vendor/spark-md5-3.0.2/spark-md5.mjs";
 import { CASC_PACK_METADATA_LIMITS } from "./toolchain/casc-overlay-js/overlay.mjs";
@@ -151,18 +151,18 @@ async function* exactSource(source, size, signal, state, io) {
   if (count !== size) fail("DECODED_SIZE");
   state.complete = true;
 }
-async function* blocks(input, io) {
-  let buffer = new Uint8Array(BLOCK),
+async function* blocks(input, io, blockSize = BLOCK) {
+  let buffer = new Uint8Array(blockSize),
     used = 0;
   for await (const bytes of io.iterate(input)) {
     for (let at = 0; at < bytes.length;) {
-      const length = Math.min(BLOCK - used, bytes.length - at);
+      const length = Math.min(blockSize - used, bytes.length - at);
       buffer.set(bytes.subarray(at, at + length), used);
       used += length;
       at += length;
-      if (used === BLOCK) {
+      if (used === blockSize) {
         yield buffer;
-        buffer = new Uint8Array(BLOCK);
+        buffer = new Uint8Array(blockSize);
         used = 0;
       }
     }
@@ -313,7 +313,7 @@ export async function writeCascPack({
         records.length >= entryLimit ||
         !job ||
         !integer(job.decodedSize, U32) ||
-        !["n", "z", "b:256K*=z"].includes(job.spec)
+        !["n", "z", "b:64K*=n", "b:256K*=z"].includes(job.spec)
       )
         fail("INVALID_JOB");
       const path = pathValue(job.path);
@@ -340,8 +340,15 @@ export async function writeCascPack({
           level: 9,
           signal,
         });
-      if (job.spec === "b:256K*=z") {
-        const count = Math.max(1, Math.ceil(job.decodedSize / BLOCK));
+      if (job.spec === "b:256K*=z" || job.spec === "b:64K*=n") {
+        const rawBlocks = job.spec === "b:64K*=n",
+          blockSize = rawBlocks ? 64 * 1024 : BLOCK,
+          count = Math.max(1, Math.ceil(job.decodedSize / blockSize));
+        if (rawBlocks) {
+          const size = 12 + 25 * count + job.decodedSize;
+          if (size > U32) fail("ENCODED_SIZE");
+          if (size > maxPackBytes - total) fail("PACK_SIZE");
+        }
         const header = new Uint8Array(12 + 24 * count);
         header.set([66, 76, 84, 69]);
         put32(header, 4, header.length);
@@ -349,24 +356,35 @@ export async function writeCascPack({
         header[9] = count >>> 16;
         header[10] = count >>> 8;
         header[11] = count;
-        await emit(new Uint8Array(header.length));
+        // 原样块的最大头部超过暂存单块上限；预留和回填都分段复制。
+        // Raw-block headers can exceed one stage chunk; reserve and backpatch bounded copies.
+        for (let at = 0; at < header.length; at += RAW_FILE_STAGE_CHUNK_BYTES)
+          await emit(new Uint8Array(Math.min(RAW_FILE_STAGE_CHUNK_BYTES, header.length - at)));
         let blockIndex = 0;
-        for await (const block of blocks(input, io)) {
+        for await (const block of blocks(input, io, blockSize)) {
           const hash = new SparkMD5.ArrayBuffer(),
             start = encodedSize,
             blockState = { complete: false };
           try {
-            const mode = new Uint8Array([90]);
+            const mode = new Uint8Array([rawBlocks ? 78 : 90]);
             hash.append(mode);
             await emit(mode);
-            for await (const bytes of io.iterate(
-              compress(exactSource(one(block), block.length, signal, blockState, io), block.length),
-            )) {
-              chunk(bytes);
-              hash.append(bytes);
-              await emit(bytes);
+            if (rawBlocks) {
+              hash.append(block);
+              await emit(block);
+            } else {
+              for await (const bytes of io.iterate(
+                compress(
+                  exactSource(one(block), block.length, signal, blockState, io),
+                  block.length,
+                ),
+              )) {
+                chunk(bytes);
+                hash.append(bytes);
+                await emit(bytes);
+              }
+              if (!blockState.complete || encodedSize - start < 2) fail("CODEC_INCOMPLETE");
             }
-            if (!blockState.complete || encodedSize - start < 2) fail("CODEC_INCOMPLETE");
             put32(header, 12 + 24 * blockIndex, encodedSize - start);
             put32(header, 16 + 24 * blockIndex, block.length);
             header.set(fromHex(hash.end()), 20 + 24 * blockIndex);
@@ -383,7 +401,10 @@ export async function writeCascPack({
           blockIndex++;
         }
         if (blockIndex !== count) fail("BLOCK_COUNT");
-        await io.wait(() => stage.backpatch(offset, header));
+        for (let at = 0; at < header.length; at += RAW_FILE_STAGE_CHUNK_BYTES)
+          await io.wait(() =>
+            stage.backpatch(offset + at, header.slice(at, at + RAW_FILE_STAGE_CHUNK_BYTES)),
+          );
         signal?.throwIfAborted();
         digest = SparkMD5.ArrayBuffer.hash(header);
       } else {

@@ -592,3 +592,100 @@ test("worker rejects unknown preset before opening record RPC or invoking codec"
   assert.equal(invoked, false);
   assert.equal(messages.at(-1).type, "failure");
 });
+
+for (const mode of ["cancel", "dispose", "short"])
+  test(`producer wipes an owned File read rejected after fulfillment: ${mode}`, async () => {
+    const auth = await authenticated(),
+      dir = directory(),
+      controller = new AbortController(),
+      reason = new Error("synthetic read cancellation");
+    const worker = new WorkerDouble((data, w) =>
+      w.emit(data.type === "initialize" ? proof : receipt()),
+    );
+    const client = await createAstcProducerClient({ worker, assets: assets() });
+    let captured, closing;
+    try {
+      const result = await client.produce(auth.extracted, selection, options(dir.root));
+      result.source.file.slice = () => ({
+        async arrayBuffer() {
+          captured = mode === "short" ? Uint8Array.of(41) : Uint8Array.of(41, 42);
+          if (mode === "cancel") controller.abort(reason);
+          if (mode === "dispose") closing = result.dispose();
+          return captured.buffer;
+        },
+      });
+      await assert.rejects(result.source.readAt(0, 2, { signal: controller.signal }), (error) => {
+        if (mode === "cancel") assert.equal(error, reason);
+        else
+          assert.equal(
+            error.message,
+            `ASTC_PRODUCER_${mode === "dispose" ? "DISPOSED" : "SHORT_READ"}`,
+          );
+        return true;
+      });
+      await closing;
+      assert.ok(captured.every((byte) => byte === 0));
+    } finally {
+      await client.close();
+      await auth.fixture.adapter.cleanup();
+    }
+  });
+
+for (const mode of ["cancel", "timeout"])
+  for (const settle of ["resolve", "reject"])
+    test(`producer observes a late File ${settle} after ${mode}`, async (t) => {
+      const auth = await authenticated(),
+        dir = directory(),
+        controller = new AbortController();
+      const worker = new WorkerDouble((data, w) =>
+        w.emit(data.type === "initialize" ? proof : receipt()),
+      );
+      const client = await createAstcProducerClient({ worker, assets: assets() });
+      let resolve, reject;
+      const pending = new Promise((yes, no) => {
+        resolve = yes;
+        reject = no;
+      });
+      try {
+        const result = await client.produce(auth.extracted, selection, options(dir.root));
+        result.source.file.slice = () => ({ arrayBuffer: () => pending });
+        if (mode === "timeout") t.mock.timers.enable({ apis: ["setTimeout"] });
+        const reading = result.source.readAt(0, 2, { signal: controller.signal });
+        if (mode === "cancel") controller.abort();
+        else t.mock.timers.tick(30000);
+        await assert.rejects(
+          reading,
+          mode === "cancel" ? { name: "AbortError" } : /ASTC_PRODUCER_READ_FAILED/,
+        );
+        const bytes = Uint8Array.of(41, 42);
+        if (settle === "resolve") resolve(bytes.buffer);
+        else reject(new Error("synthetic late File failure"));
+        await tick();
+        if (settle === "resolve") assert.ok(bytes.every((byte) => byte === 0));
+      } finally {
+        t.mock.timers.reset();
+        await client.close();
+        await auth.fixture.adapter.cleanup();
+      }
+    });
+
+test("producer transfers successful File reads without wiping caller-owned bytes", async () => {
+  const auth = await authenticated(),
+    dir = directory();
+  const worker = new WorkerDouble((data, w) =>
+    w.emit(data.type === "initialize" ? proof : receipt()),
+  );
+  const client = await createAstcProducerClient({ worker, assets: assets() });
+  try {
+    const result = await client.produce(auth.extracted, selection, options(dir.root));
+    const captured = Uint8Array.of(41, 42);
+    result.source.file.slice = () => ({ arrayBuffer: async () => captured.buffer });
+    const bytes = await result.source.readAt(0, 2);
+    assert.equal(bytes.buffer, captured.buffer);
+    await result.dispose();
+    assert.deepEqual(bytes, Uint8Array.of(41, 42));
+  } finally {
+    await client.close();
+    await auth.fixture.adapter.cleanup();
+  }
+});

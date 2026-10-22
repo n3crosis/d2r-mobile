@@ -62,6 +62,7 @@ function fixture() {
 test("mock ABI: bounded File slices, exact byte count, empty input and reuse", async () => {
   const f = fixture(),
     reads = [],
+    readBuffers = [],
     bytes = new Uint8Array(2 * SHA256_CHUNK_BYTES + 19).fill(31);
   class LocalFile extends Blob {
     arrayBuffer() {
@@ -70,12 +71,21 @@ test("mock ABI: bounded File slices, exact byte count, empty input and reuse", a
     slice(start, end) {
       reads.push([start, end]);
       assert.ok(end - start <= SHA256_CHUNK_BYTES);
-      return super.slice(start, end);
+      const slice = super.slice(start, end),
+        read = slice.arrayBuffer.bind(slice);
+      slice.arrayBuffer = async () => {
+        const buffer = await read();
+        readBuffers.push(new Uint8Array(buffer));
+        return buffer;
+      };
+      return slice;
     }
   }
   const result = await f.hasher.hashFile(new LocalFile([bytes]));
   assert.deepEqual(result, { sha256: expected(bytes), bytesHashed: bytes.length });
   assert.ok(Object.isFrozen(result));
+  assert.ok(readBuffers.every((buffer) => buffer.every((byte) => byte === 0)));
+  assert.ok(bytes.every((byte) => byte === 31));
   assert.ok(
     new Uint8Array(f.abi.memory.buffer, SHA256_CHUNK_BYTES, 32).every((byte) => byte === 0),
   );
@@ -115,8 +125,11 @@ test("mock ABI: pending-read cancellation frees owner, late completion cannot to
   assert.equal(f.active, 0);
   const next = f.hasher.hashFile(new Blob([new Uint8Array([7])]));
   await assert.rejects(old, { name: "AbortError" });
-  resolveOld(new ArrayBuffer(4));
+  const oldBytes = new Uint8Array(4).fill(41);
+  resolveOld(oldBytes.buffer);
   assert.deepEqual(await next, { sha256: expected(new Uint8Array([7])), bytesHashed: 1 });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(oldBytes.every((byte) => byte === 0));
   assert.deepEqual(
     f.calls.filter(([kind]) => kind === "abort"),
     [["abort", 1]],
@@ -130,12 +143,14 @@ test("mock ABI: pending-read cancellation frees owner, late completion cannot to
 test("mock ABI: read errors, short slices and update errors release state and preserve failure", async () => {
   for (const kind of ["read", "short", "update"]) {
     const f = fixture();
+    let captured;
     class BadFile extends Blob {
       slice() {
         return {
           async arrayBuffer() {
             if (kind === "read") throw new Error("primary read");
-            return new ArrayBuffer(kind === "short" ? 0 : 1);
+            captured = new Uint8Array(kind === "short" ? 2 : 1).fill(41);
+            return captured.buffer;
           },
         };
       }
@@ -147,6 +162,7 @@ test("mock ABI: read errors, short slices and update errors release state and pr
     );
     assert.equal(f.active, 0);
     assert.equal(f.calls.at(-1)[0], "abort");
+    assert.ok(!captured || captured.every((byte) => byte === 0));
   }
 });
 
@@ -197,4 +213,65 @@ test("mock ABI: completed hash progress is monotonic and observer failures are i
   assert.equal(result.sha256, expected(bytes));
   assert.equal(f.active, 0);
   await assert.rejects(f.hasher.hashFile(new Blob(), { onProgress: true }), /observer/);
+});
+
+test("mock ABI: cancellation during File fulfillment wipes owned bytes and preserves reason", async () => {
+  const f = fixture(),
+    controller = new AbortController(),
+    reason = new Error("synthetic cancellation"),
+    captured = Uint8Array.of(41, 42);
+  class CancelledFile extends Blob {
+    slice() {
+      return {
+        async arrayBuffer() {
+          controller.abort(reason);
+          return captured.buffer;
+        },
+      };
+    }
+  }
+  await assert.rejects(
+    f.hasher.hashFile(new CancelledFile([Uint8Array.of(41, 42)]), { signal: controller.signal }),
+    (error) => error === reason,
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(captured.every((byte) => byte === 0));
+  assert.equal(f.active, 0);
+  assert.equal(
+    f.calls.some(([kind]) => kind === "update"),
+    false,
+  );
+});
+
+test("mock ABI: cancelled late File rejection is observed without touching the next hash", async () => {
+  const f = fixture(),
+    controller = new AbortController();
+  let rejectRead;
+  class PendingFile extends Blob {
+    slice() {
+      return {
+        arrayBuffer: () =>
+          new Promise((_, reject) => {
+            rejectRead = reject;
+          }),
+      };
+    }
+  }
+  const reading = f.hasher.hashFile(new PendingFile([Uint8Array.of(41)]), {
+    signal: controller.signal,
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  controller.abort();
+  await assert.rejects(reading, { name: "AbortError" });
+  rejectRead(new Error("synthetic late read failure"));
+  const bytes = Uint8Array.of(42);
+  assert.deepEqual(await f.hasher.hashFile(new Blob([bytes])), {
+    sha256: expected(bytes),
+    bytesHashed: 1,
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(
+    f.calls.filter(([kind]) => kind === "abort"),
+    [["abort", 1]],
+  );
 });

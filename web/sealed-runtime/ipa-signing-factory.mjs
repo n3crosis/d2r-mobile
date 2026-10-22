@@ -65,7 +65,8 @@ export async function prepareVerifiedIpaSigningFactory({ workerBlob, wasmBytes, 
       });
       if (closed) throw signingError("SIGNING_CLOSED");
       operationSignal?.throwIfAborted();
-      if (buffer.byteLength !== 0) throw signingError("SIGNING_INITIALIZATION_FAILED");
+      if (!client.ready || buffer.byteLength !== 0)
+        throw signingError("SIGNING_INITIALIZATION_FAILED");
       return client;
     } catch (error) {
       client?.close();
@@ -87,6 +88,12 @@ export async function prepareVerifiedIpaSigningFactory({ workerBlob, wasmBytes, 
     try {
       client = warmClient;
       warmClient = undefined;
+      // 已失效的预热线程不能授权私有输入；仅用保留的公开字节重新初始化。
+      // A failed warm worker cannot authorize private input; restart using retained public bytes only.
+      if (client && !client.ready) {
+        client.close();
+        client = undefined;
+      }
       if (!client) client = await initialize(operationSignal);
       if (closed || operationSignal?.aborted) {
         client.close();

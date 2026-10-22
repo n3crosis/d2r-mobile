@@ -207,3 +207,55 @@ test("factory initialization requires no AbortSignal.any and releases forwarding
   (await factory.prepare({ signal: retryController.signal })).close();
   assert.equal(getEventListeners(retryController.signal, "abort").length, 0);
 });
+
+for (const event of ["error", "messageerror"])
+  test(`failed idle signer (${event}) is replaced before a private attempt is returned`, async (t) => {
+    const state = setup(t),
+      factory = await create();
+    t.after(() => factory.close());
+    const stale = state.workers[0];
+    stale.dispatchEvent(new Event(event));
+    assert.equal(stale.terminations, 1);
+    for (const type of ["message", "error", "messageerror"])
+      assert.equal(getEventListeners(stale, type).length, 0);
+    state.initialize = false;
+    let prepared = false;
+    const pending = factory.prepare().then((attempt) => {
+      prepared = true;
+      return attempt;
+    });
+    assert.equal(state.workers.length, 2);
+    await new Promise(setImmediate);
+    assert.equal(prepared, false, "credentials must wait for fresh initialization proof");
+    const replacement = state.workers[1];
+    assert.deepEqual(
+      replacement.requests.map((request) => request.type),
+      ["initialize"],
+    );
+    replacement.reply({ id: 0, ok: true, result: { initialized: true } });
+    const attempt = await pending;
+    const signing = attempt.sign(options());
+    success(replacement);
+    assert.equal((await signing).blob.size, 23);
+    assert.equal(stale.requests.length, 1);
+    assert.equal(replacement.terminations, 1);
+    assert.deepEqual(state.revoked, state.created);
+  });
+
+test("a signer failing after prepare rejects promptly and clears the attempt's credentials", async (t) => {
+  const state = setup(t),
+    factory = await create();
+  t.after(() => factory.close());
+  const attempt = await factory.prepare();
+  state.workers[0].dispatchEvent(new Event("error"));
+  const input = options();
+  new Uint8Array(input.credentials.identity).fill(7);
+  new Uint8Array(input.credentials.profile).fill(8);
+  await assert.rejects(attempt.sign(input), /^Error: SIGNING_CLOSED$/);
+  assert.deepEqual([...new Uint8Array(input.credentials.identity)], [0, 0]);
+  assert.deepEqual([...new Uint8Array(input.credentials.profile)], [0, 0]);
+  assert.equal(state.workers[0].requests.length, 1);
+  assert.equal(state.workers[0].terminations, 1);
+  (await factory.prepare()).close();
+  assert.equal(state.workers.length, 2);
+});

@@ -12,6 +12,9 @@ export const NSO_HEADER_BYTES = 0x100;
 // Match d2rm_pack.py MODS: subsdk0 is not required by the IPA packaging path.
 export const REQUIRED_NSO_MODULES = Object.freeze(["main", "sdk"]);
 export const MAX_READ_BYTES = 4 * 1024 * 1024;
+// ZIP 输入、输出和暂存验证共享目录展开预算；其他来源可使用自己的边界。
+// ZIP input, output and staging validation share directory-expansion budgets; other sources retain their own bounds.
+export const ZIP_PATH_LIMITS = Object.freeze({ maxPathDepth: 32, maxPathNodes: 50000 });
 
 export function safeRelativePath(value) {
   if (
@@ -40,24 +43,37 @@ export function safeRelativePath(value) {
   return value;
 }
 
-export function indexFiles(files) {
+export function indexFiles(files, { maxPathDepth = Infinity, maxPathNodes = Infinity } = {}) {
+  for (const limit of [maxPathDepth, maxPathNodes])
+    if (limit !== Infinity && (!Number.isSafeInteger(limit) || limit < 0))
+      throw new Error("Invalid path index limit");
   const index = new Map();
   const folded = new Set();
-  const directories = new Set();
+  const directories = new Map();
+  const checkNodeBudget = () => {
+    if (directories.size + index.size >= maxPathNodes) throw new Error("Path node limit exceeded");
+  };
   for (const file of files) {
     const path = safeRelativePath(file.path);
     if (!Number.isSafeInteger(file.size) || file.size < 0) throw new Error("Invalid file size");
     const key = path.toLowerCase();
     if (folded.has(key)) throw new Error(`Conflicting path: ${path}`);
-    // 以 O(总路径深度) 跟踪祖先目录，而非 O(文件数平方)。
-    // Track ancestor directories in O(total path depth), not O(file count squared).
+    // 跟踪祖先目录及其原始拼写，拒绝隐式目录的大小写冲突。
+    // Track ancestor directories and their original spelling, rejecting implicit directory case conflicts.
     if (directories.has(key)) throw new Error(`File/directory conflict: ${path}`);
-    const parts = key.split("/");
+    const parts = path.split("/");
+    if (parts.length > maxPathDepth) throw new Error("Path depth limit exceeded");
     for (let i = 1; i < parts.length; i++) {
-      const ancestor = parts.slice(0, i).join("/");
-      if (folded.has(ancestor)) throw new Error(`File/directory conflict: ${path}`);
-      directories.add(ancestor);
+      const ancestor = parts.slice(0, i).join("/"),
+        ancestorKey = ancestor.toLowerCase();
+      if (folded.has(ancestorKey)) throw new Error(`File/directory conflict: ${path}`);
+      const previous = directories.get(ancestorKey);
+      if (previous !== undefined && previous !== ancestor)
+        throw new Error(`Conflicting path: ${path}`);
+      if (previous === undefined) checkNodeBudget();
+      directories.set(ancestorKey, ancestor);
     }
+    checkNodeBudget();
     folded.add(key);
     index.set(path, Object.freeze({ path, size: file.size }));
   }

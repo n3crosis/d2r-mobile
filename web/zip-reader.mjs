@@ -8,15 +8,15 @@
  * Bounded ZIP32 shell input. CRC detects corruption, not cryptographic authenticity.
  */
 import { createDeflateBoundary } from "./deflate-boundary.mjs";
-import { MAX_READ_BYTES, readRange, safeRelativePath } from "./preflight.mjs";
+import { MAX_READ_BYTES, readRange, safeRelativePath, ZIP_PATH_LIMITS } from "./preflight.mjs";
 
 export const ZIP_LIMITS = Object.freeze({
   archiveBytes: 256 * 1024 * 1024,
   totalBytes: 256 * 1024 * 1024,
   entryBytes: 64 * 1024 * 1024,
   entries: 20000,
-  pathNodes: 50000,
-  pathDepth: 32,
+  pathNodes: ZIP_PATH_LIMITS.maxPathNodes,
+  pathDepth: ZIP_PATH_LIMITS.maxPathDepth,
   centralBytes: 8 * 1024 * 1024,
   nameBytes: 2048,
   pathCharacters: 512,

@@ -7,14 +7,21 @@ export function B(from, to) {
   );
   return (0x14000000 | ((off / 4) & 0x3ffffff)) >>> 0;
 }
+function pairOffset(off) {
+  check(
+    Number.isSafeInteger(off) && off >= -512 && off <= 504 && off % 8 === 0,
+    "ARM64 pair offset out of range",
+  );
+  return ((off / 8) & 0x7f) << 15;
+}
 export const STP = (t, t2, n, off) =>
-  (0xa9000000 | ((Math.floor(off / 8) & 0x7f) << 15) | (t2 << 10) | (n << 5) | t) >>> 0;
+  (0xa9000000 | pairOffset(off) | (t2 << 10) | (n << 5) | t) >>> 0;
 export const LDP = (t, t2, n, off) =>
-  (0xa9400000 | ((Math.floor(off / 8) & 0x7f) << 15) | (t2 << 10) | (n << 5) | t) >>> 0;
+  (0xa9400000 | pairOffset(off) | (t2 << 10) | (n << 5) | t) >>> 0;
 export const STP_PRE = (t, t2, n, off) =>
-  (0xa9800000 | ((Math.floor(off / 8) & 0x7f) << 15) | (t2 << 10) | (n << 5) | t) >>> 0;
+  (0xa9800000 | pairOffset(off) | (t2 << 10) | (n << 5) | t) >>> 0;
 export const LDP_POST = (t, t2, n, off) =>
-  (0xa8c00000 | ((Math.floor(off / 8) & 0x7f) << 15) | (t2 << 10) | (n << 5) | t) >>> 0;
+  (0xa8c00000 | pairOffset(off) | (t2 << 10) | (n << 5) | t) >>> 0;
 export const STUR = (t, n, off) => (0xf8000000 | ((off & 0x1ff) << 12) | (n << 5) | t) >>> 0;
 export const LDUR = (t, n, off) => (0xf8400000 | ((off & 0x1ff) << 12) | (n << 5) | t) >>> 0;
 export const LDRX = (t, n, imm12 = 0) => (0xf9400000 | (imm12 << 10) | (n << 5) | t) >>> 0;

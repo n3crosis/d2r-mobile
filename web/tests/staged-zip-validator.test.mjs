@@ -107,6 +107,20 @@ with zipfile.ZipFile(sys.argv[1]) as z:
       0,
     );
   });
+  test(`${format}: staged plans bound implicit directory depth and node count`, () => {
+    const entry = (path) => ({ path, size: 0, mode: 0o644 });
+    const budget = { archiveFormat: format, maxOutputBytes: 8 * 1024 * 1024 };
+    assert.throws(() => planStagedZip([entry("x/".repeat(32) + "file")], budget), /depth limit/);
+    assert.throws(
+      () =>
+        planStagedZip(
+          Array.from({ length: 16667 }, (_, i) => entry(`d${i}/nested/file`)),
+          budget,
+        ),
+      /node limit/,
+    );
+    assert.equal(planStagedZip([entry("x/".repeat(31) + "file")], budget).entries.length, 1);
+  });
 }
 test("ZIP64 >4GiB exact metadata without allocating large payloads", () => {
   const big = [{ path: "Payload/Test.app/large", mode: 0o644, size: 2 ** 32 + 1 }];

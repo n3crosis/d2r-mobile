@@ -91,6 +91,9 @@ export function createRelocations(context, bindings, keyIndex) {
       delta = spDelta(ins),
       save = delta === 0 ? -16 : -112;
     check(delta === 0 || delta >= -96, "Unsupported SP delta");
+    // 发出任何字节前验证恢复地址，不能让缩放立即数截断或回绕。
+    // Validate the restore address before emitting bytes; scaled immediates must not truncate or wrap.
+    const restore = LDP(s, t, 31, save - delta);
     const start = here();
     emit(STP(s, t, 31, save));
     emit(MRS_TPIDRRO(t));
@@ -98,7 +101,7 @@ export function createRelocations(context, bindings, keyIndex) {
     emit(LDRX(s, t));
     emit(substitute(ins, s, decodeMaybe));
     emit(STRX(s, t));
-    emit(LDP(s, t, 31, save - delta));
+    emit(restore);
     emit(B(here(), ins.address + 4));
     return start;
   }

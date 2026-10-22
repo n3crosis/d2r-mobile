@@ -11,6 +11,88 @@ import {
 } from "../nsp-input.mjs";
 
 const fakeHex = (bytes) => "a5".repeat(bytes);
+for (const lateFailure of [false, true])
+  test(`folder cancellation does not wait for pending metadata (${lateFailure ? "reject" : "resolve"})`, async () => {
+    const controller = new AbortController();
+    let entered, finish;
+    const started = new Promise((resolve) => {
+      entered = resolve;
+    });
+    const pending = new Promise((resolve, reject) => {
+      finish = () => (lateFailure ? reject(new Error("late metadata error")) : resolve(keys()[0]));
+    });
+    let laterReads = 0;
+    const result = discoverNspFolder(
+      folder([
+        [
+          "prod.keys",
+          {
+            kind: "file",
+            getFile() {
+              entered();
+              return pending;
+            },
+          },
+        ],
+        [
+          "game.nsp",
+          {
+            kind: "file",
+            getFile() {
+              laterReads++;
+              return fixture().file;
+            },
+          },
+        ],
+      ]),
+      { signal: controller.signal },
+    ).then(
+      () => "opened",
+      (error) => error,
+    );
+    await started;
+    controller.abort();
+    await new Promise((resolve) => setImmediate(resolve));
+    const waiting = Symbol("waiting");
+    const outcome = await Promise.race([result, Promise.resolve(waiting)]);
+    finish();
+    await result;
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.notEqual(outcome, waiting);
+    assert.equal(outcome.name, "AbortError");
+    assert.equal(laterReads, 0);
+  });
+test("folder progress observers cannot fail discovery, but signal cancellation still applies", async () => {
+  for (const asyncFailure of [false, true]) {
+    let calls = 0;
+    const result = await discoverNspFolder(
+      folder([
+        ["prod.keys", handle(keys()[0])],
+        ["game.nsp", handle(fixture().file)],
+      ]),
+      {
+        onProgress() {
+          calls++;
+          if (asyncFailure) return Promise.reject(new Error("observer failed"));
+          throw new Error("observer failed");
+        },
+      },
+    );
+    assert.equal(result.nsps.length, 1);
+    assert.ok(calls > 0);
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  const controller = new AbortController();
+  await assert.rejects(
+    discoverNspFolder(folder([["game.nsp", handle(fixture().file)]]), {
+      signal: controller.signal,
+      onProgress() {
+        controller.abort();
+      },
+    }),
+    { name: "AbortError" },
+  );
+});
 function localFile(name, content, path = `chosen/${name}`) {
   const blob = new Blob([content]);
   return {
