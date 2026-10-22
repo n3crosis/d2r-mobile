@@ -73,6 +73,7 @@ jobs:
         id: air_source
         run: node web/runtime-build/build-air-compiler.mjs --fingerprint
       - name: Cache only source-bound public AIR compiler outputs
+        id: air_cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -116,6 +117,49 @@ jobs:
           (cd web/toolchain/shader-spike && dotnet workload install wasm-tools)
           node web/runtime-build/build.mjs
           df -h .
+      - name: Authenticate compiler evidence after runtime failure
+        id: air_failure_verify
+        if: ${{ failure() && steps.runtime.outcome == 'failure' }}
+        run: node web/runtime-build/air-compiler-assets.mjs verify --source-fingerprint "${{ steps.air_source.outputs.source_fingerprint }}"
+      - name: Preserve authenticated compiler cache despite later failure
+        if: ${{ !cancelled() && steps.air_failure_verify.outcome == 'success' && steps.air_cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            web/toolchain/metal-air-compiler/dist
+            web/runtime-build/.build/air-compiler-receipt.sha256
+          key: public-air-compiler-v1-${{ runner.os }}-${{ runner.arch }}-ubuntu-24.04-emsdk4.0.20-${{ steps.air_source.outputs.source_fingerprint }}
+      - name: Prepare matching diagnostic compiler source after runtime failure
+        id: air_failure_source
+        if: ${{ !cancelled() && steps.air_failure_verify.outcome == 'success' }}
+        run: node web/runtime-build/prepare-air-compiler-source.mjs --output "$RUNNER_TEMP/air-compiler-diagnostic-source"
+      - name: Upload complete corresponding diagnostic compiler source
+        id: air_failure_source_upload
+        if: ${{ !cancelled() && steps.air_failure_source.outcome == 'success' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: air-compiler-diagnostic-source
+          path: ${{ runner.temp }}/air-compiler-diagnostic-source/
+          include-hidden-files: true
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 7
+      - name: Assemble explicitly unvalidated public compiler diagnostic
+        id: air_failure_bundle
+        if: ${{ !cancelled() && steps.air_failure_source_upload.outcome == 'success' }}
+        env:
+          D2R_AIR_COMPILER_SOURCE_FINGERPRINT: ${{ steps.air_source.outputs.source_fingerprint }}
+          D2R_AIR_COMPILER_SOURCE_REPORT_SHA256: ${{ steps.air_failure_source.outputs.source_report_sha256 }}
+          D2R_AIR_COMPILER_SOURCE_ARTIFACT_ID: ${{ steps.air_failure_source_upload.outputs.artifact-id }}
+        run: node web/runtime-build/prepare-air-compiler-diagnostic.mjs "$RUNNER_TEMP/air-compiler-diagnostic" "$RUNNER_TEMP/air-compiler-diagnostic-source/source-report.json"
+      - name: Upload unvalidated compiler diagnostic, never a successful preview
+        if: ${{ !cancelled() && steps.air_failure_bundle.outcome == 'success' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: air-compiler-diagnostic-unvalidated
+          path: ${{ runner.temp }}/air-compiler-diagnostic/
+          if-no-files-found: error
+          retention-days: 7
       - name: Stage only manifest-verified public runtime files
         run: node web/runtime-build/stage-preview.mjs
         env:

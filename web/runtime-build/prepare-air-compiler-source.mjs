@@ -152,6 +152,7 @@ try {
     "web/runtime-build/air-compiler-assets.mjs",
     "web/runtime-build/build-air-compiler.mjs",
     "web/runtime-build/prepare-air-compiler-source.mjs",
+    "web/runtime-build/prepare-air-compiler-diagnostic.mjs",
     "web/runtime-build/README.md",
   ]);
   for (const path of [...paths].sort()) await copy(path);
@@ -195,7 +196,9 @@ compiler package. No Apple SDK, Xcode or remote compiler is used.
 
 source-report.json binds every delivered file and the verified compiler source
 identity. Its independent digest is printed in the producing CI step's log.
-compiler-build-report.json matches the binary in the same run's web-preview.
+compiler-build-report.json matches the binary in the same run's web-preview or
+explicitly unvalidated air-compiler-diagnostic-unvalidated artifact. A diagnostic
+artifact is retained after CI failure, not a passing preview or compiler canary.
 Source availability does not establish browser, full-game or device validation.
 源码交付不代表浏览器、完整游戏或设备验证已完成。
 `;

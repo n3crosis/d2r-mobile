@@ -108,6 +108,14 @@ export async function verifyAirCompilerAssets(directory = cache, expectedDigest)
   const info = await lstat(directory);
   if (!info.isDirectory() || info.isSymbolicLink())
     throw new Error("AIR compiler cache must be a regular directory");
+  if (
+    resolve(directory) === resolve(cache) &&
+    !isDeepStrictEqual(
+      (await readdir(directory)).sort(),
+      [...AIR_COMPILER_OUTPUT_NAMES, "build-report.json"].sort(),
+    )
+  )
+    throw new Error("AIR compiler cache contains unlisted files");
   const receipt = await boundedRead(join(directory, "build-report.json"), 1024 * 1024);
   if (hash(receipt) !== expectedDigest)
     throw new Error("AIR compiler build receipt digest mismatch");
@@ -296,12 +304,18 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     );
   } else if (command === "verify") {
     const report = await prepareAirCompilerAssets();
+    const expectedSource = option("--source-fingerprint");
+    if (
+      expectedSource !== undefined &&
+      (!/^[a-f0-9]{64}$/.test(expectedSource) || report.sourceFingerprintSha256 !== expectedSource)
+    )
+      throw new Error("AIR compiler source differs from the selected CI cache key");
     console.log(
       JSON.stringify({ verified: true, sourceFingerprintSha256: report.sourceFingerprintSha256 }),
     );
   } else {
     throw new Error(
-      "Usage: air-compiler-assets.mjs record --build DIR --source DIR --api-source DIR | import --input DIR --sha256 DIGEST | verify",
+      "Usage: air-compiler-assets.mjs record --build DIR --source DIR --api-source DIR | import --input DIR --sha256 DIGEST | verify [--source-fingerprint DIGEST]",
     );
   }
 }

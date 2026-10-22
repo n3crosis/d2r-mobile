@@ -159,6 +159,32 @@ test("quad tessellation factors use the verified shader half layout", async () =
   assert(fixtures.includes("quad factors use half stores, not numeric integer conversion"));
 });
 
+test("Metal activates exactly the shared fp16 semantic gate before creating codegen", async () => {
+  const apiSource = await read("air_compiler.cpp");
+  const fixtures = await read("operations_smoke.h");
+  const activation = 'compiler.getASTContext().getOpenCLFeatures().enable("cl_khr_fp16");';
+  assert(apiSource.includes('#include "clang/AST/ASTContext.h"'));
+  assert.match(
+    apiSource,
+    /if \(compiler\.getLangOpts\(\)\.Metal\)\s*compiler\.getASTContext\(\)\.getOpenCLFeatures\(\)\.enable\("cl_khr_fp16"\);/,
+  );
+  assert.equal(apiSource.split(activation).length - 1, 1);
+  assert(apiSource.indexOf(activation) > apiSource.indexOf("CreateASTConsumer("));
+  assert(
+    apiSource.indexOf(activation) <
+      apiSource.indexOf("auto codegen = clang::EmitLLVMOnlyAction::CreateASTConsumer"),
+  );
+  assert.doesNotMatch(apiSource, /-cl-ext=|#pragma OPENCL EXTENSION/);
+  assert(fixtures.includes("for (const unsigned profile : {0u, 1u})"));
+  for (const marker of [
+    "native Metal half semantics in both profiles",
+    "half helper preserves native argument and return ABI",
+    "scalar and vector half arithmetic stay native",
+    "half memory and explicit float conversions remain typed",
+  ])
+    assert(fixtures.includes(marker), marker);
+});
+
 test("only reference-established device uint add extends atomics to fragments", async () => {
   const apiSource = await read("air_compiler.cpp");
   const trust = await read("atomic_trust.inc");
@@ -213,12 +239,18 @@ test("real-WASM CI canary includes all five live operations in a fourth authored
   assert.match(fixture, /kernel void main0\(constant float \*input/);
   assert.match(fixture, /constant int \*bits/);
   assert.match(fixture, /device MTLQuadTessellationFactorsHalf \*tess_output/);
+  assert.match(fixture, /constant half \*half_input/);
+  assert.match(
+    fixture,
+    /static __attribute__\(\(noinline\)\) half canary_half_sum\(half a, half b\)\s*\{\s*return a \+ b;/,
+  );
   assert.match(fixture, /#include <metal_stdlib>/);
   assert.doesNotMatch(fixture, /#include <metal_atomic>/);
   for (const statement of [
     "math_output[0] = sin(input[0]);",
     "math_output[1] = cos(input[1]);",
     "math_output[2] = ceil(input[2]);",
+    "math_output[3] = float(canary_half_sum(half_input[0], half_input[1]));",
     "integer_output[0] = reverse_bits(bits[0]);",
     "vote_output[0] = simd_all(bits[1] != 0) ? 1u : 0u;",
     "threadgroup_barrier(mem_flags::mem_threadgroup);",

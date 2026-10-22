@@ -117,6 +117,34 @@ static int checkMissingOperations() {
         1, AIR_FRONTEND_FAILED, failures);
   }
 
+  for (const unsigned profile : {0u, 1u}) {
+    const auto halfIR = operationIR("native Metal half semantics in both profiles", R"METAL(
+      using namespace metal;
+      static __attribute__((noinline)) half half_sum(half a,half b) {return a+b;}
+      kernel void k(constant half *i [[buffer(0)]],constant float *f [[buffer(1)]],
+          device half *o [[buffer(2)]],device half2 *v [[buffer(3)]],
+          device float *w [[buffer(4)]]) {
+        half values[2]={i[0],(half)f[0]};
+        half result=half_sum(values[0],values[1]);
+        o[0]=result;
+        o[1]=0.5h;
+        v[0]=half2(i[1],i[2])+half2(i[3],i[4]);
+        w[0]=float(i[5]);
+      }
+    )METAL", profile, AIR_OK, failures);
+    requireOperation(std::regex_search(halfIR, std::regex(
+        "define [^\\n]*\\bhalf @[^\\n]*half_sum[^\\n]*\\(half [^,\\n]*, half [^\\n]*\\)")),
+        "half helper preserves native argument and return ABI", failures);
+    requireOperation(std::regex_search(halfIR, std::regex("fadd( [a-z]+)* half ")) &&
+        std::regex_search(halfIR, std::regex("fadd( [a-z]+)* <2 x half> ")),
+        "scalar and vector half arithmetic stay native", failures);
+    requireOperation(std::regex_search(halfIR, std::regex("load half,")) &&
+        std::regex_search(halfIR, std::regex("store (half|<[0-9]+ x half>) ")) &&
+        std::regex_search(halfIR, std::regex("fptrunc float [^\\n]+ to half")) &&
+        std::regex_search(halfIR, std::regex("fpext half [^\\n]+ to float")),
+        "half memory and explicit float conversions remain typed", failures);
+  }
+
   const auto quadFactors = operationIR("quad tessellation factor ABI", R"METAL(
     using namespace metal;
     static_assert(__is_same(decltype(MTLQuadTessellationFactorsHalf::edgeTessellationFactor),half[4]), "four half edges");
