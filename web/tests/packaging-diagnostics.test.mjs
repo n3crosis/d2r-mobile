@@ -332,3 +332,49 @@ test("production shader counters use coalesced UI status without record log spam
       shaders.indexOf("await pipeline.verifyCompleteSourceSet()"),
   );
 });
+
+test("IPA output failure preserves an explicitly skipped resource export", () => {
+  for (const code of ["STAGE_FAILED", "CANCELLED"]) {
+    const message = packagingFailureMessage({
+      code,
+      stage: "output",
+      outputStarted: true,
+      resources: { status: "skipped", reason: "user-requested" },
+    });
+    assert.match(message, /No resources were exported by this attempt/);
+    assert.doesNotMatch(message, /Resources may have been saved/);
+  }
+  for (const resources of [
+    undefined,
+    { status: "skipped" },
+    { status: "skipped", reason: "other" },
+  ])
+    assert.match(
+      packagingFailureMessage({
+        code: "STAGE_FAILED",
+        stage: "output",
+        outputStarted: true,
+        resources,
+      }),
+      /Resources may have been saved/,
+    );
+});
+
+test("shader reports display allowlisted AIR codes without raw compiler text", () => {
+  const report = {
+    stage: "shaders",
+    code: "STAGE_FAILED",
+    detailCode: "AIR_FRONTEND_FAILED",
+    message: "PRIVATE-SOURCE-CANARY",
+  };
+  assert.match(packagingFailureSummary(report), /\[AIR_FRONTEND_FAILED\]/);
+  assert.doesNotMatch(packagingFailureSummary(report), /PRIVATE/);
+  assert.doesNotMatch(
+    packagingFailureSummary({ ...report, stage: "assets" }),
+    /AIR_FRONTEND_FAILED/,
+  );
+  assert.doesNotMatch(
+    packagingFailureSummary({ ...report, detailCode: "AIR_PRIVATE-SOURCE-CANARY" }),
+    /PRIVATE/,
+  );
+});

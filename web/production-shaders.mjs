@@ -329,11 +329,11 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
           check();
           row.replay.chain = chain;
           const json = encoder.encode(JSON.stringify(row.replay, null, 1));
+          retained.push(json);
           budget.replace(row.replayReservation, json.length);
           // 最终 JSON 已生成，后续只使用字节；解除回放对象的引用。
           // Final JSON is encoded; later steps use only bytes, so release the replay object reference.
           row.replay = undefined;
-          retained.push(json);
           entries.push(
             entry(`msl/b-${chain}/${row.key}_b.metallib`, row.base),
             entry(`msl/b-${chain}/${row.key}_b.json`, json),
@@ -350,8 +350,8 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
               .map((key) => key + "\n")
               .join(""),
         );
-        budget.replace(0, index.length);
         retained.push(index);
+        budget.replace(0, index.length);
         entries.push(entry("dm/c1_full.tsv", index));
         check();
         return entries;

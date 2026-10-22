@@ -603,3 +603,23 @@ test("unsettled progress observers are never awaited before successful commit", 
   assert.equal(result.committed, true);
   assert.ok(f.calls.includes("cleanup"));
 });
+
+test("shader failures preserve only fixed AIR codes at the shader stage", async () => {
+  for (const [method, code, expected] of [
+    ["generateShaders", "AIR_FRONTEND_FAILED", "AIR_FRONTEND_FAILED"],
+    ["generateShaders", "AIR_COMPILATION_TIMEOUT", "AIR_COMPILATION_TIMEOUT"],
+    ["generateShaders", "PRIVATE-SOURCE-DIAGNOSTIC", null],
+    ["generateAssets", "AIR_FRONTEND_FAILED", null],
+  ]) {
+    const f = fixture();
+    f.adapters[method] = async () => {
+      throw Object.assign(new Error("PRIVATE-SOURCE-CANARY"), { code });
+    };
+    await assert.rejects(runPackagingJob(f), (error) => {
+      assert.equal(error.report.detailCode, expected);
+      assert.equal(error.report.outputStarted, false);
+      assert.doesNotMatch(JSON.stringify(error.report), /PRIVATE/);
+      return true;
+    });
+  }
+});

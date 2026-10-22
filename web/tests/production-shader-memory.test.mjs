@@ -126,8 +126,8 @@ test("production reuses one owner per pack and releases owners and code on prepa
   const script = `
     import assert from "node:assert/strict";
     import { mock } from "node:test";
-    const reads = [], created = [], disposed = [], code = [];
-    let translated = 0;
+    const reads = [], created = [], disposed = [], code = [], compiled = [], accepted = [];
+    let translated = 0, compilerDisposed = 0;
     mock.module("./sealed-runtime/clients.mjs", { namedExports: { assertSealedRuntime() {} } });
     mock.module("./shader-catalog-adapter.mjs", { namedExports: { assertShaderCatalog() {} } });
     mock.module("./extraction-job-adapter.mjs", { namedExports: {
@@ -143,13 +143,42 @@ test("production reuses one owner per pack and releases owners and code on prepa
     mock.module("./shader-pipeline.mjs", { namedExports: { createShaderPipeline() {
       return { async translate() {
         translated++;
-        return { msl: "synthetic", replay: {}, resources: { notes: [] } };
+        return { msl: "synthetic", replay: { entry: "synthetic_main", msl_entry_kind: "kernel" }, resources: { notes: [] } };
       }, dispose() {} };
     } } });
+    // Only ownership is exercised; this mock does not validate or fabricate a real compiled library.
+    mock.module("./compiled-shader-boundary.mjs", { namedExports: {
+      async acceptCompiledShaderOutput({ binary, compiler, expected, signal }) {
+        assert.ok(signal instanceof AbortSignal);
+        assert.equal(expected.entry, "synthetic_main");
+        assert.equal(expected.stage, "kernel");
+        assert.match(expected.sourceSha256, /^[a-f0-9]{64}$/);
+        const bytes = binary.slice();
+        accepted.push(bytes);
+        return { bytes, receipt: { compiler }, receiptSha256: "synthetic-cleanup-only" };
+      }
+    } });
     const { createProductionShaderAdapter } = await import("./production-shaders.mjs");
     const keys = Array.from({ length: 6927 }, (_, i) => i.toString(16).padStart(16, "0"));
     const adapter = createProductionShaderAdapter({
-      runtime: { workerUrls: {}, createShaderWorkerFactory() {} },
+      runtime: {
+        workerUrls: {}, createShaderWorkerFactory() {},
+        createAirCompilerClient() {
+          return {
+            async compile(source, { entry, stage, signal }) {
+              assert.equal(source, "synthetic");
+              assert.equal(entry, "synthetic_main");
+              assert.equal(stage, "kernel");
+              assert.ok(signal instanceof AbortSignal);
+              signal.throwIfAborted();
+              const bytes = new Uint8Array([3, 4]);
+              compiled.push(bytes);
+              return { bytes, compiler: { id: "synthetic-cleanup-only" }, options: {} };
+            },
+            dispose() { compilerDisposed++; }
+          };
+        }
+      },
       catalog: { keys, bfWant: [], describe(key) {
         const index = parseInt(key, 16);
         return { name: index < 2 ? "a" : "b", index, embedded: false };
@@ -177,9 +206,14 @@ test("production reuses one owner per pack and releases owners and code on prepa
     assert.deepEqual(created, ["a", "b"]);
     assert.deepEqual(disposed, ["a", "b"]);
     assert.equal(translated, 2);
+    assert.equal(compiled.length, 2);
+    assert.equal(accepted.length, 2);
+    assert.equal(compilerDisposed, 1);
     for (const bytes of code) assert.deepEqual(bytes, new Uint8Array(2));
+    for (const bytes of [...compiled, ...accepted]) assert.deepEqual(bytes, new Uint8Array(2));
     adapter.dispose();
     assert.deepEqual(disposed, ["a", "b"]);
+    assert.equal(compilerDisposed, 1);
   `;
   const result = spawnSync(
     process.execPath,
@@ -198,7 +232,7 @@ test("cancellation after preparation wipes owned code without starting translati
     const controller = new AbortController();
     const code = new Uint8Array([9, 8, 7, 6]);
     const independent = code.slice();
-    let translated = 0, disposed = 0, prepared = 0, sourceDisposed = 0;
+    let translated = 0, disposed = 0, prepared = 0, sourceDisposed = 0, compilerDisposed = 0;
     mock.module("./sealed-runtime/clients.mjs", { namedExports: { assertSealedRuntime() {} } });
     mock.module("./shader-catalog-adapter.mjs", { namedExports: { assertShaderCatalog() {} } });
     mock.module("./extraction-job-adapter.mjs", { namedExports: {
@@ -214,7 +248,15 @@ test("cancellation after preparation wipes owned code without starting translati
     const { createProductionShaderAdapter } = await import("./production-shaders.mjs");
     const keys = Array.from({ length: 6927 }, (_, i) => i.toString(16).padStart(16, "0"));
     const adapter = createProductionShaderAdapter({
-      runtime: { workerUrls: {}, createShaderWorkerFactory() {} },
+      runtime: {
+        workerUrls: {}, createShaderWorkerFactory() {},
+        createAirCompilerClient() {
+          return {
+            async compile() { assert.fail("Cancelled preparation must never start compilation"); },
+            dispose() { compilerDisposed++; }
+          };
+        }
+      },
       catalog: { keys, describe() { return { name: "synthetic", index: 0, embedded: false }; },
         prepare() { throw new Error("Pack must use its owned source"); },
         createOwnedPackSource() {
@@ -236,9 +278,11 @@ test("cancellation after preparation wipes owned code without starting translati
     assert.equal(translated, 0);
     assert.equal(sourceDisposed, 1);
     assert.ok(disposed > 0);
+    assert.equal(compilerDisposed, 1);
     assert.deepEqual(code, new Uint8Array(4));
     assert.deepEqual(independent, new Uint8Array([9, 8, 7, 6]));
     adapter.dispose();
+    assert.equal(compilerDisposed, 1);
   `;
   const result = spawnSync(
     process.execPath,
@@ -359,4 +403,16 @@ test("production finalization preserves proof-first ordering and signal-aware re
     /entries.push\(entry\("dm\/c1_full.tsv", index\)\);\s*check\(\);\s*return entries/,
   );
   assert.match(source, /const pause = checkpoint\(json.length\);\s*if \(pause\) await pause/);
+});
+
+// 直接约束所有权登记顺序，使预算拒绝同样擦除刚分配的元数据。
+// Constrain ownership registration order so budget rejection also wipes newly allocated metadata.
+test("finalization owns replay and index bytes before a budget check can reject them", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(new URL("../production-shaders.mjs", import.meta.url), "utf8");
+  assert.match(
+    source,
+    /const json = encoder\.encode\(JSON\.stringify\(row\.replay, null, 1\)\);\s*retained\.push\(json\);\s*budget\.replace\(row\.replayReservation, json\.length\)/,
+  );
+  assert.match(source, /retained\.push\(index\);\s*budget\.replace\(0, index\.length\)/);
 });

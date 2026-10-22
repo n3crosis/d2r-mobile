@@ -1,6 +1,7 @@
 // 浏览器打包诊断：依据固定错误代码与共享界面文字表，不显示私密输入。
 // Browser packaging diagnostics based on fixed error codes and the shared UI table, without private inputs.
 import { t } from "./i18n.mjs";
+import { isAirCompilerDiagnosticCode } from "./air-compiler-contract.mjs";
 import { extractionProgressLabel, isExtractionDiagnosticCode } from "./extraction-errors.mjs";
 const reasons = Object.freeze({
   PROD_KEYS_MISSING: "dmWebReasonsProdKeysMissing",
@@ -107,7 +108,9 @@ export function isLegacyAstcDiagnosticCode(code) {
 export function packagingFailureSummary(report) {
   if (report?.code === "CANCELLED") return t("dmWebCancelled");
   const code =
-    isExtractionDiagnosticCode(report?.detailCode) || isLegacyAstcDiagnosticCode(report?.detailCode)
+    isExtractionDiagnosticCode(report?.detailCode) ||
+    isLegacyAstcDiagnosticCode(report?.detailCode) ||
+    (report?.stage === "shaders" && isAirCompilerDiagnosticCode(report?.detailCode))
       ? report.detailCode
       : null;
   const stage = Object.hasOwn(stages, report?.stage)
@@ -149,7 +152,14 @@ export function sanitizeResourceOutcome(outcome) {
 }
 export function packagingFailureMessage(report) {
   const resources = sanitizeResourceOutcome(report?.resources);
-  let output = report?.outputStarted === true ? t("dmWebOutputPossible") : t("dmWebOutputNone");
+  const resourcesSkipped =
+    report?.resources?.status === "skipped" && report.resources.reason === "user-requested";
+  // IPA 输出开始不表示已导出资源；保留明确跳过的独立结果。
+  // Starting IPA output does not imply resource export; preserve the explicit skipped outcome.
+  let output =
+    report?.outputStarted === true && !resourcesSkipped
+      ? t("dmWebOutputPossible")
+      : t("dmWebOutputNone");
   if (resources?.status === "complete") output = t("dmWebOutputComplete", resources.directoryName);
   else if (resources?.cleanupComplete === true) output = t("dmWebOutputRemoved");
   else if (resources?.directoryName)

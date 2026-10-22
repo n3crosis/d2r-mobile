@@ -68,6 +68,11 @@ const codes = new Set([
   "AIR_OUTPUT_INVALID",
   "AIR_NETWORK_FORBIDDEN",
 ]);
+// 仅公开固定错误代码；不把原始编译诊断或源码写入界面报告。
+// Expose only fixed codes, never raw compiler diagnostics or source in UI reports.
+export function isAirCompilerDiagnosticCode(value) {
+  return codes.has(value);
+}
 export function airCompilerFailureCode(value) {
   return codes.has(value) ? value : "AIR_RUNTIME_FAILED";
 }

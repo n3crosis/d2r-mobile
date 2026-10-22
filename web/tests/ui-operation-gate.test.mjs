@@ -94,3 +94,21 @@ test("bounded activity log keeps monotonic row identities and copies text only",
   assert.match(source, /setTimeout\(flushActivity, 250\)/);
   assert.doesNotMatch(source, /activityRevision\.current\s*=\s*0/);
 });
+
+// 检查真实处理器的关闭条件与等待顺序；不声称已运行浏览器目录选取器。
+// Check the actual handler's close condition and await ordering, not a real directory-picker run.
+test("terminal folder cancellation releases the captured packager before clearing busy state", async () => {
+  const source = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const choose = source.slice(
+    source.indexOf("async function choose()"),
+    source.indexOf("function prepareDownload"),
+  );
+  assert.match(choose, /const jobPackager = packager\.current/);
+  assert.match(
+    choose,
+    /if \(controller\.signal\.aborted && current\(\)\)\s*\{[\s\S]*?await jobPackager\?\.close\(\)/,
+  );
+  const cleanup = choose.indexOf("await jobPackager?.close()");
+  assert.ok(cleanup > 0);
+  assert.match(choose.slice(cleanup), /if \(current\(\)\)\s*\{\s*setBusy\(false\)/);
+});

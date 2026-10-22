@@ -268,6 +268,7 @@ export default function App() {
     if (!operation) return;
     const current = () => mounted.current && operation.isCurrent();
     const previousStatus = status;
+    const jobPackager = packager.current;
     const controller = operation.controller;
     cancellation.current = controller;
     let selectedName = "";
@@ -339,6 +340,15 @@ export default function App() {
         setStatus(`${selectedName ? `${selectedName}: ${folderSummary(progress)} ` : ""}${reason}`);
       }
     } finally {
+      // 显式取消后必须重载，立即关闭已预加载的运行时；仅关闭选取器仍允许重试。
+      // Explicit cancellation requires reload: release preloaded runtimes now; picker dismissal stays retryable.
+      if (controller.signal.aborted && current()) {
+        try {
+          await jobPackager?.close();
+        } catch {
+          if (current()) appendActivity(t("dmWebCleanupWarning"), true);
+        }
+      }
       if (current()) {
         setBusy(false);
         setCancelling(false);

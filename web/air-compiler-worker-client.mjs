@@ -18,9 +18,9 @@ const fail = (code) => {
 };
 function report(callback, phase) {
   try {
-    callback?.(Object.freeze({ phase }));
+    Promise.resolve(callback?.(Object.freeze({ phase }))).catch(() => {});
   } catch {
-    /* UI reporting must not break ownership. */
+    /* Synchronous throws, rejected promises and thenables cannot break ownership. */
   }
 }
 function snapshot(value, maximum) {

@@ -1244,7 +1244,17 @@ export async function prepareSealedRuntime({
           active = true;
           compilerActive++;
           try {
-            return await compilerClient.compile(source, options);
+            const result = await compilerClient.compile(source, options);
+            try {
+              // 底层输出已完成后，租约交接前仍可能取消或关闭。
+              // Cancellation or closure can occur after compilation but before lease handoff.
+              if (released || closed || compilerRetired) fail("AIR compiler lease closed or busy");
+              options.signal?.throwIfAborted();
+            } catch (error) {
+              result.bytes.fill(0);
+              throw error;
+            }
+            return result;
           } finally {
             active = false;
             compilerActive--;
