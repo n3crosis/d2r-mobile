@@ -4,9 +4,13 @@
 #define D2R_EXPERIMENTAL_METAL_INTEGER
 namespace metal {
 namespace __integer_detail {
+int absolute_signed(int) __asm__("air.abs.s.i32");
 uint count_leading(uint,bool) __asm__("air.clz.i32");
 uint population(uint) __asm__("air.popcount.i32");
 }
+// Preserve the target intrinsic's signed edge behavior, including INT_MIN.
+// Do not negate a signed integer or convert it to floating point.
+inline __attribute__((always_inline)) int abs(int x) { return __integer_detail::absolute_signed(x); }
 inline __attribute__((always_inline)) uint clz(uint x) { return __integer_detail::count_leading(x,false); }
 inline __attribute__((always_inline)) int clz(int x) { return int(clz(uint(x))); }
 inline __attribute__((always_inline)) uint popcount(uint x) { return __integer_detail::population(x); }

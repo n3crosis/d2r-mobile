@@ -95,6 +95,7 @@ class RejectAssembly final : public clang::RecursiveASTVisitor<RejectAssembly> {
           function->getNumParams() == 0 && function->hasAttr<clang::ConstAttr>() &&
           function->getReturnType()->isSpecificBuiltinType(clang::BuiltinType::UInt);
     if (file->getName() == "/include/metal_integer") {
+      if (name=="air.abs.s.i32") return function->getNumParams()==1 && function->getReturnType()->isSpecificBuiltinType(clang::BuiltinType::Int) && function->getParamDecl(0)->getType()->isSpecificBuiltinType(clang::BuiltinType::Int);
       if (!function->getReturnType()->isSpecificBuiltinType(clang::BuiltinType::UInt) || !function->getNumParams() || !function->getParamDecl(0)->getType()->isSpecificBuiltinType(clang::BuiltinType::UInt)) return false;
       if (name=="air.popcount.i32") return function->getNumParams()==1;
       return name=="air.clz.i32" && function->getNumParams()==2 && function->getParamDecl(1)->getType()->isSpecificBuiltinType(clang::BuiltinType::Bool);
