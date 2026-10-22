@@ -56,6 +56,13 @@ const cases = Object.freeze([
     define: "",
   },
   {
+    stage: "fragment",
+    filename: "retyped-buffer-pointer-load.metal",
+    entry: "retyped_buffer_pointer_load",
+    sha256: "57f26a87e4b72aab90afb09caf9f650ddac7d7f025fd29bdfbabce9c46fa536e",
+    define: "",
+  },
+  {
     stage: "kernel",
     filename: "msl-stage-record-threadgroup.metal",
     entry: "stage_record_threadgroup",
@@ -116,6 +123,8 @@ export async function runAirCompilerCanary(module, { expectedHeaderSha256 } = {}
       );
       const source = fixture.define + text;
       const sourceSha256 = createHash("sha256").update(source).digest("hex");
+      if (fixture.sha256)
+        assert.equal(sourceSha256, fixture.sha256, "reviewed pointer-slot fixture identity");
       let output;
       let irOutput;
       try {
@@ -230,7 +239,7 @@ export async function runAirCompilerCanary(module, { expectedHeaderSha256 } = {}
       cases.length + reflectionFixtures.length + livenessVariants.length * 2,
     );
     return {
-      validation: "authored-eighteen-fixture-three-stage-compilation-and-container-integrity",
+      validation: "authored-nineteen-fixture-three-stage-compilation-and-container-integrity",
       results,
       llvmValidation,
       fragmentInputLiveness,

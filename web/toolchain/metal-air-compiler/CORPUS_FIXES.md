@@ -4,7 +4,9 @@
 `0101` through `0105` migration patches. The a2flo repository, commit and
 archive SHA256 are unchanged, as is the complete historical
 `manifest.json` `rebaseProvenance` record. This is an incremental source patch,
-not a new upstream rebase, ABI version or receipt format.
+not a new upstream rebase, ABI version or receipt format. The separate
+`0107-a2flo-typed-constant-pointer-slots.patch` adds the reviewed pointer-slot
+correction without changing any byte of `0101` through `0106`.
 
 ## Changed source files
 
@@ -36,6 +38,15 @@ not a new upstream rebase, ABI version or receipt format.
   are unchanged. Final rejection diagnostics contain bounded built-in opcode
   names and fixed compiler-authored reason labels, not source names, types,
   values, paths or IR excerpts. Diagnostics do not expand accepted inputs.
+  The separate `0107` delta admits ordinary pointer-valued loads only from a
+  demonstrably typed slot, including zero-offset first fields of sized records
+  and nonempty arrays. It preserves both address spaces, pointer width, explicit
+  alignment, metadata and load position. It does not guess types from equal
+  pointer widths. An inverse vector-to-record cast must restore the exact type
+  of that recovered slot load; existing native aggregate GEPs, indices and merge
+  edges remain unchanged. The full forward native-use closure must be read-only.
+  Unknown/raw-byte/nonzero-field slots, volatile/atomic loads, shifted or inexact
+  inverse casts, escapes and writes remain outside the new lowering.
 - `clang/lib/CodeGen/CodeGenModule.cpp`: do not mistake annotations on an
   explicitly bound resource's pointed-to record for a second stage interface.
   Exempt only non-stage-input pointers/references with a sole `buffer` attribute
@@ -67,8 +78,8 @@ not a new upstream rebase, ABI version or receipt format.
 The AST, finalization, CodeGen and reflection-writer files already appear in `patchedFiles`; their
 final SHA256s change. The pointer pass and AIR64 target header are the new source
 paths beyond the first five patches.
-Every source file changed by any active patch remains covered, and the
-incremental patch has its own SHA256 in the ordered `patches` list.
+Every source file changed by any active patch remains covered, and
+each incremental patch has its own SHA256 in the ordered `patches` list.
 
 The project-owned `api/air_compiler.cpp` separately finalizes fragment-input
 liveness after the completed frontend optimization and before verification and
@@ -84,7 +95,7 @@ all 47 observed omissions are already unused before the writer.
 
 ## Authored LLVM regressions
 
-Five public pass-level fixtures are retained under `fixtures/`, separately
+Six public pass-level fixtures are retained under `fixtures/`, separately
 from the production-source patch:
 
 - `metal-final-dso-local.ll`: verify required in-memory locality immediately
@@ -105,6 +116,15 @@ from the production-source patch:
   rejection and check bounded reason labels, the four-opcode cap, overflow
   marker and absence of an appended instruction dump.
 
+- `metal-constant-pointer-slots.ll`: ten positive functions cover typed and
+  zero-offset argument slots, separate outer/stored-pointer address spaces,
+  packed/nested records, scalar/vector views, exact inverse recasts, native
+  PHI/GEP loops and shared-load/crosslinked graphs. Fourteen isolated negative
+  modules exercise the unchanged final legacy rejection path for unproved slots,
+  address-space/layout mismatches, volatile/atomic loads, nonexact inverse casts,
+  native escapes/writes and padded wrappers. Exact source identity, split-module
+  inventory and RUN targets are checked, not the compiler's behavior.
+
 Their `RUN` lines require `opt`, `FileCheck` and, for split fixtures,
 `split-file` from the matching patched toolchain. They have not been executed
 by this source-only integration. The JavaScript provenance tests and WASM
@@ -112,8 +132,8 @@ canary do not execute these LLVM pass-level fixtures.
 
 ## Real-WASM CI canaries
 
-The fixed production CI canary now contains eighteen authored MSL fixtures across
-three stages, plus four supplemental fragment-input liveness combinations. Thirteen
+The fixed production CI canary now contains nineteen authored MSL fixtures across
+three stages, plus four supplemental fragment-input liveness combinations. Fourteen
 additions to the original list cover these source corrections:
 
 - `msl-internal-helper-function-constant.metal`: a retained internal helper and
@@ -133,6 +153,14 @@ additions to the original list cover these source corrections:
 - `loop-carried-buffer-pointer.metal`: a live loop-carried buffer pointer with
   runtime iteration/branch inputs, with fragment entry
   `loop_carried_buffer_pointer`.
+- `retyped-buffer-pointer-load.metal`: a demonstrated pointer-producing-load
+  failure on the existing e97 and 74e5e62 artifacts, with fragment entry
+  `retyped_buffer_pointer_load`. The exact public source is authenticated before
+  real-WASM compilation. Its passing expectation awaits the corrected artifact;
+  the failure diagnostic alone does not expose its incoming LLVM graph.
+  Inverse-recast cases are covered only by the unexecuted native matrix; a
+  separate MSL candidate already passes the old compiler and is not included
+  or represented as a reproducer of that branch.
 - `msl-stage-record-threadgroup.metal` and `msl-stage-record-buffers.metal`:
   a by-value stage input shares its decorated record type with separately bound
   storage, using exact kernel entries `stage_record_threadgroup` and
@@ -164,8 +192,8 @@ The rebuilt compiler must compile every case and pass strict expected-name,
 stage, platform/version and container/bitcode-integrity inspection. A fixture's
 explicit entry overrides only the default `main0`; rejected entry names are not
 renamed or accepted under aliases. The bounded compilation budget includes
-18 fixed metallib cases, four reflection LLVM-text checks, and both formats for
-the four liveness variants: 30 API calls total. Each added shader is source-only, excluded from the public runtime
+19 fixed metallib cases, four reflection LLVM-text checks, and both formats for
+the four liveness variants: 31 API calls total. Each added shader is source-only, excluded from the public runtime
 payload, and included by the existing tracked compiler-directory source copy.
 Source-only tests check fixture wiring and copy closure but do not execute the
 compiler. The writer correction and expanded liveness assertions still require
@@ -255,8 +283,11 @@ address models do not establish that the modified compiler or private corpus
 now passes. The 74e5e62 diagnostic artifact validates the earlier authored
 storage/interface, reflection and float3 type/GEP checks, but is not a passing
 release artifact because dead-input metallib serialization fails. The writer
-correction and expanded liveness checks require a fresh matching artifact. Further pointer graph
-shapes remain unsupported; no unreviewed pointer extension is included here.
+correction, expanded liveness checks and reviewed `0107` pointer-slot correction
+require a fresh matching artifact. The native pointer matrix has not run in this
+integration or the current CI, which does not build `opt`/FileCheck. No raw-IR API
+mode, additional job or native-tool build is added. Other pointer graph shapes
+remain unsupported; source review does not establish private-corpus success.
 
 The source-only verification procedure is:
 
@@ -275,7 +306,7 @@ WASM, and no private corpus source is included in this package.
 
 A new CI-built artifact and execution of authored regressions plus the
 unchanged corpus are still required to validate the compiler corrections.
-Existing artifacts cannot contain the writer consumer correction. The complete manifest hash
+Existing artifacts cannot contain the writer consumer or pointer-slot corrections. The complete manifest hash
 and all patch hashes already participate in runtime source identity, so old
 receipts must become stale rather than being relabeled or bypassed. No source
 identity, metallib entry/stage, container-integrity or bitcode-hash check is

@@ -226,14 +226,14 @@ test("real-WASM CI canary includes all five live operations in a fourth authored
   const canary = await read("../ci-compile-canary.mjs");
   const fixture = await read("../fixtures/msl-scalar-operations.metal");
   const cases = [...canary.matchAll(/stage: "(vertex|fragment|kernel)",\s*filename: "([^"]+)"/g)];
-  assert.equal(cases.length, 18);
+  assert.equal(cases.length, 19);
   assert.equal(new Set(cases.map((entry) => entry[1])).size, 3);
   assert(
     cases.some((entry) => entry[1] === "kernel" && entry[2] === "msl-scalar-operations.metal"),
   );
   assert(canary.includes("maxCompilations: cases.length"));
   assert(
-    canary.includes("authored-eighteen-fixture-three-stage-compilation-and-container-integrity"),
+    canary.includes("authored-nineteen-fixture-three-stage-compilation-and-container-integrity"),
   );
   assert.match(canary, /adapter\.compile\(source,[\s\S]*?output: "metallib"/);
   assert.match(canary, /inspectCompiledMetalLibrary\(output\.bytes,/);
@@ -445,7 +445,7 @@ test("real-WASM canary preserves strict containers and binary flags for four liv
     ["varying-dead", "false", "true"],
     ["position-dead", "true", "false"],
   ]);
-  assert.equal(18 + 4 + variants.length * 2, 30);
+  assert.equal(19 + 4 + variants.length * 2, 31);
   const loop = canary.slice(
     canary.indexOf("for (const { name, keepVarying, keepPosition } of livenessVariants)"),
   );
