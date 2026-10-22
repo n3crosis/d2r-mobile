@@ -27,7 +27,7 @@
     },
     {
       "path": "patches/0106-a2flo-corpus-compiler-fixes.patch",
-      "sha256": "dd41adc4403392216cb5a0a4ec0eda0e932ceea2e87a61bd380edd2af76a7a73"
+      "sha256": "70e7f251eb79ef54d6725d314d0199fe813d11bba0294e349e6a9c3008976867"
     }
   ],
   "patchedFiles": {
@@ -58,7 +58,7 @@
     "llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp": "86ad67c0ce8379c70f299e0267042d4696b4099b2eb2c9b9317060de45e65aa1",
     "llvm/lib/Transforms/LibFloor/VulkanFinal.cpp": "660a2705c55985066d9eda8140068c907bc4037105202d9ca420d7b25f756733",
     "llvm/lib/Bitcode/MetalLib/CMakeLists.txt": "edfd044974b4f518d63bee512648c6470b58cca3dbd92aed8a9172d871d87aa1",
-    "llvm/lib/Bitcode/MetalLib/MetalLibReflection.cpp": "9132a4467525638bcaf2a587640e01ced38f18eb00700ce77daef03730b756a0",
+    "llvm/lib/Bitcode/MetalLib/MetalLibReflection.cpp": "f57d14824b7beb9fc61f1cd527c06aea830302b8f46f840e657601d1b0e4e85b",
     "llvm/lib/Bitcode/MetalLib/MetalLibWriterPass.cpp": "eb066f1af588ab5224fe7c4958be2163299ecd4462bac4ee56fd7ce2cd601cf2",
     "clang/lib/CodeGen/BackendUtil.cpp": "9500edba7f3ca6a8b8617a8e791896d74153aa8ae6b251f3a9605806bf8017c4",
     "clang/lib/CodeGen/CMakeLists.txt": "96f10d85c93123b0202756c914a860b150c8763d1d7ec9e53a3f3519a54dd941"

@@ -44,8 +44,13 @@ function getValue(descriptor, key) {
   return descriptor[index + 1];
 }
 
-export function checkFragmentInputLiveness(ir, { keepAll = false } = {}) {
+export function checkFragmentInputLiveness(
+  ir,
+  { keepAll = false, keepVarying = keepAll, keepPosition = keepAll } = {},
+) {
   assert.equal(typeof keepAll, "boolean");
+  assert.equal(typeof keepVarying, "boolean");
+  assert.equal(typeof keepPosition, "boolean");
   const nodes = new Map();
   for (const match of ir.matchAll(/^!(\d+) = (?:distinct )?!\{(.*)\}\s*$/gm)) {
     assert(!nodes.has(match[1]), "duplicate metadata node");
@@ -97,7 +102,7 @@ export function checkFragmentInputLiveness(ir, { keepAll = false } = {}) {
   });
   assert.deepEqual(
     argumentUsed,
-    [true, keepAll, keepAll, true, false],
+    [true, keepVarying, keepPosition, true, false],
     "actual final fixture parameter uses",
   );
   const outputs = resolve(entry[1]).map(resolve);
@@ -145,10 +150,8 @@ export function checkFragmentInputLiveness(ir, { keepAll = false } = {}) {
       "position",
     ],
   ];
-  if (!keepAll) {
-    expected[1].push("air.arg_unused");
-    expected[2].push("air.arg_unused");
-  }
+  if (!keepVarying) expected[1].push("air.arg_unused");
+  if (!keepPosition) expected[2].push("air.arg_unused");
   assert.deepEqual(
     descriptors.slice(0, 3),
     expected,
@@ -165,15 +168,21 @@ export function checkFragmentInputLiveness(ir, { keepAll = false } = {}) {
     assert.equal(getValue(descriptor, "air.address_space"), 2);
     assert(!descriptor.includes("air.arg_unused"), "resources are outside this finalizer's scope");
   }
-  return { entry: entryName, keepAll, argumentUsed, descriptors };
+  return { entry: entryName, keepAll, keepVarying, keepPosition, argumentUsed, descriptors };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [mode, path] = process.argv.slice(2);
+  const variants = {
+    live: { keepVarying: true, keepPosition: true },
+    dead: { keepVarying: false, keepPosition: false },
+    "varying-dead": { keepVarying: false, keepPosition: true },
+    "position-dead": { keepVarying: true, keepPosition: false },
+  };
   assert(
-    ["live", "dead"].includes(mode) && path,
-    "usage: node check-fragment-input-liveness.mjs live|dead /path/to/API-output.ll",
+    Object.hasOwn(variants, mode) && path,
+    "usage: node check-fragment-input-liveness.mjs live|dead|varying-dead|position-dead /path/to/API-output.ll",
   );
-  checkFragmentInputLiveness(readFileSync(path, "utf8"), { keepAll: mode === "live" });
+  checkFragmentInputLiveness(readFileSync(path, "utf8"), variants[mode]);
   console.log(`${mode}: exact fragment-input liveness metadata passed`);
 }

@@ -4,13 +4,25 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { checkFragmentInputLiveness } from "../toolchain/metal-air-compiler/check-fragment-input-liveness.mjs";
 
-function syntheticIR(keepAll) {
-  const unused = keepAll ? "" : ', !"air.arg_unused"';
+function syntheticIR(keepVarying, keepPosition = keepVarying) {
+  const unusedVarying = keepVarying ? "" : ', !"air.arg_unused"';
+  const unusedPosition = keepPosition ? "" : ', !"air.arg_unused"';
+  let value = "%sum";
+  const body = [];
+  if (keepVarying) {
+    body.push(`  %sum1 = fadd <4 x float> ${value}, %in.1`);
+    value = "%sum1";
+  }
+  if (keepPosition) {
+    body.push(`  %sum2 = fadd <4 x float> ${value}, %in.2`);
+    value = "%sum2";
+  }
+  body.push(`  ret <4 x float> ${value}`);
   return `define <4 x float> @fragment_input_liveness(<4 x float> %in.0, <4 x float> %in.1, <4 x float> %in.2, <4 x float> addrspace(2)* %bias, <4 x float> addrspace(2)* %untouched) {
 entry:
   %loaded = load <4 x float>, <4 x float> addrspace(2)* %bias
   %sum = fadd <4 x float> %in.0, %loaded
-${keepAll ? "  %sum1 = fadd <4 x float> %sum, %in.1\n  %sum2 = fadd <4 x float> %sum1, %in.2\n  ret <4 x float> %sum2" : "  ret <4 x float> %sum"}
+${body.join("\n")}
 }
 !air.fragment = !{!0}
 !0 = !{<4 x float> (<4 x float>, <4 x float>, <4 x float>, <4 x float> addrspace(2)*, <4 x float> addrspace(2)*)* @fragment_input_liveness, !1, !2}
@@ -18,17 +30,29 @@ ${keepAll ? "  %sum1 = fadd <4 x float> %sum, %in.1\n  %sum2 = fadd <4 x float> 
 !2 = !{!4, !5, !6, !7, !8}
 !3 = !{i32 0, !"air.render_target", i32 0, i32 0, !"air.arg_type_name", !"float4", !"air.arg_name", !"color"}
 !4 = !{i32 0, !"air.fragment_input", !"user(locn7)", !"air.flat", !"air.arg_type_name", !"float4", !"air.arg_name", !"kept"}
-!5 = !{i32 1, !"air.fragment_input", !"user(locn11)", !"air.flat", !"air.arg_type_name", !"float4", !"air.arg_name", !"optionalValue"${unused}}
-!6 = !{i32 2, !"air.position", !"air.center", !"air.no_perspective", !"air.arg_type_name", !"float4", !"air.arg_name", !"position"${unused}}
+!5 = !{i32 1, !"air.fragment_input", !"user(locn11)", !"air.flat", !"air.arg_type_name", !"float4", !"air.arg_name", !"optionalValue"${unusedVarying}}
+!6 = !{i32 2, !"air.position", !"air.center", !"air.no_perspective", !"air.arg_type_name", !"float4", !"air.arg_name", !"position"${unusedPosition}}
 !7 = !{i32 3, !"air.buffer", !"air.location_index", i32 9, i32 1, !"air.read", !"air.address_space", i32 2, !"air.arg_type_name", !"float4", !"air.arg_name", !"bias"}
 !8 = !{i32 4, !"air.buffer", !"air.location_index", i32 13, i32 1, !"air.read", !"air.address_space", i32 2, !"air.arg_type_name", !"float4", !"air.arg_name", !"untouched"}
 `;
 }
 
 test("checker follows entry metadata and distinguishes live/dead input descriptors", () => {
-  for (const keepAll of [false, true]) {
-    const result = checkFragmentInputLiveness(syntheticIR(keepAll), { keepAll });
-    assert.deepEqual(result.argumentUsed, [true, keepAll, keepAll, true, false]);
+  for (const keepVarying of [false, true]) {
+    for (const keepPosition of [false, true]) {
+      const result = checkFragmentInputLiveness(syntheticIR(keepVarying, keepPosition), {
+        keepVarying,
+        keepPosition,
+      });
+      assert.deepEqual(result.argumentUsed, [true, keepVarying, keepPosition, true, false]);
+      if (keepVarying !== keepPosition)
+        assert.throws(() =>
+          checkFragmentInputLiveness(syntheticIR(keepVarying, keepPosition), {
+            keepVarying: keepPosition,
+            keepPosition: keepVarying,
+          }),
+        );
+    }
   }
 });
 
@@ -149,6 +173,43 @@ test("authored fixture keeps identical live/dead interfaces and out-of-scope res
   assert.match(source, /optionalValue \[\[user\(locn11\), flat\]\]/);
   assert.match(source, /position \[\[position\]\]/);
   assert.match(source, /\*untouched \[\[buffer\(13\)\]\]/);
-  assert.match(source, /#if LIVENESS_KEEP_ALL\s+color \+= input.optionalValue \+ input.position;/);
+  assert.match(
+    source,
+    /#if LIVENESS_KEEP_VARYING && LIVENESS_KEEP_POSITION\s+color \+= input.optionalValue \+ input.position;/,
+  );
   assert.match(source, /float4 discarded = input.optionalValue \+ input.position;/);
+  assert.match(source, /#elif LIVENESS_KEEP_VARYING\s+color \+= input.optionalValue;/);
+  assert.match(source, /#elif LIVENESS_KEEP_POSITION\s+color \+= input.position;/);
+});
+
+// Wiring assertions remain source-only; the CI runner executes the actual WASM.
+test("canary checks all four independent liveness states in both real output paths", () => {
+  const source = readFileSync(
+    new URL("../toolchain/metal-air-compiler/ci-compile-canary.mjs", import.meta.url),
+    "utf8",
+  );
+  for (const variant of [
+    '{ name: "dead", keepVarying: false, keepPosition: false }',
+    '{ name: "live", keepVarying: true, keepPosition: true }',
+    '{ name: "varying-dead", keepVarying: false, keepPosition: true }',
+    '{ name: "position-dead", keepVarying: true, keepPosition: false }',
+  ])
+    assert(source.includes(variant));
+  const loop = source.slice(
+    source.indexOf("for (const { name, keepVarying, keepPosition } of livenessVariants)"),
+  );
+  assert.match(
+    loop,
+    /output: "metallib"[\s\S]*inspectCompiledMetalLibrary\(output.bytes,[\s\S]*metadataLengthIncludesPrefix: false/,
+  );
+  assert.match(
+    loop,
+    /output: "llvm-text"[\s\S]*checkFragmentInputLiveness\(ir, \{ keepVarying, keepPosition \}\)/,
+  );
+  assert.match(
+    loop,
+    /checkFragmentInputReflection\(output.bytes, \{ keepVarying, keepPosition \}\)/,
+  );
+  assert.match(loop, /output\?\.bytes.fill\(0\)/);
+  assert.match(loop, /irOutput\?\.bytes.fill\(0\)/);
 });

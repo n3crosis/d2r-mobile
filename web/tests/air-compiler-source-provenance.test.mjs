@@ -11,9 +11,11 @@ test("reviewed fragment liveness API, checker and public source keep their froze
   const expected = {
     "api/air_compiler.cpp": "fce9a24557cca900398b2e7b9afbb853297a5d8bd034616d9c80b89a9d20981b",
     "check-fragment-input-liveness.mjs":
-      "daa57c1cba44200bc31b30af6aece5ae734a17c2cf974b0825118b7f5c913b23",
+      "803d20dff3cda4ccbf66a45c7526881146bd27b5a805098fbfa9eaa0feddf71b",
+    "check-fragment-input-reflection.mjs":
+      "14fd952ac51abfbd7482b26e448956c43fde5f8babcaccbb0c83f46ec9774b6e",
     "fixtures/msl-fragment-input-liveness.metal":
-      "5aa0bc64fe9d8df5b7afb8b2d7454782403962bdf28883f6e6e925a3c36db6a0",
+      "0820f23da050fa12a4031a45c09dec58a4394f7179032570c1acd85a20d434d5",
   };
   for (const [path, sha256] of Object.entries(expected))
     assert.equal(hash(await readFile(new URL(path, root))), sha256, path);
@@ -173,6 +175,41 @@ test("AIR64 starts with final vector storage alignment and preparation enforces 
   );
   assert(
     toolchain.includes('throw Error("AIR64 initial and final storage DataLayouts must match")'),
+  );
+});
+
+test("writer consumes unused fragment and position flags without changing prior corrections", async () => {
+  const patch = await readFile(
+    new URL("patches/0106-a2flo-corpus-compiler-fixes.patch", root),
+    "utf8",
+  );
+  const target = "--- a/llvm/lib/Bitcode/MetalLib/MetalLibReflection.cpp\n";
+  assert.equal(patch.split(target).length, 2);
+  const index = patch.indexOf(target);
+  assert.equal(
+    hash(patch.slice(0, index)),
+    "dd41adc4403392216cb5a0a4ec0eda0e932ceea2e87a61bd380edd2af76a7a73",
+  );
+  const delta = patch.slice(index);
+  assert.equal(hash(delta), "06139a298d153d9a189b0618368155b0cac547f8c4e65856872460ef2531ab96");
+  assert.equal(
+    delta.split("\n").filter((line) => line.startsWith("+") && !line.startsWith("+++")).length,
+    10,
+  );
+  assert.equal(
+    delta.split("\n").filter((line) => line.startsWith("-") && !line.startsWith("---")).length,
+    0,
+  );
+  for (const line of [
+    'type_str == "air.arg_unused"',
+    "if (node.unused.has_value()) return false;",
+    "node.unused = true;",
+  ])
+    assert.equal(delta.split(line).length - 1, 2, line);
+  const manifest = JSON.parse(await readFile(new URL("manifest.json", root), "utf8"));
+  assert.equal(
+    manifest.patchedFiles["llvm/lib/Bitcode/MetalLib/MetalLibReflection.cpp"],
+    "f57d14824b7beb9fc61f1cd527c06aea830302b8f46f840e657601d1b0e4e85b",
   );
 });
 

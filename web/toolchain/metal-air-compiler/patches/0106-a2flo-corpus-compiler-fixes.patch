@@ -480,3 +480,29 @@
      AddrSpaceMap = &AIRAddrSpaceMap;
    }
    
+--- a/llvm/lib/Bitcode/MetalLib/MetalLibReflection.cpp
++++ b/llvm/lib/Bitcode/MetalLib/MetalLibReflection.cpp
+@@ -522,6 +522,11 @@
+ 				node.name = str->str();
+ 				return true;
+ 			}
++		} else if (type_str == "air.arg_unused") {
++			// A zero-operand flag; preserve it in the serialized reflection.
++			if (node.unused.has_value()) return false;
++			node.unused = true;
++			return true;
+ 		}
+ 		return false;
+ 	}, 1u /* start one earlier so that we get air.fragment_input */)) {
+@@ -777,6 +782,11 @@
+ 				node.name = str->str();
+ 				return true;
+ 			}
++		} else if (type_str == "air.arg_unused") {
++			// A zero-operand flag; preserve it in the serialized reflection.
++			if (node.unused.has_value()) return false;
++			node.unused = true;
++			return true;
+ 		}
+ 		return false;
+ 	})) {

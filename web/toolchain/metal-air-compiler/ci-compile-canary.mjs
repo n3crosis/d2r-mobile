@@ -8,8 +8,14 @@ import { inspectCompiledMetalLibrary } from "../../compiled-shader-boundary.mjs"
 import { AIR_COMPILER_SOURCE_LANGUAGE } from "../../air-compiler-contract.mjs";
 import { checkReflection, checkFloat3Storage } from "./check-buffer-reflection.mjs";
 import { checkFragmentInputLiveness } from "./check-fragment-input-liveness.mjs";
+import { checkFragmentInputReflection } from "./check-fragment-input-reflection.mjs";
 
-const livenessVariants = Object.freeze([false, true]);
+const livenessVariants = Object.freeze([
+  { name: "dead", keepVarying: false, keepPosition: false },
+  { name: "live", keepVarying: true, keepPosition: true },
+  { name: "varying-dead", keepVarying: false, keepPosition: true },
+  { name: "position-dead", keepVarying: true, keepPosition: false },
+]);
 
 const cases = Object.freeze([
   { stage: "vertex", filename: "msl-vertex.metal", define: "#define SCALE 2.0f\n" },
@@ -172,11 +178,11 @@ export async function runAirCompilerCanary(module, { expectedHeaderSha256 } = {}
     );
     assert.equal(
       createHash("sha256").update(livenessText).digest("hex"),
-      "5aa0bc64fe9d8df5b7afb8b2d7454782403962bdf28883f6e6e925a3c36db6a0",
+      "0820f23da050fa12a4031a45c09dec58a4394f7179032570c1acd85a20d434d5",
       "reviewed liveness fixture identity",
     );
-    for (const keepAll of livenessVariants) {
-      const source = `#define LIVENESS_KEEP_ALL ${Number(keepAll)}\n${livenessText}`;
+    for (const { name, keepVarying, keepPosition } of livenessVariants) {
+      const source = `#define LIVENESS_KEEP_VARYING ${Number(keepVarying)}\n#define LIVENESS_KEEP_POSITION ${Number(keepPosition)}\n${livenessText}`;
       let output;
       let irOutput;
       try {
@@ -200,20 +206,20 @@ export async function runAirCompilerCanary(module, { expectedHeaderSha256 } = {}
           mathProfile: "fast-f32",
         });
         const ir = new TextDecoder("utf-8", { fatal: true }).decode(irOutput.bytes);
-        checkFragmentInputLiveness(ir, { keepAll });
+        checkFragmentInputLiveness(ir, { keepVarying, keepPosition });
+        checkFragmentInputReflection(output.bytes, { keepVarying, keepPosition });
         fragmentInputLiveness.push({
           fixture: livenessFilename,
-          variant: keepAll ? "live" : "dead",
+          variant: name,
           sourceSha256: createHash("sha256").update(source).digest("hex"),
           bytes: output.bytes.byteLength,
-          unusedInputs: keepAll ? 0 : 2,
-          validation: "exact-api-input-descriptors-and-final-argument-uses",
+          unusedInputs: Number(!keepVarying) + Number(!keepPosition),
+          validation: "exact-api-input-descriptors-final-argument-uses-and-binary-reflection",
         });
       } catch (error) {
-        throw new Error(
-          `AIR CI fragment input liveness failed for ${keepAll ? "live" : "dead"} variant`,
-          { cause: error },
-        );
+        throw new Error(`AIR CI fragment input liveness failed for ${name} variant`, {
+          cause: error,
+        });
       } finally {
         output?.bytes.fill(0);
         irOutput?.bytes.fill(0);

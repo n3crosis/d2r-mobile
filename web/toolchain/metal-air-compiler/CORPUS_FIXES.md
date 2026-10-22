@@ -57,8 +57,14 @@ not a new upstream rebase, ABI version or receipt format.
   to AIR64 vector alignment clauses; other targets, scalar/pointer layouts and
   final AIR layout are unchanged. Unlike the reflection repair, this changes
   early storage layout and can affect aggregate shapes and optimization.
+- `llvm/lib/Bitcode/MetalLib/MetalLibReflection.cpp`: accept the zero-operand
+  `air.arg_unused` marker only in the existing fragment-input and position
+  handlers. Set their existing optional `unused` field so binary reflection
+  preserves the marker; reject duplicates through the existing error path.
+  No metadata is stripped, unknown attributes remain errors, and other handlers,
+  schemas, signatures, bindings and container/integrity rules are unchanged.
 
-The AST, finalization and CodeGen files already appear in `patchedFiles`; their
+The AST, finalization, CodeGen and reflection-writer files already appear in `patchedFiles`; their
 final SHA256s change. The pointer pass and AIR64 target header are the new source
 paths beyond the first five patches.
 Every source file changed by any active patch remains covered, and the
@@ -107,7 +113,7 @@ canary do not execute these LLVM pass-level fixtures.
 ## Real-WASM CI canaries
 
 The fixed production CI canary now contains eighteen authored MSL fixtures across
-three stages, plus a supplemental live/dead fragment-input pair. Thirteen
+three stages, plus four supplemental fragment-input liveness combinations. Thirteen
 additions to the original list cover these source corrections:
 
 - `msl-internal-helper-function-constant.metal`: a retained internal helper and
@@ -159,10 +165,11 @@ stage, platform/version and container/bitcode-integrity inspection. A fixture's
 explicit entry overrides only the default `main0`; rejected entry names are not
 renamed or accepted under aliases. The bounded compilation budget includes
 18 fixed metallib cases, four reflection LLVM-text checks, and both formats for
-the two liveness variants: 26 API calls total. Each added shader is source-only, excluded from the public runtime
+the four liveness variants: 30 API calls total. Each added shader is source-only, excluded from the public runtime
 payload, and included by the existing tracked compiler-directory source copy.
 Source-only tests check fixture wiring and copy closure but do not execute the
-compiler. These new success expectations remain pending a rebuilt CI artifact.
+compiler. The writer correction and expanded liveness assertions still require
+a rebuilt matching CI artifact.
 
 ## Authored storage/interface regressions
 
@@ -209,18 +216,35 @@ unchanged corpus. No compiled reference or private corpus source is included.
 
 ## Authored fragment-input liveness regression
 
-`msl-fragment-input-liveness.metal` uses an unchanged macro-controlled interface
-with live/dead stage inputs, position and sparse buffer bindings 9/13. The same
-real-WASM canary compiles both variants to strict-checked metallibs and LLVM text.
+`msl-fragment-input-liveness.metal` retains its five-argument interface and sparse
+buffer bindings 9/13. Independent varying/position macros cover both live, both
+dead, varying-only dead and position-only dead. The same real-WASM canary compiles
+all four combinations to strict-checked metallibs and LLVM text.
 `check-fragment-input-liveness.mjs` resolves the entry's actual input descriptors,
-checks exact operand order, interpolation, five retained indices/signature and
-final argument uses, and requires two terminal unused markers only in the dead
-variant. Even the unused resource remains unmarked. Existing e97 output passes
-the live check and fails the dead check for exactly the two missing markers.
+checks exact operand order, interpolation, retained signature/indices and final
+argument uses, and requires terminal markers only on each dead stage input.
+Even the unused resource remains unmarked.
+
+`check-fragment-input-reflection.mjs` additionally follows the actual metallib's
+AIRR nodes and requires serialized `unused=true` for each dead varying/position,
+with absent fields for live and out-of-scope arguments. It preserves the existing
+strict container/hash gate, rather than replacing it. This fixture-specific
+bounded reader is not a general reflection decoder. Both checks and the four
+combinations prevent fixing serialization by silently stripping or ignoring flags.
+The checker and fixture remain source-only, excluded from the public runtime.
+
+The e97 baseline lacked the two dead-input flags. The 74e5e62 diagnostic artifact
+correctly emits those flags in API LLVM text, but its strict writer rejects them:
+`create_fragment_input` fails first, hiding the same missing case in
+`create_position`. The narrow consumer correction handles both. This actual
+failure shows why source review and LLVM-text checks did not prove serialization.
+Existing actual live AIRR validates absent-field parsing; synthetic true-field
+parser tests are not execution evidence for the corrected writer.
+
 Source-only checker tests do not execute the API; standalone `clang -cc1` cannot
-exercise this wrapper hook. Updated artifact output, final serialized bitcode,
-the 47 observed corpus omissions and any new metadata differences still require
-verification. No stage-linkage or device effect is established.
+exercise the wrapper hook. All four corrected metallibs, binary reflection,
+embedded AIR and the observed corpus omissions still need verification with a
+fresh artifact. No stage-linkage or device effect is established.
 
 ## Evidence and verification boundary
 
@@ -228,8 +252,10 @@ These corrections respond to diagnostics from authenticated existing CI
 artifacts. Bounded pointer diagnostics identify the rejected opcodes, not the
 complete pre-failure IR graph. Source review, public failure reproductions and
 address models do not establish that the modified compiler or private corpus
-now passes. The storage/interface, reflection, AIR64 DataLayout and input-liveness corrections
-still require a fresh matching CI artifact and execution checks. Further pointer graph
+now passes. The 74e5e62 diagnostic artifact validates the earlier authored
+storage/interface, reflection and float3 type/GEP checks, but is not a passing
+release artifact because dead-input metallib serialization fails. The writer
+correction and expanded liveness checks require a fresh matching artifact. Further pointer graph
 shapes remain unsupported; no unreviewed pointer extension is included here.
 
 The source-only verification procedure is:
@@ -249,7 +275,7 @@ WASM, and no private corpus source is included in this package.
 
 A new CI-built artifact and execution of authored regressions plus the
 unchanged corpus are still required to validate the compiler corrections.
-Existing artifacts cannot contain these changes. The complete manifest hash
+Existing artifacts cannot contain the writer consumer correction. The complete manifest hash
 and all patch hashes already participate in runtime source identity, so old
 receipts must become stale rather than being relabeled or bypassed. No source
 identity, metallib entry/stage, container-integrity or bitcode-hash check is

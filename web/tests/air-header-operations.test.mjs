@@ -419,26 +419,52 @@ test("real-WASM canary checks emitted reflection and actual float3 storage, not 
   );
 });
 
-test("real-WASM canary preserves strict containers for both API liveness variants", async () => {
+test("real-WASM canary preserves strict containers and binary flags for four liveness variants", async () => {
   const canary = await read("../ci-compile-canary.mjs");
   for (const marker of [
     'from "./check-fragment-input-liveness.mjs"',
-    "const livenessVariants = Object.freeze([false, true])",
+    'from "./check-fragment-input-reflection.mjs"',
     "maxCompilations: cases.length + reflectionFixtures.length + livenessVariants.length * 2",
     'const livenessFilename = "msl-fragment-input-liveness.metal"',
-    "5aa0bc64fe9d8df5b7afb8b2d7454782403962bdf28883f6e6e925a3c36db6a0",
-    "#define LIVENESS_KEEP_ALL ${Number(keepAll)}\\n${livenessText}",
+    "0820f23da050fa12a4031a45c09dec58a4394f7179032570c1acd85a20d434d5",
+    "#define LIVENESS_KEEP_VARYING ${Number(keepVarying)}\\n#define LIVENESS_KEEP_POSITION ${Number(keepPosition)}\\n${livenessText}",
     'entry: "fragment_input_liveness"',
-    "checkFragmentInputLiveness(ir, { keepAll })",
-    'validation: "exact-api-input-descriptors-and-final-argument-uses"',
+    "checkFragmentInputLiveness(ir, { keepVarying, keepPosition })",
+    "checkFragmentInputReflection(output.bytes, { keepVarying, keepPosition })",
+    'validation: "exact-api-input-descriptors-final-argument-uses-and-binary-reflection"',
   ])
     assert(canary.includes(marker), marker);
-  const loop = canary.slice(canary.indexOf("for (const keepAll of livenessVariants)"));
+  const variants = [
+    ...canary.matchAll(
+      /\{ name: "([^"]+)", keepVarying: (true|false), keepPosition: (true|false) \}/g,
+    ),
+  ].map((match) => match.slice(1));
+  assert.deepEqual(variants, [
+    ["dead", "false", "false"],
+    ["live", "true", "true"],
+    ["varying-dead", "false", "true"],
+    ["position-dead", "true", "false"],
+  ]);
+  assert.equal(18 + 4 + variants.length * 2, 30);
+  const loop = canary.slice(
+    canary.indexOf("for (const { name, keepVarying, keepPosition } of livenessVariants)"),
+  );
   assert.match(
     loop,
     /output: "metallib"[\s\S]*inspectCompiledMetalLibrary\(output.bytes,[\s\S]*entry: "fragment_input_liveness",\s*stage: "fragment",\s*minimumOS: \[18, 0\],\s*languageVersion: \[3, 2\],\s*metadataLengthIncludesPrefix: false/,
   );
-  assert.match(loop, /output: "llvm-text"[\s\S]*checkFragmentInputLiveness\(ir, \{ keepAll \}\)/);
+  assert.match(
+    loop,
+    /output: "llvm-text"[\s\S]*checkFragmentInputLiveness\(ir, \{ keepVarying, keepPosition \}\)/,
+  );
+  assert(
+    loop.indexOf("inspectCompiledMetalLibrary(output.bytes") <
+      loop.indexOf("checkFragmentInputReflection(output.bytes"),
+  );
+  assert(
+    loop.indexOf("checkFragmentInputReflection(output.bytes") <
+      loop.indexOf("fragmentInputLiveness.push("),
+  );
   assert.match(loop, /finally \{\s*output\?\.bytes.fill\(0\);\s*irOutput\?\.bytes.fill\(0\);/);
 });
 
