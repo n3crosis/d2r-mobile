@@ -46,6 +46,16 @@ GPU-specific pipeline archives and iPhone verification are outside this task. Do
 
 设备专属管线缓存及 iPhone 验证不属于本任务，禁止调用 iOS 模拟器。目标是匹配 Xcode 构建 IPA 的预编译着色器库行为，并非消除设备端所有管线工作。
 
+## Browser smoke harness / 浏览器冒烟工具
+
+After the actual WASM target builds, run `node browser-smoke-server.mjs --build /path/to/API-WASM-build` and open the printed loopback URL in desktop Chromium. The build directory must contain `d2r_air_wasm.mjs` and `d2r_air_wasm.wasm`. The embedded compatibility header must match this package's `api/include/metal_stdlib` fingerprint.
+
+This developer-only server serves a fixed allow-list of compiler and authored fixture files. It neither receives nor opens game inputs. Each of six authored source variants runs in its own dedicated Worker. Compiler assets are fingerprint-checked before the verified-byte instantiation hook is used; results undergo entry, stage, container and embedded bitcode integrity checks. The two variants per stage must produce different bitcode hashes. Cancellation terminates the active Worker. Results are shown on the page and in `globalThis.__airSmokeResult` for a browser automation driver.
+
+The harness is not proof of browser execution until it has actually run with the generated compiler. Passing it still does not establish full-game coverage, semantic equivalence or Apple runtime acceptance. It is not connected to production IPA generation and does not replace the existing source-set digest checks.
+
+实际 WASM 构建完成后，运行上述命令并用桌面 Chromium 打开本机网址。工具只提供明确列出的编译器及自编测试文件，不接收或读取游戏输入。六个测试分别使用独立 Worker，验证编译器指纹、输出结构及位码摘要；取消操作会终止 Worker。准备好工具不等于已通过浏览器验证，通过六个测试也不等于完整游戏或 Apple 运行时验收。
+
 No uploaded game source, compiled reference library, private disassembly, build log, archive or compiled object belongs in this directory. No production shader-source digest/integrity logic is bypassed or replaced.
 
 ## Licensing / 许可证
