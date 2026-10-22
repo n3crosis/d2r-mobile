@@ -33,6 +33,7 @@ export const SOURCE_ONLY_RUNTIME_ASSETS = Object.freeze([
   "air-compiler-runtime-contract.mjs",
   "air-compiler-worker-client.mjs",
   "sealed-runtime/air-compiler-worker.mjs",
+  "toolchain/metal-air-compiler/fixtures/msl-scalar-operations.metal",
   "ipa-signing-client.mjs",
   "ipa-signing-contract.mjs",
   "ipa-signing-fs.mjs",

@@ -8,4 +8,5 @@ kernel void scalar_math(device float *out [[buffer(0)]], constant float *in [[bu
  out[6]=trunc(x); out[7]=rint(x); out[8]=abs(x);
  out[9]=fast::min(x,y); out[10]=fast::max(x,y); out[11]=fast::clamp(x,y,z);
  out[12]=select(x,y,isnan(z));
+ out[13]=sin(x); out[14]=cos(y); out[15]=ceil(z);
 }

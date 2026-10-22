@@ -1,5 +1,5 @@
-// CI 中仅编译三个固定的原创着色器；不读取游戏、密钥或用户文件。
-// CI-only compilation of three fixed authored shaders, never game, key or user inputs.
+// CI 中仅编译四个固定的原创着色器，覆盖三个阶段；不读取游戏、密钥或用户文件。
+// CI-only compilation of four fixed authored shaders across three stages, never game, key or user inputs.
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { createAirCompilerAdapter } from "../../air-compiler-adapter.mjs";
@@ -10,6 +10,7 @@ const cases = Object.freeze([
   { stage: "vertex", filename: "msl-vertex.metal", define: "#define SCALE 2.0f\n" },
   { stage: "fragment", filename: "msl-fragment.metal", define: "#define THRESHOLD 0.5f\n" },
   { stage: "kernel", filename: "msl-compute.metal", define: "#define FACTOR 3\n" },
+  { stage: "kernel", filename: "msl-scalar-operations.metal", define: "" },
 ]);
 
 // The caller authenticates the actual module and passes its independently computed
@@ -45,14 +46,24 @@ export async function runAirCompilerCanary(module, { expectedHeaderSha256 } = {}
           languageVersion: [3, 2],
           metadataLengthIncludesPrefix: false,
         });
-        results.push({ stage: fixture.stage, sourceSha256, bytes: output.bytes.byteLength });
+        results.push({
+          fixture: fixture.filename,
+          stage: fixture.stage,
+          sourceSha256,
+          bytes: output.bytes.byteLength,
+        });
       } catch (error) {
-        throw new Error(`AIR CI compile canary failed for ${fixture.stage}`, { cause: error });
+        throw new Error(`AIR CI compile canary failed for ${fixture.stage}/${fixture.filename}`, {
+          cause: error,
+        });
       } finally {
         output?.bytes.fill(0);
       }
     }
-    return { validation: "authored-three-stage-compilation-and-container-integrity", results };
+    return {
+      validation: "authored-four-fixture-three-stage-compilation-and-container-integrity",
+      results,
+    };
   } finally {
     adapter.dispose();
   }

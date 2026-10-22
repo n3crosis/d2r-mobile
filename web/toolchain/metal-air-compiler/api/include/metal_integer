@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Authored integer helpers, using ordinary integer operations only.
+// Authored integer helpers and exact AIR integer intrinsics; no Apple SDK text.
 #ifndef D2R_EXPERIMENTAL_METAL_INTEGER
 #define D2R_EXPERIMENTAL_METAL_INTEGER
 namespace metal {
@@ -7,6 +7,7 @@ namespace __integer_detail {
 int absolute_signed(int) __asm__("air.abs.s.i32");
 uint count_leading(uint,bool) __asm__("air.clz.i32");
 uint population(uint) __asm__("air.popcount.i32");
+uint reverse(uint) __asm__("air.reverse_bits.i32");
 }
 // Preserve the target intrinsic's signed edge behavior, including INT_MIN.
 // Do not negate a signed integer or convert it to floating point.
@@ -15,6 +16,11 @@ inline __attribute__((always_inline)) uint clz(uint x) { return __integer_detail
 inline __attribute__((always_inline)) int clz(int x) { return int(clz(uint(x))); }
 inline __attribute__((always_inline)) uint popcount(uint x) { return __integer_detail::population(x); }
 inline __attribute__((always_inline)) int popcount(int x) { return int(popcount(uint(x))); }
+// This subset reverses exactly 32 bits; reject other widths, never promote them.
+template<class T> T reverse_bits(T) = delete;
+inline __attribute__((always_inline)) uint reverse_bits(uint x) { return __integer_detail::reverse(x); }
+// Keep every bit, including the sign bit, without signed numeric conversion.
+inline __attribute__((always_inline)) int reverse_bits(int x) { return as_type<int>(reverse_bits(as_type<uint>(x))); }
 inline __attribute__((always_inline)) uint ctz(uint x) { return popcount((x & (0u-x))-1u); }
 inline __attribute__((always_inline)) int ctz(int x) { return int(ctz(uint(x))); }
 

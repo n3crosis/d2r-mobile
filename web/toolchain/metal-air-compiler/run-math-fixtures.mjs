@@ -45,17 +45,23 @@ for (const name of ["math-scalar", "math-vector", "integer-preservation"]) {
       "fast_clamp",
     ])
       assert(r.stdout.includes("@air." + symbol + "."), symbol);
-  else
+  if (name === "math-scalar")
+    for (const symbol of ["fast_sin", "fast_cos", "fast_ceil"])
+      assert(r.stdout.includes("@air." + symbol + ".f32"), symbol);
+  if (name === "integer-preservation") {
     assert(
       !/uitofp|sitofp|@air\.convert\.f\./.test(r.stdout),
       "Integer values must not pass through float",
     );
-  assert(!/@llvm\.(sqrt|exp2)/.test(r.stdout));
+    for (const symbol of ["abs.s.i32", "reverse_bits.i32"])
+      assert(r.stdout.includes("@air." + symbol), symbol);
+  }
+  assert(!/@llvm\.(sqrt|exp2|sin|cos|ceil|bitreverse)/.test(r.stdout));
 }
 const prefix = "#include <metal_stdlib>\nusing namespace metal; ";
 for (const source of [
   "kernel void k(device float *o [[buffer(0)]]) {o[0]=sqrt(o[0]);}",
-  "kernel void k(device int *o [[buffer(0)]]) {o[0]=abs(o[0]);}",
+  "kernel void k(device int2 *o [[buffer(0)]]) {o[0]=abs(o[0]);}",
   "kernel void k(device uint *o [[buffer(0)]]) {o[0]=as_type<uint>((ulong)1);}",
   "bool4 unsupported;",
   "kernel void k(device float *o [[buffer(0)]]) {o[0]=fast::sqrt(42);}",

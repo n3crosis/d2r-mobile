@@ -27,7 +27,11 @@ int main(){
  if(!convergent(fragmentShuffle,"air.simd_shuffle.f32"))++errors;
  run("vertex shuffle unestablished","using namespace metal;struct Out{float4 p[[position]];};vertex Out f(constant float *i[[buffer(0)]]){return Out{float4(simd_shuffle(i[0],(ushort)0))};}",false);
  run("helper derivative rejected","using namespace metal;__attribute__((noinline)) float helper(float x){return dfdx(x);}kernel void k(device float *o[[buffer(0)]]){o[0]=helper(o[0]);}",false);
- run("wrong shuffle type","using namespace metal; kernel void k(device uint *o[[buffer(0)]]){o[0]=simd_shuffle(o[0],(ushort)0);}",false);
+ auto integerShuffle=run("uint shuffle preserves payload","using namespace metal; kernel void k(device uint *o[[buffer(0)]]){o[0]=simd_shuffle(o[0],(ushort)0);}",true);
+ if(!convergent(integerShuffle,"air.simd_shuffle.f32") || std::regex_search(integerShuffle,std::regex("uitofp|sitofp|fptoui|fptosi|air\\.convert\\.f\\.")))++errors;
+ // Two finite float packets carry the exact low and high 16-bit payloads.
+ if(integerShuffle.find("65535")==std::string::npos || integerShuffle.find("1065353216")==std::string::npos)++errors;
+ run("unsupported half shuffle","using namespace metal; kernel void k(device half *o[[buffer(0)]]){o[0]=simd_shuffle(o[0],(ushort)0);}",false);
  run("user symbol rejected","float dx(float) __asm__(\"air.dfdx.f32\");",false);
  auto nan=run("NaN survives fast math","using namespace metal;kernel void k(device uint *o[[buffer(0)]],constant float *i[[buffer(1)]]){o[0]=isnan(i[0]);}",true);if(nan.find("2139095040")==std::string::npos||nan.find("2147483647")==std::string::npos)++errors;
  auto fragmentHelper=run("fragment unannotated helper", "using namespace metal;__attribute__((noinline)) float helper(float x){return dfdx(x)+dfdy(x);}struct Out{float4 c[[color(0)]];};fragment Out main0(constant float *i[[buffer(0)]]){return Out{float4(helper(i[0]))};}",true);

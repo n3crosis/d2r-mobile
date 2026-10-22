@@ -66,9 +66,9 @@ test("static import checks accept equivalent formatting but not comments, types 
     );
 });
 
-test("only the 61 audited source copies are rejected; live assets and proof records remain", () => {
-  assert.equal(SOURCE_ONLY_RUNTIME_ASSETS.length, 61);
-  assert.equal(new Set(SOURCE_ONLY_RUNTIME_ASSETS).size, 61);
+test("only the 62 audited source-only assets are rejected; live assets and proof records remain", () => {
+  assert.equal(SOURCE_ONLY_RUNTIME_ASSETS.length, 62);
+  assert.equal(new Set(SOURCE_ONLY_RUNTIME_ASSETS).size, 62);
   assert.ok(Object.isFrozen(SOURCE_ONLY_RUNTIME_ASSETS));
   for (const path of SOURCE_ONLY_RUNTIME_ASSETS)
     assert.throws(() => assertNoSourceOnlyRuntimeAsset(path), /Source-only module/);
@@ -87,6 +87,14 @@ test("only the 61 audited source copies are rejected; live assets and proof reco
     "toolchain/program-rewrite-spike/dist/toolchain/shell-release-evidence/v1.0.18-derived-capacities.mjs",
   ])
     assert.doesNotThrow(() => assertNoSourceOnlyRuntimeAsset(path));
+});
+
+test("the fixed scalar-operations CI shader cannot enter the public runtime payload", () => {
+  const fixture = "toolchain/metal-air-compiler/fixtures/msl-scalar-operations.metal";
+  assert(SOURCE_ONLY_RUNTIME_ASSETS.includes(fixture));
+  assert(!RUNTIME_DIRECT_ASSETS.includes(fixture));
+  assert(!RUNTIME_SEALED_WORKERS.includes(fixture));
+  assert.throws(() => assertNoSourceOnlyRuntimeAsset(fixture), /Source-only module/);
 });
 
 test("frontend imports the shared client at build time, not through runtime byte loading", async () => {

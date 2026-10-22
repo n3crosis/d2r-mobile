@@ -5,6 +5,8 @@
 namespace metal {
 namespace __simd_detail {
 ulong ballot(bool) __asm__("air.simd_ballot.i64") __attribute__((convergent));
+// Lane participation is observable: this is convergent, never const or pure.
+bool all(bool) __asm__("air.simd_all") __attribute__((convergent));
 // Pack only 16 payload bits into a positive, finite, normal float. This is not
 // a raw integer-to-float bitcast: all inputs have exponent 127 and sign zero,
 // so the selected fast-math profile cannot discard integer NaN bit patterns.
@@ -20,6 +22,10 @@ struct simd_vote {
 };
 inline __attribute__((always_inline)) simd_vote simd_ballot(bool predicate) {
   return {__simd_detail::ballot(predicate)};
+}
+// The compiler validates this supported subset as compute-only.
+inline __attribute__((always_inline)) bool simd_all(bool predicate) {
+  return __simd_detail::all(predicate);
 }
 inline __attribute__((always_inline)) ushort simd_shuffle(ushort x, ushort lane) {
   return ushort(__simd_detail::shuffle16(uint(x), lane));

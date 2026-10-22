@@ -97,10 +97,17 @@ class RejectAssembly final : public clang::RecursiveASTVisitor<RejectAssembly> {
     if (file->getName() == "/include/metal_integer") {
       if (name=="air.abs.s.i32") return function->getNumParams()==1 && function->getReturnType()->isSpecificBuiltinType(clang::BuiltinType::Int) && function->getParamDecl(0)->getType()->isSpecificBuiltinType(clang::BuiltinType::Int);
       if (!function->getReturnType()->isSpecificBuiltinType(clang::BuiltinType::UInt) || !function->getNumParams() || !function->getParamDecl(0)->getType()->isSpecificBuiltinType(clang::BuiltinType::UInt)) return false;
-      if (name=="air.popcount.i32") return function->getNumParams()==1;
+      if (name=="air.popcount.i32" || name=="air.reverse_bits.i32") return function->getNumParams()==1;
       return name=="air.clz.i32" && function->getNumParams()==2 && function->getParamDecl(1)->getType()->isSpecificBuiltinType(clang::BuiltinType::Bool);
     }
-    if (file->getName() == "/include/metal_simd") return name=="air.simd_ballot.i64" && function->hasAttr<clang::ConvergentAttr>() && function->getNumParams()==1 && function->getParamDecl(0)->getType()->isSpecificBuiltinType(clang::BuiltinType::Bool) && function->getReturnType()->isSpecificBuiltinType(clang::BuiltinType::ULong);
+    if (file->getName() == "/include/metal_simd") {
+      if (!function->hasAttr<clang::ConvergentAttr>() ||
+          function->hasAttr<clang::ConstAttr>() || function->hasAttr<clang::PureAttr>() ||
+          function->getNumParams()!=1 ||
+          !function->getParamDecl(0)->getType()->isSpecificBuiltinType(clang::BuiltinType::Bool)) return false;
+      if (name=="air.simd_ballot.i64") return function->getReturnType()->isSpecificBuiltinType(clang::BuiltinType::ULong);
+      return name=="air.simd_all" && function->getReturnType()->isSpecificBuiltinType(clang::BuiltinType::Bool);
+    }
     if (file->getName() == "/include/metal_atomic") return trustedAtomicDeclaration(function, attr);
     if (file->getName() == "/include/metal_depth") return trustedDepthDeclaration(function, attr);
     if (file->getName() == "/include/metal_texture") return trustedTextureDeclaration(function, attr);
@@ -114,7 +121,8 @@ class RejectAssembly final : public clang::RecursiveASTVisitor<RejectAssembly> {
     }
     unsigned count = 0;
     for (const auto candidate : {"air.fast_sqrt.f32", "air.fast_rsqrt.f32",
-          "air.fast_exp2.f32", "air.fast_log2.f32", "air.fast_floor.f32",
+          "air.fast_exp2.f32", "air.fast_log2.f32", "air.fast_sin.f32",
+          "air.fast_cos.f32", "air.fast_ceil.f32", "air.fast_floor.f32",
           "air.fast_trunc.f32", "air.fast_rint.f32", "air.fast_fabs.f32"})
       if (name == candidate) count = 1;
     if (name == "air.fast_fmin.f32" || name == "air.fast_fmax.f32") count = 2;
@@ -226,7 +234,7 @@ bool validControlStages(const llvm::Module &module) {
             return value && value->getZExtValue()==expected;
           };
           if (name=="air.clz.i32" && !constant(1,0)) return false;
-          if (name=="air.simd_ballot.i64" && llvm::StringRef(stage)!="air.kernel") return false;
+          if ((name=="air.simd_ballot.i64" || name=="air.simd_all") && llvm::StringRef(stage)!="air.kernel") return false;
           if (name.startswith("air.atomic.")) {
             if (llvm::StringRef(stage)!="air.kernel" || !constant(2,0) ||
                 !constant(3,name.startswith("air.atomic.global.") ? 2 : 1) || !constant(4,1)) return false;

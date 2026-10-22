@@ -18,7 +18,19 @@ Nine authored frontend fixtures and the API header/profile regression suite pass
 
 The narrow `select(floatN, floatN, isnan(floatN))` path uses internal component masks for N=2,3,4; these are not MSL bool-vector storage or interface types. Scalar and vector NaN classification uses IEEE float-bit tests so fast-math cannot remove sanitization. See [NAN_CLASSIFICATION.md](NAN_CLASSIFICATION.md).
 
-Unsupported types/operations remain errors, including general bool-vector storage/operations, accurate transcendental replacements, SIMD operations, textures and most MSL library functions. Do not substitute integer vectors for bool vectors or treat successful packaging as rendering equivalence.
+### Added scalar and compute operations (execution validation pending)
+
+The authored headers now provide `sin(float)`, `cos(float)` and `ceil(float)` through exact `air.fast_sin.f32`, `air.fast_cos.f32` and `air.fast_ceil.f32` declarations. Like the existing fast math subset, ordinary `metal::` exports require profile 1; explicit `metal::fast::` calls remain available without changing the selected profile. No half or vector overloads were added for these three operations.
+
+`reverse_bits(uint)` calls `air.reverse_bits.i32`; the signed overload preserves input and result bits with equal-size bit casts, not float conversion or signed arithmetic. A deleted generic overload rejects unsupported widths and vectors instead of silently promoting 16-bit inputs to a 32-bit reversal. `simd_all(bool)` calls the boolean `air.simd_all` intrinsic, marked convergent and never const/pure. Its currently supported project subset is compute-only, including calls reached through helper functions. The frontend-wide `ConvergentFunctions` option remains enabled. These declarations use the direct AIR path, not compiler builtins requiring unimplemented LLVM intrinsic lowering.
+
+`api/operations_smoke.h` adds independent executable regression sources to the existing header/profile suite. They cover exact AIR signatures, profile gates, unsupported argument types, signed/unsigned reversal, convergent SIMD calls and helpers, fragment/vertex rejection, and forged labels, filenames, redeclarations and definitions. Negative cases check the expected failure status and empty output, rather than accepting a missing entry point as proof of declaration rejection. The scalar/integer frontend fixtures also exercise the added operations. Two obsolete negatives were corrected: implemented scalar integer `abs` and uint `simd_shuffle` are positive cases with integer-preservation checks; unsupported int-vector `abs` and half `simd_shuffle` retain type-rejection coverage.
+
+The production CI canary now includes a fourth fixed authored fixture, `fixtures/msl-scalar-operations.metal`, with runtime buffer inputs and separate output stores for all five added operations. The original vertex, fragment and compute fixtures remain unchanged. The canary compiles all four through the real WASM compiler and validates their metallib containers; it does not run the native header smoke suite or establish device execution.
+
+This addition has source-only regression checks; its compiler fixtures and extended canary have not been built or executed locally. A rebuilt CI compiler artifact and real compiler runs remain required. Header fingerprints update automatically from the existing fixed bundle algorithm; no artifact digest, source-integrity check or prior reference expectation is replaced to claim a pass. No Apple SDK text or private application shader source is included.
+
+Unsupported types/operations remain errors, including general bool-vector storage/operations, accurate transcendental replacements, and APIs outside the authored SIMD, texture and math subsets. Do not substitute integer vectors for bool vectors or treat successful packaging as rendering equivalence.
 
 Build the existing API CMake project with targets `d2r_air_api_smoke` and `d2r_air_header_smoke`, then run:
 

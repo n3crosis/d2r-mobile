@@ -8,6 +8,9 @@ float sqrt(float) __asm__("air.fast_sqrt.f32") __attribute__((const));
 float rsqrt(float) __asm__("air.fast_rsqrt.f32") __attribute__((const));
 float exp2(float) __asm__("air.fast_exp2.f32") __attribute__((const));
 float log2(float) __asm__("air.fast_log2.f32") __attribute__((const));
+float sin(float) __asm__("air.fast_sin.f32") __attribute__((const));
+float cos(float) __asm__("air.fast_cos.f32") __attribute__((const));
+float ceil(float) __asm__("air.fast_ceil.f32") __attribute__((const));
 float floor(float) __asm__("air.fast_floor.f32") __attribute__((const));
 float trunc(float) __asm__("air.fast_trunc.f32") __attribute__((const));
 float rint(float) __asm__("air.fast_rint.f32") __attribute__((const));
@@ -48,6 +51,9 @@ template<class T> T sqrt(T) = delete;
 template<class T> T rsqrt(T) = delete;
 template<class T> T exp2(T) = delete;
 template<class T> T log2(T) = delete;
+template<class T> T sin(T) = delete;
+template<class T> T cos(T) = delete;
+template<class T> T ceil(T) = delete;
 template<class T> T floor(T) = delete;
 template<class T> T trunc(T) = delete;
 template<class T> T rint(T) = delete;
@@ -59,6 +65,9 @@ D2R_INLINE float sqrt(float x) { return __air_detail::sqrt(x); }
 D2R_INLINE float rsqrt(float x) { return __air_detail::rsqrt(x); }
 D2R_INLINE float exp2(float x) { return __air_detail::exp2(x); }
 D2R_INLINE float log2(float x) { return __air_detail::log2(x); }
+D2R_INLINE float sin(float x) { return __air_detail::sin(x); }
+D2R_INLINE float cos(float x) { return __air_detail::cos(x); }
+D2R_INLINE float ceil(float x) { return __air_detail::ceil(x); }
 D2R_INLINE float floor(float x) { return __air_detail::floor(x); }
 D2R_INLINE float trunc(float x) { return __air_detail::trunc(x); }
 D2R_INLINE float rint(float x) { return __air_detail::rint(x); }
@@ -109,6 +118,9 @@ using fast::sqrt;
 using fast::rsqrt;
 using fast::exp2;
 using fast::log2;
+using fast::sin;
+using fast::cos;
+using fast::ceil;
 using fast::floor;
 using fast::trunc;
 using fast::rint;
