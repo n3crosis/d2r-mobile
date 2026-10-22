@@ -259,10 +259,18 @@ const messages = new Set([
   "Worker assets must be self-hosted same-origin module URLs",
 ]);
 const compilerProse =
-  /^(?:(?:fatal error|error|warning|note):|use of (?:undeclared|undefined)|unknown (?:type|attribute|argument|register)|no (?:matching|member|type named|viable|template named)|undeclared identifier|invalid |unsupported |cannot |incompatible |expected |too (?:many|few)|candidate |called object |call to |implicit |redefinition |conflicting |non-constant |reference to |assigning to |initializing |passing |variable |function |argument |return (?:type|value)|static assertion failed|expression |["'][^"']{1,160}["'] (?:is |was |does |has |cannot |requires |file not found)|Unresolved external (?:function|global):|assembly and assembly symbol labels are unsupported|Source must contain between|Compiled output exceeded|Metal library serialization failed|Frontend did not produce|No AIR entry point|Unsupported shader stage for a control intrinsic)/i;
+  /^(?:(?:fatal error|error|warning|note|frontend diagnostic):|use of (?:undeclared|undefined)|unknown (?:type|attribute|argument|register)|no (?:matching|member|type named|viable|template named)|undeclared identifier|invalid |unsupported |cannot |incompatible |expected |too (?:many|few)|candidate |called object |call to |implicit |redefinition |conflicting |non-constant |reference to |assigning to |initializing |passing |variable |function |argument |return (?:type|value)|static assertion failed|expression |["'][^"']{1,160}["'] (?:is |was |does |has |cannot |requires |file not found)|Unresolved external (?:function|global):|assembly and assembly symbol labels are unsupported|Source must contain between|Compiled output exceeded|Metal library serialization failed|Frontend did not produce|No AIR entry point|Unsupported shader stage for a control intrinsic)/i;
 const secret =
   /(?:prod\.keys|title\.keys|password|passwd|credential|bearer|(?:api|access|refresh|session)[_ -]?(?:key|token)|master_key|titlekey|private[_ -]?key|BEGIN .*PRIVATE KEY)/i;
+// 只有 AIR 前端的 FormatDiagnostic 输出可使用此入口；不是任意异常消息。
+// Only AIR frontend FormatDiagnostic output may use this entry point, not arbitrary exceptions.
+export function sanitizeAirFrontendDiagnostics(value) {
+  return typeof value === "string" ? sanitizeDiagnosticLines(value, true) : Object.freeze([]);
+}
 export function sanitizeCompilerDiagnostics(value) {
+  return sanitizeDiagnosticLines(value, false);
+}
+function sanitizeDiagnosticLines(value, frontendStream) {
   if (typeof value !== "string" && !Array.isArray(value)) return Object.freeze([]);
   const inputs = typeof value === "string" ? [value] : value.slice(0, 8);
   const output = [];
@@ -279,10 +287,17 @@ export function sanitizeCompilerDiagnostics(value) {
       // 丢弃实际文件名，只保留编译器诊断的位置数字。
       // Discard actual filenames, retaining only diagnostic line/column numbers.
       const located =
-        /^(?:.+?):(\d{1,7})(?::(\d{1,7}))?:\s*((?:fatal error|error|warning|note):.*)$/.exec(line);
+        /^(?:.+?):(\d{1,7})(?::(\d{1,7}))?:\s*((?:fatal error|error|warning|note|frontend diagnostic):.*)$/.exec(
+          line,
+        );
       const location = located ? `source:${located[1]}${located[2] ? ":" + located[2] : ""}: ` : "";
       if (located) line = located[3];
-      if (!compilerProse.test(line)) continue;
+      const recognized = compilerProse.test(line);
+      // 前端诊断没有级别前缀；保留未知诊断句子，但不把裸标识符当作正文。
+      // Frontend diagnostics have no severity prefix; retain unfamiliar sentences, not bare identifiers.
+      const frontendProse = frontendStream && !recognized && /\s/.test(line);
+      if (!recognized && !frontendProse) continue;
+      if (frontendProse && /^(?:\/\/|\/\*)/.test(line)) continue;
       // 路径、长令牌及代码片段不是诊断正文；绝不转发源码插入符或 IR 行。
       // Paths, long tokens and code snippets are not diagnostic prose; never forward source carets or IR lines.
       line = line
@@ -303,8 +318,14 @@ export function sanitizeCompilerDiagnostics(value) {
         })
         .join("");
       const prose = line.replace(/["'][{};=]["']/g, "[punctuation]");
-      if (/[{}]|(?:^|\s)(?:define|declare|%\w+\s*=)|\s=\s/.test(prose)) continue;
-      const safe = (location + line).slice(0, Math.min(512, remaining));
+      if (/[{}]|(?:^|:\s)(?:define|declare)\s|(?:^|\s)%\w+\s*=|\s=\s/.test(prose)) continue;
+      if (frontendProse && /;\s*$/.test(prose)) continue;
+      // 此标签仅说明来源，不把 note 或 warning 误标为 error。
+      // This label identifies the producer without mislabeling a note or warning as an error.
+      const safe = (location + (frontendProse ? "frontend diagnostic: " : "") + line).slice(
+        0,
+        Math.min(512, remaining),
+      );
       if (safe && !output.includes(safe)) {
         output.push(safe);
         remaining -= safe.length;

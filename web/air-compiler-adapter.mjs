@@ -1,6 +1,10 @@
 // 实验性 floor-Metal C API 的内存边界；不加载资产、不联网，也不声称兼容 Apple MSL。
 // Memory boundary for the experimental floor-Metal C API; no asset loading, network, or Apple MSL compatibility claim.
-import { sanitizeCompilerDiagnostics, shaderFailureDiagnostic } from "./shader-diagnostics.mjs";
+import {
+  sanitizeAirFrontendDiagnostics,
+  sanitizeCompilerDiagnostics,
+  shaderFailureDiagnostic,
+} from "./shader-diagnostics.mjs";
 import { AIR_COMPILER_SOURCE_LANGUAGE } from "./air-compiler-contract.mjs";
 const LIMITS = Object.freeze({
   source: 4 * 1024 * 1024,
@@ -213,7 +217,9 @@ export function createAirCompilerAdapter(
         // Read bounded diagnostic prose only; remove source lines, paths and keys before local reporting.
         if (status !== 0)
           throw failure(STATUS[status], diagnosticSize, {
-            diagnostics: sanitizeCompilerDiagnostics(new TextDecoder().decode(diagnosticRegion)),
+            diagnostics: (STATUS[status] === "AIR_FRONTEND_FAILED"
+              ? sanitizeAirFrontendDiagnostics
+              : sanitizeCompilerDiagnostics)(new TextDecoder().decode(diagnosticRegion)),
             compilerPhase: "compiling",
           });
         const size = checkNumber(

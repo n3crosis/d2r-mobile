@@ -440,3 +440,44 @@ test("frontend failure retains filtered prose before freeing result memory", () 
     ["result_free", "free"],
   );
 });
+
+test("only the native frontend status admits unfamiliar diagnostic prose", () => {
+  const lines = [
+    "address space qualified parameter must have pointer type",
+    "parameter may not be qualified with an address space",
+    "type 'float4' cannot be used as a template argument",
+    "non-const reference cannot bind to a temporary value",
+    "a previously unseen diagnostic sentence remains available",
+  ];
+  const diagnostic = lines.join("\n");
+  for (const status of [3, 4]) {
+    const f = fake();
+    f.module.status = status;
+    f.module.diagnosticSize = encoder.encode(diagnostic).length;
+    f.module.onCompile = () => f.module.HEAPU8.set(encoder.encode(diagnostic), 768);
+    assert.throws(
+      () => f.create().compile("synthetic"),
+      (error) => {
+        assert.equal(error.code, status === 3 ? "AIR_FRONTEND_FAILED" : "AIR_INVALID_IR");
+        assert.deepEqual(
+          error.shaderDiagnostic.diagnostics,
+          status === 3 ? lines.map((line) => `frontend diagnostic: ${line}`) : [],
+        );
+        return true;
+      },
+    );
+  }
+  const f = fake();
+  f.module.onCompile = () => {
+    throw new Error(diagnostic);
+  };
+  assert.throws(
+    () => f.create().compile("synthetic"),
+    (error) => {
+      assert.equal(error.code, "AIR_RUNTIME_FAILED");
+      assert.equal(error.shaderDiagnostic.diagnostics, undefined);
+      assert.doesNotMatch(JSON.stringify(error), /address space|parameter may|previously unseen/);
+      return true;
+    },
+  );
+});

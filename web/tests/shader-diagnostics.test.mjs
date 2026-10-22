@@ -96,3 +96,51 @@ test("compiler helper staging includes the diagnostics import without changing c
   const identity = await airCompilerSourceIdentity();
   assert.equal(Object.hasOwn(identity.sourceInputs, "shader-diagnostics.mjs"), false);
 });
+
+test("native frontend prose keeps privacy filtering, bounds and idempotence without a phrase whitelist", async () => {
+  const { sanitizeAirFrontendDiagnostics } = await import("../shader-diagnostics.mjs");
+  const value = [
+    "address space is not permitted on this declaration",
+    "parameter is declared here",
+    "type conversion changes address space",
+    "non-const binding is invalid",
+    "an unfamiliar diagnostic should still be reported",
+    "1 | kernel void PRIVATE_SOURCE() { private_function(); }",
+    "    ^~~~",
+    "parameter cannot use prod.keys PRIVATE_KEY_CANARY",
+    "parameter from '/Users/PRIVATE_PATH/game.metal' is invalid",
+    "type C:\\Users\\PRIVATE_PATH\\game.metal cannot be used",
+    "private_shader_identifier",
+    "float4 PRIVATE_SOURCE;",
+    "return private_function();",
+    "// PRIVATE_SOURCE comment",
+    "kernel void PRIVATE_SOURCE() { private_function(); }",
+    "%private = call void @private_function()",
+  ].join("\n");
+  const actual = sanitizeAirFrontendDiagnostics(value);
+  assert.deepEqual(
+    actual.slice(0, 5),
+    value
+      .split("\n")
+      .slice(0, 5)
+      .map((line) => `frontend diagnostic: ${line}`),
+  );
+  assert.doesNotMatch(
+    actual.join("\n"),
+    /PRIVATE|private_shader_identifier|private_function|Users/,
+  );
+  assert.deepEqual(sanitizeCompilerDiagnostics(actual), actual);
+  assert.deepEqual(sanitizeAirFrontendDiagnostics(actual.join("\n")), actual);
+  assert.deepEqual(sanitizeShaderDiagnostic({ diagnostics: actual }).diagnostics, actual);
+  const bounded = sanitizeAirFrontendDiagnostics(
+    Array.from({ length: 30 }, (_, i) => `parameter ${i} ${"detail ".repeat(200)}`).join("\n"),
+  );
+  assert.ok(bounded.length <= 8);
+  assert.ok(bounded.every((line) => line.length <= 512));
+  assert.ok(bounded.join("").length <= 2048);
+  assert.deepEqual(sanitizeCompilerDiagnostics(bounded), bounded);
+  assert.deepEqual(sanitizeCompilerDiagnostics("parameter may not be qualified"), []);
+  assert.deepEqual(shaderFailureDiagnostic(new Error("parameter may not be qualified")), {
+    errorType: "Error",
+  });
+});

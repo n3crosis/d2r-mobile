@@ -238,3 +238,39 @@ test("worker failure preserves sanitized compiler prose through client rethrow",
   });
   assert.equal(workers[0].terminations, 1);
 });
+
+test("native frontend wording survives worker, client, report and local display revalidation", async (t) => {
+  const { sanitizeAirFrontendDiagnostics, shaderFailureDiagnostic } =
+    await import("../shader-diagnostics.mjs");
+  const { shaderFailureDetails } = await import("../packaging-diagnostics.mjs");
+  const raw = [
+    "address space qualified parameter must have pointer type",
+    "parameter may not be qualified with an address space",
+    "type 'float4' cannot be used as a template argument",
+    "non-const reference cannot bind to a temporary value",
+  ];
+  const diagnostics = sanitizeAirFrontendDiagnostics(raw.join("\n"));
+  const { client, workers } = await setup(t);
+  const pending = client.compile(source, options);
+  await nextTurn();
+  workers[0].reply({
+    type: "error",
+    id: workers[0].requests.at(-1).id,
+    code: "AIR_FRONTEND_FAILED",
+    shaderDiagnostic: { compilerPhase: "compiling", diagnostics },
+  });
+  await assert.rejects(pending, (error) => {
+    const report = {
+      stage: "shaders",
+      code: "STAGE_FAILED",
+      detailCode: error.code,
+      shaderDiagnostic: shaderFailureDiagnostic(error, { substep: "compilation", record: 1 }),
+    };
+    assert.deepEqual(error.shaderDiagnostic.diagnostics, diagnostics);
+    assert.deepEqual(report.shaderDiagnostic.diagnostics, diagnostics);
+    const displayed = shaderFailureDetails(report);
+    for (const line of raw) assert.ok(displayed.includes(`frontend diagnostic: ${line}`));
+    assert.ok(diagnostics.every((line) => !line.startsWith("error:")));
+    return true;
+  });
+});
