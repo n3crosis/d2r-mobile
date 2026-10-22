@@ -1,14 +1,14 @@
 # Experimental Metal AIR compiler / 实验性 Metal AIR 编译器
 
-This is a **developer-only, native-tested compiler subset**, not the production browser shader compiler. It adapts a pinned open-source Clang/floor fork: source parsing and semantic analysis → LLVM/AIR lowering → actual MTLB serialization. No Apple compiler executable, SDK headers, simulator, device or remote compilation service is used by this package.
+This is a **developer-only compiler subset tested natively and through Node WASM**, not the production browser shader compiler. It adapts a pinned open-source Clang/floor fork: source parsing and semantic analysis → LLVM/AIR lowering → actual MTLB serialization. No Apple compiler executable, SDK headers, simulator, device or remote compilation service is used by this package.
 
-这是仅供开发者使用、已完成原生测试的实验性编译器子集，尚未接入生产浏览器流程。流程包含真实的语法解析、语义分析、AIR 降级和 MTLB 输出，不是容器重打包或固定示例输出。本工具包不调用 Apple 编译器、模拟器、设备或远程编译服务。
+这是仅供开发者使用、已完成原生及 Node WASM 测试的实验性编译器子集，尚未接入生产浏览器流程。流程包含真实的语法解析、语义分析、AIR 降级和 MTLB 输出，不是容器重打包或固定示例输出。本工具包不调用 Apple 编译器、模拟器、设备或远程编译服务。
 
 ## Reproduce the native milestone / 复现原生阶段
 
 Prerequisites: Linux, C++20 compiler (tested GCC 14), CMake 3.20+, Ninja, Git, tar and Node.js or Bun. Tested bootstrap used CMake 4.4.4, Ninja 1.13.2, `-O1`, assertions, four compile jobs and one link job on a roughly 10 GiB RAM machine. Default below is two compile jobs; use `--jobs 1` on a constrained host. This builds a large compiler and needs several GiB of memory/disk, not just the small package directory.
 
-开发依赖：Linux、C++20 编译器、CMake、Ninja、Git、tar、Node.js 或 Bun。这些仅用于开发者构建，不是最终网页用户的安装要求。浏览器 WASM 构建尚未完成。
+开发依赖：Linux、C++20 编译器、CMake、Ninja、Git、tar、Node.js 或 Bun。这些仅用于开发者构建，不是最终网页用户的安装要求。WASM 已完成交叉编译，并通过 Node 中的真实 WASM 执行测试；尚不能视为 Chrome 或 Apple 运行时验证。
 
 1. Download the exact `archiveUrl` in `manifest.json`. The preparation command checks the pinned archive SHA256 before extraction. It does not fetch floating branches or install dependencies.
 2. Run from this directory:
@@ -36,11 +36,11 @@ node toolchain.mjs test --work /path/to/empty-work
 
 ## Not ready / 尚未完成
 
-- Browser/WASM execution and full game corpus compilation.
+- Real Chrome execution and full game corpus compilation.
 - Complete MSL standard library, textures/samplers, builtins, function constants, framebuffer fetch and tessellation compatibility.
 - Xcode-equivalent shader behavior across the complete supplied corpus.
 
-尚未完成浏览器执行、完整游戏覆盖、完整 MSL 库和高级功能。`api/CMakeLists.txt` includes an unvalidated WASM target scaffold, not a finished browser compiler. The frontend currently accepts Metal 3.0 syntax mode while the iOS 18 AIR writer emits a Metal 3.2 version tag; that tag must not be treated as full Metal 3.2 support.
+尚未完成浏览器执行、完整游戏覆盖、完整 MSL 库和高级功能。`api/CMakeLists.txt` now builds a real WASM target tested under Node with Worker shims; it is not yet a finished production browser compiler. The frontend currently accepts Metal 3.0 syntax mode while the iOS 18 AIR writer emits a Metal 3.2 version tag; that tag must not be treated as full Metal 3.2 support.
 
 GPU-specific pipeline archives and iPhone verification are outside this task. Do not invoke an iOS simulator. The target is the Xcode-built IPA's precompiled shader-library behavior, not eliminating all device-side pipeline work.
 
@@ -48,7 +48,7 @@ GPU-specific pipeline archives and iPhone verification are outside this task. Do
 
 ## Browser smoke harness / 浏览器冒烟工具
 
-After the actual WASM target builds, run `node browser-smoke-server.mjs --build /path/to/API-WASM-build` and open the printed loopback URL in desktop Chromium. The build directory must contain `d2r_air_wasm.mjs` and `d2r_air_wasm.wasm`. The embedded compatibility header bundle must match this package's fingerprint. For an earlier isolated build, append `--api-source /path/to/matching/API-source`; the harness derives the v1 single-header or v2 sorted-bundle fingerprint from that explicit source directory and requires the module to match it. This only selects a development fixture contract, not a production trust manifest.
+After building the actual WASM target, run `node browser-smoke-server.mjs --build /path/to/API-WASM-build` and open the printed loopback URL in desktop Chromium. The build directory must contain `d2r_air_wasm.mjs` and `d2r_air_wasm.wasm`. The embedded compatibility header bundle must match this package's fingerprint. For an earlier isolated build, append `--api-source /path/to/matching/API-source`; the harness derives the v1 single-header or v2 sorted-bundle fingerprint from that explicit source directory and requires the module to match it. This only selects a development fixture contract, not a production trust manifest.
 
 This developer-only server serves a fixed allow-list of compiler and authored fixture files. It neither receives nor opens game inputs. Each of six authored source variants runs in its own dedicated Worker. Compiler assets are fingerprint-checked before the verified-byte instantiation hook is used; results undergo entry, stage, container and embedded bitcode integrity checks. The two variants per stage must produce different bitcode hashes. Cancellation terminates the active Worker. Results are shown on the page and in `globalThis.__airSmokeResult` for a browser automation driver.
 
@@ -61,3 +61,13 @@ No uploaded game source, compiled reference library, private disassembly, build 
 ## Licensing / 许可证
 
 See `THIRD_PARTY_NOTICES.md`. The fork contains Apache-2.0 WITH LLVM-exception code **and GPL-2.0-only floor transforms**. Do not describe the combined compiler as wholly permissive or distribute a runtime without satisfying all applicable licenses. This directory preserves patch/source attribution; the source archive remains external and pinned.
+
+## WebAssembly reproduction
+
+The compiler has now been cross-built with Emscripten 4.0.20 and executed in Node
+using explicit Worker shims. This is actual source-to-AIR/MTLB compilation, not
+container repacking, but it does not establish Chrome or Apple runtime acceptance.
+See [WASM_BUILD.md](WASM_BUILD.md) for the validated configuration, measured payload
+and memory limits, and the existing toolchain's `build-wasm` / `test-wasm` commands.
+No extra CI workflow is required. The authored preflight verifies the matching
+header fingerprint and does not contain game sources.

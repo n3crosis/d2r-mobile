@@ -1,7 +1,7 @@
 import process from "node:process";
 // Build-time developer tooling only. Never imported by the browser application.
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync } from "node:fs";
 import { readFile, mkdir, readdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -115,6 +115,99 @@ if (command === "prepare") {
     "--parallel",
     "1",
   ]);
+} else if (command === "build-wasm") {
+  await checkSource();
+  // Activate the official Emscripten SDK in the caller's shell first. No downloads
+  // or SDK installation are performed by this developer-only command.
+  const version = spawnSync("emcc", ["--version"], { encoding: "utf8" });
+  if (version.error) throw version.error;
+  if (version.status !== 0 || !/\b4\.0\.20\b/.test(version.stdout))
+    throw Error("Activate Emscripten 4.0.20 before build-wasm");
+  const nativeBuild = resolve(option("--native-build", build));
+  const wasmBuild = join(work, "build-wasm");
+  const wasmApiBuild = join(work, "api-build-wasm");
+  const suffix = process.platform === "win32" ? ".exe" : "";
+  const llvmTablegen = join(nativeBuild, "bin", `llvm-tblgen${suffix}`);
+  const clangTablegen = join(nativeBuild, "bin", `clang-tblgen${suffix}`);
+  if (!existsSync(llvmTablegen) || !existsSync(clangTablegen))
+    throw Error("Native llvm-tblgen and clang-tblgen are required; run build first");
+  run("emcmake", [
+    "cmake",
+    "-S",
+    join(source, "llvm"),
+    "-B",
+    wasmBuild,
+    "-G",
+    "Ninja",
+    "-DCMAKE_BUILD_TYPE=Release",
+    "-DCMAKE_C_FLAGS_RELEASE=-O1 -DNDEBUG",
+    "-DCMAKE_CXX_FLAGS_RELEASE=-O1 -DNDEBUG",
+    "-DLLVM_ENABLE_ASSERTIONS=ON",
+    "-DLLVM_ENABLE_PROJECTS=clang",
+    "-DLLVM_TARGETS_TO_BUILD=",
+    "-DLLVM_HOST_TRIPLE=wasm32-unknown-emscripten",
+    "-DLLVM_DEFAULT_TARGET_TRIPLE=wasm32-unknown-emscripten",
+    `-DLLVM_TABLEGEN=${llvmTablegen}`,
+    `-DCLANG_TABLEGEN=${clangTablegen}`,
+    "-DLLVM_ENABLE_THREADS=OFF",
+    "-DLLVM_ENABLE_ZLIB=OFF",
+    "-DLLVM_ENABLE_ZSTD=OFF",
+    "-DLLVM_ENABLE_LIBXML2=OFF",
+    "-DLLVM_ENABLE_TERMINFO=OFF",
+    "-DLLVM_ENABLE_LIBEDIT=OFF",
+    "-DLLVM_ENABLE_LIBPFM=OFF",
+    "-DLLVM_ENABLE_CURL=OFF",
+    "-DLLVM_INCLUDE_TESTS=OFF",
+    "-DLLVM_INCLUDE_EXAMPLES=OFF",
+    "-DLLVM_INCLUDE_BENCHMARKS=OFF",
+    "-DLLVM_INCLUDE_UTILS=OFF",
+    "-DLLVM_BUILD_TOOLS=OFF",
+    "-DCLANG_BUILD_TOOLS=OFF",
+    "-DCLANG_ENABLE_ARCMT=OFF",
+    "-DCLANG_ENABLE_STATIC_ANALYZER=OFF",
+    "-DCLANG_FLOOR_ENABLE_SPIRV=OFF",
+    "-DLLVM_PARALLEL_LINK_JOBS=1",
+    "-DLLVM_ENABLE_LTO=OFF",
+  ]);
+  run("cmake", [
+    "--build",
+    wasmBuild,
+    "--parallel",
+    String(jobs),
+    "--target",
+    "clangCodeGen",
+    "clangFrontend",
+    "LLVMMetalLib",
+    "LLVMBitWriter50",
+    "LLVMBitWriter140",
+  ]);
+  run("emcmake", [
+    "cmake",
+    "-S",
+    join(root, "api"),
+    "-B",
+    wasmApiBuild,
+    "-G",
+    "Ninja",
+    "-DCMAKE_BUILD_TYPE=Release",
+    "-DCMAKE_C_FLAGS_RELEASE=-O1 -DNDEBUG",
+    "-DCMAKE_CXX_FLAGS_RELEASE=-O1 -DNDEBUG",
+    `-DLLVM_DIR=${join(wasmBuild, "lib/cmake/llvm")}`,
+    `-DClang_DIR=${join(wasmBuild, "lib/cmake/clang")}`,
+  ]);
+  run("cmake", ["--build", wasmApiBuild, "--parallel", "1", "--target", "d2r_air_wasm"]);
+} else if (command === "test-wasm") {
+  run(process.execPath, [
+    join(root, "wasm-node-preflight.mjs"),
+    "--build",
+    resolve(option("--wasm-build", join(work, "api-build-wasm"))),
+    "--api-source",
+    resolve(option("--api-source", join(root, "api"))),
+    "--api-version",
+    option("--api-version", "2"),
+    "--output",
+    resolve(option("--output", join(work, "wasm-node-results.json"))),
+  ]);
 } else if (command === "test") {
   const clang = resolve(option("--clang", join(build, "bin/clang")));
   const smoke = resolve(option("--smoke", join(apiBuild, "d2r_air_api_smoke")));
@@ -139,7 +232,7 @@ if (command === "prepare") {
   console.log(`Verified ${manifest.patches.length} ordered patch hashes for ${manifest.commit}`);
 } else {
   console.log(
-    "Usage: node toolchain.mjs prepare --archive FILE [--work DIR]\n       node toolchain.mjs build [--work DIR] [--jobs 2]\n       node toolchain.mjs test [--work DIR] [--clang FILE --smoke FILE]\n       node toolchain.mjs check",
+    "Usage: node toolchain.mjs prepare --archive FILE [--work DIR]\n       node toolchain.mjs build [--work DIR] [--jobs 2]\n       node toolchain.mjs test [--work DIR] [--clang FILE --smoke FILE]\n       node toolchain.mjs build-wasm [--work DIR] [--native-build DIR] [--jobs 2]\n       node toolchain.mjs test-wasm [--work DIR] [--wasm-build DIR]\n       node toolchain.mjs check",
   );
   if (command && command !== "help") process.exitCode = 1;
 }

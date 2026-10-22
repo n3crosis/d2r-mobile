@@ -108,5 +108,5 @@
     "clang/lib/AST/Decl.cpp": "ae31bfcb87b4c71deae2ae217c37e3e0adfe2e4f1a1645d0a07dff9dd5873517",
     "llvm/lib/Transforms/LibFloor/VulkanFinal.cpp": "a0ddb6aef504292b05b73245ffa53101c1be92b64357aa542a290b4d07b4f9ae"
   },
-  "scope": "experimental native-tested subset; WASM and full-game compilation not ready"
+  "scope": "experimental native/Node-WASM-tested subset; Chrome and full-game compilation not ready"
 }
