@@ -1,0 +1,34 @@
+// SPDX-License-Identifier: MIT
+// Authored compatibility subset. Not Apple's SDK headers.
+// Missing types and operations are intentional compile errors, not stubs.
+#ifndef D2R_EXPERIMENTAL_METAL_STDLIB
+#define D2R_EXPERIMENTAL_METAL_STDLIB
+#define kernel __attribute__((compute_kernel, kernel_dim(3)))
+#define vertex __attribute__((vertex_shader))
+#define fragment __attribute__((fragment_shader))
+#define device __attribute__((global_as))
+#define constant __attribute__((constant_as))
+#define thread __attribute__((private_as))
+#define threadgroup __attribute__((local_as))
+namespace metal {
+typedef unsigned char uchar;
+typedef unsigned short ushort;
+typedef unsigned int uint;
+typedef unsigned long ulong;
+#define D2R_VECTOR_TYPES(T) \
+  typedef T T##2 __attribute__((ext_vector_type(2))); \
+  typedef T T##3 __attribute__((ext_vector_type(3))); \
+  typedef T T##4 __attribute__((ext_vector_type(4)));
+D2R_VECTOR_TYPES(char)
+D2R_VECTOR_TYPES(uchar)
+D2R_VECTOR_TYPES(short)
+D2R_VECTOR_TYPES(ushort)
+D2R_VECTOR_TYPES(int)
+D2R_VECTOR_TYPES(uint)
+D2R_VECTOR_TYPES(long)
+D2R_VECTOR_TYPES(ulong)
+D2R_VECTOR_TYPES(half)
+D2R_VECTOR_TYPES(float)
+#undef D2R_VECTOR_TYPES
+}
+#endif

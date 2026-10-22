@@ -1,0 +1,12 @@
+--- a/llvm/lib/Transforms/LibFloor/MetalFinal.cpp
++++ b/llvm/lib/Transforms/LibFloor/MetalFinal.cpp
+@@ -1001,7 +1001,8 @@
+ 				vec_type_name = "v" + std::to_string(from_vec_type->getNumElements());
+ 			}
+ 			
+-			static const std::unordered_map<llvm::Type*, const char*> type_map {
++			// Type pointers belong to this invocation's LLVMContext.
++			const std::unordered_map<llvm::Type*, const char*> type_map {
+ 				{ llvm::Type::getInt1Ty(*ctx), "i1" }, // not sure about signed/unsigned conversion here
+ 				{ llvm::Type::getInt8Ty(*ctx), "i8" },
+ 				{ llvm::Type::getInt16Ty(*ctx), "i16" },

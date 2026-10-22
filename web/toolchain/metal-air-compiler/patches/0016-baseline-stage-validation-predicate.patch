@@ -1,0 +1,25 @@
+--- a/clang/lib/CodeGen/CodeGenModule.cpp
++++ b/clang/lib/CodeGen/CodeGenModule.cpp
+@@ -3025,11 +3025,18 @@
+ 	
+ 	// Apple-MSL stage_in is a by-value plain interface record. The older floor
+ 	// stage_input path retains its existing aggregate behavior.
+-	auto has_msl_io = [this](const CXXRecordDecl *R) {
+-		if (!R) return false;
+-		for (const auto &F : getTypes().get_aggregate_scalar_fields(R, R))
+-			if (F.hasAttr<MetalVertexAttributeAttr>() || F.hasAttr<MetalUserVaryingAttr>() || F.hasAttr<MetalInterpolationAttr>())
++	// Detect annotations without ABI flattening. Unsupported aggregates must reach
++	// diagnostics below, not the flattening helper's valid-position/array assertions.
++	std::function<bool(const CXXRecordDecl *)> has_msl_io = [&](const CXXRecordDecl *R) {
++		if (!R || !(R = R->getDefinition())) return false;
++		for (const auto &Base : R->bases())
++			if (has_msl_io(Base.getType()->getAsCXXRecordDecl())) return true;
++		for (const auto *F : R->fields()) {
++			if (F->hasAttr<MetalVertexAttributeAttr>() || F->hasAttr<MetalUserVaryingAttr>() || F->hasAttr<MetalInterpolationAttr>())
+ 				return true;
++			if (has_msl_io(getContext().getBaseElementType(F->getType())->getAsCXXRecordDecl()))
++				return true;
++		}
+ 		return false;
+ 	};
+ 	unsigned all_stage_inputs = 0;

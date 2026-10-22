@@ -1,0 +1,140 @@
+--- a/clang/lib/AST/ASTContext.cpp
++++ b/clang/lib/AST/ASTContext.cpp
+@@ -2181,6 +2181,12 @@
+       Align = Target->getPointerAlign(0);
+       break;
+     case BuiltinType::OCLSampler: {
++      if (getLangOpts().Metal) {
++        AS = getTargetAddressSpace(LangAS::opencl_constant);
++        Width = Target->getPointerWidth(AS);
++        Align = Target->getPointerAlign(AS);
++        break;
++      }
+       // NOTE: samplers are modeled as integers for now.
+       Width = Target->getIntWidth();
+       Align = Target->getIntAlign();
+--- a/clang/lib/Sema/SemaDeclAttr.cpp
++++ b/clang/lib/Sema/SemaDeclAttr.cpp
+@@ -3070,11 +3070,14 @@
+   }
+   const auto *Field = cast<FieldDecl>(D);
+   const auto Type = Field->getType();
++  const bool IsBuffer = Type->isPointerType() &&
++      (Type->getPointeeType().getAddressSpace() == LangAS::opencl_global ||
++       Type->getPointeeType().getAddressSpace() == LangAS::opencl_constant);
++  const auto *Builtin = Type->getAs<BuiltinType>();
++  const bool IsImage2D = Builtin && Builtin->getKind() == BuiltinType::OCLImage2d;
+   if (Field->isBitField() || Field->getParent()->isUnion() ||
+-      !Type->isPointerType() ||
+-      (Type->getPointeeType().getAddressSpace() != LangAS::opencl_global &&
+-       Type->getPointeeType().getAddressSpace() != LangAS::opencl_constant)) {
+-    error("id attribute currently supports only device or constant pointer fields");
++      !(IsBuffer || IsImage2D || Type->isSamplerT())) {
++    error("id attribute supports only device/constant pointers, image2d_t or sampler_t fields");
+     return;
+   }
+   if (D->hasAttr<MetalArgumentIDAttr>()) {
+--- a/clang/lib/Sema/SemaDecl.cpp
++++ b/clang/lib/Sema/SemaDecl.cpp
+@@ -17310,7 +17310,8 @@
+     // OpenCL v1.2 s6.9b,r & OpenCL v2.0 s6.12.5 - The following types cannot be
+     // used as structure or union field: image, sampler, event or block types.
+     // NOTE: image types are allowed and necessary part of aggregate images
+-    if (T->isEventT() /* || T->isImageType() */ || T->isSamplerT() ||
++    if (T->isEventT() /* || T->isImageType() */ ||
++        (T->isSamplerT() && !LangOpts.Metal) ||
+         T->isBlockPointerType()) {
+       Diag(Loc, diag::err_opencl_type_struct_or_union_field) << T;
+       Record->setInvalidDecl();
+@@ -17919,6 +17920,19 @@
+         const auto *ID = D->getAttr<MetalArgumentIDAttr>();
+         if (!ID || (HavePrevious && ID->getIndex() <= Previous))
+           Invalid = true;
++        if (const auto *Field = dyn_cast<FieldDecl>(D)) {
++          if (Field->getType()->isImageType()) {
++            const auto *Flags = Field->getAttr<FloorImageFlagsAttr>();
++            const auto *Data = Field->getAttr<FloorImageDataTypeAttr>();
++            if (!Flags || !Flags->isReadOnly() || !Data ||
++                !Data->getImageDataType()->isSpecificBuiltinType(BuiltinType::Float)) {
++              Diag(Field->getLocation(), getDiagnostics().getCustomDiagID(
++                  DiagnosticsEngine::Error,
++                  "id image2d_t fields require explicit float data type and read-only image flags"));
++              Invalid = true;
++            }
++          }
++        }
+         if (ID) {
+           HavePrevious = true;
+           Previous = ID->getIndex();
+--- a/clang/lib/CodeGen/CodeGenModule.cpp
++++ b/clang/lib/CodeGen/CodeGenModule.cpp
+@@ -2684,6 +2684,7 @@
+ 		const std::function<bool(const clang::QualType&)> indirect_checker = [&indirect_checker](const clang::QualType& type) {
+ 			if (type->isPointerType() ||
+ 				type->isReferenceType() ||
++				type->isSamplerT() ||
+ 				type->isImageType() ||
+ 				type->isArrayImageType(true) ||
+ 				type->isArrayBufferType() ||
+@@ -2824,6 +2825,7 @@
+ 		// NOTE: air wants the type w/o qualifiers
+ 		const auto base_unq_type = type.getTypePtr()->getBaseElementTypeUnsafe();
+ 		const auto unqualified_type = base_unq_type->getCanonicalTypeInternal();
++        if (unqualified_type->isSamplerT()) return std::string("sampler");
+ 		
+ 		// strips "const", "volatile", "restrict" and "__restrict" from the type name
+ 		const auto strip_cvr = [](std::string in_str) {
+@@ -3254,8 +3256,9 @@
+ 				if (explicit_ids) {
+ 					const auto *ID = field->getAttr<MetalArgumentIDAttr>();
+ 					const auto &layout = Context.getASTRecordLayout(&struct_rdecl);
+-					if (!ID || !field_type->isPointerType() ||
++					if (!ID || !(field_type->isPointerType() || field_type->isImageType() || field_type->isSamplerT()) ||
+ 						Context.getTypeSize(field_type) != 64 ||
++                        Context.getTypeAlign(field_type) != 64 ||
+ 						layout.getAlignment().getQuantity() != 8 ||
+ 						layout.getFieldOffset(field->getFieldIndex()) != uint64_t(ID->getIndex()) * 64) {
+ 						Error(field->getBeginLoc(), "unsupported sparse argument-buffer field layout");
+@@ -3326,6 +3329,20 @@
+ 							return {};
+ 						}
+ 						struct_info.push_back(llvm::MDNode::get(VMContext, field_arg_info));
++					} else if (field_type->isSamplerT()) {
++                        // AIR sampler binding tuple follows DXMT AIRSignature.
++                        SmallVector<llvm::Metadata*, 16> sampler_info {
++                            llvm::ConstantAsMetadata::get(Builder.getInt32(arg_idx_child++)),
++                            llvm::MDString::get(VMContext, "air.sampler"),
++                            llvm::MDString::get(VMContext, "air.location_index"),
++                            llvm::ConstantAsMetadata::get(Builder.getInt32(buffer_or_tex_idx_child++)),
++                            llvm::ConstantAsMetadata::get(Builder.getInt32(1)),
++                            llvm::MDString::get(VMContext, "air.arg_type_name"),
++                            llvm::MDString::get(VMContext, "sampler"),
++                            llvm::MDString::get(VMContext, "air.arg_name"),
++                            llvm::MDString::get(VMContext, field->getName())
++                        };
++                        struct_info.push_back(llvm::MDNode::get(VMContext, sampler_info));
+ 					} else if (field_type->isImageType()) {
+ 						auto field_arg_info = add_image_arg(field_type, field->getAttr<FloorImageFlagsAttr>(),
+ 															field->getAttr<FloorImageDataTypeAttr>(), field->getName().str(),
+--- a/llvm/lib/Transforms/LibFloor/MetalImage.cpp
++++ b/llvm/lib/Transforms/LibFloor/MetalImage.cpp
+@@ -134,6 +134,19 @@
+ 				return nullptr;
+ 			}
+ 			
++            auto* sampler_pointer = dyn_cast<PointerType>(dyn_sampler_arg->getType());
++            auto* sampler_struct = sampler_pointer ?
++                dyn_cast<StructType>(sampler_pointer->getPointerElementType()) : nullptr;
++            if (!sampler_pointer || sampler_pointer->getAddressSpace() != Metal_ConstantAS ||
++                !sampler_struct || !sampler_struct->isOpaque() ||
++                sampler_struct->getName() != "struct._sampler_t") {
++                ctx->emitError(&originating_instruction, "invalid Metal sampler handle type");
++                return nullptr;
++            }
++            // Runtime handles are already opaque AIR sampler values. Preserve the
++            // loaded SSA value; never substitute an immutable sampler state.
++            if (!isa<Constant>(dyn_sampler_arg)) return dyn_sampler_arg;
++
+ 			auto ce_sampler = dyn_cast<ConstantExpr>(dyn_sampler_arg);
+ 			if (ce_sampler == nullptr) {
+ 				ctx->emitError(&originating_instruction, "sampler arg must be a constant expression");

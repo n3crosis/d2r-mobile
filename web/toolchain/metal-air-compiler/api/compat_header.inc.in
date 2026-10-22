@@ -1,0 +1,3 @@
+// Generated from the explicitly authored compatibility header, never an SDK.
+static constexpr const char CompatibilityHeader[] = R"D2R_HEADER(@AIR_COMPAT_CONTENT@)D2R_HEADER";
+static constexpr const char CompatibilityHeaderSHA256[] = "@AIR_COMPAT_SHA256@";

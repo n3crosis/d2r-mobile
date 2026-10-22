@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "repository": "https://github.com/gzorin/floor_llvm",
+  "commit": "758f59eefe5db70f6e8719be8ca1beb939c38adb",
+  "archiveUrl": "https://codeload.github.com/gzorin/floor_llvm/tar.gz/758f59eefe5db70f6e8719be8ca1beb939c38adb",
+  "archiveSha256": "f1d687bb09e69e5282adeda63cd408dbfd3fb81740f1847c2ff58b5c8e7fdf44",
+  "patches": [
+    {
+      "path": "patches/0001-explicit-msl-buffer-bindings.patch",
+      "sha256": "aadf5cdc4feb6738906d9e9b369e6b66ab87c6b1a77f629e5ce09dc14d1347c2"
+    },
+    {
+      "path": "patches/0002-sparse-pointer-argument-ids.patch",
+      "sha256": "a1118062c081ee6e9f5036244ce710933cba0c6427b26aa18319c99283f36923"
+    },
+    {
+      "path": "patches/0003-module-owned-sampler-reuse.patch",
+      "sha256": "00608e47d7036c45ca41a5639d4adc0921b994e011441a4b8710a527c0e523db"
+    },
+    {
+      "path": "patches/0004-guard-invalid-sampler.patch",
+      "sha256": "e714fe1225225e518add72f0c20537e9ac3f04ed6ec82bd72d55c7a0c9811f75"
+    },
+    {
+      "path": "patches/0005-context-owned-image-types.patch",
+      "sha256": "9aa781c127a4a1e5deaa65968491c233b51251491488504aaa54dcdbdf173a63"
+    },
+    {
+      "path": "patches/0006-msl-stage-inputs.patch",
+      "sha256": "3a094ac7049084c73c0464d7f73d6c874c6998d30077f3793877e96182c45fa9"
+    },
+    {
+      "path": "patches/0007-dynamic-image-sampler-resources.patch",
+      "sha256": "cada832e29b0c66e71d743062e8cdfc29267d65314874ea60681151fc3126999"
+    },
+    {
+      "path": "patches/0008-image-resource-type-name.patch",
+      "sha256": "18f3b393e33cdd3a1172b90ca958581e32b0e6366ce8611af913079be03dad50"
+    },
+    {
+      "path": "patches/0009-optional-spirv-backend.patch",
+      "sha256": "282939624681091a2894a10758d95fd98c95465877ee0966bea0ea6b58ca5328"
+    },
+    {
+      "path": "patches/0010-designated-initializer-order.patch",
+      "sha256": "1804d030a56a965ec8e0d523c834ef7c831ad538073d2c12eb3a66727cd7d3a3"
+    },
+    {
+      "path": "patches/0011-optional-spirv-link.patch",
+      "sha256": "df66180fca8caa12c486cd2557f5ddcd086ace5390a6e9b90a4ab6919d2743b4"
+    },
+    {
+      "path": "patches/0012-air-target-lowering-link.patch",
+      "sha256": "bf53d7171b8c32478ae8e217690be587824a7cf9fa050d86c1f497f230a72987"
+    },
+    {
+      "path": "patches/0013-xcode-metadata-lengths.patch",
+      "sha256": "cb70064112a52e523cf455bc974694b76aa58c1cefa9c7dc44e6d0df8ba0c035"
+    },
+    {
+      "path": "patches/0014-context-local-conversion-types.patch",
+      "sha256": "93e661736c06bcf80b65d7006158a65b393ca8ba694af7d45f3f10cca464054a"
+    },
+    {
+      "path": "patches/0015-sampler-member-argument-load.patch",
+      "sha256": "a783b590cc491044b747fb206a296f8a9cc4c632e94b6f942d7f6c39b85346ef"
+    },
+    {
+      "path": "patches/0016-baseline-stage-validation-predicate.patch",
+      "sha256": "f8fc6c3061a7fbf1f8b9ddbf38f8db0e648c0b32315c92e85fa1b5ca2742e1a4"
+    },
+    {
+      "path": "patches/0017-metal-graphics-entry-linkage.patch",
+      "sha256": "1755681ab3c108f52338ac0787628352212314ddf7136ff72a37cb36abb8fcba"
+    },
+    {
+      "path": "patches/0018-reference-sample-control.patch",
+      "sha256": "c8e98927653bf7e7d96ca7fe2ecf447315ced12162ec48dbb983620c5a5ff847"
+    },
+    {
+      "path": "patches/0019-msl-position-sema-before-abi.patch",
+      "sha256": "64b8c7cf355c5418b493a5aa6e2c2bf48f9ff82604f72224f297d8db35028dd7"
+    },
+    {
+      "path": "patches/0020-fail-closed-intrinsic-cleanup.patch",
+      "sha256": "246c87b3d4628856cd5045fa58a6ccc0f103255701a59faef92fc9ab68e1acad"
+    }
+  ],
+  "patchedFiles": {
+    "clang/include/clang/Basic/Attr.td": "faf8f0069af1480aad0dbeb4f134b7c438e87ce03c5ff7b42bc7bfde94e93eaf",
+    "clang/lib/AST/ASTContext.cpp": "fd166a8f2baebad1098b798e11de68a0e40812f1ca4d76a17fff80c8d173f1b0",
+    "clang/lib/AST/RecordLayoutBuilder.cpp": "2ea871bef2a2dce8b4eaec3fcd8e74ec5203853df32ea80010f657ea888a2c80",
+    "clang/lib/CodeGen/CodeGenModule.cpp": "9cd726335228b03f0bd3a14b8f2100c61f140107a5a4677fc59bf6dce37a6089",
+    "clang/lib/CodeGen/CodeGenTypes.cpp": "b6417686d34084203ae56883f8ecdd4dde7d50b3b265bfd81c671b545d055449",
+    "clang/lib/CodeGen/CodeGenTypes.h": "bbbff5b5cd9388191d278e77cf651f24fbdb142141d050ca82bb80408707b2e6",
+    "clang/lib/Sema/SemaDecl.cpp": "b71223a4d399e0b11bc1ccd19c5d2103da0833d3f9b2f90b26d0a0d63938f6da",
+    "clang/lib/Sema/SemaDeclAttr.cpp": "38b23be9361258211d97f512e74373714730ad6ae481a34a7b74f63c652a8c68",
+    "llvm/lib/Transforms/LibFloor/MetalImage.cpp": "ef31a39e27ef6da8424e54c48749990932800916b29a54f730a7f80732517e86",
+    "clang/lib/CodeGen/CMakeLists.txt": "5edc3e86e9e566ca80dc802e2dcdc2c1dcdf36ffdbd9274e766dfda9a5ba53f0",
+    "clang/lib/CodeGen/BackendUtil.cpp": "6d6d71b66bbd1fcbd81091cbb3afa82d58cef0ae9c1a55b5b482312766850e11",
+    "llvm/lib/Bitcode/MetalLib/MetalLibWriterPass.cpp": "e2c12d7f700e3be6a2e84c48cbdb2bc862b9aea74002ca0cf23832daa4cdff6c",
+    "llvm/lib/Transforms/LibFloor/MetalFinal.cpp": "c145ccae2e093d430daae5df4972f8a65ce881164500ca95594178e3dc6a3521",
+    "clang/lib/Sema/SemaInit.cpp": "4b456071724d84af3eb54d5a4449710b68f73e7b09da75dcc597b5107f5d9897",
+    "clang/lib/AST/Decl.cpp": "ae31bfcb87b4c71deae2ae217c37e3e0adfe2e4f1a1645d0a07dff9dd5873517"
+  },
+  "scope": "experimental native-tested subset; WASM and full-game compilation not ready"
+}

@@ -1,0 +1,19 @@
+--- a/llvm/lib/Transforms/LibFloor/MetalFinal.cpp
++++ b/llvm/lib/Transforms/LibFloor/MetalFinal.cpp
+@@ -1378,9 +1378,13 @@
+ 			for (auto func_iter = Mod.begin(); func_iter != Mod.end();) {
+ 				auto& func = *func_iter;
+ 				if (func.getName().startswith("floor.")) {
+-					if (func.getNumUses() != 0) {
+-						errs() << func.getName() << " should not have any uses at this point!\n";
+-					}
++                    if (!func.use_empty()) {
++                        // An earlier lowering diagnostic can leave an intrinsic
++                        // call alive. Never erase a value with live uses.
++                        ctx->emitError("unlowered floor intrinsic remains: " + func.getName());
++                        ++func_iter;
++                        continue;
++                    }
+ 					++func_iter; // inc before erase
+ 					func.eraseFromParent();
+ 					module_modified = true;

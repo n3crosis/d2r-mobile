@@ -1,0 +1,341 @@
+--- a/clang/include/clang/Basic/Attr.td
++++ b/clang/include/clang/Basic/Attr.td
+@@ -1459,9 +1459,37 @@
+   let Documentation = [Undocumented];
+ }
+ 
++// Explicit Apple-MSL graphics interfaces. Keep the existing floor spelling and
++// automatic field-name interface unchanged unless these attributes are used.
++def MetalVertexAttribute : InheritableAttr {
++  let Spellings = [CXX11<"", "attribute", 200809>];
++  let Args = [UnsignedArgument<"Index">];
++  let Subjects = SubjectList<[Field], ErrorDiag>;
++  let Documentation = [Undocumented];
++}
++def MetalUserVarying : InheritableAttr {
++  let Spellings = [CXX11<"", "user", 200809>];
++  let Args = [IdentifierArgument<"Semantic">];
++  let Subjects = SubjectList<[Field], ErrorDiag>;
++  let Documentation = [Undocumented];
++}
++def MetalInterpolation : InheritableAttr {
++  let Spellings = [CXX11<"", "flat", 200809>,
++    CXX11<"", "center_perspective", 200809>,
++    CXX11<"", "center_no_perspective", 200809>,
++    CXX11<"", "centroid_perspective", 200809>,
++    CXX11<"", "centroid_no_perspective", 200809>,
++    CXX11<"", "sample_perspective", 200809>,
++    CXX11<"", "sample_no_perspective", 200809>];
++  let Subjects = SubjectList<[Field], ErrorDiag>;
++  let Documentation = [Undocumented];
++}
++
+ // stage input (just fragment shader input right now)
+ def GraphicsStageInput : Attr {
+-  let Spellings = [GNU<"stage_input">, CXX11<"","stage_input", 200809>];
++  let Spellings = [GNU<"stage_input">, CXX11<"","stage_input", 200809>,
++                   CXX11<"", "stage_in", 200809>];
++  let Accessors = [Accessor<"isMSL", [CXX11<"", "stage_in", 200809>]>];
+   let Subjects = SubjectList<[ParmVar], ErrorDiag>;
+   let Documentation = [Undocumented];
+ }
+--- a/clang/lib/Sema/SemaDeclAttr.cpp
++++ b/clang/lib/Sema/SemaDeclAttr.cpp
+@@ -3082,6 +3082,78 @@
+     return;
+   }
+   D->addAttr(::new (S.Context) MetalArgumentIDAttr(S.Context, AL, Index));
++}
++
++// A deliberately small, concrete stage-IO type surface. No aggregate flattening
++// or interpolation attribute is accepted and then silently discarded.
++static bool checkMetalIOField(Sema &S, Decl *D, const ParsedAttr &AL) {
++  QualType T = cast<FieldDecl>(D)->getType();
++  if (const auto *V = T->getAs<VectorType>()) {
++    if (V->getNumElements() < 2 || V->getNumElements() > 4) {
++      S.Diag(AL.getLoc(), S.getDiagnostics().getCustomDiagID(
++          DiagnosticsEngine::Error, "Metal stage IO supports only 2 to 4 vector elements"));
++      return false;
++    }
++    T = V->getElementType();
++  }
++  const bool Numeric = T->isSpecificBuiltinType(BuiltinType::Float) ||
++      T->isSpecificBuiltinType(BuiltinType::Half) ||
++      T->isSpecificBuiltinType(BuiltinType::Int) ||
++      T->isSpecificBuiltinType(BuiltinType::UInt);
++  if (!S.getLangOpts().Metal || !Numeric || cast<FieldDecl>(D)->isBitField()) {
++    S.Diag(AL.getLoc(), S.getDiagnostics().getCustomDiagID(
++        DiagnosticsEngine::Error,
++        "Metal stage IO requires a float, half, int or uint scalar/vector field"));
++    return false;
++  }
++  return true;
++}
++static void handleMetalVertexAttribute(Sema &S, Decl *D, const ParsedAttr &AL) {
++  if (!checkMetalIOField(S, D, AL)) return;
++  uint32_t Index;
++  if (!AL.isArgExpr(0)) {
++    S.Diag(AL.getLoc(), diag::err_attribute_argument_type)
++        << AL << AANT_ArgumentIntegerConstant;
++    return;
++  }
++  if (!checkUInt32Argument(S, AL, AL.getArgAsExpr(0), Index, 1, true)) return;
++  if (Index > 30 || D->hasAttr<MetalVertexAttributeAttr>() ||
++      D->hasAttr<MetalUserVaryingAttr>()) {
++    S.Diag(AL.getLoc(), S.getDiagnostics().getCustomDiagID(
++        DiagnosticsEngine::Error, "invalid or conflicting Metal vertex attribute"));
++    return;
++  }
++  D->addAttr(::new (S.Context) MetalVertexAttributeAttr(S.Context, AL, Index));
++}
++static void handleMetalUserVarying(Sema &S, Decl *D, const ParsedAttr &AL) {
++  if (!checkMetalIOField(S, D, AL)) return;
++  if (!AL.isArgIdent(0)) {
++    S.Diag(AL.getLoc(), diag::err_attribute_argument_type)
++        << AL << AANT_ArgumentIdentifier;
++    return;
++  }
++  IdentifierInfo *Semantic = AL.getArgAsIdent(0)->Ident;
++  const auto Name = Semantic->getName();
++  unsigned Index;
++  const auto Digits = Name.drop_front(std::min<size_t>(4, Name.size()));
++  if (!Name.startswith("locn") || Digits.empty() ||
++      (Digits.size() > 1 && Digits.front() == '0') ||
++      Digits.getAsInteger(10, Index) || Index > 65535 ||
++      D->hasAttr<MetalUserVaryingAttr>() || D->hasAttr<MetalVertexAttributeAttr>()) {
++    S.Diag(AL.getLoc(), S.getDiagnostics().getCustomDiagID(
++        DiagnosticsEngine::Error, "user attribute requires a distinct locnN semantic"));
++    return;
++  }
++  D->addAttr(::new (S.Context) MetalUserVaryingAttr(S.Context, AL, Semantic));
++}
++static void handleMetalInterpolation(Sema &S, Decl *D, const ParsedAttr &AL) {
++  if (!checkMetalIOField(S, D, AL)) return;
++  if (D->hasAttr<MetalInterpolationAttr>()) {
++    S.Diag(AL.getLoc(), S.getDiagnostics().getCustomDiagID(
++        DiagnosticsEngine::Error, "conflicting Metal interpolation attributes"));
++    return;
++  }
++  D->addAttr(::new (S.Context) MetalInterpolationAttr(S.Context, AL));
+ }
+ 
+ static void handleGraphicsFBOColorLocationAttr(Sema &S, Decl *D, const ParsedAttr &Attr) {
+@@ -9079,7 +9151,21 @@
+   case ParsedAttr::AT_MetalBufferBinding:
+     handleMetalBufferBindingAttr(S, D, AL);
+     break;
++  case ParsedAttr::AT_MetalVertexAttribute:
++    handleMetalVertexAttribute(S, D, AL);
++    break;
++  case ParsedAttr::AT_MetalUserVarying:
++    handleMetalUserVarying(S, D, AL);
++    break;
++  case ParsedAttr::AT_MetalInterpolation:
++    handleMetalInterpolation(S, D, AL);
++    break;
+   case ParsedAttr::AT_GraphicsStageInput:
++    if (AL.getAttrName()->getName() == "stage_in" && !S.getLangOpts().Metal) {
++      S.Diag(AL.getLoc(), S.getDiagnostics().getCustomDiagID(
++          DiagnosticsEngine::Error, "stage_in requires Metal language mode"));
++      break;
++    }
+     handleSimpleAttribute<GraphicsStageInputAttr>(S, D, AL);
+     break;
+   case ParsedAttr::AT_Cleanup:
+--- a/clang/lib/CodeGen/CodeGenModule.cpp
++++ b/clang/lib/CodeGen/CodeGenModule.cpp
+@@ -3021,6 +3021,119 @@
+ 		return type_name;
+ 	};
+ 	
++	// Apple-MSL stage_in is a by-value plain interface record. The older floor
++	// stage_input path retains its existing aggregate behavior.
++	auto has_msl_io = [this](const CXXRecordDecl *R) {
++		if (!R) return false;
++		for (const auto &F : getTypes().get_aggregate_scalar_fields(R, R))
++			if (F.hasAttr<MetalVertexAttributeAttr>() || F.hasAttr<MetalUserVaryingAttr>() || F.hasAttr<MetalInterpolationAttr>())
++				return true;
++		return false;
++	};
++	unsigned all_stage_inputs = 0;
++	for (const auto *P : FD->parameters())
++		all_stage_inputs += P->hasAttr<GraphicsStageInputAttr>();
++	unsigned msl_stage_inputs = 0;
++	for (const auto *P : FD->parameters()) {
++		const auto *Stage = P->getAttr<GraphicsStageInputAttr>();
++		if (!Stage || !Stage->isMSL()) {
++			const auto T = P->getType();
++			const auto Base = T->isPointerType() || T->isReferenceType() ? T->getPointeeType() : T;
++			if (has_msl_io(Base->getAsCXXRecordDecl())) {
++				Error(P->getBeginLoc(), "explicit MSL stage-input semantics require stage_in");
++				return;
++			}
++			continue;
++		}
++		const auto *R = P->getType()->getAsCXXRecordDecl();
++		if (++msl_stage_inputs > 1 || all_stage_inputs != 1 || (!is_vertex && !is_fragment) || !R ||
++			R->isUnion() || R->getNumBases() || R->isPolymorphic() ||
++			R->field_empty() || !R->isStandardLayout() || !R->isTriviallyCopyable()) {
++			Error(P->getBeginLoc(), "MSL stage_in requires one plain by-value vertex/fragment interface record");
++			return;
++		}
++		std::unordered_set<unsigned> locations;
++		std::unordered_set<std::string> semantics;
++		bool position = false;
++		for (const auto *F : R->fields()) {
++			const auto *Location = F->getAttr<MetalVertexAttributeAttr>();
++			const auto *User = F->getAttr<MetalUserVaryingAttr>();
++			const bool IsPosition = F->hasAttr<GraphicsVertexPositionAttr>();
++			const auto T = F->getType();
++			if (F->isBitField() || F->hasAttr<GraphicsPointSizeAttr>() ||
++				F->hasAttr<GraphicsFBOColorLocationAttr>() || F->hasAttr<GraphicsFBODepthTypeAttr>() ||
++				(!T->isScalarType() && !T->isVectorType()) ||
++				T->isPointerType() || T->isReferenceType() ||
++				(is_vertex && (!Location || User || IsPosition || F->hasAttr<MetalInterpolationAttr>())) ||
++				(is_fragment && (Location || (bool(User) == IsPosition)))) {
++				Error(F->getBeginLoc(), "unsupported or conflicting MSL stage-input field");
++				return;
++			}
++			if ((Location && !locations.insert(Location->getIndex()).second) ||
++				(User && !semantics.insert(User->getSemantic()->getName().str()).second) ||
++				(IsPosition && position)) {
++				Error(F->getBeginLoc(), "duplicate MSL stage-input semantic");
++				return;
++			}
++			if (IsPosition) {
++				position = true;
++				const auto *V = T->getAs<VectorType>();
++				if (!V || V->getNumElements() != 4 || !V->getElementType()->isSpecificBuiltinType(BuiltinType::Float) || F->hasAttr<MetalInterpolationAttr>()) {
++					Error(F->getBeginLoc(), "fragment position must be float4 without interpolation attributes");
++					return;
++				}
++			}
++		}
++	}
++
++	const auto *OutputRecord = FD->getReturnType()->getAsCXXRecordDecl();
++	if (has_msl_io(OutputRecord)) {
++		if (!is_vertex || OutputRecord->isUnion() || OutputRecord->getNumBases() ||
++			!OutputRecord->isStandardLayout() || !OutputRecord->isTriviallyCopyable()) {
++			Error(FD->getBeginLoc(), "explicit MSL output semantics require a plain vertex-output record");
++			return;
++		}
++		std::unordered_set<std::string> semantics;
++		bool position = false, point_size = false;
++		for (const auto *F : OutputRecord->fields()) {
++			const auto *User = F->getAttr<MetalUserVaryingAttr>();
++			const bool IsPosition = F->hasAttr<GraphicsVertexPositionAttr>();
++			const bool IsPointSize = F->hasAttr<GraphicsPointSizeAttr>();
++			const auto T = F->getType();
++			if (F->isBitField() || F->hasAttr<MetalVertexAttributeAttr>() ||
++				F->hasAttr<MetalInterpolationAttr>() || F->hasAttr<GraphicsFBOColorLocationAttr>() ||
++				F->hasAttr<GraphicsFBODepthTypeAttr>() ||
++				(unsigned(bool(User)) + unsigned(IsPosition) + unsigned(IsPointSize) != 1)) {
++				Error(F->getBeginLoc(), "unsupported or conflicting MSL vertex-output semantic; output interpolation is not supported yet");
++				return;
++			}
++			if ((User && !semantics.insert(User->getSemantic()->getName().str()).second) ||
++				(IsPosition && position) || (IsPointSize && point_size)) {
++				Error(F->getBeginLoc(), "duplicate MSL vertex-output semantic");
++				return;
++			}
++			if (IsPosition) {
++				position = true;
++				const auto *V = T->getAs<VectorType>();
++				if (!V || V->getNumElements() != 4 || !V->getElementType()->isSpecificBuiltinType(BuiltinType::Float)) {
++					Error(F->getBeginLoc(), "vertex position must be float4");
++					return;
++				}
++			}
++			if (IsPointSize) {
++				point_size = true;
++				if (!T->isSpecificBuiltinType(BuiltinType::Float)) {
++					Error(F->getBeginLoc(), "vertex point_size must be float");
++					return;
++				}
++			}
++		}
++		if (!position) {
++			Error(FD->getBeginLoc(), "MSL vertex-output record requires a position");
++			return;
++		}
++	}
++
+ 	//
+ 	auto abi_arg_info_iter = FnInfo.arg_begin();
+ 	unsigned int arg_idx = 0, buffer_idx = 0u, tex_idx = 0;
+@@ -3541,7 +3654,16 @@
+ 					// TODO: handle perspective/center correctly
+ 					const auto type_name = make_type_name(field.type);
+ 					bool has_name_and_type = true;
+-					if (field.hasAttr<GraphicsVertexPositionAttr>()) {
++					if (const auto *Location = field.getAttr<MetalVertexAttributeAttr>()) {
++						if (!is_vertex || !parm->getAttr<GraphicsStageInputAttr>()->isMSL()) {
++							Error(field.field_decl->getBeginLoc(), "attribute requires a vertex stage_in record");
++							return;
++						}
++						arg_info.push_back(llvm::MDString::get(VMContext, "air.vertex_input"));
++						arg_info.push_back(llvm::MDString::get(VMContext, "air.location_index"));
++						arg_info.push_back(llvm::ConstantAsMetadata::get(Builder.getInt32(Location->getIndex())));
++						arg_info.push_back(llvm::ConstantAsMetadata::get(Builder.getInt32(1)));
++					} else if (field.hasAttr<GraphicsVertexPositionAttr>()) {
+ 						arg_info.push_back(llvm::MDString::get(VMContext, "air.position"));
+ 						arg_info.push_back(llvm::MDString::get(VMContext, "air.center"));
+ 						arg_info.push_back(llvm::MDString::get(VMContext, "air.no_perspective"));
+@@ -3625,7 +3747,9 @@
+ 							return;
+ 						}
+ 						arg_info.push_back(llvm::MDString::get(VMContext, "air.fragment_input"));
+-						arg_info.push_back(llvm::MDString::get(VMContext, StringRef(field.mangled_name)));
++						const auto *User = field.getAttr<MetalUserVaryingAttr>();
++						const std::string Semantic = User ? "user(" + User->getSemantic()->getName().str() + ")" : field.mangled_name;
++						arg_info.push_back(llvm::MDString::get(VMContext, Semantic));
+ 						bool is_int_type = field.type->isIntegerType();
+ 						if (!is_int_type && field.type->isVectorType()) {
+ 							auto vec_type = llvm::dyn_cast<clang::ExtVectorType>(field.type.getTypePtr()->getBaseElementTypeUnsafe()->getCanonicalTypeInternal().getTypePtr());
+@@ -3633,12 +3757,18 @@
+ 								is_int_type = vec_type->getElementType()->isIntegerType();
+ 							}
+ 						}
+-						if (is_int_type) {
++						const auto *Interpolation = field.getAttr<MetalInterpolationAttr>();
++						const StringRef Mode = Interpolation ? Interpolation->getSpelling() : "";
++						if (is_int_type && Mode != "flat" && (!Mode.empty() || parm->getAttr<GraphicsStageInputAttr>()->isMSL())) {
++							Error(field.field_decl->getBeginLoc(), "integer varyings require flat interpolation");
++							return;
++						}
++						if (is_int_type || Mode == "flat") {
+ 							// use flat "interpolation" for uint* and int* types
+ 							arg_info.push_back(llvm::MDString::get(VMContext, "air.flat"));
+ 						} else {
+-							arg_info.push_back(llvm::MDString::get(VMContext, "air.center"));
+-							arg_info.push_back(llvm::MDString::get(VMContext, "air.perspective"));
++							arg_info.push_back(llvm::MDString::get(VMContext, Mode.startswith("centroid_") ? "air.centroid" : Mode.startswith("sample_") ? "air.sample" : "air.center"));
++							arg_info.push_back(llvm::MDString::get(VMContext, Mode.endswith("no_perspective") ? "air.no_perspective" : "air.perspective"));
+ 						}
+ 					}
+ 					
+@@ -3828,14 +3958,21 @@
+ 		const auto add_vs_output = [this, &stage_infos, &make_type_name](const ASTContext::aggregate_scalar_entry& entry,
+ 																		 const bool force_position = false) {
+ 			SmallVector<llvm::Metadata*, 6> ret_info;
+-			
++			if (entry.hasAttr<MetalVertexAttributeAttr>() ||
++				(entry.hasAttr<MetalUserVaryingAttr>() &&
++				 (entry.hasAttr<GraphicsVertexPositionAttr>() || entry.hasAttr<GraphicsPointSizeAttr>()))) {
++				Error(entry.field_decl->getBeginLoc(), "conflicting Metal vertex-output semantic");
++				return;
++			}
+ 			if (entry.hasAttr<GraphicsVertexPositionAttr>() || force_position) {
+ 				ret_info.push_back(llvm::MDString::get(VMContext, "air.position"));
+ 			} else if (entry.hasAttr<GraphicsPointSizeAttr>()) {
+ 				ret_info.push_back(llvm::MDString::get(VMContext, "air.point_size"));
+ 			} else {
+ 				ret_info.push_back(llvm::MDString::get(VMContext, "air.vertex_output"));
+-				ret_info.push_back(llvm::MDString::get(VMContext, StringRef(entry.mangled_name)));
++				const auto *User = entry.getAttr<MetalUserVaryingAttr>();
++				const std::string Semantic = User ? "user(" + User->getSemantic()->getName().str() + ")" : entry.mangled_name;
++				ret_info.push_back(llvm::MDString::get(VMContext, Semantic));
+ 			}
+ 			
+ 			ret_info.push_back(llvm::MDString::get(VMContext, "air.arg_type_name"));

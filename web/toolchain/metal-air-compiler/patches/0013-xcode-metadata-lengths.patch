@@ -1,0 +1,116 @@
+--- a/llvm/lib/Bitcode/MetalLib/MetalLibWriterPass.cpp
++++ b/llvm/lib/Bitcode/MetalLib/MetalLibWriterPass.cpp
+@@ -24,6 +24,7 @@
+ #include "llvm/Pass.h"
+ #include "llvm/Support/Casting.h"
+ #include "llvm/Support/FileSystem.h"
++#include "llvm/Support/ErrorHandling.h"
+ #include "llvm/Support/MemoryBuffer.h"
+ #include "llvm/Support/Path.h"
+ #include "llvm/Support/VersionTuple.h"
+@@ -36,6 +37,7 @@
+ #include "bzip2/bzlib.h"
+ #include "tar/microtar.h"
+ #include <string>
++#include <limits>
+ #include <unordered_set>
+ #include <unordered_map>
+ #include <random>
+@@ -403,6 +405,17 @@
+     return {nullptr, 0};
+   }
+   return {std::move(dst), dst_len};
++}
++
++// Public/private metadata lengths exclude the four-byte length prefix.
++// Derive the payload length from emitted bytes, including ENDT and all strings,
++// rather than duplicate the serializer's variable-length arithmetic.
++static void finish_metadata_length(std::string &block) {
++  if (block.size() < 4 || block.size() - 4 > std::numeric_limits<uint32_t>::max())
++    report_fatal_error("Metal metadata block length is out of range");
++  const auto size = static_cast<uint32_t>(block.size() - 4);
++  for (unsigned i = 0; i != 4; ++i)
++    block[i] = static_cast<char>((size >> (8 * i)) & 0xff);
+ }
+ 
+ //
+@@ -1030,7 +1043,7 @@
+     static const uint32_t tag_length = sizeof(TAG_TYPE);
+ 
+     raw_string_ostream ext_md_stream{entry.extended_md_data};
+-    uint32_t ext_md_length = tag_length + sizeof(uint32_t);
++    const uint32_t length_placeholder = 0;
+ 
+     uint16_t attr_count = 0;
+     uint16_t vatt_len = 0;
+@@ -1038,7 +1051,6 @@
+ 
+     if (!entry.vertex_attributes.empty()) {
+       attr_count = (uint16_t)entry.vertex_attributes.size();
+-      ext_md_length += 2u * (tag_length + sizeof(uint16_t)); // VATT and VATY
+       vatt_len =
+           sizeof(uint16_t) /* attr count */ +
+           2u * attr_count /* per-attr info */;
+@@ -1047,7 +1059,6 @@
+       for (const auto &vattr : entry.vertex_attributes) {
+         vatt_len += vattr.name.size() + 1u;
+       }
+-      ext_md_length += vatt_len + vaty_len;
+     }
+ 
+     uint16_t cnst_count = 0;
+@@ -1055,17 +1066,15 @@
+ 
+     if (!entry.function_constants.empty()) {
+       cnst_count = (uint16_t)entry.function_constants.size();
+-      ext_md_length += tag_length + sizeof(uint16_t); // CNST
+       cnst_len =
+           sizeof(uint16_t) + /* cnst count */
+           ((sizeof(uint8_t) + sizeof(uint16_t) + sizeof(uint8_t)) * cnst_count) /* per-cnst info */;
+       for (const auto& cnst : entry.function_constants) {
+         cnst_len += cnst.name.size() + 1u;
+       }
+-      ext_md_length += cnst_len;
+-    }
+-
+-    ext_md_stream.write((const char *)&ext_md_length, sizeof(uint32_t));
++    }
++
++    ext_md_stream.write((const char *)&length_placeholder, sizeof(length_placeholder));
+ 
+     if (!entry.vertex_attributes.empty()) {
+       static const auto vatt_tag = TAG_TYPE::VATT;
+@@ -1115,17 +1124,11 @@
+ 
+     ext_md_stream.write((const char *)&end_tag, tag_length);
+     ext_md_stream.flush();
++    finish_metadata_length(entry.extended_md_data);
+ 
+     raw_string_ostream dbg_stream{entry.debug_data};
++    dbg_stream.write((const char *)&length_placeholder, sizeof(length_placeholder));
+     if (emit_debug_info) {
+-      const uint32_t dep_length =
+-          (dependent_bc_file_name.empty()
+-               ? 0
+-               : tag_length + 2 + dependent_bc_file_name.size());
+-      const uint32_t dbg_length = 4u /* len */ + tag_length + 2 + 4 /* line */ +
+-                                  src_file_name_length + dep_length +
+-                                  tag_length;
+-      dbg_stream.write((const char *)&dbg_length, sizeof(dbg_length));
+       dbg_stream.write((const char *)&dbg_tag, tag_length);
+       const uint16_t src_file_info_len = uint16_t(4u + src_file_name_length);
+       dbg_stream.write((const char *)&src_file_info_len,
+@@ -1146,12 +1149,10 @@
+         dbg_stream.write(dependent_bc_file_name.c_str(), dep_info_length - 1u);
+         dbg_stream.write('\0');
+       }
+-    } else {
+-      const uint32_t dbg_length = 4u /* len */ + tag_length;
+-      dbg_stream.write((const char *)&dbg_length, sizeof(dbg_length));
+     }
+     dbg_stream.write((const char *)&end_tag, tag_length);
+     dbg_stream.flush();
++    finish_metadata_length(entry.debug_data);
+ 
+     // finish
+     entry.update_length();
