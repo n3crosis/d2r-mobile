@@ -19,7 +19,7 @@ float clamp(float,float,float) __asm__("air.fast_clamp.f32") __attribute__((cons
 }
 #define D2R_INLINE inline __attribute__((always_inline))
 D2R_INLINE float fma(float a,float b,float c) { return __air_detail::fma(a,b,c); }
-D2R_INLINE bool isnan(float x) { return __builtin_isnan(x); }
+D2R_INLINE bool isnan(float x) { return (__builtin_bit_cast(uint,x) & 0x7fffffffU) > 0x7f800000U; }
 D2R_INLINE float select(float a,float b,bool c) { return c ? b : a; }
 D2R_INLINE int select(int a,int b,bool c) { return c ? b : a; }
 D2R_INLINE uint select(uint a,uint b,bool c) { return c ? b : a; }
@@ -31,6 +31,18 @@ D2R_INLINE uint min(uint a,uint b) { return a < b ? a : b; }
 D2R_INLINE uint max(uint a,uint b) { return a > b ? a : b; }
 D2R_INLINE uint clamp(uint x,uint lo,uint hi) { return min(max(x,lo),hi); }
 template<class A,class B,class C> A fma(A,B,C) = delete;
+// Internal mask, not an MSL bool-vector storage/interface type.
+struct __bool_mask2 { bool lane[2]; };
+D2R_INLINE __bool_mask2 isnan(float2 x) { __bool_mask2 r; for(uint i=0;i<2;++i) r.lane[i]=isnan(x[i]); return r; }
+D2R_INLINE float2 select(float2 a,float2 b,__bool_mask2 mask) { float2 r; for(uint i=0;i<2;++i) r[i]=mask.lane[i]?b[i]:a[i]; return r; }
+// Internal mask, not an MSL bool-vector storage/interface type.
+struct __bool_mask3 { bool lane[3]; };
+D2R_INLINE __bool_mask3 isnan(float3 x) { __bool_mask3 r; for(uint i=0;i<3;++i) r.lane[i]=isnan(x[i]); return r; }
+D2R_INLINE float3 select(float3 a,float3 b,__bool_mask3 mask) { float3 r; for(uint i=0;i<3;++i) r[i]=mask.lane[i]?b[i]:a[i]; return r; }
+// Internal mask, not an MSL bool-vector storage/interface type.
+struct __bool_mask4 { bool lane[4]; };
+D2R_INLINE __bool_mask4 isnan(float4 x) { __bool_mask4 r; for(uint i=0;i<4;++i) r.lane[i]=isnan(x[i]); return r; }
+D2R_INLINE float4 select(float4 a,float4 b,__bool_mask4 mask) { float4 r; for(uint i=0;i<4;++i) r[i]=mask.lane[i]?b[i]:a[i]; return r; }
 namespace fast {
 template<class T> T sqrt(T) = delete;
 template<class T> T rsqrt(T) = delete;

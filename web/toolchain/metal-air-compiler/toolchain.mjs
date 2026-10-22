@@ -123,7 +123,12 @@ if (command === "prepare") {
   );
   const output = join(work, "test-results");
   await mkdir(output, { recursive: true });
-  for (const script of ["run-fixtures.mjs", "run-msl-fixtures.mjs", "run-math-fixtures.mjs"])
+  for (const script of [
+    "run-fixtures.mjs",
+    "run-msl-fixtures.mjs",
+    "run-math-fixtures.mjs",
+    "run-nan-fixtures.mjs",
+  ])
     run(process.execPath, [join(root, script), clang], {
       env: { ...process.env, AIR_TEST_OUTPUT_DIR: join(output, script.replace(".mjs", "")) },
     });
