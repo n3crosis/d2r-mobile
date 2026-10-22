@@ -19,6 +19,8 @@ import { createAirCompilerWorkerClient } from "../air-compiler-worker-client.mjs
 import {
   validateAirCompilerRuntimeComponent,
   assertAirCompilerReceiptMatchesComponent,
+  runtimeAssetMaximumBytes,
+  runtimeTransportMaximumBytes,
 } from "../air-compiler-runtime-contract.mjs";
 const OFFLINE = "toolchain/offline-runtime-spike";
 const TEXTURE = "toolchain/texture-spike";
@@ -58,6 +60,9 @@ function safePath(path) {
  * Pure inventory validation; the caller separately verifies the trusted top digest.
  */
 export function validateRuntimeInventory(manifest) {
+  return validateRuntimeRecords(manifest, (asset) => runtimeAssetMaximumBytes(asset.path));
+}
+function validateRuntimeRecords(manifest, maximumBytes) {
   if (
     manifest?.version !== 1 ||
     !Array.isArray(manifest.assets) ||
@@ -73,7 +78,7 @@ export function validateRuntimeInventory(manifest) {
       names.has(asset.path.toLowerCase()) ||
       !Number.isSafeInteger(asset.bytes) ||
       asset.bytes < 1 ||
-      asset.bytes > LIMIT.file ||
+      asset.bytes > maximumBytes(asset) ||
       !/^[a-f0-9]{64}$/.test(asset.sha256)
     )
       fail("Invalid runtime inventory");
@@ -98,18 +103,17 @@ function runtimeTransport(manifest, inventory) {
     transport.entries.length > inventory.length
   )
     fail("Invalid runtime transport");
-  const files = validateRuntimeInventory({
-    version: 1,
-    assets: transport.files,
-    totalBytes: transport.totalBytes,
-  });
+  const files = validateRuntimeRecords(
+    { version: 1, assets: transport.files, totalBytes: transport.totalBytes },
+    (file) => runtimeTransportMaximumBytes(file, manifest),
+  );
   let decodedTotal = 0;
   for (const file of files) {
     if (
       !["identity", "gzip"].includes(file.encoding) ||
       !Number.isSafeInteger(file.decodedBytes) ||
       file.decodedBytes < 1 ||
-      file.decodedBytes > LIMIT.file ||
+      file.decodedBytes > runtimeTransportMaximumBytes(file, manifest) ||
       (file.encoding === "identity" && file.decodedBytes !== file.bytes)
     )
       fail("Invalid runtime transport encoding");

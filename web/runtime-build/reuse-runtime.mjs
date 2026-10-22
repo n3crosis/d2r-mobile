@@ -13,6 +13,7 @@ import { verifyAirCompilerAssets } from "./air-compiler-assets.mjs";
 import {
   AIR_COMPILER_RUNTIME,
   airCompilerRuntimeComponent,
+  runtimeAssetMaximumBytes,
 } from "../air-compiler-runtime-contract.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
@@ -110,9 +111,9 @@ async function verifySourceBridge(baseRevision) {
     changedSourceSha256,
   };
 }
-async function boundedBytes(path) {
+async function boundedBytes(path, maximum = 64 * 1024 * 1024) {
   const info = await lstat(path);
-  if (!info.isFile() || info.isSymbolicLink() || info.size < 1 || info.size > 64 * 1024 * 1024)
+  if (!info.isFile() || info.isSymbolicLink() || info.size < 1 || info.size > maximum)
     throw new Error("Invalid runtime bridge input file");
   return readFile(path);
 }
@@ -160,7 +161,7 @@ export async function reuseRuntimeWithAir({ directory, manifestSha256, sourceRev
   async function add(path, source = path, expected) {
     if (assets.some((asset) => asset.path.toLowerCase() === path.toLowerCase()))
       throw new Error("AIR runtime bridge asset collision");
-    const bytes = await boundedBytes(join(web, source));
+    const bytes = await boundedBytes(join(web, source), runtimeAssetMaximumBytes(path));
     const identity = record(bytes);
     if (expected && (identity.sha256 !== expected.sha256 || identity.bytes !== expected.bytes))
       throw new Error("AIR runtime bridge source changed after authentication");

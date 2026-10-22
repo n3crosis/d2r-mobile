@@ -105,7 +105,15 @@ inventing compiler availability.
 
 ### Reusing an unchanged pre-AIR runtime locally
 
-For this AIR integration only, a narrow developer bridge can retain an existing
+The legacy reuse bridge is not supported for the current a2flo migration: its
+strict source-equivalence allowlist intentionally rejects the changed transport
+and source-delivery code. Use the normal CI build/cache path below; do not widen
+the bridge's allowlist to bypass those checks.
+
+当前 a2flo 迁移不支持旧运行时复用桥。严格的源码等价白名单会拒绝已变化的传输和
+源码交付代码。请使用正常 CI 构建/缓存路径，不要放宽白名单来绕过检查。
+
+For the original AIR integration only, a narrow developer bridge could retain an existing
 CI runtime instead of rebuilding its unchanged .NET, extraction, texture,
 program, signer and shell components. Obtain the artifact from the authorized
 GitHub run, verify its ZIP digest against GitHub's artifact metadata, and take

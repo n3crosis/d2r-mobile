@@ -1,6 +1,6 @@
 // 新运行时必须携带真实编译器闭包；旧清单仍可读取，但没有编译服务。
 // New runtimes carry a real compiler closure; legacy inventories remain readable without a compiler service.
-import { AIR_COMPILER_SOURCE_LANGUAGE } from "./air-compiler-contract.mjs";
+import { AIR_COMPILER_SOURCE_LANGUAGE, AIR_COMPILER_LIMITS } from "./air-compiler-contract.mjs";
 export const AIR_COMPILER_RUNTIME = Object.freeze({
   version: 2,
   id: "d2r-floor-metal-air-v2",
@@ -13,11 +13,36 @@ export const AIR_COMPILER_RUNTIME = Object.freeze({
   receipt: "toolchain/metal-air-compiler/dist/build-report.json",
 });
 export const AIR_COMPILER_OUTPUT_NAMES = Object.freeze(["d2r_air_wasm.mjs", "d2r_air_wasm.wasm"]);
+const maximumOrdinaryAsset = 64 * 1024 * 1024;
+export function airCompilerOutputMaximumBytes(name) {
+  if (name === "d2r_air_wasm.wasm") return AIR_COMPILER_LIMITS.wasmBytes;
+  if (name === "d2r_air_wasm.mjs") return AIR_COMPILER_LIMITS.factoryBytes;
+  throw new Error("Unknown AIR compiler output");
+}
+export function runtimeAssetMaximumBytes(path) {
+  return path === AIR_COMPILER_RUNTIME.wasm ? AIR_COMPILER_LIMITS.wasmBytes : maximumOrdinaryAsset;
+}
+// 只有独占载荷中的精确编译器 WASM 切片可超过普通资产上限。
+// Only a sole, exact compiler WASM slice may exceed the ordinary asset cap.
+export function runtimeTransportMaximumBytes(file, manifest) {
+  const wasm = manifest.assets.find((asset) => asset.path === AIR_COMPILER_RUNTIME.wasm);
+  const entries = manifest.transport.entries.filter((entry) => entry.file === file.path);
+  if (
+    wasm &&
+    entries.length === 1 &&
+    entries[0].sha256 === wasm.sha256 &&
+    entries[0].bytes === wasm.bytes &&
+    entries[0].offset === 0 &&
+    file.decodedBytes === wasm.bytes
+  )
+    return AIR_COMPILER_LIMITS.wasmBytes;
+  return maximumOrdinaryAsset;
+}
 const sha256 = (value) => typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
-const boundedFile = (value) =>
+const boundedFile = (value, maximum) =>
   Number.isSafeInteger(value?.bytes) &&
   value.bytes > 0 &&
-  value.bytes <= 64 * 1024 * 1024 &&
+  value.bytes <= maximum &&
   sha256(value.sha256);
 
 export function validateAirCompilerBuildReceipt(report) {
@@ -43,7 +68,9 @@ export function validateAirCompilerBuildReceipt(report) {
     ) ||
     !report.files ||
     Object.keys(report.files).length !== AIR_COMPILER_OUTPUT_NAMES.length ||
-    AIR_COMPILER_OUTPUT_NAMES.some((name) => !boundedFile(report.files[name]))
+    AIR_COMPILER_OUTPUT_NAMES.some(
+      (name) => !boundedFile(report.files[name], airCompilerOutputMaximumBytes(name)),
+    )
   )
     throw new Error("Invalid AIR compiler build receipt");
   return report;

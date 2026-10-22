@@ -5,6 +5,11 @@ import {
   validateRuntimeAssetGroups,
   validateRuntimeTransportGroups,
 } from "../runtime-asset-groups.mjs";
+import {
+  AIR_COMPILER_RUNTIME,
+  runtimeAssetMaximumBytes,
+  runtimeTransportMaximumBytes,
+} from "../air-compiler-runtime-contract.mjs";
 
 const maximumFile = 64 * 1024 * 1024;
 const maximumTotal = 512 * 1024 * 1024;
@@ -19,6 +24,7 @@ const validSize = (value, cap = maximumFile) =>
 // relative paths stay unchanged, while identical public bytes travel only once.
 export function createRuntimeTransport(contents, { assets } = {}) {
   const ownership = assets === undefined ? undefined : validateRuntimeAssetGroups(assets);
+  const compiler = assets?.find((asset) => asset.path === AIR_COMPILER_RUNTIME.wasm);
   if (
     ownership &&
     (ownership.size !== contents.size ||
@@ -59,7 +65,12 @@ export function createRuntimeTransport(contents, { assets } = {}) {
     (a, b) => groupOf(a).localeCompare(groupOf(b)) || a.sha256.localeCompare(b.sha256),
   )) {
     if (
-      !validSize(record.bytes) ||
+      !validSize(
+        record.bytes,
+        compiler && contentKey(record) === contentKey(compiler)
+          ? runtimeAssetMaximumBytes(compiler.path)
+          : maximumFile,
+      ) ||
       record.data.length !== record.bytes ||
       sha(record.data) !== record.sha256
     )
@@ -114,13 +125,14 @@ export function validateRuntimeTransport(manifest) {
   let total = 0,
     decodedTotal = 0;
   for (const file of transport.files) {
+    const maximum = runtimeTransportMaximumBytes(file, manifest);
     if (
       !/^[a-f0-9]{64}$/.test(file.sha256) ||
       !["identity", "gzip"].includes(file.encoding) ||
       file.path !== `payloads/${file.sha256}.${file.encoding === "gzip" ? "gz" : "bin"}` ||
       files.has(file.path) ||
-      !validSize(file.bytes) ||
-      !validSize(file.decodedBytes) ||
+      !validSize(file.bytes, maximum) ||
+      !validSize(file.decodedBytes, maximum) ||
       (file.encoding === "identity" && file.bytes !== file.decodedBytes)
     )
       throw new Error("Invalid runtime transport file");
@@ -135,7 +147,7 @@ export function validateRuntimeTransport(manifest) {
     const key = contentKey(entry),
       file = files.get(entry.file);
     if (
-      !validSize(entry.bytes) ||
+      !validSize(entry.bytes, runtimeAssetMaximumBytes(expected.get(key)?.path)) ||
       !/^[a-f0-9]{64}$/.test(entry.sha256) ||
       !expected.has(key) ||
       seen.has(key) ||

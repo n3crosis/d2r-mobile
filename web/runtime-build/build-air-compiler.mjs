@@ -12,6 +12,7 @@ import {
   prepareAirCompilerAssets,
   recordAirCompilerBuild,
   importAirCompilerAssets,
+  verifyAirCompilerCanary,
 } from "./air-compiler-assets.mjs";
 
 const compiler = fileURLToPath(new URL("../toolchain/metal-air-compiler/", import.meta.url));
@@ -181,4 +182,7 @@ if (args.includes("--fingerprint")) {
       }),
     );
   }
+  // 同一真实字节探针覆盖新构建和已验证缓存；源码身份或凭据不因探针升级被改写。
+  // The same real-byte probe covers fresh builds and verified caches without relabeling their source identity or receipt.
+  console.log(JSON.stringify({ compileCanary: await verifyAirCompilerCanary() }));
 }

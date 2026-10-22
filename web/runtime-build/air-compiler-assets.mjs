@@ -10,6 +10,7 @@ import { isDeepStrictEqual } from "node:util";
 import {
   AIR_COMPILER_RUNTIME,
   AIR_COMPILER_OUTPUT_NAMES,
+  airCompilerOutputMaximumBytes,
   validateAirCompilerBuildReceipt,
 } from "../air-compiler-runtime-contract.mjs";
 
@@ -24,7 +25,9 @@ const fileRecord = (bytes) => ({ bytes: bytes.length, sha256: hash(bytes) });
 async function boundedRead(path, maximum = maximumFile) {
   const info = await lstat(path);
   if (!info.isFile() || info.isSymbolicLink() || info.size < 1 || info.size > maximum)
-    throw new Error(`Invalid bounded AIR compiler input: ${path}`);
+    throw new Error(
+      `Invalid bounded AIR compiler input: ${path} (${info.size} bytes; cap ${maximum})`,
+    );
   const value = await readFile(path);
   if (value.length !== info.size) throw new Error("AIR compiler input changed while reading");
   return value;
@@ -111,7 +114,7 @@ export async function verifyAirCompilerAssets(directory = cache, expectedDigest)
   const report = JSON.parse(receipt);
   await validateCurrentSources(report);
   for (const name of AIR_COMPILER_OUTPUT_NAMES) {
-    const bytes = await boundedRead(join(directory, name));
+    const bytes = await boundedRead(join(directory, name), airCompilerOutputMaximumBytes(name));
     if (!isDeepStrictEqual(fileRecord(bytes), report.files[name]))
       throw new Error(`AIR compiler output receipt mismatch: ${name}`);
   }
@@ -126,7 +129,13 @@ export async function importAirCompilerAssets({ directory, expectedDigest }) {
   const staging = await mkdtemp(join(compiler, ".dist-"));
   try {
     for (const name of [...AIR_COMPILER_OUTPUT_NAMES, "build-report.json"])
-      await writeFile(join(staging, name), await boundedRead(join(directory, name)));
+      await writeFile(
+        join(staging, name),
+        await boundedRead(
+          join(directory, name),
+          name === "build-report.json" ? 1024 * 1024 : airCompilerOutputMaximumBytes(name),
+        ),
+      );
     const report = await verifyAirCompilerAssets(staging, expectedDigest);
     await rm(cache, { recursive: true, force: true });
     await rename(staging, cache);
@@ -179,7 +188,31 @@ export async function recordAirCompilerBuild({ buildDirectory, sourceDirectory, 
     throw new Error("Activate the pinned Emscripten 4.0.20 SDK before recording AIR assets");
   const files = {};
   for (const name of AIR_COMPILER_OUTPUT_NAMES)
-    files[name] = fileRecord(await boundedRead(join(buildDirectory, name)));
+    files[name] = fileRecord(
+      await boundedRead(join(buildDirectory, name), airCompilerOutputMaximumBytes(name)),
+    );
+  await probeAirCompiler(buildDirectory, identity.headerSha256);
+  const { manifest: _manifest, ...source } = identity;
+  const report = {
+    version: AIR_COMPILER_RUNTIME.version,
+    id: AIR_COMPILER_RUNTIME.id,
+    apiVersion: 2,
+    headerBundleVersion: 2,
+    sourceLanguage: AIR_COMPILER_RUNTIME.sourceLanguage,
+    emscripten: "4.0.20",
+    ...source,
+    files,
+    browserExecutionVerified: false,
+    fullGameCompilationVerified: false,
+    deviceExecutionVerified: false,
+  };
+  validateAirCompilerBuildReceipt(report);
+  const bytes = JSON.stringify(report, null, 2) + "\n";
+  await writeFile(join(buildDirectory, "build-report.json"), bytes);
+  return { report, receiptSha256: hash(bytes) };
+}
+
+async function probeAirCompiler(buildDirectory, expectedHeaderSha256, compileCanary = false) {
   const probe = spawnSync(
     process.execPath,
     [
@@ -199,34 +232,43 @@ export async function recordAirCompilerBuild({ buildDirectory, sourceDirectory, 
        const pointer=module._air_compiler_header_sha256();
        if(!Number.isSafeInteger(pointer)||pointer<=0||pointer+65>module.HEAPU8.length||module.HEAPU8[pointer+64]!==0) throw Error('Invalid AIR header identity');
        const headerSha256=new TextDecoder().decode(module.HEAPU8.subarray(pointer,pointer+64));
-       console.log(JSON.stringify({headerSha256,headerBundleVersion:module._air_compiler_header_bundle_version()}));`,
+       const headerBundleVersion=module._air_compiler_header_bundle_version();
+       if(headerSha256!==process.argv[2]||headerBundleVersion!==2) throw Error('Built AIR compiler header identity mismatch');
+       const result={headerSha256,headerBundleVersion};
+       if(process.argv[3]==='1') result.canary=await (await import(process.argv[4])).runAirCompilerCanary(module,{expectedHeaderSha256:headerSha256});
+       console.log(JSON.stringify(result));`,
       resolve(buildDirectory),
+      expectedHeaderSha256,
+      compileCanary ? "1" : "0",
+      new URL("../toolchain/metal-air-compiler/ci-compile-canary.mjs", import.meta.url).href,
     ],
     { encoding: "utf8", timeout: 120000, maxBuffer: 1024 * 1024 },
   );
   if (probe.error || probe.status !== 0)
     throw new Error(`AIR compiler identity probe failed: ${probe.error?.message ?? probe.stderr}`);
   const runtime = JSON.parse(probe.stdout.trim());
-  if (runtime.headerSha256 !== identity.headerSha256 || runtime.headerBundleVersion !== 2)
+  if (runtime.headerSha256 !== expectedHeaderSha256 || runtime.headerBundleVersion !== 2)
     throw new Error("Built AIR compiler does not match the authored header bundle");
-  const { manifest: _manifest, ...source } = identity;
-  const report = {
-    version: AIR_COMPILER_RUNTIME.version,
-    id: AIR_COMPILER_RUNTIME.id,
-    apiVersion: 2,
-    headerBundleVersion: 2,
-    sourceLanguage: AIR_COMPILER_RUNTIME.sourceLanguage,
-    emscripten: "4.0.20",
-    ...source,
-    files,
+  return runtime;
+}
+
+// 每次 CI 都检查已认证的实际输出，包括缓存命中；不改写信任凭据、不重编 LLVM。
+// Probe authenticated actual output on every CI run, including cache hits; never rewrite receipts or rebuild LLVM for this check.
+export async function verifyAirCompilerCanary() {
+  const report = await verifyAirCompilerAssets();
+  const runtime = await probeAirCompiler(cache, report.headerSha256, true);
+  if (!isDeepStrictEqual(await verifyAirCompilerAssets(), report))
+    throw new Error("AIR compiler cache changed during compile canary");
+  return {
+    ...runtime.canary,
+    sourceFingerprintSha256: report.sourceFingerprintSha256,
+    headerSha256: report.headerSha256,
+    factorySha256: report.files["d2r_air_wasm.mjs"].sha256,
+    wasmSha256: report.files["d2r_air_wasm.wasm"].sha256,
     browserExecutionVerified: false,
     fullGameCompilationVerified: false,
     deviceExecutionVerified: false,
   };
-  validateAirCompilerBuildReceipt(report);
-  const bytes = JSON.stringify(report, null, 2) + "\n";
-  await writeFile(join(buildDirectory, "build-report.json"), bytes);
-  return { report, receiptSha256: hash(bytes) };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

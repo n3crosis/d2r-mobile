@@ -33,6 +33,7 @@ import { verifyAirCompilerAssets } from "./air-compiler-assets.mjs";
 import {
   AIR_COMPILER_RUNTIME,
   airCompilerRuntimeComponent,
+  runtimeAssetMaximumBytes,
 } from "../air-compiler-runtime-contract.mjs";
 
 const web = resolve(fileURLToPath(new URL("../", import.meta.url)));
@@ -200,7 +201,7 @@ export async function assembleRuntime({ build } = {}) {
     if (
       seen.has(key) ||
       !bytes.length ||
-      bytes.length > maximumFile ||
+      bytes.length > runtimeAssetMaximumBytes(path) ||
       (total += bytes.length) > maximumTotal ||
       assets.length >= 4096
     )
@@ -227,7 +228,7 @@ export async function assembleRuntime({ build } = {}) {
       !info.isFile() ||
       info.isSymbolicLink() ||
       !info.size ||
-      info.size > maximumFile
+      info.size > runtimeAssetMaximumBytes(destination)
     )
       throw new Error("Runtime input is not a bounded regular file");
     const bytes = await readFile(file);

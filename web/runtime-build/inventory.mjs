@@ -3,7 +3,10 @@ import { validateRuntimeAssetGroups } from "../runtime-asset-groups.mjs";
 import { Buffer } from "node:buffer";
 import { readdir, readFile, lstat } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import { validateAirCompilerRuntimeComponent } from "../air-compiler-runtime-contract.mjs";
+import {
+  validateAirCompilerRuntimeComponent,
+  runtimeAssetMaximumBytes,
+} from "../air-compiler-runtime-contract.mjs";
 
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
 export async function verifyRuntimeInventory(directory, expectedDigest, expectedCommit = null) {
@@ -48,7 +51,7 @@ export async function verifyRuntimeInventory(directory, expectedDigest, expected
       ["runtime-manifest.json", "runtime-integrity.mjs"].includes(entry.path.toLowerCase()) ||
       !Number.isSafeInteger(entry.bytes) ||
       entry.bytes < 1 ||
-      entry.bytes > 64 * 1024 * 1024 ||
+      entry.bytes > runtimeAssetMaximumBytes(entry.path) ||
       !/^[a-f0-9]{64}$/.test(entry.sha256) ||
       typeof entry.source !== "string" ||
       entry.source.length > 512 ||

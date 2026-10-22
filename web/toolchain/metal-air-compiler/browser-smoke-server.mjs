@@ -43,7 +43,11 @@ routes.set("/manifest.json", {
 });
 for (const name of ["browser-smoke-worker.mjs", "browser-smoke-client.mjs"])
   await add(`/web/toolchain/metal-air-compiler/${name}`, resolve(here, name), "text/javascript");
-for (const name of ["air-compiler-adapter.mjs", "compiled-shader-boundary.mjs"])
+for (const name of [
+  "air-compiler-adapter.mjs",
+  "air-compiler-contract.mjs",
+  "compiled-shader-boundary.mjs",
+])
   await add(`/web/${name}`, resolve(here, "../..", name), "text/javascript");
 for (const name of ["compute", "vertex", "fragment"])
   await add(`/fixture-${name}.metal`, resolve(here, `fixtures/msl-${name}.metal`), "text/plain");
