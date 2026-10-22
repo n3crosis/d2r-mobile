@@ -1,0 +1,264 @@
+# Incremental corrections after patches 0101 through 0105 against the pinned
+# a2flo/floor_llvm 4b173e3db383ec7164afb11ee7dc86609c88f052 archive.
+# Preserve Metal patch-entry names, required LLVM function locality, scalar i32
+# bitreverse lowering and narrow constant-vector pointer reads.
+# Scope and source-only verification limits: ../CORPUS_FIXES.md.
+--- a/clang/lib/AST/Decl.cpp
++++ b/clang/lib/AST/Decl.cpp
+@@ -3231,11 +3231,15 @@
+ 
+ bool FunctionDecl::isInExternCContext() const {
+   // Metal library functions are looked up by their source entry name. Give
+-  // graphics entries the same language linkage as compute entries; ordinary
+-  // C++ helper overloads and non-Metal graphics compilation are unchanged.
++  // graphics entries the same language linkage as compute entries, including
++  // [[patch(...)]] vertex entries after Sema changes their attribute to
++  // GraphicsTessellationEvaluationShaderAttr. Ordinary C++ helper overloads
++  // and non-Metal graphics compilation are unchanged.
+   if (hasAttr<ComputeKernelAttr>() ||
+       (getASTContext().getLangOpts().Metal &&
+-       (hasAttr<GraphicsVertexShaderAttr>() || hasAttr<GraphicsFragmentShaderAttr>())))
++       (hasAttr<GraphicsVertexShaderAttr>() ||
++        hasAttr<GraphicsFragmentShaderAttr>() ||
++        hasAttr<GraphicsTessellationEvaluationShaderAttr>())))
+     return true;
+   return getLexicalDeclContext()->isExternCContext();
+ }
+--- a/llvm/lib/Transforms/LibFloor/MetalFinal.cpp
++++ b/llvm/lib/Transforms/LibFloor/MetalFinal.cpp
+@@ -964,6 +964,31 @@
+ 					//       I'm assuming this whole family of intrinsics is allowed
+ 					break;
+ 					
++				case Intrinsic::bitreverse: {
++					// InstCombine can introduce this even without a source builtin.
++					// Only the scalar 32-bit AIR operation is supported here.
++					if (!I.getType()->isIntegerTy(32)) {
++						ctx->emitError(&I, "unsupported bitreverse type (expected scalar i32):\n" + print_instr(I));
++						return;
++					}
++					const auto intrinsic_attrs = I.getCalledFunction()->getAttributes();
++					auto air_callee = M->getOrInsertFunction(
++						"air.reverse_bits.i32", I.getFunctionType(), intrinsic_attrs);
++					auto* air_func = dyn_cast<Function>(air_callee.getCallee());
++					if (!air_func || air_func->getFunctionType() != I.getFunctionType() || !air_func->isDeclaration()) {
++						ctx->emitError(&I, "incompatible air.reverse_bits.i32 declaration");
++						return;
++					}
++					// Retain the intrinsic guarantees when reusing an existing AIR
++					// declaration, without dropping that declaration's attributes.
++					air_func->addFnAttrs(AttrBuilder(*ctx, intrinsic_attrs.getFnAttrs()));
++					// Retarget in place to preserve SSA uses, call attributes, tail
++					// kind, operand bundles, metadata and the debug location.
++					I.setCalledFunction(air_func);
++					was_modified = true;
++					break;
++				}
++
+ 				// single arguments cases
+ 				case Intrinsic::abs:
+ 				case Intrinsic::fabs: {
+@@ -1691,8 +1716,10 @@
+ 					}
+ 				}
+ 				
+-				// remove dso_local from all functions
+-				func.setDSOLocal(false);
++				// Clear explicit dso_local for AIR, but retain locality required by
++				// internal/private linkage or non-default visibility. The remaining
++				// LLVM passes and verifier must still receive valid IR.
++				func.setDSOLocal(func.isImplicitDSOLocal());
+ 				
+ 				// strip debug info from declarations
+ 				if (func.isDeclaration()) {
+--- a/llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp
++++ b/llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp
+@@ -660,6 +660,142 @@
+ 			return true;
+ 		}
+ 		
++		// InstCombine can fold a zero-offset constant-buffer array access into
++		// a struct* -> vector* bitcast followed by vector/scalar GEPs. Rebuild
++		// the read-only use tree with the actual element types, then bitcast
++		// the loaded values, never the pointers. Do not generalize this to
++		// padding, regrouped vector lanes, pointer escapes, or writable memory.
++		bool fix_metal_constant_vector_loads(BitCastInst& BC) {
++			auto src_ptr_type = cast<PointerType>(BC.getSrcTy());
++			auto dst_ptr_type = cast<PointerType>(BC.getDestTy());
++			// AIR address space 2 is constant storage.
++			if (!is_metal || src_ptr_type->getAddressSpace() != 2 ||
++				src_ptr_type->isOpaque() || dst_ptr_type->isOpaque()) {
++				return false;
++			}
++			auto src_type = src_ptr_type->getPointerElementType();
++			auto dst_vec = dyn_cast<FixedVectorType>(dst_ptr_type->getPointerElementType());
++			if (!src_type->isStructTy() || !src_type->isSized() || !dst_vec) {
++				return false;
++			}
++
++			// Only walk zero-offset, single-field wrappers and nonempty arrays.
++			// The final GEP names the original storage rather than loading a
++			// whole buffer or pretending the buffer has a different layout.
++			SmallVector<Value*, 8> indices { ConstantInt::get(Type::getInt32Ty(*ctx), 0) };
++			auto element_type = src_type;
++			for (;;) {
++				if (auto st = dyn_cast<StructType>(element_type)) {
++					if (st->getNumElements() != 1 || DL->getStructLayout(st)->getElementOffset(0) != 0) {
++						return false;
++					}
++					element_type = st->getElementType(0);
++				} else if (auto arr = dyn_cast<ArrayType>(element_type)) {
++					if (!arr->getNumElements()) {
++						return false;
++					}
++					element_type = arr->getElementType();
++				} else {
++					break;
++				}
++				indices.push_back(ConstantInt::get(Type::getInt32Ty(*ctx), 0));
++			}
++			auto src_vec = dyn_cast<FixedVectorType>(element_type);
++			if (!src_vec || src_vec->getNumElements() != dst_vec->getNumElements()) {
++				return false;
++			}
++			auto src_scalar = src_vec->getElementType();
++			auto dst_scalar = dst_vec->getElementType();
++			if ((!src_scalar->isIntegerTy() && !src_scalar->isFloatingPointTy()) ||
++				(!dst_scalar->isIntegerTy() && !dst_scalar->isFloatingPointTy()) ||
++				!CastInst::isBitCastable(src_scalar, dst_scalar) ||
++				DL->getTypeStoreSize(src_scalar) != DL->getTypeStoreSize(dst_scalar) ||
++				DL->getTypeAllocSize(src_scalar) != DL->getTypeAllocSize(dst_scalar) ||
++				DL->getTypeStoreSize(src_vec) != DL->getTypeStoreSize(dst_vec) ||
++				DL->getTypeAllocSize(src_vec) != DL->getTypeAllocSize(dst_vec)) {
++				return false;
++			}
++
++			// Validate the entire use tree before changing IR. Identical lane
++			// counts and scalar/vector strides let us retain every GEP index
++			// verbatim, including dynamic and negative indices and inbounds.
++			SmallVector<Value*, 8> pointers { &BC };
++			SmallVector<GetElementPtrInst*, 8> geps;
++			SmallVector<LoadInst*, 8> loads;
++			for (size_t i = 0; i < pointers.size(); ++i) {
++				auto ptr = pointers[i];
++				for (auto user : ptr->users()) {
++					if (auto ld = dyn_cast<LoadInst>(user)) {
++						if (ld->getPointerOperand() != ptr || !ld->isSimple()) {
++							return false;
++						}
++						loads.push_back(ld);
++					} else if (auto gep = dyn_cast<GetElementPtrInst>(user)) {
++						auto gep_type = gep->getSourceElementType();
++						if (gep->getPointerOperand() != ptr || !gep->getType()->isPointerTy() ||
++							(gep_type != dst_vec && gep_type != dst_scalar) ||
++							gep->getNumIndices() == 0 ||
++							gep->getNumIndices() > (gep_type == dst_vec ? 2u : 1u)) {
++							return false;
++						}
++						for (auto& index : gep->indices()) {
++							if (!index->getType()->isIntegerTy()) {
++								return false;
++							}
++						}
++						geps.push_back(gep);
++						pointers.push_back(gep);
++					} else {
++						return false;
++					}
++				}
++			}
++			if (loads.empty()) {
++				return false;
++			}
++
++			auto base = GetElementPtrInst::Create(src_type, BC.getOperand(0), indices,
++												 BC.getName() + ".storage", &BC);
++			base->setDebugLoc(BC.getDebugLoc());
++			std::unordered_map<Value*, Value*> replacements { { &BC, base } };
++			for (auto gep : geps) {
++				auto ptr = replacements.at(gep->getPointerOperand());
++				SmallVector<Value*, 2> gep_indices;
++				for (auto& index : gep->indices()) {
++					gep_indices.push_back(index);
++				}
++				auto typed_gep = GetElementPtrInst::Create(ptr->getType()->getPointerElementType(), ptr,
++															 gep_indices, gep->getName() + ".typed", gep);
++				typed_gep->setIsInBounds(gep->isInBounds());
++				typed_gep->setDebugLoc(gep->getDebugLoc());
++				replacements.emplace(gep, typed_gep);
++			}
++			for (auto ld : loads) {
++				auto ptr = replacements.at(ld->getPointerOperand());
++				auto typed_ld = new LoadInst(ptr->getType()->getPointerElementType(), ptr,
++											 ld->getName() + ".typed", false, ld->getAlign(), ld);
++				// Keep memory facts, but not value facts such as integer !range:
++				// those may be invalid metadata on the new floating-point load.
++				typed_ld->copyMetadata(*ld, { LLVMContext::MD_tbaa, LLVMContext::MD_alias_scope,
++					LLVMContext::MD_noalias, LLVMContext::MD_nontemporal, LLVMContext::MD_invariant_load,
++					LLVMContext::MD_mem_parallel_loop_access, LLVMContext::MD_access_group });
++				typed_ld->setDebugLoc(ld->getDebugLoc());
++				Value* value = typed_ld;
++				if (typed_ld->getType() != ld->getType()) {
++					auto bits = new BitCastInst(typed_ld, ld->getType(), ld->getName() + ".bits", ld);
++					bits->setDebugLoc(ld->getDebugLoc());
++					value = bits;
++				}
++				ld->replaceAllUsesWith(value);
++				ld->eraseFromParent();
++			}
++			for (auto gep : llvm::reverse(geps)) {
++				gep->eraseFromParent();
++			}
++			BC.eraseFromParent();
++			return true;
++		}
++
+ 		bool fix_pointer_bitcasts() {
+ 			bool did_modify = false;
+ 			for (auto& BC : ptr_bc_instrs) {
+@@ -672,11 +808,19 @@
+ 					return false;
+ 				}
+ 				
++				if (fix_metal_constant_vector_loads(*BC)) {
++					did_modify = true;
++					continue;
++				}
++
+ 				// we will only replace the pointer bitcast if all users are simple loads or stores
+ 				bool all_users_are_loads_or_stores = true;
+ 				std::vector<LoadInst*> loads;
+ 				std::vector<StoreInst*> stores;
+-				libfloor_utils::for_all_instruction_users(*BC, [this, &all_users_are_loads_or_stores, &loads, &stores](Instruction& instr) {
++				std::string unhandled_user_opcodes;
++				unsigned unhandled_user_count = 0;
++				libfloor_utils::for_all_instruction_users(*BC, [this, &all_users_are_loads_or_stores, &loads, &stores,
++															 &unhandled_user_opcodes, &unhandled_user_count](Instruction& instr) {
+ 					if (auto ld = dyn_cast_or_null<LoadInst>(&instr); ld) {
+ 						if (is_vulkan) { // only need this for Vulkan
+ 							loads.emplace_back(ld);
+@@ -687,10 +831,23 @@
+ 						// ignore external function calls (may e.g. be used for atomic functions)
+ 					} else {
+ 						all_users_are_loads_or_stores = false;
++						// Only compiler-defined opcode names, never source names or IR.
++						// Saturate the count so this diagnostic stays bounded.
++						if (unhandled_user_count < 4) {
++							if (unhandled_user_count != 0) unhandled_user_opcodes += ", ";
++							unhandled_user_opcodes += instr.getOpcodeName();
++							++unhandled_user_count;
++						} else if (unhandled_user_count == 4) {
++							unhandled_user_opcodes += ", ...";
++							++unhandled_user_count;
++						}
+ 					}
+ 				});
+ 				if (!all_users_are_loads_or_stores) {
+-					ctx->emitError(BC, "invalid pointer bitcast: failed to run bitcast fixup (unhandled instructions)");
++					// The instruction overload appends full IR, which local privacy
++					// filtering must discard. Keep this error useful without it.
++					ctx->emitError("invalid pointer bitcast: failed to run bitcast fixup (unhandled instructions); unsupported users: " +
++								   unhandled_user_opcodes);
+ 					return false;
+ 				}
+ 				if (!stores.empty() && !loads.empty()) {

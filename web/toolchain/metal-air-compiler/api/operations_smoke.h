@@ -117,6 +117,26 @@ static int checkMissingOperations() {
         1, AIR_FRONTEND_FAILED, failures);
   }
 
+  const auto quadFactors = operationIR("quad tessellation factor ABI", R"METAL(
+    using namespace metal;
+    static_assert(__is_same(decltype(MTLQuadTessellationFactorsHalf::edgeTessellationFactor),half[4]), "four half edges");
+    static_assert(__is_same(decltype(MTLQuadTessellationFactorsHalf::insideTessellationFactor),half[2]), "two half interiors");
+    static_assert(sizeof(MTLQuadTessellationFactorsHalf)==12, "quad factor stride");
+    static_assert(alignof(MTLQuadTessellationFactorsHalf)==2, "quad factor alignment");
+    static_assert(__builtin_offsetof(MTLQuadTessellationFactorsHalf,edgeTessellationFactor)==0, "edge offset");
+    static_assert(__builtin_offsetof(MTLQuadTessellationFactorsHalf,insideTessellationFactor)==8, "inside offset");
+    kernel void k(device MTLQuadTessellationFactorsHalf *o [[buffer(0)]],constant float *i [[buffer(1)]]) {
+      for(uint n=0;n<4;++n) o[0].edgeTessellationFactor[n]=half(i[n]);
+      for(uint n=0;n<2;++n) o[0].insideTessellationFactor[n]=half(i[n+4]);
+    }
+  )METAL", 1, AIR_OK, failures);
+  requireOperation(quadFactors.find("MTLQuadTessellationFactorsHalf")!=std::string::npos &&
+      quadFactors.find("type { [4 x half], [2 x half] }")!=std::string::npos,
+      "quad factors retain half-array IR layout", failures);
+  requireOperation(std::regex_search(quadFactors, std::regex("store (half|<[0-9]+ x half>) ")) &&
+      !std::regex_search(quadFactors, std::regex("fptoui|air\\.convert\\.u\\.i16")),
+      "quad factors use half stores, not numeric integer conversion", failures);
+
   const auto vote = operationIR("compute SIMD all", R"METAL(
     using namespace metal;
     static_assert(__is_same(decltype(simd_all(true)),bool), "boolean vote result");
@@ -151,6 +171,51 @@ static int checkMissingOperations() {
         "__attribute__((noinline)) bool vote_helper(bool p) {return simd_all(p);}" + entry +
         "vote_helper(i[0]!=0)?1.0f:0.0f)};}", 1, AIR_INVALID_IR, failures,
         "Unsupported shader stage");
+  }
+
+  const auto fragmentAtomic = operationIR("fragment device atomic add", R"METAL(
+    using namespace metal;
+    struct O {float4 color [[color(0)]];};
+    fragment O k(device atomic_uint *counter [[buffer(0)]],constant uint *i [[buffer(1)]]) {
+      uint previous=atomic_fetch_add_explicit(counter,i[0],memory_order_relaxed);
+      return O{float4(previous==i[1]?1.0f:0.0f)};
+    }
+  )METAL", 1, AIR_OK, failures);
+  requireOperation(fragmentAtomic.find("@air.atomic.global.add.u.i32")!=std::string::npos,
+      "fragment emits device uint atomic add", failures);
+  const std::string atomicFragmentPrefix = "using namespace metal; struct O {float4 color [[color(0)]];}; "
+      "fragment O k(device uint *counter [[buffer(0)]],constant uint *i [[buffer(1)]]) {uint value=";
+  const std::string atomicFragmentSuffix = ";return O{float4(value!=0u?1.0f:0.0f)};}";
+  operationIR("fragment global min remains rejected", atomicFragmentPrefix +
+      "__atomic_detail::global_min(counter,i[0],0u,2u,true)" + atomicFragmentSuffix,
+      1, AIR_INVALID_IR, failures, "Unsupported shader stage");
+  for (const auto *operation : {"local_add", "local_min", "local_max"}) {
+    // Use the existing trusted declaration to isolate the stage check from
+    // unrelated frontend restrictions on fragment threadgroup storage.
+    operationIR("fragment local atomics remain rejected", atomicFragmentPrefix +
+        "__atomic_detail::" + operation + "((threadgroup uint*)0,i[0],0u,1u,true)" +
+        atomicFragmentSuffix, 1, AIR_INVALID_IR, failures, "Unsupported shader stage");
+  }
+  operationIR("vertex global add remains rejected", R"METAL(
+    using namespace metal;
+    struct O {float4 position [[position]];};
+    vertex O k(device atomic_uint *counter [[buffer(0)]],constant uint *i [[buffer(1)]]) {
+      uint previous=atomic_fetch_add_explicit(counter,i[0],memory_order_relaxed);
+      return O{float4(previous==i[1]?1.0f:0.0f)};
+    }
+  )METAL", 1, AIR_INVALID_IR, failures, "Unsupported shader stage");
+  operationIR("fragment barrier remains rejected", R"METAL(
+    using namespace metal;
+    struct O {float4 color [[color(0)]];};
+    fragment O k(constant float *i [[buffer(0)]]) {
+      threadgroup_barrier(mem_flags::mem_threadgroup);
+      return O{float4(i[0])};
+    }
+  )METAL", 1, AIR_INVALID_IR, failures, "Unsupported shader stage");
+  for (const auto *flags : {"1u,2u,true", "0u,1u,true", "0u,2u,false"}) {
+    operationIR("fragment atomic flags remain exact", atomicFragmentPrefix +
+        "__atomic_detail::global_add(counter,i[0]," + flags + ")" + atomicFragmentSuffix,
+        1, AIR_INVALID_IR, failures, "Unsupported shader stage");
   }
 
   struct Counterfeit { const char *header; const char *declaration; };

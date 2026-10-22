@@ -1,5 +1,5 @@
-// CI 中仅编译四个固定的原创着色器，覆盖三个阶段；不读取游戏、密钥或用户文件。
-// CI-only compilation of four fixed authored shaders across three stages, never game, key or user inputs.
+// CI 中仅编译十个固定的原创着色器，覆盖三个阶段；不读取游戏、密钥或用户文件。
+// CI-only compilation of ten fixed authored shaders across three stages, never game, key or user inputs.
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { createAirCompilerAdapter } from "../../air-compiler-adapter.mjs";
@@ -11,6 +11,27 @@ const cases = Object.freeze([
   { stage: "fragment", filename: "msl-fragment.metal", define: "#define THRESHOLD 0.5f\n" },
   { stage: "kernel", filename: "msl-compute.metal", define: "#define FACTOR 3\n" },
   { stage: "kernel", filename: "msl-scalar-operations.metal", define: "" },
+  { stage: "fragment", filename: "msl-fragment-atomic-add.metal", define: "" },
+  { stage: "fragment", filename: "msl-internal-helper-function-constant.metal", define: "" },
+  { stage: "kernel", filename: "msl-optimizer-bit-reversal.metal", define: "" },
+  {
+    stage: "vertex",
+    filename: "msl-patch-entry-name.metal",
+    entry: "patch_linkage_probe",
+    define: "",
+  },
+  {
+    stage: "fragment",
+    filename: "constant-vector-pointer-reads.metal",
+    entry: "constant_vector_pointer_reads",
+    define: "",
+  },
+  {
+    stage: "fragment",
+    filename: "direct-buffer-vector-pointer.metal",
+    entry: "direct_buffer_vector_pointer",
+    define: "",
+  },
 ]);
 
 // The caller authenticates the actual module and passes its independently computed
@@ -40,7 +61,7 @@ export async function runAirCompilerCanary(module, { expectedHeaderSha256 } = {}
           mathProfile: "fast-f32",
         });
         await inspectCompiledMetalLibrary(output.bytes, {
-          entry: "main0",
+          entry: fixture.entry ?? "main0",
           stage: fixture.stage,
           minimumOS: [18, 0],
           languageVersion: [3, 2],
@@ -48,6 +69,7 @@ export async function runAirCompilerCanary(module, { expectedHeaderSha256 } = {}
         });
         results.push({
           fixture: fixture.filename,
+          entry: fixture.entry ?? "main0",
           stage: fixture.stage,
           sourceSha256,
           bytes: output.bytes.byteLength,
@@ -61,7 +83,7 @@ export async function runAirCompilerCanary(module, { expectedHeaderSha256 } = {}
       }
     }
     return {
-      validation: "authored-four-fixture-three-stage-compilation-and-container-integrity",
+      validation: "authored-ten-fixture-three-stage-compilation-and-container-integrity",
       results,
     };
   } finally {

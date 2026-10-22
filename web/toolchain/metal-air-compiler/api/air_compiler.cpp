@@ -236,7 +236,10 @@ bool validControlStages(const llvm::Module &module) {
           if (name=="air.clz.i32" && !constant(1,0)) return false;
           if ((name=="air.simd_ballot.i64" || name=="air.simd_all") && llvm::StringRef(stage)!="air.kernel") return false;
           if (name.startswith("air.atomic.")) {
-            if (llvm::StringRef(stage)!="air.kernel" || !constant(2,0) ||
+            // Only the reference-established device uint add extends to fragments.
+            const bool fragmentAdd=llvm::StringRef(stage)=="air.fragment" &&
+                name=="air.atomic.global.add.u.i32";
+            if ((llvm::StringRef(stage)!="air.kernel" && !fragmentAdd) || !constant(2,0) ||
                 !constant(3,name.startswith("air.atomic.global.") ? 2 : 1) || !constant(4,1)) return false;
           }
           if (name=="air.wg.barrier" && (llvm::StringRef(stage)!="air.kernel" || !constant(0,2) || !constant(1,1))) return false;

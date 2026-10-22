@@ -10,6 +10,8 @@ The source base is now pinned to a2flo/floor_llvm at `4b173e3db383ec7164afb11ee7
 
 当前基于固定的 a2flo 上游版本。既有原生及 Node WASM 成功记录属于先前的 gzorin 基线，不能自动视为本次迁移通过；新版本交由 CI 构建，未宣称本地重建或完整游戏验证。
 
+See [CORPUS_FIXES.md](CORPUS_FIXES.md) for the incremental compiler corrections, exact source-provenance coverage and pending execution checks.
+
 ## Reproduce the native milestone / 复现原生阶段
 
 Prerequisites: Linux, C++20 compiler (tested GCC 14), CMake 3.20+, Ninja, Git, tar and Node.js or Bun. Tested bootstrap used CMake 4.4.4, Ninja 1.13.2, `-O1`, assertions, four compile jobs and one link job on a roughly 10 GiB RAM machine. Default below is two compile jobs; use `--jobs 1` on a constrained host. This builds a large compiler and needs several GiB of memory/disk, not just the small package directory.
@@ -56,6 +58,10 @@ GPU-specific pipeline archives and iPhone verification are outside this task. Do
 设备专属管线缓存及 iPhone 验证不属于本任务，禁止调用 iOS 模拟器。目标是匹配 Xcode 构建 IPA 的预编译着色器库行为，并非消除设备端所有管线工作。
 
 ## Browser smoke harness / 浏览器冒烟工具
+
+The production build's separate `ci-compile-canary.mjs` is configured to compile ten fixed authored fixtures across vertex, fragment and kernel stages using the actual WASM artifact. It covers the added scalar operations, barrier, half-valued quad tessellation factors, fragment device atomic add, and the public [compiler-correction probes](CORPUS_FIXES.md#real-wasm-ci-canaries). Named entries are checked exactly, with `main0` only the default; stage, platform/version and container/bitcode checks are unchanged. These source-only/test fixtures are not production runtime payload assets. The source archive includes every tracked fixture under this compiler directory. The new cases still require a rebuilt artifact run; this is distinct from the six-variant interactive harness below.
+
+生产构建中的独立 CI 检查使用实际 WASM 编译器，编译十个固定原创测试，覆盖三个阶段，并严格验证入口名和输出容器。这些测试仅进入测试与源码包，不进入生产运行时资源；新增测试仍需重建产物后执行，不等同于下方六个变体的交互式浏览器检查。
 
 After building the actual WASM target, run `node browser-smoke-server.mjs --build /path/to/API-WASM-build` and open the printed loopback URL in desktop Chromium. The build directory must contain `d2r_air_wasm.mjs` and `d2r_air_wasm.wasm`. The embedded compatibility header bundle must match this package's fingerprint. For an earlier isolated build, append `--api-source /path/to/matching/API-source`; the harness derives the v1 single-header or v2 sorted-bundle fingerprint from that explicit source directory and requires the module to match it. This only selects a development fixture contract, not a production trust manifest.
 

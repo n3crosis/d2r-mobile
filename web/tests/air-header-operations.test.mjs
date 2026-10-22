@@ -139,21 +139,80 @@ test("authored executable fixtures are wired into the existing header smoke suit
     assert(fixtures.includes(marker), marker);
 });
 
+test("quad tessellation factors use the verified shader half layout", async () => {
+  const tessellation = await read("include/metal_tessellation");
+  const fixtures = await read("operations_smoke.h");
+  assert.match(
+    tessellation,
+    /struct MTLQuadTessellationFactorsHalf\s*\{\s*half edgeTessellationFactor\[4\];\s*half insideTessellationFactor\[2\];\s*\};/,
+  );
+  for (const assertion of [
+    "sizeof(MTLQuadTessellationFactorsHalf)==12",
+    "alignof(MTLQuadTessellationFactorsHalf)==2",
+    "__builtin_offsetof(MTLQuadTessellationFactorsHalf,edgeTessellationFactor)==0",
+    "__builtin_offsetof(MTLQuadTessellationFactorsHalf,insideTessellationFactor)==8",
+  ]) {
+    assert(tessellation.includes(assertion), assertion);
+    assert(fixtures.includes(assertion), assertion);
+  }
+  assert(fixtures.includes("quad factors retain half-array IR layout"));
+  assert(fixtures.includes("quad factors use half stores, not numeric integer conversion"));
+});
+
+test("only reference-established device uint add extends atomics to fragments", async () => {
+  const apiSource = await read("air_compiler.cpp");
+  const trust = await read("atomic_trust.inc");
+  const fixtures = await read("operations_smoke.h");
+  assert.match(
+    apiSource,
+    /const bool fragmentAdd=llvm::StringRef\(stage\)=="air\.fragment" &&\s*name=="air\.atomic\.global\.add\.u\.i32";/,
+  );
+  assert(
+    apiSource.includes('(llvm::StringRef(stage)!="air.kernel" && !fragmentAdd) || !constant(2,0)'),
+  );
+  assert(
+    apiSource.includes(
+      '!constant(3,name.startswith("air.atomic.global.") ? 2 : 1) || !constant(4,1)',
+    ),
+  );
+  assert(
+    trust.includes(
+      'const bool global=name=="air.atomic.global.add.u.i32" || name=="air.atomic.global.min.u.i32";',
+    ),
+  );
+  assert(trust.includes("function->getNumParams()!=5 || !is(function->getReturnType(),B::UInt)"));
+  assert(
+    trust.includes(
+      "pointee.getAddressSpace()!=(global ? clang::LangAS::opencl_global : clang::LangAS::opencl_local)",
+    ),
+  );
+  for (const marker of [
+    "fragment device atomic add",
+    "fragment global min remains rejected",
+    "fragment local atomics remain rejected",
+    "vertex global add remains rejected",
+    "fragment barrier remains rejected",
+    "fragment atomic flags remain exact",
+  ])
+    assert(fixtures.includes(marker), marker);
+});
+
 test("real-WASM CI canary includes all five live operations in a fourth authored fixture", async () => {
   const canary = await read("../ci-compile-canary.mjs");
   const fixture = await read("../fixtures/msl-scalar-operations.metal");
-  const cases = [...canary.matchAll(/stage: "(vertex|fragment|kernel)", filename: "([^"]+)"/g)];
-  assert.equal(cases.length, 4);
+  const cases = [...canary.matchAll(/stage: "(vertex|fragment|kernel)",\s*filename: "([^"]+)"/g)];
+  assert.equal(cases.length, 10);
   assert.equal(new Set(cases.map((entry) => entry[1])).size, 3);
   assert(
     cases.some((entry) => entry[1] === "kernel" && entry[2] === "msl-scalar-operations.metal"),
   );
   assert(canary.includes("maxCompilations: cases.length"));
-  assert(canary.includes("authored-four-fixture-three-stage-compilation-and-container-integrity"));
+  assert(canary.includes("authored-ten-fixture-three-stage-compilation-and-container-integrity"));
   assert.match(canary, /adapter\.compile\(source,[\s\S]*?output: "metallib"/);
   assert.match(canary, /inspectCompiledMetalLibrary\(output\.bytes,/);
   assert.match(fixture, /kernel void main0\(constant float \*input/);
   assert.match(fixture, /constant int \*bits/);
+  assert.match(fixture, /device MTLQuadTessellationFactorsHalf \*tess_output/);
   assert.match(fixture, /#include <metal_stdlib>/);
   assert.doesNotMatch(fixture, /#include <metal_atomic>/);
   for (const statement of [
@@ -163,8 +222,25 @@ test("real-WASM CI canary includes all five live operations in a fourth authored
     "integer_output[0] = reverse_bits(bits[0]);",
     "vote_output[0] = simd_all(bits[1] != 0) ? 1u : 0u;",
     "threadgroup_barrier(mem_flags::mem_threadgroup);",
+    "tess_output[0].edgeTessellationFactor[i] = half(input[i + 3]);",
+    "tess_output[0].insideTessellationFactor[i] = half(input[i + 7]);",
   ])
     assert(fixture.includes(statement), statement);
+  assert(
+    cases.some((entry) => entry[1] === "fragment" && entry[2] === "msl-fragment-atomic-add.metal"),
+  );
+  const fragmentFixture = await read("../fixtures/msl-fragment-atomic-add.metal");
+  assert.match(
+    fragmentFixture,
+    /fragment AtomicFragmentResult main0\(device atomic_uint \*counters/,
+  );
+  assert.match(fragmentFixture, /constant uint \*input/);
+  assert(
+    fragmentFixture.includes(
+      "atomic_fetch_add_explicit(&counters[input[0]], input[1], memory_order_relaxed)",
+    ),
+  );
+  assert(fragmentFixture.includes("float4(previous == input[2] ? 1.0f : 0.0f)"));
 
   // Source delivery already includes every tracked file under the compiler
   // prefix, including this fixture once committed; no archive exception needed.
@@ -174,6 +250,83 @@ test("real-WASM CI canary includes all five live operations in a fourth authored
   );
   assert(sourceArtifact.includes('const prefix = "web/toolchain/metal-air-compiler/";'));
   assert(sourceArtifact.includes('run("git", ["ls-files", "-z", "--", prefix])'));
+});
+
+test("real-WASM canaries retain named entries and public compiler regression inputs", async () => {
+  const canary = await read("../ci-compile-canary.mjs");
+  const cases = [...canary.matchAll(/stage: "(vertex|fragment|kernel)",\s*filename: "([^"]+)"/g)];
+  assert.equal(new Set(cases.map((entry) => entry[2])).size, cases.length);
+  for (const [stage, filename] of [
+    ["fragment", "msl-internal-helper-function-constant.metal"],
+    ["kernel", "msl-optimizer-bit-reversal.metal"],
+    ["vertex", "msl-patch-entry-name.metal"],
+    ["fragment", "constant-vector-pointer-reads.metal"],
+    ["fragment", "direct-buffer-vector-pointer.metal"],
+  ]) {
+    assert(
+      cases.some((entry) => entry[1] === stage && entry[2] === filename),
+      filename,
+    );
+  }
+  for (const entry of [
+    "patch_linkage_probe",
+    "constant_vector_pointer_reads",
+    "direct_buffer_vector_pointer",
+  ])
+    assert(canary.includes(`entry: "${entry}"`), entry);
+  assert.match(
+    canary,
+    /inspectCompiledMetalLibrary\(output\.bytes,\s*\{\s*entry: fixture\.entry \?\? "main0",\s*stage: fixture\.stage,/,
+  );
+  assert(canary.includes("minimumOS: [18, 0]"));
+  assert(canary.includes("languageVersion: [3, 2]"));
+  assert(canary.includes("metadataLengthIncludesPrefix: false"));
+  assert(canary.includes("output?.bytes.fill(0)"));
+  assert(canary.includes("adapter.dispose()"));
+
+  const linkage = await read("../fixtures/msl-internal-helper-function-constant.metal");
+  assert(linkage.includes("static __attribute__((noinline)) float add_bias(float value)"));
+  assert(linkage.includes("constant bool enable_color [[function_constant(17)]]"));
+  assert(linkage.includes("function_constant(enable_color)"));
+  assert(linkage.includes("float4(add_bias(values[0]))"));
+  const reversal = await read("../fixtures/msl-optimizer-bit-reversal.metal");
+  assert(reversal.includes("uint bits = values[0]"));
+  for (const width of [16, 8, 4, 2, 1]) {
+    assert(reversal.includes(`bits >> ${width}`));
+    assert(reversal.includes(`bits << ${width}`));
+  }
+  assert(reversal.includes("values[0] = bits"));
+  assert.doesNotMatch(reversal, /\breverse_bits\s*\(/);
+
+  const patch = await read("../fixtures/msl-patch-entry-name.metal");
+  assert(patch.includes("#define PATCH_ENTRY_NAME patch_linkage_probe"));
+  assert(patch.includes("[[patch(triangle, PATCH_CONTROL_POINTS)]] vertex"));
+  assert(patch.includes("entry_bias(float value)"));
+  assert(patch.includes("entry_bias(uint value)"));
+  assert(patch.includes("input.points[0].position"));
+  assert(patch.includes("entry_bias(coordinate.x)"));
+
+  const pointer = await read("../fixtures/constant-vector-pointer-reads.metal");
+  assert(pointer.includes("fragment float4 constant_vector_pointer_reads("));
+  assert(pointer.includes("constant VectorStorage* data [[id(0)]]"));
+  assert(pointer.includes("reinterpret_cast<constant int4*>(args.data)"));
+  assert(pointer.includes("int4 selected = words[row]"));
+  assert(pointer.includes("int seed = words[0][lane]"));
+  assert(pointer.includes("return float4(float(selected.x ^ seed)"));
+  const directPointer = await read("../fixtures/direct-buffer-vector-pointer.metal");
+  assert(directPointer.includes("fragment float4 direct_buffer_vector_pointer("));
+  assert(directPointer.includes("constant VectorStorage* data [[buffer(0)]]"));
+  assert(directPointer.includes("reinterpret_cast<constant int4*>(data)"));
+  assert(directPointer.includes("int4 selected = words[row]"));
+  assert(directPointer.includes("int seed = words[0][lane]"));
+  assert(directPointer.includes("return float4(float(selected.x ^ seed)"));
+
+  // All fixed fixture paths stay within the tracked compiler-prefix source
+  // copy closure; this does not execute or import the WASM canary.
+  for (const entry of cases) {
+    assert.match(entry[2], /^[A-Za-z0-9_-]+\.metal$/);
+    assert((await read(`../fixtures/${entry[2]}`)).includes("#include <metal_stdlib>"));
+  }
 });
 
 test("header identity still fingerprints the full fixed bundle without a pinned replacement", async () => {

@@ -66,9 +66,9 @@ test("static import checks accept equivalent formatting but not comments, types 
     );
 });
 
-test("only the 62 audited source-only assets are rejected; live assets and proof records remain", () => {
-  assert.equal(SOURCE_ONLY_RUNTIME_ASSETS.length, 62);
-  assert.equal(new Set(SOURCE_ONLY_RUNTIME_ASSETS).size, 62);
+test("only the 68 audited source-only assets are rejected; live assets and proof records remain", () => {
+  assert.equal(SOURCE_ONLY_RUNTIME_ASSETS.length, 68);
+  assert.equal(new Set(SOURCE_ONLY_RUNTIME_ASSETS).size, 68);
   assert.ok(Object.isFrozen(SOURCE_ONLY_RUNTIME_ASSETS));
   for (const path of SOURCE_ONLY_RUNTIME_ASSETS)
     assert.throws(() => assertNoSourceOnlyRuntimeAsset(path), /Source-only module/);
@@ -89,12 +89,21 @@ test("only the 62 audited source-only assets are rejected; live assets and proof
     assert.doesNotThrow(() => assertNoSourceOnlyRuntimeAsset(path));
 });
 
-test("the fixed scalar-operations CI shader cannot enter the public runtime payload", () => {
-  const fixture = "toolchain/metal-air-compiler/fixtures/msl-scalar-operations.metal";
-  assert(SOURCE_ONLY_RUNTIME_ASSETS.includes(fixture));
-  assert(!RUNTIME_DIRECT_ASSETS.includes(fixture));
-  assert(!RUNTIME_SEALED_WORKERS.includes(fixture));
-  assert.throws(() => assertNoSourceOnlyRuntimeAsset(fixture), /Source-only module/);
+test("the fixed added CI shaders cannot enter the public runtime payload", () => {
+  for (const fixture of [
+    "toolchain/metal-air-compiler/fixtures/msl-scalar-operations.metal",
+    "toolchain/metal-air-compiler/fixtures/msl-fragment-atomic-add.metal",
+    "toolchain/metal-air-compiler/fixtures/msl-internal-helper-function-constant.metal",
+    "toolchain/metal-air-compiler/fixtures/msl-optimizer-bit-reversal.metal",
+    "toolchain/metal-air-compiler/fixtures/msl-patch-entry-name.metal",
+    "toolchain/metal-air-compiler/fixtures/constant-vector-pointer-reads.metal",
+    "toolchain/metal-air-compiler/fixtures/direct-buffer-vector-pointer.metal",
+  ]) {
+    assert(SOURCE_ONLY_RUNTIME_ASSETS.includes(fixture));
+    assert(!RUNTIME_DIRECT_ASSETS.includes(fixture));
+    assert(!RUNTIME_SEALED_WORKERS.includes(fixture));
+    assert.throws(() => assertNoSourceOnlyRuntimeAsset(fixture), /Source-only module/);
+  }
 });
 
 test("frontend imports the shared client at build time, not through runtime byte loading", async () => {

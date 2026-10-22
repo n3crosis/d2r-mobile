@@ -24,12 +24,16 @@
     {
       "path": "patches/0105-a2flo-air-only-build.patch",
       "sha256": "3b6bf7e08d3151e2e9d15985ec5c86b624f7385055425ed6ca1227c1edb58d66"
+    },
+    {
+      "path": "patches/0106-a2flo-corpus-compiler-fixes.patch",
+      "sha256": "ae96bafbfaeb0d62fe17d73261c82ed62fceaebdd6c28ee37b9aa6e225f0fe6f"
     }
   ],
   "patchedFiles": {
     "clang/include/clang/Basic/Attr.td": "a471de505e6c69fc76e214fc431e30fe5e22e576be0da4efd46ce7b3b5c4616c",
     "clang/lib/AST/ASTContext.cpp": "380d2e18adf9c499420ded678f3a2dcf1a54c8a4da08edbbeb47d31ca9bf3ffc",
-    "clang/lib/AST/Decl.cpp": "ae31bfcb87b4c71deae2ae217c37e3e0adfe2e4f1a1645d0a07dff9dd5873517",
+    "clang/lib/AST/Decl.cpp": "4deae175f0d5433c050fefdac0db7904cf88e2410a216e9aaa5e6af84ca1c794",
     "clang/lib/AST/RecordLayoutBuilder.cpp": "2ea871bef2a2dce8b4eaec3fcd8e74ec5203853df32ea80010f657ea888a2c80",
     "clang/lib/Parse/ParseDecl.cpp": "47750f2afd4007da179937f3a8ca3c619c29e157eb6bafbb1a6bd87add8cd4c5",
     "clang/lib/Parse/ParseTentative.cpp": "22b47a20820f593fb287040a0b1b228718174c0c3d17c0c53a16d54fb23bbe75",
@@ -48,8 +52,9 @@
     "clang/lib/CodeGen/CodeGenTypes.h": "bbb38103de877bfa70bb1ba3b1c67aaecafa7889d5edbb054577cc2b65978a7b",
     "llvm/include/llvm/Transforms/LibFloor/FloorImage.h": "797f537613c7ae608c8376161a538cdbf639dc4fa17a2923d43e4ba39c34208c",
     "llvm/lib/Transforms/LibFloor/FloorImage.cpp": "468e29894c59f85395b609ac7cbe07a79792c51215cc9575ba34948b57999c3d",
-    "llvm/lib/Transforms/LibFloor/MetalFinal.cpp": "948a919d37e002767ac65ab785753ee15aaf7957822fe2f1eec7cf746e29bbfc",
+    "llvm/lib/Transforms/LibFloor/MetalFinal.cpp": "2eeff094e126d5208a73da6f9b711921f0f42c0e73b8f51b1d82c8ef4ce62197",
     "llvm/lib/Transforms/LibFloor/MetalImage.cpp": "89f4dda86f2e0d8acf73f4413693bb9de0cf20e0c22159d6263cc66fe1f25448",
+    "llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp": "0d4331cb15be4d994c2911cea1a951903e7c50f9bd5a51c60be2a9a76a28ecb1",
     "llvm/lib/Transforms/LibFloor/VulkanFinal.cpp": "660a2705c55985066d9eda8140068c907bc4037105202d9ca420d7b25f756733",
     "llvm/lib/Bitcode/MetalLib/CMakeLists.txt": "edfd044974b4f518d63bee512648c6470b58cca3dbd92aed8a9172d871d87aa1",
     "llvm/lib/Bitcode/MetalLib/MetalLibReflection.cpp": "9132a4467525638bcaf2a587640e01ced38f18eb00700ce77daef03730b756a0",
