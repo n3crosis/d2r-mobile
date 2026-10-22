@@ -47,4 +47,5 @@ template<class T,uint N> using vec=typename __vector_detail::storage<T,N>::type;
 #include <metal_texture>
 #include <metal_depth>
 #include <metal_tessellation>
+#include <metal_atomic>
 #endif

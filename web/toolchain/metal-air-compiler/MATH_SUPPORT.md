@@ -28,6 +28,8 @@ The authored headers now provide `sin(float)`, `cos(float)` and `ceil(float)` th
 
 The production CI canary now includes a fourth fixed authored fixture, `fixtures/msl-scalar-operations.metal`, with runtime buffer inputs and separate output stores for all five added operations. The original vertex, fragment and compute fixtures remain unchanged. The canary compiles all four through the real WASM compiler and validates their metallib containers; it does not run the native header smoke suite or establish device execution.
 
+The standard `metal_stdlib` umbrella also includes the existing guarded `metal_atomic` subset, exposing `mem_flags` and `threadgroup_barrier` without a separate include. The fourth canary exercises `threadgroup_barrier(mem_flags::mem_threadgroup)` using only that umbrella. Existing atomic declaration trust and compute-only barrier argument checks are unchanged.
+
 This addition has source-only regression checks; its compiler fixtures and extended canary have not been built or executed locally. A rebuilt CI compiler artifact and real compiler runs remain required. Header fingerprints update automatically from the existing fixed bundle algorithm; no artifact digest, source-integrity check or prior reference expectation is replaced to claim a pass. No Apple SDK text or private application shader source is included.
 
 Unsupported types/operations remain errors, including general bool-vector storage/operations, accurate transcendental replacements, and APIs outside the authored SIMD, texture and math subsets. Do not substitute integer vectors for bool vectors or treat successful packaging as rendering equivalence.

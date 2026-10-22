@@ -13,4 +13,6 @@ kernel void main0(constant float *input [[buffer(0)]],
   math_output[2] = ceil(input[2]);
   integer_output[0] = reverse_bits(bits[0]);
   vote_output[0] = simd_all(bits[1] != 0) ? 1u : 0u;
+  // The standard umbrella alone must expose the existing barrier subset.
+  threadgroup_barrier(mem_flags::mem_threadgroup);
 }

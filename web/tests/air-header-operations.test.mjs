@@ -93,6 +93,34 @@ test("assembly trust remains tied to physical header provenance and exact declar
   assert.match(apiSource, /for \(const auto \*parameter : function->parameters\(\)\)/);
 });
 
+test("the guarded standard umbrella exposes atomic and barrier declarations", async () => {
+  const stdlib = await read("include/metal_stdlib");
+  const atomic = await read("include/metal_atomic");
+  const apiSource = await read("air_compiler.cpp");
+  assert.match(stdlib, /#include <metal_atomic>\s*#endif\s*$/);
+  assert(stdlib.indexOf("#include <metal_atomic>") > stdlib.indexOf("#include <metal_control>"));
+  assert(
+    stdlib.indexOf("#define D2R_EXPERIMENTAL_METAL_STDLIB") <
+      stdlib.indexOf("#include <metal_atomic>"),
+  );
+  assert(
+    atomic.indexOf("#define D2R_EXPERIMENTAL_METAL_ATOMIC") <
+      atomic.indexOf("#include <metal_stdlib>"),
+  );
+  assert(atomic.includes("enum class mem_flags { mem_threadgroup = 2 };"));
+  assert(atomic.includes("void threadgroup_barrier(mem_flags flags)"));
+  assert(
+    apiSource.includes(
+      'if (file->getName() == "/include/metal_atomic") return trustedAtomicDeclaration(function, attr);',
+    ),
+  );
+  assert(
+    apiSource.includes(
+      'if (name=="air.wg.barrier" && (llvm::StringRef(stage)!="air.kernel" || !constant(0,2) || !constant(1,1))) return false;',
+    ),
+  );
+});
+
 test("authored executable fixtures are wired into the existing header smoke suite", async () => {
   const smoke = await read("header_smoke.cpp");
   const fixtures = await read("operations_smoke.h");
@@ -126,12 +154,15 @@ test("real-WASM CI canary includes all five live operations in a fourth authored
   assert.match(canary, /inspectCompiledMetalLibrary\(output\.bytes,/);
   assert.match(fixture, /kernel void main0\(constant float \*input/);
   assert.match(fixture, /constant int \*bits/);
+  assert.match(fixture, /#include <metal_stdlib>/);
+  assert.doesNotMatch(fixture, /#include <metal_atomic>/);
   for (const statement of [
     "math_output[0] = sin(input[0]);",
     "math_output[1] = cos(input[1]);",
     "math_output[2] = ceil(input[2]);",
     "integer_output[0] = reverse_bits(bits[0]);",
     "vote_output[0] = simd_all(bits[1] != 0) ? 1u : 0u;",
+    "threadgroup_barrier(mem_flags::mem_threadgroup);",
   ])
     assert(fixture.includes(statement), statement);
 
