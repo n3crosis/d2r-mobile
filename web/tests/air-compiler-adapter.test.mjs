@@ -62,7 +62,8 @@ function fake() {
     calls,
     output,
     grow,
-    create: () => createAirCompilerAdapter(module, { expectedHeaderSha256: fingerprint }),
+    create: (options = {}) =>
+      createAirCompilerAdapter(module, { expectedHeaderSha256: fingerprint, ...options }),
   };
 }
 test("copies before result cleanup and reacquires heap after multiple detached-view growths", () => {
@@ -257,4 +258,119 @@ test("does not publish copied output if cancellation happens during cleanup call
   assert.throws(() => f.create().compile("x", { signal: controller.signal }), {
     code: "AIR_ABORTED",
   });
+});
+
+function fakeV2() {
+  const f = fake();
+  const compileV1 = f.module._air_compile_v1;
+  f.module._air_compiler_header_bundle_version = () => 2;
+  f.module._air_compile_v2 = (...args) => {
+    const result = compileV1(...args.slice(0, 4));
+    const call = f.calls.find((entry) => entry[0] === "compile");
+    call[0] = "compile-v2";
+    call.push(args[4]);
+    return result;
+  };
+  return f;
+}
+test("v1 remains the default even when the module supports v2", () => {
+  const f = fakeV2();
+  const adapter = f.create();
+  const result = adapter.compile("x");
+  assert.equal(adapter.apiVersion, 1);
+  assert.equal(result.apiVersion, 1);
+  assert.equal(result.mathProfile, "conservative");
+  assert.equal(result.headerBundleVersion, undefined);
+  assert.equal(f.calls.find((entry) => entry[0] === "compile").length, 5);
+});
+test("explicit v2 selects the exact math profile and records provenance", () => {
+  for (const mathProfile of [undefined, "conservative", "fast-f32"]) {
+    const f = fakeV2();
+    delete f.module._air_compile_v1;
+    const adapter = f.create({ apiVersion: 2 });
+    const result = adapter.compile("x", { mathProfile, iosMajor: 26, output: "llvm-text" });
+    assert.equal(adapter.apiVersion, 2);
+    assert.deepEqual(f.calls.find((entry) => entry[0] === "compile-v2").slice(-3), [
+      26,
+      1,
+      mathProfile === "fast-f32" ? 1 : 0,
+    ]);
+    assert.deepEqual(result.bytes, f.output);
+    assert.equal(result.apiVersion, 2);
+    assert.equal(result.mathProfile, mathProfile ?? "conservative");
+    assert.equal(result.headerBundleVersion, 2);
+    assert.equal(result.headerSha256, fingerprint);
+    assert.equal(result.status, "experimental-output-unvalidated");
+    assert.throws(() => adapter.compile("again"), { code: "AIR_MODULE_ALREADY_USED" });
+    assert.throws(() => f.create({ apiVersion: 1 }), { code: "AIR_MODULE_ALREADY_WRAPPED" });
+  }
+});
+test("fast math requires explicit v2 and invalid profiles allocate nothing", () => {
+  for (const [apiVersion, mathProfile] of [
+    [1, "fast-f32"],
+    [1, "fast"],
+    [2, "fast"],
+    [2, null],
+    [2, 1],
+  ]) {
+    const f = fakeV2();
+    const adapter = f.create({ apiVersion });
+    assert.throws(() => adapter.compile("x", { mathProfile }), { code: "AIR_BAD_OPTIONS" });
+    assert.equal(adapter.used, false);
+    assert.equal(f.calls.length, 0);
+  }
+  for (const apiVersion of [0, 3, "2", null, NaN])
+    assert.throws(() => fakeV2().create({ apiVersion }), { code: "AIR_BAD_OPTIONS" });
+});
+test("v2 requires its own export and exact header bundle version without fallback", () => {
+  for (const name of ["_air_compile_v2", "_air_compiler_header_bundle_version"]) {
+    const f = fakeV2();
+    delete f.module[name];
+    assert.throws(() => f.create({ apiVersion: 2 }), { code: "AIR_EXPORT_MISSING" });
+    assert.equal(f.calls.length, 0);
+  }
+  for (const version of [1, 3, "2", undefined, NaN]) {
+    const f = fakeV2();
+    f.module._air_compiler_header_bundle_version = () => version;
+    assert.throws(() => f.create({ apiVersion: 2 }), {
+      code: "AIR_HEADER_BUNDLE_VERSION_MISMATCH",
+    });
+  }
+});
+test("v2 keeps header pinning and private runtime errors", () => {
+  const f = fakeV2();
+  assert.throws(() => f.create({ apiVersion: 2, expectedHeaderSha256: "b".repeat(64) }), {
+    code: "AIR_HEADER_IDENTITY_MISMATCH",
+  });
+  f.module._air_compiler_header_bundle_version = () => {
+    throw Error("private_shader_identifier");
+  };
+  assert.throws(
+    () => f.create({ apiVersion: 2 }),
+    (e) => e.code === "AIR_RUNTIME_FAILED" && !String(e).includes("private_shader_identifier"),
+  );
+});
+test("v2 failure and cancellation preserve allocation cleanup and diagnostic privacy", () => {
+  for (const abort of [false, true]) {
+    const f = fakeV2(),
+      controller = new AbortController();
+    if (abort) f.module.onCompile = () => controller.abort();
+    else {
+      f.module.status = 3;
+      f.module.diagnosticSize = 25;
+    }
+    assert.throws(
+      () =>
+        f
+          .create({ apiVersion: 2 })
+          .compile("x", { mathProfile: "fast-f32", signal: controller.signal }),
+      (e) =>
+        e.code === (abort ? "AIR_ABORTED" : "AIR_FRONTEND_FAILED") &&
+        !String(e).includes("private_shader_identifier"),
+    );
+    assert.deepEqual(
+      f.calls.slice(-2).map((entry) => entry[0]),
+      ["result_free", "free"],
+    );
+  }
 });

@@ -106,17 +106,29 @@ if (command === "prepare") {
     `-DLLVM_DIR=${join(build, "lib/cmake/llvm")}`,
     `-DClang_DIR=${join(build, "lib/cmake/clang")}`,
   ]);
-  run("cmake", ["--build", apiBuild, "--target", "d2r_air_api_smoke", "--parallel", "1"]);
+  run("cmake", [
+    "--build",
+    apiBuild,
+    "--target",
+    "d2r_air_api_smoke",
+    "d2r_air_header_smoke",
+    "--parallel",
+    "1",
+  ]);
 } else if (command === "test") {
   const clang = resolve(option("--clang", join(build, "bin/clang")));
   const smoke = resolve(option("--smoke", join(apiBuild, "d2r_air_api_smoke")));
+  const headerSmoke = resolve(
+    option("--header-smoke", join(dirname(smoke), "d2r_air_header_smoke")),
+  );
   const output = join(work, "test-results");
   await mkdir(output, { recursive: true });
-  for (const script of ["run-fixtures.mjs", "run-msl-fixtures.mjs"])
+  for (const script of ["run-fixtures.mjs", "run-msl-fixtures.mjs", "run-math-fixtures.mjs"])
     run(process.execPath, [join(root, script), clang], {
       env: { ...process.env, AIR_TEST_OUTPUT_DIR: join(output, script.replace(".mjs", "")) },
     });
   run(smoke, []);
+  run(headerSmoke, []);
 } else if (command === "check") {
   await checkPatches();
   console.log(`Verified ${manifest.patches.length} ordered patch hashes for ${manifest.commit}`);

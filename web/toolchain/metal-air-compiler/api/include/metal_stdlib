@@ -31,4 +31,5 @@ D2R_VECTOR_TYPES(half)
 D2R_VECTOR_TYPES(float)
 #undef D2R_VECTOR_TYPES
 }
+#include <metal_math>
 #endif

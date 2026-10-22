@@ -18,7 +18,6 @@ const STATUS = Object.freeze([
 const EXPORTS = [
   "malloc",
   "free",
-  "air_compile_v1",
   "air_result_status",
   "air_result_data",
   "air_result_size",
@@ -48,13 +47,19 @@ function checkNumber(value, maximum, code) {
 // 缓存生命周期补丁尚未通过批量复用验证，原型暂时仅允许每模块编译一次。
 // Cache-lifetime patches await batch-reuse validation; this prototype temporarily permits one compile per module.
 // 同步 WASM 执行无法协作取消；真正中断须由外部终止专用 Worker。
+// API v2 和 fast-f32 均须显式选择；v1 保持保守模式 ABI。
+// API v2 and fast-f32 are explicit opt-ins; v1 retains its conservative ABI.
 // Synchronous WASM cannot cooperatively cancel; the owner must terminate the dedicated Worker to interrupt it.
-export function createAirCompilerAdapter(module, { expectedHeaderSha256 } = {}) {
+export function createAirCompilerAdapter(module, { expectedHeaderSha256, apiVersion = 1 } = {}) {
+  if (apiVersion !== 1 && apiVersion !== 2) throw failure("AIR_BAD_OPTIONS");
   if (typeof expectedHeaderSha256 !== "string" || !/^[a-f0-9]{64}$/.test(expectedHeaderSha256))
     throw failure("AIR_HEADER_IDENTITY_INVALID");
   if (wrappedModules.has(module)) throw failure("AIR_MODULE_ALREADY_WRAPPED");
   const api = Object.create(null);
-  for (const name of EXPORTS) {
+  const compileExport = `air_compile_v${apiVersion}`;
+  const requiredExports = [...EXPORTS, compileExport];
+  if (apiVersion === 2) requiredExports.push("air_compiler_header_bundle_version");
+  for (const name of requiredExports) {
     if (typeof module?.[`_${name}`] !== "function") throw failure("AIR_EXPORT_MISSING");
     api[name] = module[`_${name}`].bind(module);
   }
@@ -84,6 +89,8 @@ export function createAirCompilerAdapter(module, { expectedHeaderSha256 } = {}) 
   };
   let headerSha256;
   try {
+    if (apiVersion === 2 && api.air_compiler_header_bundle_version() !== 2)
+      throw failure("AIR_HEADER_BUNDLE_VERSION_MISMATCH");
     const bytes = region(api.air_compiler_header_sha256(), 65);
     if (bytes[64] !== 0) throw failure("AIR_HEADER_IDENTITY_INVALID");
     headerSha256 = String.fromCharCode(...bytes.subarray(0, 64));
@@ -103,6 +110,7 @@ export function createAirCompilerAdapter(module, { expectedHeaderSha256 } = {}) 
   return Object.freeze({
     status: "experimental-floor-metal-3.0-not-apple-msl-compatible",
     limits: LIMITS,
+    apiVersion,
     get headerSha256() {
       return headerSha256;
     },
@@ -116,12 +124,20 @@ export function createAirCompilerAdapter(module, { expectedHeaderSha256 } = {}) 
     },
     compile(
       source,
-      { iosMajor = 18, output = "metallib", sourceLanguage = "floor-metal-3.0", signal } = {},
+      {
+        iosMajor = 18,
+        output = "metallib",
+        sourceLanguage = "floor-metal-3.0",
+        mathProfile = "conservative",
+        signal,
+      } = {},
     ) {
       check(signal);
       if (active) throw failure("AIR_COMPILER_BUSY");
       if (used) throw failure("AIR_MODULE_ALREADY_USED");
       if (
+        !["conservative", "fast-f32"].includes(mathProfile) ||
+        (apiVersion !== 2 && mathProfile !== "conservative") ||
         sourceLanguage !== "floor-metal-3.0" ||
         ![18, 26].includes(iosMajor) ||
         !["metallib", "llvm-text"].includes(output)
@@ -152,11 +168,12 @@ export function createAirCompilerAdapter(module, { expectedHeaderSha256 } = {}) 
         inputPointer = allocated;
         check(signal);
         target.set(input);
-        const result = api.air_compile_v1(
+        const result = api[compileExport](
           inputPointer,
           input.length,
           iosMajor,
           output === "metallib" ? 0 : 1,
+          ...(apiVersion === 2 ? [mathProfile === "fast-f32" ? 1 : 0] : []),
         );
         if (result === 0) throw failure("AIR_ALLOCATION_FAILED");
         region(result, 1);
@@ -231,6 +248,9 @@ export function createAirCompilerAdapter(module, { expectedHeaderSha256 } = {}) 
         output,
         iosMajor,
         headerSha256,
+        apiVersion,
+        mathProfile,
+        ...(apiVersion === 2 ? { headerBundleVersion: 2 } : {}),
         status: "experimental-output-unvalidated",
         requiresWorkerTermination: true,
       });

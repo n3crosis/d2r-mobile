@@ -30,9 +30,9 @@ node toolchain.mjs test --work /path/to/empty-work
 - Authored compute, vertex and fragment inputs compile into source-dependent AIR and MTLB. Sparse buffer/argument resource metadata and selected dynamic 2D sampling are implemented, not replaced with constants.
 - Corrected public/private metadata lengths match the prefix-exclusive reference profile. Expected entry names, stages, bounds and embedded bitcode SHA256 were inspected. This does **not** prove Apple runtime acceptance.
 - Repeated in-process compilation covers LLVM-context lifetime regressions and error recovery. Unknown/ignored attributes cannot silently turn unsupported source into a successful result.
-- This minimal package contains 15 authored frontend cases and the in-process API smoke executable. The development milestone additionally passed targeted interface, resource and malformed-input suites; it does not claim all those separate development harnesses are included here.
+- This package contains the original 15 authored frontend cases, nine math/header frontend cases, and in-process API/profile regression executables. The development milestone additionally passed targeted interface, resource and malformed-input suites; it does not claim all those separate development harnesses are included here. See [MATH_SUPPORT.md](MATH_SUPPORT.md) for the explicit fast-math profile and versioned header bundle contract.
 
-已验证自编测试中的计算、顶点和片元着色器真实编译，以及部分稀疏资源绑定、动态二维采样、重复调用和错误恢复。输出结构与位码哈希检查通过，不等于 Apple 运行时验收。此精简包包含 15 个前端测试及进程内 API 冒烟测试，不包含用户游戏资料。
+已验证自编测试中的计算、顶点和片元着色器真实编译，以及部分稀疏资源绑定、动态二维采样、重复调用和错误恢复。输出结构与位码哈希检查通过，不等于 Apple 运行时验收。此包包含原有 15 个前端测试、9 个数学与头文件测试及进程内 API/配置测试，不包含用户游戏资料。
 
 ## Not ready / 尚未完成
 
@@ -48,7 +48,7 @@ GPU-specific pipeline archives and iPhone verification are outside this task. Do
 
 ## Browser smoke harness / 浏览器冒烟工具
 
-After the actual WASM target builds, run `node browser-smoke-server.mjs --build /path/to/API-WASM-build` and open the printed loopback URL in desktop Chromium. The build directory must contain `d2r_air_wasm.mjs` and `d2r_air_wasm.wasm`. The embedded compatibility header must match this package's `api/include/metal_stdlib` fingerprint.
+After the actual WASM target builds, run `node browser-smoke-server.mjs --build /path/to/API-WASM-build` and open the printed loopback URL in desktop Chromium. The build directory must contain `d2r_air_wasm.mjs` and `d2r_air_wasm.wasm`. The embedded compatibility header bundle must match this package's fingerprint. For an earlier isolated build, append `--api-source /path/to/matching/API-source`; the harness derives the v1 single-header or v2 sorted-bundle fingerprint from that explicit source directory and requires the module to match it. This only selects a development fixture contract, not a production trust manifest.
 
 This developer-only server serves a fixed allow-list of compiler and authored fixture files. It neither receives nor opens game inputs. Each of six authored source variants runs in its own dedicated Worker. Compiler assets are fingerprint-checked before the verified-byte instantiation hook is used; results undergo entry, stage, container and embedded bitcode integrity checks. The two variants per stage must produce different bitcode hashes. Cancellation terminates the active Worker. Results are shown on the page and in `globalThis.__airSmokeResult` for a browser automation driver.
 

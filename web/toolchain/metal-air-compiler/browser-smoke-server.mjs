@@ -9,9 +9,16 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
-if (args.length !== 2 || args[0] !== "--build")
-  throw new Error("Usage: node browser-smoke-server.mjs --build /path/to/API-WASM-build");
+if (
+  ![2, 4].includes(args.length) ||
+  args[0] !== "--build" ||
+  (args.length === 4 && args[2] !== "--api-source")
+)
+  throw new Error(
+    "Usage: node browser-smoke-server.mjs --build /path/to/API-WASM-build [--api-source /path/to/matching/API-source]",
+  );
 const build = resolve(args[1]);
+const apiSource = args[3] ? resolve(args[3]) : resolve(here, "api");
 const routes = new Map();
 async function add(url, path, type) {
   const data = await readFile(path);
@@ -21,12 +28,22 @@ async function add(url, path, type) {
 const factory = await add("/compiler.mjs", resolve(build, "d2r_air_wasm.mjs"), "text/javascript");
 const wasm = await add("/compiler.wasm", resolve(build, "d2r_air_wasm.wasm"), "application/wasm");
 const hash = (data) => createHash("sha256").update(data).digest("hex");
+const apiHeader = await readFile(resolve(apiSource, "air_compiler.h"), "utf8");
+const apiVersion = apiHeader.includes("air_compiler_header_bundle_version(") ? 2 : 1;
+let headerSha256;
+if (apiVersion === 2) {
+  let bundle = "d2r-air-header-bundle-v2\n";
+  for (const path of ["metal_math", "metal_stdlib", "simd/simd.h"])
+    bundle += `${path}:${hash(await readFile(resolve(apiSource, "include", path)))}\n`;
+  headerSha256 = hash(bundle);
+} else headerSha256 = hash(await readFile(resolve(apiSource, "include/metal_stdlib")));
 routes.set("/manifest.json", {
   type: "application/json",
   data: JSON.stringify({
     factorySha256: hash(factory),
     wasmSha256: hash(wasm),
-    headerSha256: hash(await readFile(resolve(here, "api/include/metal_stdlib"))),
+    headerSha256,
+    apiVersion,
   }),
 });
 for (const name of ["browser-smoke-worker.mjs", "browser-smoke-client.mjs"])

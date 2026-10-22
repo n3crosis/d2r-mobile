@@ -30,6 +30,9 @@ const char *air_result_diagnostics(const air_result *result);
 size_t air_result_diagnostics_size(const air_result *result);
 void air_result_free(air_result *result);
 const char *air_compiler_header_sha256(void);
+/* math_profile: 0 = conservative subset, 1 = explicitly selected fast-f32 profile. */
+air_result *air_compile_v2(const uint8_t *, size_t, uint32_t, uint32_t, uint32_t);
+uint32_t air_compiler_header_bundle_version(void);
 #ifdef __cplusplus
 }
 #endif

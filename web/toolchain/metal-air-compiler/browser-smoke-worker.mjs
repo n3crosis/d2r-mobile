@@ -48,7 +48,10 @@ self.addEventListener("message", async ({ data }) => {
       printErr() {},
     });
     if (instantiations !== 1) throw new Error("AIR_SMOKE_UNVERIFIED_INSTANTIATION");
-    adapter = createAirCompilerAdapter(module, { expectedHeaderSha256: data.headerSha256 });
+    adapter = createAirCompilerAdapter(module, {
+      expectedHeaderSha256: data.headerSha256,
+      apiVersion: data.apiVersion,
+    });
     const ready = performance.now();
     output = adapter.compile(data.source);
     const finished = performance.now();
