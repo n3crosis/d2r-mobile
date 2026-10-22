@@ -29,12 +29,12 @@ async function boundedRead(path, maximum = maximumFile) {
   if (value.length !== info.size) throw new Error("AIR compiler input changed while reading");
   return value;
 }
-async function sourceIdentity() {
+export async function airCompilerSourceIdentity() {
   const manifestBytes = await boundedRead(join(compiler, "manifest.json"), 1024 * 1024);
   const manifest = JSON.parse(manifestBytes);
   if (!/^[a-f0-9]{40}$/.test(manifest.commit ?? "") || !Array.isArray(manifest.patches))
     throw new Error("Invalid pinned AIR compiler source manifest");
-  const inputs = {};
+  const inputs = { "toolchain.mjs": hash(await boundedRead(join(compiler, "toolchain.mjs"))) };
   for (const patch of manifest.patches) {
     if (!/^patches\/[A-Za-z0-9_.+-]+\.patch$/.test(patch.path))
       throw new Error("Invalid AIR compiler patch path");
@@ -82,7 +82,7 @@ async function sourceIdentity() {
 }
 async function validateCurrentSources(report) {
   validateAirCompilerBuildReceipt(report);
-  const identity = await sourceIdentity();
+  const identity = await airCompilerSourceIdentity();
   for (const key of [
     "sourceCommit",
     "sourceManifestSha256",
@@ -161,7 +161,7 @@ export async function prepareAirCompilerAssets({
 export async function recordAirCompilerBuild({ buildDirectory, sourceDirectory, apiDirectory }) {
   if (!buildDirectory || !sourceDirectory || !apiDirectory)
     throw new Error("record requires --build, --source and --api-source directories");
-  const identity = await sourceIdentity();
+  const identity = await airCompilerSourceIdentity();
   for (const [name, expected] of Object.entries(identity.manifest.patchedFiles ?? {})) {
     if (!/^[A-Za-z0-9_.+/-]+$/.test(name) || name.split("/").includes(".."))
       throw new Error("Invalid compiler source provenance path");

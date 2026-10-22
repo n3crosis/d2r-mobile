@@ -55,7 +55,7 @@ concurrency:
 jobs:
   quick:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -69,6 +69,16 @@ jobs:
           bun-version: "1.4.3"
       - name: Build frontend and enforce requested code-quality gates
         run: node web/verification/verify.mjs quick
+      - name: Fingerprint exact public AIR compiler sources
+        id: air_source
+        run: node web/runtime-build/build-air-compiler.mjs --fingerprint
+      - name: Cache only source-bound public AIR compiler outputs
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            web/toolchain/metal-air-compiler/dist
+            web/runtime-build/.build/air-compiler-receipt.sha256
+          key: public-air-compiler-v1-${{ runner.os }}-${{ runner.arch }}-ubuntu-24.04-emsdk4.0.20-${{ steps.air_source.outputs.source_fingerprint }}
       - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         with:
           dotnet-version: "10.0.402"
@@ -88,12 +98,14 @@ jobs:
           DOTNET_CLI_TELEMETRY_OPTOUT: "1"
           DOTNET_NOLOGO: "1"
           DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE: "true"
+          D2R_AIR_COMPILER_SOURCE_FINGERPRINT: ${{ steps.air_source.outputs.source_fingerprint }}
         run: |
           df -h .
           "$RUNNER_TEMP/browser-emsdk/emsdk" install 4.0.20
           "$RUNNER_TEMP/browser-emsdk/emsdk" activate 4.0.20
           source "$RUNNER_TEMP/browser-emsdk/emsdk_env.sh"
           emcc --version | grep -E '^emcc .* 4[.]0[.]20([[:space:]]|$)'
+          node web/runtime-build/build-air-compiler.mjs --work "$RUNNER_TEMP/air-compiler" --jobs 4
           rustup toolchain install 1.99.1 --profile minimal --target wasm32-unknown-unknown --component rustfmt --component clippy
           printf '{"sdk":{"version":"10.0.402","rollForward":"disable","allowPrerelease":false,"workloadVersion":"10.0.402"}}\n' > web/toolchain/shader-spike/global.json
           (cd web/toolchain/shader-spike && dotnet workload install wasm-tools)

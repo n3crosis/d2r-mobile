@@ -1,0 +1,11 @@
+--- a/llvm/lib/Transforms/LibFloor/MetalFinal.cpp
++++ b/llvm/lib/Transforms/LibFloor/MetalFinal.cpp
+@@ -1121,7 +1121,7 @@
+ 				const auto dim_idx = get_dim_idx(I.getOperand(0), &I);
+ 				// A scalar explicit position is the one-dimensional form.
+                 if (id->getType()->isIntegerTy(32))
+-                    repl = builder->CreateSelect(builder->CreateICmpEQ(dim_idx, builder->getInt32(0)), id, builder->getInt32(0));
++                    repl = dim_idx == 0 ? id : builder->getInt32(0);
+                 else
+                     repl = builder->CreateExtractElement(id, dim_idx);
+ 			} else {

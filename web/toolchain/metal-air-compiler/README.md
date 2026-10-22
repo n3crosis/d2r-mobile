@@ -39,6 +39,9 @@ node toolchain.mjs test --work /path/to/empty-work
 - Real Chrome execution and full game corpus compilation.
 - Complete MSL compatibility beyond the implemented resource, builtin, function-constant and language subset; full-corpus coverage is not established.
 - Xcode-equivalent shader behavior across the complete supplied corpus.
+- Known unsupported inputs retained during the domain milestone: control-point records requiring padding and implicit vector `llvm.fmuladd`. The focused domain/interface checks do not establish support for these cases.
+
+本轮域着色器检查保留了两个未支持的输入类别：需要填充的控制点记录，以及隐式向量 `llvm.fmuladd`。接口检查通过不代表这些情况已实现。
 
 尚未完成浏览器执行、完整游戏覆盖、完整 MSL 库和高级功能。`api/CMakeLists.txt` now builds a real WASM target tested under Node with Worker shims; production wiring does not by itself establish a finished or fully validated browser compiler. The frontend currently accepts Metal 3.0 syntax mode while the iOS 18 AIR writer emits a Metal 3.2 version tag; that tag must not be treated as full Metal 3.2 support.
 

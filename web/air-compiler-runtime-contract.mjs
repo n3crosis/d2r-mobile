@@ -34,7 +34,7 @@ export function validateAirCompilerBuildReceipt(report) {
     !Object.keys(report.sourceInputs).length ||
     Object.entries(report.sourceInputs).some(
       ([name, digest]) =>
-        !/^(?:api|patches)\/[A-Za-z0-9_.+/-]+$/.test(name) ||
+        (name !== "toolchain.mjs" && !/^(?:api|patches)\/[A-Za-z0-9_.+/-]+$/.test(name)) ||
         name.split("/").some((part) => !part || part === "." || part === "..") ||
         !sha256(digest),
     ) ||

@@ -1,0 +1,278 @@
+--- a/clang/include/clang/Basic/Attr.td
++++ b/clang/include/clang/Basic/Attr.td
+@@ -1484,6 +1484,15 @@
+   let Subjects = SubjectList<[Field], ErrorDiag>;
+   let Documentation = [Undocumented];
+ }
++def MetalThreadBuiltin : InheritableAttr {
++  let Spellings = [CXX11<"", "thread_index_in_simdgroup", 200809>,
++                   CXX11<"", "thread_index_in_threadgroup", 200809>,
++                   CXX11<"", "threadgroup_position_in_grid", 200809>,
++                   CXX11<"", "thread_position_in_threadgroup", 200809>];
++  let Subjects = SubjectList<[ParmVar], ErrorDiag>;
++  let Documentation = [Undocumented];
++}
++
+ def MetalFrontFacing : InheritableAttr {
+   let Spellings = [CXX11<"", "front_facing", 200809>];
+   let Subjects = SubjectList<[ParmVar], ErrorDiag>;
+--- a/clang/lib/Sema/SemaDeclAttr.cpp
++++ b/clang/lib/Sema/SemaDeclAttr.cpp
+@@ -3215,6 +3215,23 @@
+   // Position and invariant may appear in either order; the completed interface
+   // is validated when a shader entry uses the record.
+   D->addAttr(::new (S.Context) MetalInvariantAttr(S.Context, AL));
++}
++
++static void handleMetalThreadBuiltin(Sema &S, Decl *D, const ParsedAttr &AL) {
++  const auto T = cast<ParmVarDecl>(D)->getType();
++  const auto *V = T->getAs<VectorType>();
++  const StringRef Name = AL.getAttrName()->getName();
++  const bool Position = Name == "threadgroup_position_in_grid" || Name == "thread_position_in_threadgroup";
++  if (!S.getLangOpts().Metal ||
++      !(T->isSpecificBuiltinType(BuiltinType::UInt) ||
++        (Position && V && V->getNumElements() == 3 && V->getElementType()->isSpecificBuiltinType(BuiltinType::UInt))) ||
++      D->hasAttr<MetalThreadBuiltinAttr>()) {
++    S.Diag(AL.getLoc(), S.getDiagnostics().getCustomDiagID(
++        DiagnosticsEngine::Error,
++        "Metal thread builtin requires one attribute on a by-value uint (or uint3 position) parameter"));
++    return;
++  }
++  D->addAttr(::new (S.Context) MetalThreadBuiltinAttr(S.Context, AL));
+ }
+ 
+ static void handleMetalFrontFacing(Sema &S, Decl *D, const ParsedAttr &AL) {
+@@ -9312,6 +9329,9 @@
+   case ParsedAttr::AT_MetalInvariant:
+     handleMetalInvariant(S, D, AL);
+     break;
++  case ParsedAttr::AT_MetalThreadBuiltin:
++    handleMetalThreadBuiltin(S, D, AL);
++    break;
+   case ParsedAttr::AT_MetalFrontFacing:
+     handleMetalFrontFacing(S, D, AL);
+     break;
+--- a/clang/lib/Sema/SemaDecl.cpp
++++ b/clang/lib/Sema/SemaDecl.cpp
+@@ -10195,6 +10195,30 @@
+   }
+ 
+   if (getLangOpts().Metal) {
++    unsigned SeenThreadBuiltins = 0;
++    for (const auto *P : NewFD->parameters()) {
++      const auto *A = P->getAttr<MetalThreadBuiltinAttr>();
++      if (!A) continue;
++      const StringRef Name = A->getSpelling();
++      const unsigned Slot = Name == "thread_index_in_simdgroup" ? 0 : Name == "thread_index_in_threadgroup" ? 1 : Name == "threadgroup_position_in_grid" ? 2 : 3;
++      if ((!NewFD->hasAttr<ComputeKernelAttr>() &&
++           !(NewFD->hasAttr<GraphicsFragmentShaderAttr>() && Slot == 0)) ||
++          (SeenThreadBuiltins & (1u << Slot)) ||
++          P->hasAttr<GraphicsStageInputAttr>() || P->hasAttr<MetalBufferBindingAttr>() ||
++          P->hasAttr<MetalVertexBuiltinAttr>() || P->hasAttr<GraphicsVertexPositionAttr>() ||
++          P->hasAttr<MetalFrontFacingAttr>() || P->hasAttr<GraphicsFBOColorLocationAttr>() ||
++          P->hasAttr<GraphicsFBODepthTypeAttr>() || P->hasAttr<GraphicsPointSizeAttr>() ||
++          P->hasAttr<MetalFunctionConstantPredicateAttr>()) {
++        Diag(P->getBeginLoc(), getDiagnostics().getCustomDiagID(
++            DiagnosticsEngine::Error,
++            "Metal thread builtin requires a unique semantic on a compute entry (or SIMD index on a fragment entry)"));
++        NewFD->setInvalidDecl();
++      }
++      SeenThreadBuiltins |= 1u << Slot;
++    }
++  }
++
++  if (getLangOpts().Metal) {
+     bool Position = false, FrontFacing = false;
+     for (const auto *P : NewFD->parameters()) {
+       const bool IsPosition = P->hasAttr<GraphicsVertexPositionAttr>();
+--- a/clang/lib/CodeGen/CodeGenModule.cpp
++++ b/clang/lib/CodeGen/CodeGenModule.cpp
+@@ -3151,6 +3151,24 @@
+ 		}
+ 		return false;
+ 	};
++  unsigned explicit_thread_builtins = 0;
++  for (const auto *P : FD->parameters()) {
++    const auto *A = P->getAttr<MetalThreadBuiltinAttr>();
++    if (!A) continue;
++    const StringRef Name = A->getSpelling();
++    const unsigned Slot = Name == "thread_index_in_simdgroup" ? 0 : Name == "thread_index_in_threadgroup" ? 1 : Name == "threadgroup_position_in_grid" ? 2 : 3;
++    if ((!is_kernel && !(is_fragment && Slot == 0)) ||
++        (explicit_thread_builtins & (1u << Slot)) ||
++        P->hasAttr<GraphicsStageInputAttr>() || P->hasAttr<MetalBufferBindingAttr>() ||
++          P->hasAttr<MetalVertexBuiltinAttr>() || P->hasAttr<GraphicsVertexPositionAttr>() ||
++          P->hasAttr<MetalFrontFacingAttr>() || P->hasAttr<GraphicsFBOColorLocationAttr>() ||
++          P->hasAttr<GraphicsFBODepthTypeAttr>() || P->hasAttr<GraphicsPointSizeAttr>() ||
++          P->hasAttr<MetalFunctionConstantPredicateAttr>()) {
++      Error(P->getBeginLoc(), "unsupported or duplicate Metal thread builtin parameter");
++      return;
++    }
++    explicit_thread_builtins |= 1u << Slot;
++  }
+ 	bool explicit_vertex_id = false, explicit_instance_id = false, explicit_base_instance = false;
+ 	for (const auto *P : FD->parameters()) {
+ 		if (const auto *A = P->getAttr<MetalVertexBuiltinAttr>()) {
+@@ -3799,6 +3817,15 @@
+                 llvm::MDString::get(VMContext, "air.arg_name"),
+                 llvm::MDString::get(VMContext, parm->getName())};
+             arg_infos.push_back(llvm::MDNode::get(VMContext, Info));
++        } else if (parm->hasAttr<MetalThreadBuiltinAttr>()) {
++            llvm::Metadata *Info[] = {
++                llvm::ConstantAsMetadata::get(Builder.getInt32(arg_idx)),
++                llvm::MDString::get(VMContext, std::string("air.") + parm->getAttr<MetalThreadBuiltinAttr>()->getSpelling()),
++                llvm::MDString::get(VMContext, "air.arg_type_name"),
++                llvm::MDString::get(VMContext, parm->getType()->isVectorType() ? "uint3" : "uint"),
++                llvm::MDString::get(VMContext, "air.arg_name"),
++                llvm::MDString::get(VMContext, parm->getName())};
++            arg_infos.push_back(llvm::MDNode::get(VMContext, Info));
+         } else if (parm->hasAttr<GraphicsVertexPositionAttr>() || parm->hasAttr<MetalFrontFacingAttr>()) {
+ 			const bool IsPosition = parm->hasAttr<GraphicsVertexPositionAttr>();
+ 			SmallVector<llvm::Metadata*, 8> arg_info;
+@@ -4097,7 +4124,10 @@
+ 	if (is_kernel || is_tess_control) {
+ 		// add id handling arg metadata
+ 		// NOTE: the actual args are added by handleMetalVulkanEntryFunction + the order in here must match the order in there
+-		const auto add_id_arg = [this, &arg_idx, &arg_infos, &Builder](const char* name, const char* air_name, const char* air_type) {
++		const auto add_id_arg = [this, FD, &arg_idx, &arg_infos, &Builder](const char* name, const char* air_name, const char* air_type) {
++            for (const auto *P : FD->parameters())
++                if (const auto *A = P->getAttr<MetalThreadBuiltinAttr>())
++                    if (std::string("air.") + A->getSpelling() == air_name) return;
+ 			SmallVector<llvm::Metadata*, 6> arg_info;
+ 			arg_info.push_back(llvm::ConstantAsMetadata::get(Builder.getInt32(arg_idx)));
+ 			arg_info.push_back(llvm::MDString::get(VMContext, air_name));
+--- a/clang/lib/CodeGen/CGCall.cpp
++++ b/clang/lib/CodeGen/CGCall.cpp
+@@ -464,6 +464,13 @@
+   return false;
+ }
+ 
++static bool hasExplicitMetalThreadBuiltin(const FunctionDecl *FD, StringRef Name) {
++  for (const auto *P : FD->parameters())
++    if (const auto *A = P->getAttr<MetalThreadBuiltinAttr>())
++      if (StringRef(A->getSpelling()) == Name) return true;
++  return false;
++}
++
+ uint32_t CodeGenTypes::getMetalVulkanImplicitArgCount(const FunctionDecl* FD) const {
+   if (!FD) return 0;
+ 
+@@ -477,7 +484,10 @@
+   if (LangOpts.Metal) {
+     const uint32_t printf_arg = (CodeGenOpts.MetalSoftPrintf > 0 ? 1 : 0);
+     if (FD->hasAttr<ComputeKernelAttr>() || FD->hasAttr<GraphicsTessellationControlShaderAttr>()) {
+-      return 10 + printf_arg;
++      return 10 + printf_arg
++             - unsigned(hasExplicitMetalThreadBuiltin(FD, "thread_position_in_threadgroup"))
++             - unsigned(hasExplicitMetalThreadBuiltin(FD, "threadgroup_position_in_grid"))
++             - unsigned(hasExplicitMetalThreadBuiltin(FD, "thread_index_in_simdgroup"));
+     } else if (FD->hasAttr<GraphicsVertexShaderAttr>()) {
+       return 4 + printf_arg - unsigned(hasExplicitMetalVertexBuiltin(FD, "vertex_id"))
+              - unsigned(hasExplicitMetalVertexBuiltin(FD, "instance_id"))
+@@ -568,13 +578,16 @@
+       auto int3_type = Ctx.getExtVectorType(Ctx.IntTy, 3);
+       add_arg(int3_type, "__metal__global_id__");
+       add_arg(int3_type, "__metal__global_size__");
+-      add_arg(int3_type, "__metal__local_id__");
++      if (!hasExplicitMetalThreadBuiltin(FD, "thread_position_in_threadgroup"))
++        add_arg(int3_type, "__metal__local_id__");
+       add_arg(int3_type, "__metal__local_size__");
+-      add_arg(int3_type, "__metal__group_id__");
++      if (!hasExplicitMetalThreadBuiltin(FD, "threadgroup_position_in_grid"))
++        add_arg(int3_type, "__metal__group_id__");
+       add_arg(int3_type, "__metal__group_size__");
+       // SIMD-group / sub-group ids
+       add_arg(Ctx.IntTy, "__metal__sub_group_id__");
+-      add_arg(Ctx.IntTy, "__metal__sub_group_local_id__");
++      if (!hasExplicitMetalThreadBuiltin(FD, "thread_index_in_simdgroup"))
++        add_arg(Ctx.IntTy, "__metal__sub_group_local_id__");
+       add_arg(Ctx.IntTy, "__metal__sub_group_size__");
+       add_arg(Ctx.IntTy, "__metal__num_sub_groups__");
+     } else if (FD->hasAttr<GraphicsVertexShaderAttr>()) {
+--- a/llvm/lib/Transforms/LibFloor/MetalFinal.cpp
++++ b/llvm/lib/Transforms/LibFloor/MetalFinal.cpp
+@@ -307,7 +307,62 @@
+ 					}
+ 				}
+ 				
+-				if (F.arg_size() >= METAL_KERNEL_ARG_COUNT + (has_soft_printf ? 1 : 0)) {
++                bool found_air_entry = false, invalid_air_entry = false;
++                const std::array<StringRef, 10> Names {
++                    "air.thread_position_in_grid", "air.threads_per_grid",
++                    "air.thread_position_in_threadgroup", "air.threads_per_threadgroup",
++                    "air.threadgroup_position_in_grid", "air.threadgroups_per_grid",
++                    "air.simdgroup_index_in_threadgroup", "air.thread_index_in_simdgroup",
++                    "air.threads_per_simdgroup", "air.simdgroups_per_threadgroup"};
++                std::array<Argument **, 10> Slots { &state.global_id, &state.global_size,
++                    &state.local_id, &state.local_size, &state.group_id, &state.group_size,
++                    &state.sub_group_id, &state.sub_group_local_id, &state.sub_group_size, &state.num_sub_groups };
++                if (auto *Entries = M->getNamedMetadata("air.kernel")) {
++                    for (auto *Entry : Entries->operands()) {
++                        if (!Entry->getNumOperands()) continue;
++                        auto *FunctionMD = dyn_cast_or_null<ValueAsMetadata>(Entry->getOperand(0).get());
++                        if (!FunctionMD || FunctionMD->getValue() != &F) continue;
++                        if (found_air_entry || Entry->getNumOperands() < 3) { invalid_air_entry = true; break; }
++                        found_air_entry = true;
++                        auto *Inputs = dyn_cast_or_null<MDNode>(Entry->getOperand(2).get());
++                        if (!Inputs) { invalid_air_entry = true; break; }
++                        for (const auto &InputMD : Inputs->operands()) {
++                            auto *Input = dyn_cast_or_null<MDNode>(InputMD.get());
++                            if (!Input || Input->getNumOperands() < 2) { invalid_air_entry = true; break; }
++                            auto *Index = mdconst::dyn_extract_or_null<ConstantInt>(Input->getOperand(0).get());
++                            auto *Semantic = dyn_cast_or_null<MDString>(Input->getOperand(1).get());
++                            if (!Index || !Semantic || Index->getValue().uge(F.arg_size())) { invalid_air_entry = true; break; }
++                            auto *Arg = F.getArg(unsigned(Index->getZExtValue()));
++                            for (unsigned N = 0; N < Names.size(); ++N) {
++                                if (Semantic->getString() != Names[N]) continue;
++                                auto *VT = dyn_cast<FixedVectorType>(Arg->getType());
++                                bool Vector = VT && VT->getNumElements() == 3 && VT->getElementType()->isIntegerTy(32);
++                                bool Scalar = Arg->getType()->isIntegerTy(32);
++                                if (*Slots[N] || (N < 6 ? !(Vector || ((N == 2 || N == 4) && Scalar)) : !Scalar)) {
++                                    invalid_air_entry = true; break;
++                                }
++                                *Slots[N] = Arg;
++                            }
++                            for (unsigned I = 2; I + 1 < Input->getNumOperands(); ++I) {
++                                auto *Key = dyn_cast_or_null<MDString>(Input->getOperand(I).get());
++                                auto *Value = dyn_cast_or_null<MDString>(Input->getOperand(I+1).get());
++                                if (Key && Value && Key->getString() == "air.arg_name" && Value->getString() == "__metal__printf_buffer__") {
++                                    if (state.soft_printf || !Arg->getType()->isPointerTy()) { invalid_air_entry = true; break; }
++                                    state.soft_printf = Arg;
++                                }
++                            }
++                        }
++                    }
++                }
++                if (found_air_entry) {
++                    for (auto *Slot : Slots) if (!*Slot) invalid_air_entry = true;
++                    if (has_soft_printf && !state.soft_printf) invalid_air_entry = true;
++                }
++                if (invalid_air_entry) {
++                    ctx->emitError("invalid or incomplete AIR compute builtin metadata");
++                    return false;
++                }
++				if (!found_air_entry && F.arg_size() >= METAL_KERNEL_ARG_COUNT + (has_soft_printf ? 1 : 0)) {
+ 					int32_t rev_idx = -1;
+ 					state.num_sub_groups = get_arg_by_idx(rev_idx--);
+ 					state.sub_group_size = get_arg_by_idx(rev_idx--);
+@@ -322,7 +377,7 @@
+ 					if (has_soft_printf) {
+ 						state.soft_printf = get_arg_by_idx(rev_idx--);
+ 					}
+-				} else {
++				} else if (!found_air_entry) {
+ 					errs() << "invalid " << (is_kernel_func ? "kernel" : "tessellation-control");
+ 					errs() << " function (" << F.getName() << ") argument count: " << F.arg_size() << "\n";
+ 				}
+@@ -1013,7 +1068,11 @@
+ 			Value* repl = nullptr;
+ 			if (get_from_vector) {
+ 				const auto dim_idx = get_dim_idx(I.getOperand(0), &I);
+-				repl = builder->CreateExtractElement(id, dim_idx);
++				// A scalar explicit position is the one-dimensional form.
++                if (id->getType()->isIntegerTy(32))
++                    repl = builder->CreateSelect(builder->CreateICmpEQ(dim_idx, builder->getInt32(0)), id, builder->getInt32(0));
++                else
++                    repl = builder->CreateExtractElement(id, dim_idx);
+ 			} else {
+ 				repl = id;
+ 			}

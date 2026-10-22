@@ -1,0 +1,23 @@
+--- a/clang/lib/Parse/ParseDecl.cpp
++++ b/clang/lib/Parse/ParseDecl.cpp
+@@ -6600,9 +6600,18 @@
+       // correct the order if the user gets it wrong. Ideally we should deal
+       // with the pure-specifier in the same way.
+ 
++      // MSL address-space qualifiers belong to the implicit object of a
++      // member. Keep free-function GNU attributes on their existing path.
++      const bool IsMetalMember = getLangOpts().Metal &&
++          D.getDeclSpec().getStorageClassSpec() != DeclSpec::SCS_typedef &&
++          (D.getContext() == DeclaratorContext::Member
++               ? !D.getDeclSpec().isFriendSpecified()
++               : D.getContext() == DeclaratorContext::File &&
++                     D.getCXXScopeSpec().isValid() &&
++                     Actions.CurContext->isRecord());
+       // Parse cv-qualifier-seq[opt].
+-      ParseTypeQualifierListOpt(DS, getLangOpts().Metal ? AR_GNUAttributesParsed
+-                                                       : AR_NoAttributesParsed,
++      ParseTypeQualifierListOpt(DS, IsMetalMember ? AR_GNUAttributesParsed
++                                                 : AR_NoAttributesParsed,
+                                 /*AtomicAllowed*/ false,
+                                 /*IdentifierRequired=*/false,
+                                 llvm::function_ref<void()>([&]() {

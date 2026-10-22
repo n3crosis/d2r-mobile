@@ -83,13 +83,17 @@ class RejectAssembly final : public clang::RecursiveASTVisitor<RejectAssembly> {
     auto trusted = [&](clang::SourceLocation loc) {
       if (loc.isInvalid() || loc.isMacroID()) return false;
       auto file = sm.getFileEntryRefForID(sm.getFileID(loc));
-      return file && (file->getName() == "/include/metal_math" || file->getName() == "/include/metal_control" || file->getName() == "/include/metal_texture" || file->getName() == "/include/metal_depth" || file->getName() == "/include/metal_atomic" || file->getName() == "/include/metal_simd" || file->getName() == "/include/metal_integer");
+      return file && (file->getName() == "/include/metal_math" || file->getName() == "/include/metal_control" || file->getName() == "/include/metal_texture" || file->getName() == "/include/metal_depth" || file->getName() == "/include/metal_atomic" || file->getName() == "/include/metal_simd" || file->getName() == "/include/metal_integer" || file->getName() == "/include/metal_tessellation");
     };
     if (!trusted(sm.getSpellingLoc(decl->getLocation())) ||
         !trusted(sm.getExpansionLoc(decl->getLocation())) ||
         !trusted(attr->getLocation()) || decl->getLocation().isMacroID()) return false;
     const auto name = attr->getLabel();
     auto file = sm.getFileEntryRefForID(sm.getFileID(decl->getLocation()));
+    if (file->getName() == "/include/metal_tessellation")
+      return name == "floor.get_patch_control_point_count.i32" &&
+          function->getNumParams() == 0 && function->hasAttr<clang::ConstAttr>() &&
+          function->getReturnType()->isSpecificBuiltinType(clang::BuiltinType::UInt);
     if (file->getName() == "/include/metal_integer") {
       if (!function->getReturnType()->isSpecificBuiltinType(clang::BuiltinType::UInt) || !function->getNumParams() || !function->getParamDecl(0)->getType()->isSpecificBuiltinType(clang::BuiltinType::UInt)) return false;
       if (name=="air.popcount.i32") return function->getNumParams()==1;
@@ -234,6 +238,94 @@ bool validControlStages(const llvm::Module &module) {
   }
   return true;
 }
+bool matchesPatchFieldType(llvm::Type *type, llvm::StringRef name) {
+  if (auto *vector = llvm::dyn_cast<llvm::FixedVectorType>(type)) {
+    const auto width = vector->getNumElements();
+    if (width < 2 || width > 4 || !name.consume_back(std::to_string(width))) return false;
+    type = vector->getElementType();
+  }
+  if (name == "float") return type->isFloatTy();
+  if (name == "half") return type->isHalfTy();
+  if (name == "double") return type->isDoubleTy();
+  if (name == "bool") return type->isIntegerTy(1) || type->isIntegerTy(8);
+  if (name == "char" || name == "uchar") return type->isIntegerTy(8);
+  if (name == "short" || name == "ushort") return type->isIntegerTy(16);
+  if (name == "int" || name == "uint") return type->isIntegerTy(32);
+  if (name == "long" || name == "ulong") return type->isIntegerTy(64);
+  return false;
+}
+
+// Control-point getters are externally provided by Metal's patch interface,
+// not arbitrary unresolved user functions. Accept only a declaration linked
+// by the same patch entry's input metadata and the exact opaque-handle ABI.
+bool isPatchControlPointGetter(const llvm::Module &module,
+                              const llvm::Function &function) {
+  if (!function.isDeclaration() || function.isVarArg() ||
+      function.getSection() != "air.externally_defined" ||
+      !function.getName().endswith(".MTL_CONTROL_POINT_FN") ||
+      function.arg_size() != 2 || !function.getArg(0)->getType()->isIntegerTy(32) ||
+      !function.getArg(1)->getType()->isPointerTy() ||
+      !function.getReturnType()->isStructTy()) return false;
+  const auto *handleType = llvm::cast<llvm::PointerType>(function.getArg(1)->getType());
+  const auto *opaqueType = llvm::dyn_cast<llvm::StructType>(handleType->getPointerElementType());
+  if (handleType->getAddressSpace() != 0 || !opaqueType || !opaqueType->isOpaque() ||
+      opaqueType->getName() != "struct._patch_control_point_t") return false;
+  const auto *entries = module.getNamedMetadata("air.vertex");
+  if (!entries) return false;
+  for (const auto *entry : entries->operands()) {
+    if (entry->getNumOperands() != 4) continue;
+    const auto *entryValue = llvm::dyn_cast<llvm::ValueAsMetadata>(entry->getOperand(0));
+    const auto *entryFunction = entryValue ? llvm::dyn_cast<llvm::Function>(entryValue->getValue()) : nullptr;
+    const auto *inputs = llvm::dyn_cast<llvm::MDNode>(entry->getOperand(2));
+    const auto *patch = llvm::dyn_cast<llvm::MDNode>(entry->getOperand(3));
+    if (!entryFunction || !inputs || !patch || patch->getNumOperands() != 4) continue;
+    const auto *patchKey = llvm::dyn_cast<llvm::MDString>(patch->getOperand(0));
+    const auto *primitive = llvm::dyn_cast<llvm::MDString>(patch->getOperand(1));
+    const auto *countKey = llvm::dyn_cast<llvm::MDString>(patch->getOperand(2));
+    const auto *count = llvm::mdconst::dyn_extract<llvm::ConstantInt>(patch->getOperand(3));
+    if (!patchKey || patchKey->getString() != "air.patch" || !primitive ||
+        (primitive->getString() != "triangle" && primitive->getString() != "quad") ||
+        !countKey || countKey->getString() != "air.patch_control_point" ||
+        !count || count->getValue().ugt(32)) continue;
+    for (const auto &operand : inputs->operands()) {
+      const auto *input = llvm::dyn_cast<llvm::MDNode>(operand.get());
+      if (!input || input->getNumOperands() < 4) continue;
+      const auto *index = llvm::mdconst::dyn_extract<llvm::ConstantInt>(input->getOperand(0));
+      const auto *semantic = llvm::dyn_cast<llvm::MDString>(input->getOperand(1));
+      const auto *getter = llvm::dyn_cast<llvm::MDNode>(input->getOperand(2));
+      if (!index || index->getValue().uge(entryFunction->arg_size()) || !semantic ||
+          semantic->getString() != "air.patch_control_point_input" || !getter ||
+          getter->getNumOperands() != 2 ||
+          entryFunction->getArg(unsigned(index->getZExtValue()))->getType() != function.getArg(1)->getType()) continue;
+      const auto *getterKey = llvm::dyn_cast<llvm::MDString>(getter->getOperand(0));
+      const auto *getterValue = llvm::dyn_cast<llvm::ValueAsMetadata>(getter->getOperand(1));
+      if (getterKey && getterKey->getString() == "air.patch_control_point_function" &&
+          getterValue && getterValue->getValue() == &function &&
+          function.getReturnType()->getStructNumElements() == input->getNumOperands() - 3) {
+        bool fieldsMatch = true;
+        uint32_t locations = 0;
+        for (unsigned i = 3; i < input->getNumOperands(); ++i) {
+          const auto *field = llvm::dyn_cast<llvm::MDNode>(input->getOperand(i));
+          if (!field || field->getNumOperands() != 7) { fieldsMatch = false; break; }
+          const auto *locationKey = llvm::dyn_cast<llvm::MDString>(field->getOperand(0));
+          const auto *location = llvm::mdconst::dyn_extract<llvm::ConstantInt>(field->getOperand(1));
+          const auto *extent = llvm::mdconst::dyn_extract<llvm::ConstantInt>(field->getOperand(2));
+          const auto *typeKey = llvm::dyn_cast<llvm::MDString>(field->getOperand(3));
+          const auto *typeName = llvm::dyn_cast<llvm::MDString>(field->getOperand(4));
+          if (!locationKey || locationKey->getString() != "air.location_index" ||
+              !location || location->getValue().uge(32) || !extent || !extent->isOne() ||
+              !typeKey || typeKey->getString() != "air.arg_type_name" || !typeName ||
+              !matchesPatchFieldType(function.getReturnType()->getStructElementType(i - 3), typeName->getString()) ||
+              (locations & (uint32_t(1) << location->getZExtValue()))) { fieldsMatch = false; break; }
+          locations |= uint32_t(1) << location->getZExtValue();
+        }
+        if (fieldsMatch) return true;
+      }
+    }
+  }
+  return false;
+}
+
 bool hasEntry(const llvm::Module &module) {
   for (const auto *name : {"air.kernel", "air.vertex", "air.fragment"})
     if (const auto *node = module.getNamedMetadata(name))
@@ -325,7 +417,8 @@ static air_result *compile(const uint8_t *source, size_t source_size,
   }
   for (const auto &function : *module) {
     if (function.isDeclaration() && !function.isIntrinsic() &&
-        !function.getName().startswith("air.")) {
+        !function.getName().startswith("air.") &&
+        !isPatchControlPointGetter(*module, function)) {
       result->status = AIR_UNRESOLVED_SYMBOL;
       appendDiagnostic(*result, "Unresolved external function: ");
       appendDiagnostic(*result, function.getName());

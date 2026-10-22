@@ -65,7 +65,7 @@ if (command === "prepare") {
     JSON.stringify({ commit: manifest.commit, archiveSha256: manifest.archiveSha256 }),
   );
   await checkSource();
-} else if (command === "build") {
+} else if (command === "build" || command === "build-host-tools") {
   await checkSource();
   run("cmake", [
     "-S",
@@ -94,27 +94,38 @@ if (command === "prepare") {
     `-DLLVM_PARALLEL_COMPILE_JOBS=${jobs}`,
     "-DLLVM_PARALLEL_LINK_JOBS=1",
   ]);
-  run("cmake", ["--build", build, "--target", "clang", "--parallel", String(jobs)]);
-  run("cmake", [
-    "-S",
-    join(root, "api"),
-    "-B",
-    apiBuild,
-    "-G",
-    "Ninja",
-    "-DCMAKE_BUILD_TYPE=Release",
-    `-DLLVM_DIR=${join(build, "lib/cmake/llvm")}`,
-    `-DClang_DIR=${join(build, "lib/cmake/clang")}`,
-  ]);
   run("cmake", [
     "--build",
-    apiBuild,
+    build,
     "--target",
-    "d2r_air_api_smoke",
-    "d2r_air_header_smoke",
+    ...(command === "build-host-tools" ? ["llvm-tblgen", "clang-tblgen"] : ["clang"]),
     "--parallel",
-    "1",
+    String(jobs),
   ]);
+  // 浏览器构建只需要本机表生成器，不必构建或执行完整本机 Clang/API。
+  // Browser builds need native table generators only, not a full native Clang/API build or execution.
+  if (command === "build") {
+    run("cmake", [
+      "-S",
+      join(root, "api"),
+      "-B",
+      apiBuild,
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=Release",
+      `-DLLVM_DIR=${join(build, "lib/cmake/llvm")}`,
+      `-DClang_DIR=${join(build, "lib/cmake/clang")}`,
+    ]);
+    run("cmake", [
+      "--build",
+      apiBuild,
+      "--target",
+      "d2r_air_api_smoke",
+      "d2r_air_header_smoke",
+      "--parallel",
+      "1",
+    ]);
+  }
 } else if (command === "build-wasm") {
   await checkSource();
   // Activate the official Emscripten SDK in the caller's shell first. No downloads
@@ -130,7 +141,7 @@ if (command === "prepare") {
   const llvmTablegen = join(nativeBuild, "bin", `llvm-tblgen${suffix}`);
   const clangTablegen = join(nativeBuild, "bin", `clang-tblgen${suffix}`);
   if (!existsSync(llvmTablegen) || !existsSync(clangTablegen))
-    throw Error("Native llvm-tblgen and clang-tblgen are required; run build first");
+    throw Error("Native llvm-tblgen and clang-tblgen are required; run build-host-tools first");
   run("emcmake", [
     "cmake",
     "-S",
@@ -232,7 +243,7 @@ if (command === "prepare") {
   console.log(`Verified ${manifest.patches.length} ordered patch hashes for ${manifest.commit}`);
 } else {
   console.log(
-    "Usage: node toolchain.mjs prepare --archive FILE [--work DIR]\n       node toolchain.mjs build [--work DIR] [--jobs 2]\n       node toolchain.mjs test [--work DIR] [--clang FILE --smoke FILE]\n       node toolchain.mjs build-wasm [--work DIR] [--native-build DIR] [--jobs 2]\n       node toolchain.mjs test-wasm [--work DIR] [--wasm-build DIR]\n       node toolchain.mjs check",
+    "Usage: node toolchain.mjs prepare --archive FILE [--work DIR]\n       node toolchain.mjs build [--work DIR] [--jobs 2]\n       node toolchain.mjs build-host-tools [--work DIR] [--jobs 2]\n       node toolchain.mjs test [--work DIR] [--clang FILE --smoke FILE]\n       node toolchain.mjs build-wasm [--work DIR] [--native-build DIR] [--jobs 2]\n       node toolchain.mjs test-wasm [--work DIR] [--wasm-build DIR]\n       node toolchain.mjs check",
   );
   if (command && command !== "help") process.exitCode = 1;
 }

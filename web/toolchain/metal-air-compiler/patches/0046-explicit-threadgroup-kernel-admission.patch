@@ -1,0 +1,68 @@
+--- a/clang/lib/Sema/SemaDecl.cpp
++++ b/clang/lib/Sema/SemaDecl.cpp
+@@ -8877,7 +8877,8 @@
+   return false;
+ }
+ 
+-static OpenCLParamType getOpenCLKernelParameterType(Sema &S, QualType PT, const bool is_metal) {
++static OpenCLParamType getOpenCLKernelParameterType(Sema &S, QualType PT, const bool is_metal,
++                                                  bool ExplicitThreadgroup = false) {
+   if (PT->isDependentType())
+     return InvalidKernelParam;
+ 
+@@ -8885,8 +8886,8 @@
+     QualType PointeeType = PT->getPointeeType();
+     if (PointeeType.getAddressSpace() == LangAS::opencl_generic ||
+         PointeeType.getAddressSpace() == LangAS::opencl_private ||
+-        // NOTE: we do not support local address space kernel pointers!
+-        PointeeType.getAddressSpace() == LangAS::opencl_local ||
++        // Only an explicitly bound Metal threadgroup resource is supported.
++        (PointeeType.getAddressSpace() == LangAS::opencl_local && !ExplicitThreadgroup) ||
+         PointeeType.getAddressSpace() == LangAS::Default)
+       return InvalidAddrSpacePtrKernelParam;
+ 
+@@ -8978,10 +8979,15 @@
+ 
+   // Cache the valid types we encounter to avoid rechecking structs that are
+   // used again
+-  if (ValidTypes.count(PT.getTypePtr()))
++  const bool ThreadgroupPointer = (PT->isPointerType() || PT->isReferenceType()) &&
++      PT->getPointeeType().getAddressSpace() == LangAS::opencl_local;
++  // Explicit resource binding is per parameter, not a property of its type.
++  // Never reuse a cached bound pointer to admit an unbound local parameter.
++  if (!ThreadgroupPointer && ValidTypes.count(PT.getTypePtr()))
+     return;
+ 
+-  switch (getOpenCLKernelParameterType(S, PT, is_metal)) {
++  switch (getOpenCLKernelParameterType(S, PT, is_metal,
++      is_metal && Param->hasAttr<MetalThreadgroupBindingAttr>())) {
+   case PtrPtrKernelParam:
+     // OpenCL v3.0 s6.11.a:
+     // A kernel function argument cannot be declared as a pointer to a pointer
+--- a/clang/lib/Sema/SemaDeclAttr.cpp
++++ b/clang/lib/Sema/SemaDeclAttr.cpp
+@@ -3135,13 +3135,17 @@
+         "threadgroup resource attribute requires a threadgroup pointer or reference"));
+     return;
+   }
+-  if (Type->getPointeeType()->isIncompleteType() ||
+-      Type->getPointeeType()->isFunctionType()) {
+-    S.Diag(AL.getLoc(), S.getDiagnostics().getCustomDiagID(
+-        DiagnosticsEngine::Error,
+-        "threadgroup resource binding requires a complete object type"));
+-    return;
+-  }
++  const auto ObjectDiagnostic = S.getDiagnostics().getCustomDiagID(
++      DiagnosticsEngine::Error,
++      "threadgroup resource binding requires a complete object type");
++  if (Type->getPointeeType()->isFunctionType()) {
++    S.Diag(AL.getLoc(), ObjectDiagnostic);
++    return;
++  }
++  // Instantiate complete class-template specializations before inspecting
++  // their layout; a raw isIncompleteType check rejects valid MSL helpers.
++  if (S.RequireCompleteType(AL.getLoc(), Type->getPointeeType(), ObjectDiagnostic))
++    return;
+   if (D->hasAttr<MetalThreadgroupBindingAttr>()) {
+     S.Diag(AL.getLoc(), S.getDiagnostics().getCustomDiagID(
+         DiagnosticsEngine::Error, "duplicate threadgroup resource attribute on parameter"));

@@ -1,0 +1,23 @@
+// SPDX-License-Identifier: MIT
+// Authored MSL patch interface. No Apple SDK implementation is included.
+#ifndef D2R_EXPERIMENTAL_METAL_TESSELLATION
+#define D2R_EXPERIMENTAL_METAL_TESSELLATION
+namespace metal {
+namespace __d2r_tessellation {
+// The compiler resolves this query from the entry's [[patch]] declaration.
+// It must never survive into a delivered AIR module as an external call.
+uint control_point_count() __asm("floor.get_patch_control_point_count.i32")
+    __attribute__((const));
+}
+template<typename T> class patch_control_point {
+  __patch_control_point_t handle;
+public:
+  __attribute__((always_inline)) T operator[](uint index) const {
+    return __libfloor_access_patch_control_point(index, handle, T{});
+  }
+  __attribute__((always_inline)) uint size() const {
+    return __d2r_tessellation::control_point_count();
+  }
+};
+}
+#endif

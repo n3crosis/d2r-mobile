@@ -22,6 +22,8 @@ const record = (bytes) => ({ bytes: bytes.length, sha256: hash(bytes) });
 // 这是为 AIR 集成定义的窄桥，不是允许任意旧原生二进制继续运行的通用缓存。
 // This is a narrow AIR-integration bridge, not a general permission to retain stale native binaries.
 const allowedIntegrationChanges = new Set([
+  ".github/workflows/verify.yml",
+  "web/.oxfmtrc.json",
   "web/air-compiler-adapter.mjs",
   "web/air-compiler-contract.mjs",
   "web/air-compiler-runtime-contract.mjs",
@@ -31,11 +33,13 @@ const allowedIntegrationChanges = new Set([
   "web/sealed-runtime/clients.mjs",
   "web/runtime-sealing/build-workers.mjs",
   "web/runtime-build/air-compiler-assets.mjs",
+  "web/runtime-build/build-air-compiler.mjs",
   "web/runtime-build/reuse-runtime.mjs",
   "web/runtime-build/build.mjs",
   "web/runtime-build/package.mjs",
   "web/runtime-build/inventory.mjs",
   "web/runtime-build/payload-policy.mjs",
+  "web/scripts/validate-ipa-shaders.mjs",
 ]);
 function git(args) {
   const result = spawnSync("git", args, {

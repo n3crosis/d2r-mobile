@@ -140,30 +140,92 @@
     {
       "path": "patches/0034-depth-array-sample-control.patch",
       "sha256": "5ddcf138d1b81484767a5cb4f731403a53cad66807f5910454e388cbe6f60c1a"
+    },
+    {
+      "path": "patches/0035-explicit-thread-builtins.patch",
+      "sha256": "ba587457da44687c116d737f7242f376a256b666e91fa88b472df6428aa23b7a"
+    },
+    {
+      "path": "patches/0036-threadgroup-resource-bindings.patch",
+      "sha256": "2ed1e793dc6edbfba9bc97bc57639a55ce5d6dce9a4c2c565be50ae25a6ed350"
+    },
+    {
+      "path": "patches/0037-contextual-threadgroup-qualifier.patch",
+      "sha256": "51d1bacbddd45d00ed523c5b2316fa0e6fa6432386ec6c2d96a1e6dfae5c967a"
+    },
+    {
+      "path": "patches/0038-member-address-spaces.patch",
+      "sha256": "5ad09ec0dd1794c4a2c74100c5909f0b185b155c890b0e71420153802ad99052"
+    },
+    {
+      "path": "patches/0039-tessellation-domain.patch",
+      "sha256": "7e4b0b1d825dc983f239859de4b4bcdee5d0ec6074dcbaa2e7a70a731d35ee4b"
+    },
+    {
+      "path": "patches/0040-member-address-space-abi.patch",
+      "sha256": "259637d197f33780009b41adfcb45d252ba3ef8bd334d0cc554e3866c9e0c81f"
+    },
+    {
+      "path": "patches/0041-scalar-thread-coordinate.patch",
+      "sha256": "1c2d2f4b355ae3c8eff164d2768cf8a2fa14214729c8abaa5f1ac8836dbaa143"
+    },
+    {
+      "path": "patches/0042-member-address-space-call-abi.patch",
+      "sha256": "d5d782eafead179ffaeff8667ce1e961ddfb7fa30595f487567e4230137105fc"
+    },
+    {
+      "path": "patches/0043-compute-stage-input.patch",
+      "sha256": "03705e5e51948719c70081878fc6186487f77b83675f887f06c9b66b5be88e32"
+    },
+    {
+      "path": "patches/0044-patch-access-diagnostic.patch",
+      "sha256": "1380ba4343408f9914a74dab96a5932980bfa862cad5884faa3b7b467fede480"
+    },
+    {
+      "path": "patches/0045-member-only-trailing-attributes.patch",
+      "sha256": "2f6ca6bac41e05ee58065d0f6098896fb93dd9d568e56061460a693f9d55b342"
+    },
+    {
+      "path": "patches/0046-explicit-threadgroup-kernel-admission.patch",
+      "sha256": "6f847d63c9044523917c6a9e0e17b4ed6355f1e25f4e66ff818ef45452c7114a"
+    },
+    {
+      "path": "patches/0047-control-point-vector-typedef.patch",
+      "sha256": "4cf84bdb85f62bee79c266e3c271ba8d99d1d8791f7ba221bd5800b8526bde19"
+    },
+    {
+      "path": "patches/0048-unqualified-method-call-abi.patch",
+      "sha256": "e0830b7635d3c82200fe23a9891a48973dd9d477b42ffad4b49a1191ca26df78"
     }
   ],
   "patchedFiles": {
-    "clang/include/clang/Basic/Attr.td": "34e6245d7bac77c9eea6ae271ef61a53d980a7b4ba5208b613d6b46af189cc84",
+    "clang/include/clang/Basic/Attr.td": "d4b96af246f08f7c05c64c783d9dd9cebac83ba3ab6717f7991beafb7d5e4948",
     "clang/lib/AST/ASTContext.cpp": "fd166a8f2baebad1098b798e11de68a0e40812f1ca4d76a17fff80c8d173f1b0",
     "clang/lib/AST/Decl.cpp": "ae31bfcb87b4c71deae2ae217c37e3e0adfe2e4f1a1645d0a07dff9dd5873517",
     "clang/lib/AST/RecordLayoutBuilder.cpp": "2ea871bef2a2dce8b4eaec3fcd8e74ec5203853df32ea80010f657ea888a2c80",
     "clang/lib/CodeGen/BackendUtil.cpp": "6d6d71b66bbd1fcbd81091cbb3afa82d58cef0ae9c1a55b5b482312766850e11",
-    "clang/lib/CodeGen/CGCall.cpp": "e09da2af625d712e9afd9ee0fe9cf33828ec803c20086dec24b6464ab77b45cf",
+    "clang/lib/CodeGen/CGCall.cpp": "cb28cbe1622da0da3f2ffa9d70182196e5f93ca9a3d774b5a8078a8cb0e68268",
     "clang/lib/CodeGen/CGOpenCLRuntime.cpp": "babda4a5c6458c18cc88164655ebb72b405878461226699535c5d9a3614f918b",
     "clang/lib/CodeGen/CMakeLists.txt": "5edc3e86e9e566ca80dc802e2dcdc2c1dcdf36ffdbd9274e766dfda9a5ba53f0",
-    "clang/lib/CodeGen/CodeGenModule.cpp": "c8f365fa0232a0dbdcf2d8f86e29b90b966d90d523b80c53111a8a7b2246ed79",
+    "clang/lib/CodeGen/CodeGenModule.cpp": "5a80de41e942ce99c607d65409a15477c4647c08c10692afac6977c43a5f562d",
     "clang/lib/CodeGen/CodeGenTypes.cpp": "b6417686d34084203ae56883f8ecdd4dde7d50b3b265bfd81c671b545d055449",
     "clang/lib/CodeGen/CodeGenTypes.h": "bbbff5b5cd9388191d278e77cf651f24fbdb142141d050ca82bb80408707b2e6",
-    "clang/lib/Sema/SemaDecl.cpp": "71a7baf59dc2844601fe5ddceb5bd8dab430a43bbd32a0f9b468e6a5dfdff9ea",
-    "clang/lib/Sema/SemaDeclAttr.cpp": "a82d722d5a3871d22787f1b7dfe58dfe29f6f6d6b5d0ec62e13002c41220402c",
+    "clang/lib/Sema/SemaDecl.cpp": "75e74bc3a17ef212c56c78859e33ac56ea40acf3b6e06b065fc1417a3e2dbad6",
+    "clang/lib/Sema/SemaDeclAttr.cpp": "27c90fc9d1da86101cb0fd8eca08bfa11c744110c4738eb47cc071688ba7813b",
     "clang/lib/Sema/SemaInit.cpp": "4b456071724d84af3eb54d5a4449710b68f73e7b09da75dcc597b5107f5d9897",
     "llvm/include/llvm/Transforms/LibFloor/FloorImage.h": "797f537613c7ae608c8376161a538cdbf639dc4fa17a2923d43e4ba39c34208c",
     "llvm/lib/Bitcode/MetalLib/MetalLibWriterPass.cpp": "e2c12d7f700e3be6a2e84c48cbdb2bc862b9aea74002ca0cf23832daa4cdff6c",
     "llvm/lib/Transforms/LibFloor/FloorImage.cpp": "468e29894c59f85395b609ac7cbe07a79792c51215cc9575ba34948b57999c3d",
-    "llvm/lib/Transforms/LibFloor/MetalFinal.cpp": "e4cf0b2099ae72fb9388cc0c29096d67532d94f8610bbb3f3afa3159ad19b09c",
+    "llvm/lib/Transforms/LibFloor/MetalFinal.cpp": "6574c1f9b1ea5263c4e94a51034b4b0320458565c3956bc85d5de5adcd55bca9",
     "llvm/lib/Transforms/LibFloor/MetalImage.cpp": "ba1545d3732f4981e54f32b5851d17ed72861b1d815460a46b243aaf8925ccc9",
     "llvm/lib/Transforms/LibFloor/VulkanFinal.cpp": "a0ddb6aef504292b05b73245ffa53101c1be92b64357aa542a290b4d07b4f9ae",
-    "clang/lib/Sema/SemaExprCXX.cpp": "8746a37bd1313d5b878c185fe3973696db3b7facf5b7fda859e62c1109e1c025"
+    "clang/lib/Sema/SemaExprCXX.cpp": "8746a37bd1313d5b878c185fe3973696db3b7facf5b7fda859e62c1109e1c025",
+    "clang/lib/Parse/ParseDecl.cpp": "47750f2afd4007da179937f3a8ca3c619c29e157eb6bafbb1a6bd87add8cd4c5",
+    "clang/lib/Parse/ParseTentative.cpp": "22b47a20820f593fb287040a0b1b228718174c0c3d17c0c53a16d54fb23bbe75",
+    "clang/lib/Sema/SemaOverload.cpp": "d2364dea3d081fa15b31a5ddb507ef4cf3f3ce6bd9c161901de995bb8eb358ce",
+    "clang/lib/Sema/SemaType.cpp": "2402b377c880a8b60cf0cc6f05c1dca921c038a94f4b2bb3a83dbdeeca6a3988",
+    "clang/lib/CodeGen/CGExprCXX.cpp": "a3962a3a612a256831f37395183a09df977ca5fc5401356931219caf36c43e17",
+    "clang/lib/CodeGen/CGBuiltin.cpp": "33d87cfcb15ddf252bea7a259c483653c82ae2a5ba2ee80f98d5424103f4005b"
   },
   "scope": "experimental Metal frontend/AIR subset with minimal native feature smoke; full-corpus and rendering equivalence not established"
 }

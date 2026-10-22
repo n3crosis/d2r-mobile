@@ -16,11 +16,17 @@ node web/runtime-build/build.mjs
 ## Cached AIR shader compiler input
 
 New runtime builds require a real API-v2 AIR compiler, not merely translated
-Metal source. Build the pinned LLVM/compiler toolchain separately with
+Metal source. The existing CI job restores an exact-source cache or explicitly
+builds the compiler once. Developers can use that same bounded builder after
+activating Emscripten 4.0.20, or build separately with
 `web/toolchain/metal-air-compiler/toolchain.mjs`, then record and import its
-outputs once. These are developer commands, not an end-user native-helper flow:
+outputs. These are developer commands, not an end-user native-helper flow:
 
 ```sh
+# Verify an existing cache, or build pinned public sources when no cache exists.
+node web/runtime-build/build-air-compiler.mjs --jobs 4
+
+# Alternatively, record an independently prepared build and import it explicitly.
 node web/runtime-build/air-compiler-assets.mjs record \
   --build /path/to/api-build-wasm \
   --source /path/to/prepared-llvm-source \
@@ -31,8 +37,8 @@ node web/runtime-build/air-compiler-assets.mjs import \
 node web/runtime-build/air-compiler-assets.mjs verify
 ```
 
-Recording checks the current source manifest and all patched files, binds all
-authored API files (including compiler policy includes), derives the sorted
+Recording checks the current source manifest and all patched files, binds the
+toolchain build recipe and all authored API files (including compiler policy includes), derives the sorted
 header-bundle fingerprint from CMake's header list, and instantiates the actual
 worker-targeted module to check API-v2 exports and its embedded header identity.
 This is a local build receipt, not a cryptographic build attestation, browser
@@ -42,7 +48,7 @@ Import requires an explicitly trusted receipt digest and verifies both generated
 files against it. The generated `toolchain/metal-air-compiler/dist/` cache is
 ignored by Git. `build.mjs` revalidates the cache against the current compiler
 source before other expensive stages; ordinary frontend changes do not rebuild
-LLVM. A source/API/header change makes this cache stale and requires a new
+LLVM. A source/API/header/build-recipe change makes this cache stale and requires a new
 compiler build and receipt. Alternatively, provide
 `D2R_AIR_COMPILER_ASSET_DIR` and `D2R_AIR_COMPILER_RECEIPT_SHA256` together to import
 an existing build asset before assembly. No compiler download URL, experimental
@@ -51,10 +57,18 @@ The explicit import stores its trusted receipt digest separately under the
 generated runtime-build directory. A copied cache cannot authenticate itself:
 restoring only `dist/` without that trusted import requires another pinned import.
 
-The single existing CI job needs this authenticated build input provisioned or
-restored before runtime assembly. Until a trusted seed is available, a fresh
-runner fails with an explicit missing-compiler message. This integration does
-not create a CI job, publish an artifact/release, or silently weaken the build.
+The single existing CI job caches only these final outputs and the separate
+receipt anchor under an exact source/recipe fingerprint and pinned SDK identity,
+without fallback cache keys. A cache hit is verified before use and does not
+download or rebuild LLVM. On a genuine cache miss, the explicit builder verifies
+the pinned public source archive, builds only the native `llvm-tblgen` and
+`clang-tblgen` bootstrap tools, then builds and probes the actual WASM compiler.
+Its 150-minute deadline bounds all compile stages; at most four compile jobs
+(further limited by available CPUs and memory) and one link run concurrently.
+An existing stale, incomplete or tampered cache fails rather than being silently
+overwritten. Ordinary `build.mjs` still requires a verified compiler input and
+never implicitly launches LLVM. No new CI job, release publication, full native
+Clang build, proof suite or source-only substitute is introduced.
 
 The compiler's generated factory, WASM, receipt, source pin, licenses/notices,
 and closed Worker are included in the normal digest-verified runtime inventory
@@ -188,9 +202,10 @@ runs the command above after the frontend build has cleaned `web/dist/`.
 `stage-preview.mjs` independently verifies the runtime build manifest against
 the producer step's digest, copies only its exact inventory, and regenerates the
 combined `build-manifest.json` before upload. No platform matrix, separate proof
-job or browser parity suite is added. The one job has a bounded 45-minute timeout.
-Compiler builds increase its duration; no actual timing or disk-use result is
-claimed before the first CI run. Disk availability is logged before and after.
+job or browser parity suite is added. The one job has a bounded 180-minute timeout
+to permit a cold compiler-cache build. Compiler builds increase its duration;
+no successful cold-run timing is claimed before the first completed CI run.
+Disk availability is logged before and after.
 
 The uploaded `web-preview` includes the frontend and public runtime files only.
 No game inputs, keys, toolchain caches or proof fixtures are uploaded. The only
@@ -200,12 +215,13 @@ that a bundle alone satisfies all remaining runtime and release gates.
 
 ## Validation boundary
 
-Local JavaScript syntax, Oxc checks and the non-mutating `--plan` command pass.
-Actual build execution stops before any build stage because `emcc` is not on PATH;
-`dotnet` is also unavailable in the current environment. No completed runtime
-bundle, binary reproducibility, browser startup or post-seal full-chain success is
-claimed. These are missing build/runtime evidence, not reasons to substitute
-synthetic binaries or silently omit a component.
+Local JavaScript syntax, scoped Oxc checks and non-mutating planning/fingerprint
+commands pass. The real WASM receipt probe has run for an earlier source snapshot;
+that does not authenticate a later compiler revision. Final packaging requires
+the exact current module and source receipt. The same-job cold-build path, binary
+reproducibility, browser startup and post-seal full-chain success remain separate
+validation boundaries. Missing evidence is never a reason to substitute
+synthetic binaries, accept a stale cache or silently omit a component.
 
 The sealed worker entrypoints are bundled with Bun after native compilation.
 Public shader map/facts/conflicts are copied only after matching their source

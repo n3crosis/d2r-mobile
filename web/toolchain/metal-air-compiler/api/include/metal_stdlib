@@ -9,7 +9,6 @@
 #define device __attribute__((global_as))
 #define constant __attribute__((constant_as))
 #define thread __attribute__((private_as))
-#define threadgroup __attribute__((local_as))
 namespace metal {
 typedef unsigned char uchar;
 typedef unsigned short ushort;
@@ -47,4 +46,5 @@ template<class T,uint N> using vec=typename __vector_detail::storage<T,N>::type;
 #include <metal_simd>
 #include <metal_texture>
 #include <metal_depth>
+#include <metal_tessellation>
 #endif
