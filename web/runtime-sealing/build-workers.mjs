@@ -11,8 +11,11 @@ for (const name of [
   "program-worker",
   "astc-producer-worker",
   "signing-worker",
+  "air-compiler-worker",
 ]) {
-  const source = name === "astc-producer-worker" ? `../sealed-runtime/${name}.mjs` : `${name}.mjs`;
+  const source = ["astc-producer-worker", "air-compiler-worker"].includes(name)
+    ? `../sealed-runtime/${name}.mjs`
+    : `${name}.mjs`;
   const result = await globalThis.Bun.build({
     entrypoints: [fileURLToPath(new URL(source, import.meta.url))],
     // ASTC 工作者不能意外携带认证门面或 UI 图；在加载阶段拒绝，而非用 PURE 注解隐藏副作用。

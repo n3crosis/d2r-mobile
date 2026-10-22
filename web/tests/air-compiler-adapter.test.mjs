@@ -374,3 +374,32 @@ test("v2 failure and cancellation preserve allocation cleanup and diagnostic pri
     );
   }
 });
+
+test("explicit bounded v2 reuse copies each output and stops at its compilation budget", () => {
+  const f = fakeV2();
+  const adapter = f.create({ apiVersion: 2, maxCompilations: 2 });
+  const first = adapter.compile("first", { mathProfile: "fast-f32" });
+  const second = adapter.compile("second", { mathProfile: "fast-f32" });
+  assert.equal(first.requiresWorkerTermination, false);
+  assert.equal(second.requiresWorkerTermination, true);
+  assert.equal(adapter.compilationCount, 2);
+  assert.deepEqual(first.bytes, f.output);
+  assert.deepEqual(second.bytes, f.output);
+  assert.notEqual(first.bytes.buffer, second.bytes.buffer);
+  assert.throws(() => adapter.compile("third"), { code: "AIR_BATCH_LIMIT" });
+});
+
+test("bounded reuse is v2-only and poisons the module after a failed compile", () => {
+  for (const options of [
+    { maxCompilations: 2 },
+    { apiVersion: 2, maxCompilations: 0 },
+    { apiVersion: 2, maxCompilations: 257 },
+  ])
+    assert.throws(() => fakeV2().create(options), { code: "AIR_BAD_OPTIONS" });
+  const f = fakeV2();
+  const adapter = f.create({ apiVersion: 2, maxCompilations: 2 });
+  f.module.status = 3;
+  assert.throws(() => adapter.compile("invalid"), { code: "AIR_FRONTEND_FAILED" });
+  f.module.status = 0;
+  assert.throws(() => adapter.compile("valid"), { code: "AIR_ADAPTER_DISPOSED" });
+});

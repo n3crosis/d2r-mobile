@@ -44,13 +44,23 @@ function checkNumber(value, maximum, code) {
 
 // 调用方须先验证编译器 WASM 资产，传入已实例化模块和受信任头文件指纹。
 // The caller must authenticate compiler WASM assets first and pass the instantiated module and trusted header fingerprint.
-// 缓存生命周期补丁尚未通过批量复用验证，原型暂时仅允许每模块编译一次。
-// Cache-lifetime patches await batch-reuse validation; this prototype temporarily permits one compile per module.
+// 默认单次使用；v2 可显式选择有限批次，错误后必须丢弃模块。
+// Single-use by default; v2 may explicitly opt into bounded batches, discarding the module after any failure.
 // 同步 WASM 执行无法协作取消；真正中断须由外部终止专用 Worker。
 // API v2 和 fast-f32 均须显式选择；v1 保持保守模式 ABI。
 // API v2 and fast-f32 are explicit opt-ins; v1 retains its conservative ABI.
 // Synchronous WASM cannot cooperatively cancel; the owner must terminate the dedicated Worker to interrupt it.
-export function createAirCompilerAdapter(module, { expectedHeaderSha256, apiVersion = 1 } = {}) {
+export function createAirCompilerAdapter(
+  module,
+  { expectedHeaderSha256, apiVersion = 1, maxCompilations = 1 } = {},
+) {
+  if (
+    !Number.isSafeInteger(maxCompilations) ||
+    maxCompilations < 1 ||
+    maxCompilations > 256 ||
+    (apiVersion !== 2 && maxCompilations !== 1)
+  )
+    throw failure("AIR_BAD_OPTIONS");
   if (apiVersion !== 1 && apiVersion !== 2) throw failure("AIR_BAD_OPTIONS");
   if (typeof expectedHeaderSha256 !== "string" || !/^[a-f0-9]{64}$/.test(expectedHeaderSha256))
     throw failure("AIR_HEADER_IDENTITY_INVALID");
@@ -100,7 +110,7 @@ export function createAirCompilerAdapter(module, { expectedHeaderSha256, apiVers
     throw failure("AIR_RUNTIME_FAILED");
   }
   wrappedModules.add(module);
-  let used = false,
+  let compilationCount = 0,
     active = false,
     disposed = false;
   const check = (signal) => {
@@ -115,7 +125,10 @@ export function createAirCompilerAdapter(module, { expectedHeaderSha256, apiVers
       return headerSha256;
     },
     get used() {
-      return used;
+      return compilationCount > 0;
+    },
+    get compilationCount() {
+      return compilationCount;
     },
     // dispose 只阻止新请求，不会终止已经运行的同步 WASM。
     // dispose only prevents new requests; it cannot terminate already-running synchronous WASM.
@@ -134,7 +147,8 @@ export function createAirCompilerAdapter(module, { expectedHeaderSha256, apiVers
     ) {
       check(signal);
       if (active) throw failure("AIR_COMPILER_BUSY");
-      if (used) throw failure("AIR_MODULE_ALREADY_USED");
+      if (compilationCount >= maxCompilations)
+        throw failure(maxCompilations === 1 ? "AIR_MODULE_ALREADY_USED" : "AIR_BATCH_LIMIT");
       if (
         !["conservative", "fast-f32"].includes(mathProfile) ||
         (apiVersion !== 2 && mathProfile !== "conservative") ||
@@ -155,7 +169,7 @@ export function createAirCompilerAdapter(module, { expectedHeaderSha256, apiVers
         input.fill(0);
         throw failure("AIR_BAD_INPUT");
       }
-      used = true;
+      compilationCount++;
       active = true;
       let inputPointer = 0,
         resultPointer = 0,
@@ -240,6 +254,7 @@ export function createAirCompilerAdapter(module, { expectedHeaderSha256, apiVers
         }
       }
       if (problem) {
+        disposed = true;
         copied?.fill(0);
         throw problem;
       }
@@ -252,7 +267,7 @@ export function createAirCompilerAdapter(module, { expectedHeaderSha256, apiVers
         mathProfile,
         ...(apiVersion === 2 ? { headerBundleVersion: 2 } : {}),
         status: "experimental-output-unvalidated",
-        requiresWorkerTermination: true,
+        requiresWorkerTermination: compilationCount >= maxCompilations,
       });
     },
   });

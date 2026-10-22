@@ -13,6 +13,91 @@ node web/runtime-build/build.mjs --plan
 node web/runtime-build/build.mjs
 ```
 
+## Cached AIR shader compiler input
+
+New runtime builds require a real API-v2 AIR compiler, not merely translated
+Metal source. Build the pinned LLVM/compiler toolchain separately with
+`web/toolchain/metal-air-compiler/toolchain.mjs`, then record and import its
+outputs once. These are developer commands, not an end-user native-helper flow:
+
+```sh
+node web/runtime-build/air-compiler-assets.mjs record \
+  --build /path/to/api-build-wasm \
+  --source /path/to/prepared-llvm-source \
+  --api-source /path/to/compiler-api-source
+# Use the receiptSha256 printed above, not a value fetched from an untrusted bundle.
+node web/runtime-build/air-compiler-assets.mjs import \
+  --input /path/to/api-build-wasm --sha256 RECORDED_RECEIPT_SHA256
+node web/runtime-build/air-compiler-assets.mjs verify
+```
+
+Recording checks the current source manifest and all patched files, binds all
+authored API files (including compiler policy includes), derives the sorted
+header-bundle fingerprint from CMake's header list, and instantiates the actual
+worker-targeted module to check API-v2 exports and its embedded header identity.
+This is a local build receipt, not a cryptographic build attestation, browser
+test, full-game shader test, or Apple GPU compatibility claim.
+
+Import requires an explicitly trusted receipt digest and verifies both generated
+files against it. The generated `toolchain/metal-air-compiler/dist/` cache is
+ignored by Git. `build.mjs` revalidates the cache against the current compiler
+source before other expensive stages; ordinary frontend changes do not rebuild
+LLVM. A source/API/header change makes this cache stale and requires a new
+compiler build and receipt. Alternatively, provide
+`D2R_AIR_COMPILER_ASSET_DIR` and `D2R_AIR_COMPILER_RECEIPT_SHA256` together to import
+an existing build asset before assembly. No compiler download URL, experimental
+binary hash, implicit LLVM rebuild, or source-only substitute is built in.
+The explicit import stores its trusted receipt digest separately under the
+generated runtime-build directory. A copied cache cannot authenticate itself:
+restoring only `dist/` without that trusted import requires another pinned import.
+
+The single existing CI job needs this authenticated build input provisioned or
+restored before runtime assembly. Until a trusted seed is available, a fresh
+runner fails with an explicit missing-compiler message. This integration does
+not create a CI job, publish an artifact/release, or silently weaken the build.
+
+The compiler's generated factory, WASM, receipt, source pin, licenses/notices,
+and closed Worker are included in the normal digest-verified runtime inventory
+and transport. Shader-enabled preload instantiates it before any private input;
+compilation and Worker recycling use only verified in-memory assets. The loader
+exposes `createAirCompilerClient()` (`createAirCompiler()` is an alias), and
+closing or retiring the shader runtime terminates compiler workers. Legacy
+inventories remain readable, but requesting compiled shader output without an
+authenticated compiler fails explicitly. Keeping source files is never reported
+as successful Metal library compilation.
+
+### Reusing an unchanged pre-AIR runtime locally
+
+For this AIR integration only, a narrow developer bridge can retain an existing
+CI runtime instead of rebuilding its unchanged .NET, extraction, texture,
+program, signer and shell components. Obtain the artifact from the authorized
+GitHub run, verify its ZIP digest against GitHub's artifact metadata, and take
+the runtime-manifest digest independently from that exact successful job's log.
+Extract only the bounded runtime inventory; never treat a digest found inside
+the downloaded archive as its own trust anchor.
+
+```sh
+bun web/runtime-build/reuse-runtime.mjs \
+  --runtime /path/to/verified-prior/runtime \
+  --sha256 TRUSTED_RUNTIME_MANIFEST_SHA256 \
+  --source-revision EXACT_PRIOR_COMMIT
+```
+
+The bridge verifies every old physical/logical asset, requires a clean pinned
+prior build and unchanged non-AIR source, and checks that old native-build and
+worker-build logic differs only by the known AIR additions. Unknown source
+changes are rejected. It retains every prior asset exactly, bundles only the
+new AIR worker with pinned Bun 1.4.3, appends authenticated compiler assets,
+records the old build origin plus current source-change hashes, repacks the
+inventory, and verifies the new output before replacing `runtime-build/out/`.
+It neither runs old downloaded JavaScript nor needs local copies of discarded
+generated source-only glue. Existing full-build behavior remains available.
+
+Build the current frontend normally, then pass the bridge's printed
+`manifestSha256` as `EXPECTED_RUNTIME_MANIFEST_SHA256` to `stage-preview.mjs`.
+Use the printed current revision for `GITHUB_SHA` if staging requires one.
+This produces a local public preview, not a deployment or a full-game proof.
+
 ## Prerequisites and execution
 
 Install and activate the official Emscripten **4.0.20** SDK, commit

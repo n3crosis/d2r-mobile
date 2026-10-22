@@ -15,6 +15,11 @@ import {
 } from "../runtime-asset-groups.mjs";
 import { createAstcProducerClient as initializeAstcProducerClient } from "../astc-producer-client.mjs";
 import { prepareVerifiedIpaSigningFactory } from "./ipa-signing-factory.mjs";
+import { createAirCompilerWorkerClient } from "../air-compiler-worker-client.mjs";
+import {
+  validateAirCompilerRuntimeComponent,
+  assertAirCompilerReceiptMatchesComponent,
+} from "../air-compiler-runtime-contract.mjs";
 const OFFLINE = "toolchain/offline-runtime-spike";
 const TEXTURE = "toolchain/texture-spike";
 const LIMIT = Object.freeze({
@@ -150,6 +155,7 @@ function runtimeTransport(manifest, inventory) {
 export function validateRuntimeProfileSelection(manifest, profileId, { optionalGroups = [] } = {}) {
   const profile = resolveShellProfile(profileId);
   const inventory = validateRuntimeInventory(manifest);
+  validateAirCompilerRuntimeComponent(manifest);
   const transport = runtimeTransport(manifest, inventory);
   const groupInventory = selectRuntimeAssetGroups(inventory, optionalGroups);
   if (transport.entries) validateRuntimeTransportGroups(inventory, transport.entries.values());
@@ -486,7 +492,15 @@ export async function prepareSealedRuntime({
     new Set(components).size !== components.length ||
     components.some(
       (x) =>
-        !["assets", "texture", "translator", "extraction", "program", "spirvCross"].includes(x),
+        ![
+          "assets",
+          "texture",
+          "translator",
+          "extraction",
+          "program",
+          "spirvCross",
+          "airCompiler",
+        ].includes(x),
     )
   )
     fail("Invalid trusted runtime configuration");
@@ -506,6 +520,9 @@ export async function prepareSealedRuntime({
   const publicBytes = await read(new URL("runtime-manifest.json", base), LIMIT.manifest, signal);
   if ((await hash(publicBytes)) !== manifestSha256) fail("Runtime manifest integrity mismatch");
   const manifest = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(publicBytes));
+  const airCompilerComponent = validateAirCompilerRuntimeComponent(manifest, {
+    required: components.includes("airCompiler"),
+  });
   const { inventory, selectedInventory, transport, downloadFiles, downloadBytes } =
     validateRuntimeProfileSelection(manifest, selectedProfile.id, {
       optionalGroups: selectedGroups,
@@ -773,6 +790,24 @@ export async function prepareSealedRuntime({
         ["capstone-lz4.wasm", bytes("toolchain/program-rewrite-spike/dist/capstone-lz4.wasm")],
       ],
     };
+  // 旧清单仍能打开，但不虚构编译能力；新着色器运行时在私有输入前启动真实 AIR 编译器。
+  // Legacy inventories remain readable without invented compiler capability; new shader runtimes initialize actual AIR before private inputs.
+  if (
+    airCompilerComponent &&
+    components.some((name) => ["translator", "spirvCross", "airCompiler"].includes(name))
+  ) {
+    const receipt = JSON.parse(
+      new TextDecoder("utf-8", { fatal: true }).decode(bytes(airCompilerComponent.receipt)),
+    );
+    assertAirCompilerReceiptMatchesComponent(receipt, airCompilerComponent);
+    plans.airCompiler = {
+      entry: airCompilerComponent.entry,
+      assets: [
+        ["factory", bytes(airCompilerComponent.factory)],
+        ["wasm", bytes(airCompilerComponent.wasm)],
+      ],
+    };
+  }
   if (selectedGroups.includes("legacy-astc"))
     plans.astcProducer = {
       entry: "sealed-workers/astc-producer-worker.mjs",
@@ -804,6 +839,11 @@ export async function prepareSealedRuntime({
     signingFactory,
     signingInitialization,
     signingTaken = false,
+    compilerClient,
+    compilerInitialization,
+    compilerLeases = 0,
+    compilerActive = 0,
+    compilerRetired = false,
     closing;
   let session;
   function close() {
@@ -813,6 +853,8 @@ export async function prepareSealedRuntime({
     // Native terminate cannot reject an initializer that has not returned its client; cancel only that pending initialization.
     producerInitialization?.abort();
     signingInitialization?.abort();
+    compilerInitialization?.abort();
+    compilerClient?.close();
     if (!signingTaken) {
       signingFactory?.close();
     }
@@ -850,9 +892,44 @@ export async function prepareSealedRuntime({
         spirvCross: "shader converter",
         astcProducer: "legacy texture producer",
         ipaSigning: "local IPA signer",
+        airCompiler: "Metal shader compiler",
       };
       const label = `Preparing ${labels[name] ?? "application"}…`;
       report({ phase: "initializing", label }, true);
+      if (name === "airCompiler") {
+        compilerInitialization = new AbortController();
+        try {
+          compilerClient = await createAirCompilerWorkerClient({
+            createWorker: () => {
+              if (closed || compilerRetired) fail("AIR compiler runtime closed");
+              return new Worker(url, { type: "module" });
+            },
+            assets: {
+              factoryBytes: plan.assets[0][1],
+              wasmBytes: plan.assets[1][1],
+              factorySha256: airCompilerComponent.factorySha256,
+              wasmSha256: airCompilerComponent.wasmSha256,
+              headerSha256: airCompilerComponent.headerSha256,
+            },
+            signal: signal
+              ? AbortSignal.any([signal, compilerInitialization.signal])
+              : compilerInitialization.signal,
+            onProgress: () => report({ phase: "initializing", label }, true),
+          });
+        } finally {
+          compilerInitialization = undefined;
+          plan.assets.length = 0;
+        }
+        if (closed || signal?.aborted) throw new DOMException("Runtime cancelled", "AbortError");
+        if (compilerClient?.initialized !== true || compilerClient.ready !== true)
+          fail("Actual AIR compiler initialization failed");
+        initialized.airCompiler = {
+          initialized: true,
+          compiler: compilerClient.compiler,
+          options: compilerClient.options,
+        };
+        continue;
+      }
       if (name === "ipaSigning") {
         // 工厂拥有独立公开副本，不依赖转换运行时的生命周期。
         // The factory owns independent public copies, never this conversion runtime's lifetime.
@@ -943,6 +1020,7 @@ export async function prepareSealedRuntime({
     // 后续可选初始化期间，先完成的 ASTC 线程可能已失败；历史证明不等于当前可用。
     // An earlier ASTC worker may fail during later optional startup; historical proof is not current readiness.
     if (producerClient && !producerClient.ready) fail("ASTC producer unavailable");
+    if (compilerClient && !compilerClient.ready) fail("AIR compiler unavailable");
     // 公开清单字节仍可通过副本访问，绝不通过加载器或 fetch 回调提供。
     // 它们不包含私有任务输入，并在此会话关闭时丢弃。
     // Public inventory bytes remain available by copy, never via a loader/fetch callback.
@@ -1133,6 +1211,44 @@ export async function prepareSealedRuntime({
         },
         close: l.close,
       };
+    }
+    function createAirCompilerClient() {
+      if (closed || compilerRetired || !compilerClient?.ready)
+        fail(
+          "Verified AIR compiler is unavailable. Rebuild the public runtime with compiled AIR assets; source-only shader output is not supported.",
+        );
+      compilerLeases++;
+      let released = false,
+        active = false;
+      const release = () => {
+        if (released) return;
+        released = true;
+        compilerLeases--;
+        if (active) close();
+      };
+      return Object.freeze({
+        initialized: true,
+        get ready() {
+          return !released && !closed && !compilerRetired && compilerClient.ready;
+        },
+        compiler: compilerClient.compiler,
+        options: compilerClient.options,
+        limits: compilerClient.limits,
+        async compile(source, options = {}) {
+          if (released || closed || compilerRetired || active)
+            fail("AIR compiler lease closed or busy");
+          active = true;
+          compilerActive++;
+          try {
+            return await compilerClient.compile(source, options);
+          } finally {
+            active = false;
+            compilerActive--;
+          }
+        },
+        dispose: release,
+        close: release,
+      });
     }
     function wipeShaderInput(value) {
       const buffer = ArrayBuffer.isView(value) ? value.buffer : value;
@@ -1349,7 +1465,13 @@ export async function prepareSealedRuntime({
     }
     const retireProgramWorker = () => retireComponents(["program"]);
     const retireAssetWorkers = () => retireComponents(["assets", "texture"]);
-    const retireShaderWorkers = () => retireComponents(["translator", "spirvCross"]);
+    const retireShaderWorkers = () => {
+      if (compilerLeases || compilerActive) return false;
+      if (!retireComponents(["translator", "spirvCross"])) return false;
+      compilerRetired = true;
+      compilerClient?.close();
+      return true;
+    };
     let extractionTaken = false;
     function createExtractionWorker() {
       if (closed || !channels.extraction || extractionTaken)
@@ -1391,6 +1513,8 @@ export async function prepareSealedRuntime({
       createTextureClient,
       createTextureEncoder,
       createTranslator,
+      createAirCompilerClient,
+      createAirCompiler: createAirCompilerClient,
       createTranslatorWorker,
       createCrossWorker,
       createProgramWorker,

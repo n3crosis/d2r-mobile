@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { assembleRuntime, SHELL_BUILD_INPUTS } from "./package.mjs";
 import { inspectShaderSourceLink } from "./shader-sourcelink-diagnostic.mjs";
+import { prepareAirCompilerAssets } from "./air-compiler-assets.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const workspace = resolve(root, "web/runtime-build/.build");
@@ -110,6 +111,13 @@ if (option === "--plan") {
           commands: ["git", "cmake", "make", "python3", "node", "npm", "bun"],
         },
         crossCommit,
+        airCompiler: {
+          cache: "web/toolchain/metal-air-compiler/dist/",
+          inputDirectoryEnvironment: "D2R_AIR_COMPILER_ASSET_DIR",
+          receiptDigestEnvironment: "D2R_AIR_COMPILER_RECEIPT_SHA256",
+          rebuildsLlvm: false,
+          required: true,
+        },
         publicShells: SHELL_BUILD_INPUTS,
         stages,
         output: "web/runtime-build/out/",
@@ -120,6 +128,9 @@ if (option === "--plan") {
     ),
   );
 } else if (option === undefined) {
+  // 编译器只构建一次；前端构建验证并复用源固定缓存，不隐式重建 LLVM。
+  // Build the compiler once; frontend builds verify/reuse the source-bound cache, never implicitly rebuild LLVM.
+  await prepareAirCompilerAssets();
   // 先决工具由贡献者或 CI 单独安装；不提权、不安装 SDK、不启动浏览器、测试、游戏输入或签名凭据。
   // Prerequisites are installed separately by the contributor or CI. No sudo,
   // SDK installation, browser launch, tests, game inputs or signing credentials.

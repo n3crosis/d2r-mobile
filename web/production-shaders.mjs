@@ -1,8 +1,8 @@
-// 依据受信任着色器目录及原生摘要规则组装生产着色器源码。
-// Assemble production shader sources from the trusted shader catalog and native digest rules.
+// 依据受信任目录和原生源码摘要生成真实的编译着色器库。
+// Generate real compiled shader libraries from the trusted catalog and native source digest rules.
 /**
- * 全目录 noMetal 源码组装。绝不调用 Apple Metal，也不在摘要证明之前重标记。
- * Full-catalog noMetal source assembly. Never invokes Apple Metal or relabels before digest proof.
+ * 全目录浏览器编译。绝不调用 Apple Metal，也不在摘要证明之前发布输出。
+ * Full-catalog browser compilation. Never invokes Apple Metal or publishes before digest proof.
  */
 import { yieldBrowserTask } from "./browser-task-yield.mjs";
 import { resolveLogicalAssetSuffixes } from "./logical-asset-suffixes.mjs";
@@ -15,10 +15,9 @@ import {
 import { validateNsoSegments } from "./nso-validation.mjs";
 import { c1NeedsFullBuffer, readableTileVariant } from "./shader-native-artifacts.mjs";
 import { assertSealedRuntime } from "./sealed-runtime/clients.mjs";
+import { acceptCompiledShaderOutput } from "./compiled-shader-boundary.mjs";
 const encoder = new TextEncoder();
 const MAX_TOTAL = 512 * 1024 * 1024;
-const IOS_RECORD =
-  "xcrun -sdk iphoneos metal -c -mios-version-min=18.0; xcrun -sdk iphoneos metallib";
 function fail(message) {
   throw new Error(message);
 }
@@ -60,6 +59,11 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
     fail("Trusted release shader catalog differs from pinned full catalog");
   if (trustedShell.trustedRecipe.shaderDigest !== "be59c864f087b377")
     fail("Unsupported production shader source digest");
+  if (typeof runtime.createAirCompilerClient !== "function")
+    fail("Compiled shader runtime is unavailable; rebuild application assets");
+  let compiler = runtime.createAirCompilerClient();
+  if (typeof compiler?.compile !== "function" || typeof compiler?.dispose !== "function")
+    fail("Invalid compiled shader runtime");
   let active = null,
     disposed = false,
     used = false,
@@ -71,11 +75,13 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
     try {
       active?.abort();
       pipeline?.dispose();
+      compiler?.dispose();
     } finally {
       try {
         for (const bytes of retained) bytes.fill(0);
       } finally {
         retained.length = 0;
+        compiler = null;
         // 保留元数据，但解除已清理输出在条目闭包中的引用。
         // Keep metadata, but release cleaned output references held by entry closures.
         for (const release of releaseEntries.splice(0)) release();
@@ -105,6 +111,42 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
       let sources;
       const pending = [],
         c1 = [];
+      const compileLibrary = async (source, key, variant, replay) => {
+        check();
+        const sourceBytes = encoder.encode(source.replaceAll("\r\n", "\n"));
+        let output;
+        try {
+          const sourceSha256 = Array.from(
+            new Uint8Array(await crypto.subtle.digest("SHA-256", sourceBytes)),
+            (value) => value.toString(16).padStart(2, "0"),
+          ).join("");
+          check();
+          output = await compiler.compile(source, {
+            entry: replay.entry,
+            stage: replay.msl_entry_kind,
+            signal: controller.signal,
+          });
+          check();
+          return await acceptCompiledShaderOutput({
+            source,
+            binary: output.bytes,
+            compiler: output.compiler,
+            options: output.options,
+            expected: {
+              key,
+              variant,
+              entry: replay.entry,
+              stage: replay.msl_entry_kind,
+              sourceSetDigest: trustedShell.trustedRecipe.shaderDigest,
+              sourceSha256,
+            },
+            signal: controller.signal,
+          });
+        } finally {
+          sourceBytes.fill(0);
+          if (output?.bytes instanceof Uint8Array) output.bytes.fill(0);
+        }
+      };
       try {
         const assets = readAuthenticatedAssets(extracted, selection, { signal: controller.signal });
         const modules = readAuthenticatedProgramModules(extracted, selection, {
@@ -213,19 +255,39 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
             bindings: converted.replay.bindings,
             vertex_inputs: converted.replay.vertex_inputs,
             raster: converted.replay.raster,
-            chain_metal: IOS_RECORD,
           };
           const variant =
             prepared.job.stage === "ps"
               ? readableTileVariant(source, replay.bindings, catalog.bfWant.includes(key))
               : null;
           if (variant) replay.fetch = variant.metadata;
-          const base = encoder.encode(source),
-            fetch = variant ? encoder.encode(variant.msl) : null;
-          const replayReservation = encoder.encode(JSON.stringify(replay)).length;
-          budget.replace(0, base.length + (fetch?.length ?? 0) + replayReservation);
+          // 编译后只保留库字节，不再为整个目录保留所有 MSL 文本。
+          // Retain compiled bytes rather than the whole catalog's MSL text.
+          const baseResult = await compileLibrary(source, key, "b", replay);
+          const base = baseResult.bytes;
           retained.push(base);
-          if (fetch) retained.push(fetch);
+          budget.replace(0, base.length);
+          let fetch = null,
+            fetchResult;
+          if (variant) {
+            fetchResult = await compileLibrary(variant.msl, key, "bf", replay);
+            fetch = fetchResult.bytes;
+            retained.push(fetch);
+            budget.replace(0, fetch.length);
+          }
+          check();
+          // 记录实际 WASM 编译器，不再把参考 Xcode 命令写成已执行的编译器。
+          // Record the actual WASM compiler, never an unexecuted reference Xcode command.
+          replay.chain_metal = `${baseResult.receipt.compiler.id}; wasm; ios18; fastMath=true`;
+          replay.compiled = {
+            base: baseResult.receipt,
+            baseReceiptSha256: baseResult.receiptSha256,
+            ...(fetchResult
+              ? { fetch: fetchResult.receipt, fetchReceiptSha256: fetchResult.receiptSha256 }
+              : {}),
+          };
+          const replayReservation = encoder.encode(JSON.stringify(replay)).length;
+          budget.replace(0, replayReservation);
           pending.push({ key, replay, base, fetch, replayReservation });
           reportRecords(pending.length);
           if (descriptor.embedded) sources.completeEmbedded();
@@ -300,6 +362,8 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
         sources?.dispose();
         pipeline?.dispose();
         pipeline = null;
+        compiler?.dispose();
+        compiler = null;
         active = null;
         signal?.removeEventListener("abort", abort);
       }

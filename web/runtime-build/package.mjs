@@ -29,6 +29,11 @@ import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { resolve, relative, sep } from "node:path";
 import { isDeepStrictEqual } from "node:util";
+import { verifyAirCompilerAssets } from "./air-compiler-assets.mjs";
+import {
+  AIR_COMPILER_RUNTIME,
+  airCompilerRuntimeComponent,
+} from "../air-compiler-runtime-contract.mjs";
 
 const web = resolve(fileURLToPath(new URL("../", import.meta.url)));
 const hash = (value) => createHash("sha256").update(value).digest("hex");
@@ -179,6 +184,7 @@ export async function assembleRuntime({ build } = {}) {
     !/^[a-f0-9]{40}$/.test(build?.sourceRevision || "")
   )
     throw new Error("Missing exact build receipt");
+  const airCompilerReport = await verifyAirCompilerAssets();
   const parent = resolve(web, "runtime-build/.build");
   await mkdir(parent, { recursive: true });
   const staging = await mkdtemp(resolve(parent, "bundle-"));
@@ -253,6 +259,20 @@ export async function assembleRuntime({ build } = {}) {
     return manifest.assets;
   }
   try {
+    // 实际模块、WASM 和来源凭据在同一顶层哈希闭包中；绝不接受仅含源码的替代品。
+    // Actual module, WASM, and provenance share the top-level hash closure; source-only substitutes are rejected.
+    for (const path of [AIR_COMPILER_RUNTIME.factory, AIR_COMPILER_RUNTIME.wasm])
+      await copy(path, airCompilerReport.files[path.split("/").at(-1)]);
+    const airReceiptBytes = await readFile(resolve(web, AIR_COMPILER_RUNTIME.receipt));
+    if (!isDeepStrictEqual(JSON.parse(airReceiptBytes), airCompilerReport))
+      throw new Error("AIR compiler receipt changed during packaging");
+    await add(AIR_COMPILER_RUNTIME.receipt, airReceiptBytes, AIR_COMPILER_RUNTIME.receipt);
+    await copy("toolchain/metal-air-compiler/manifest.json", {
+      bytes: (await readFile(resolve(web, "toolchain/metal-air-compiler/manifest.json"))).length,
+      sha256: airCompilerReport.sourceManifestSha256,
+    });
+    await copy("toolchain/metal-air-compiler/THIRD_PARTY_NOTICES.md");
+    await licenseDirectory("toolchain/metal-air-compiler/licenses");
     const offline = "toolchain/offline-runtime-spike";
     await sealed(`${offline}/dist`, { bootstrap: false });
     await sealed(ASSET_RUNTIME_DIRECTORY, {
@@ -419,6 +439,7 @@ export async function assembleRuntime({ build } = {}) {
       totalBytes: total,
       assets: assets.sort((a, b) => a.path.localeCompare(b.path)),
       components: {
+        airCompiler: airCompilerRuntimeComponent(airCompilerReport),
         extraction: {
           sealedEntry: "sealed-workers/nsp-worker.mjs",
           entry: "sealed-workers/nsp-worker.mjs",

@@ -22,10 +22,16 @@ export const RUNTIME_SEALED_WORKERS = Object.freeze([
   "sealed-workers/nsp-worker.mjs",
   "sealed-workers/cross-worker.mjs",
   "sealed-workers/program-worker.mjs",
+  "sealed-workers/air-compiler-worker.mjs",
 ]);
 // 只移除经过消费路径审计的 已审计的逻辑副本；不泛化为拒绝所有源码或证明清单资源。
 // Remove only the audited logical copies, not all source files or proof-manifest assets.
 export const SOURCE_ONLY_RUNTIME_ASSETS = Object.freeze([
+  "air-compiler-adapter.mjs",
+  "air-compiler-contract.mjs",
+  "air-compiler-runtime-contract.mjs",
+  "air-compiler-worker-client.mjs",
+  "sealed-runtime/air-compiler-worker.mjs",
   "ipa-signing-client.mjs",
   "ipa-signing-contract.mjs",
   "ipa-signing-fs.mjs",

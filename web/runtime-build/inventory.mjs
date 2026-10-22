@@ -3,6 +3,7 @@ import { validateRuntimeAssetGroups } from "../runtime-asset-groups.mjs";
 import { Buffer } from "node:buffer";
 import { readdir, readFile, lstat } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import { validateAirCompilerRuntimeComponent } from "../air-compiler-runtime-contract.mjs";
 
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
 export async function verifyRuntimeInventory(directory, expectedDigest, expectedCommit = null) {
@@ -61,6 +62,7 @@ export async function verifyRuntimeInventory(directory, expectedDigest, expected
   }
   if (total !== manifest.totalBytes) throw new Error("Runtime total mismatch");
   validateRuntimeAssetGroups(manifest.assets);
+  validateAirCompilerRuntimeComponent(manifest);
   const transportFiles = manifest.transport ? validateRuntimeTransport(manifest) : null;
   if (transportFiles) {
     records.clear();
