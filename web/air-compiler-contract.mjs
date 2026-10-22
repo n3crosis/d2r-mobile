@@ -1,5 +1,6 @@
 // 固定生产编译配置和有界消息协议；结构验证不等于 Apple GPU 验收。
 // Fixed compilation profile and bounded protocol; structural validation is not Apple GPU acceptance.
+export const AIR_COMPILER_SOURCE_LANGUAGE = "floor-metal-3.2";
 export const AIR_COMPILER_LIMITS = Object.freeze({
   sourceBytes: 4 * 1024 * 1024,
   outputBytes: 16 * 1024 * 1024,
@@ -107,7 +108,7 @@ export function airCompilerIdentity({ factorySha256, wasmSha256, headerSha256 })
     headerSha256,
     apiVersion: 2,
     headerBundleVersion: 2,
-    sourceLanguage: "floor-metal-3.0",
+    sourceLanguage: AIR_COMPILER_SOURCE_LANGUAGE,
     mathProfile: "fast-f32",
   });
 }

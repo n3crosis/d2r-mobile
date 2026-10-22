@@ -12,7 +12,7 @@ const base = [
   "air64-apple-ios18.0.0",
   "-x",
   "metal",
-  "-std=metal3.0",
+  "-std=metal3.2",
   "-O2",
   "-flegacy-pass-manager",
   "-Werror=unknown-attributes",

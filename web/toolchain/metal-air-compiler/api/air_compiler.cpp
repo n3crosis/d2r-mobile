@@ -355,7 +355,7 @@ static air_result *compile(const uint8_t *source, size_t source_size,
   auto invocation = std::make_shared<clang::CompilerInvocation>();
   const char *triple = ios_major == 18 ? "air64-apple-ios18.0.0" : "air64-apple-ios26.0.0";
   std::vector<const char *> args = {
-    "-triple", triple, "-x", "metal", "-std=metal3.0", "-O2",
+    "-triple", triple, "-x", "metal", "-std=metal3.2", "-O2",
     "-flegacy-pass-manager", "-emit-llvm", "-nostdsysteminc", "-nobuiltininc",
     "-I/include", "-include", "metal_stdlib",
     "-Werror=unknown-attributes", "-Werror=ignored-attributes",
@@ -437,15 +437,20 @@ static air_result *compile(const uint8_t *source, size_t source_size,
     }
   }
   Output output(result->data);
+  bool writerSucceeded = true;
   if (output_kind == AIR_LLVM_TEXT)
     module->print(output, nullptr);
   else
-    llvm::WriteMetalLibToFile(*module, output);
+    writerSucceeded = llvm::WriteMetalLibToFile(*module, output);
   output.flush();
   if (output.overflowed()) {
     result->data.clear();
     result->status = AIR_OUTPUT_LIMIT;
     appendDiagnostic(*result, "Compiled output exceeded 67108864 bytes.\n");
+  } else if (!writerSucceeded) {
+    result->data.clear();
+    result->status = AIR_INVALID_IR;
+    appendDiagnostic(*result, "Metal library serialization failed.\n");
   }
   return result.release();
 }

@@ -27,7 +27,7 @@ if (args.includes("--fingerprint")) {
   if (process.env.GITHUB_OUTPUT)
     await appendFile(
       process.env.GITHUB_OUTPUT,
-      `source_fingerprint=${identity.sourceFingerprintSha256}\n`,
+      `source_fingerprint=${identity.sourceFingerprintSha256}\nupstream_archive_sha256=${identity.manifest.archiveSha256}\n`,
     );
   console.log(
     JSON.stringify({

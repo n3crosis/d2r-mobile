@@ -6,6 +6,8 @@
 // 仅独立诊断检查允许显式选择旧 floor 写入器的包含前缀布局。
 // Only standalone diagnostic inspection may explicitly select the legacy floor prefix-inclusive layout.
 // https://github.com/gzorin/floor_llvm/blob/758f59eefe5db70f6e8719be8ca1beb939c38adb/llvm/lib/Bitcode/MetalLib/MetalLibWriterPass.cpp
+// a2flo non-debug HDYN/RLST tails follow MetalLibWriterPass.cpp and metal_reflection_writing.hpp.
+// Reflection checks cover section/root-table/vector envelopes, not nested reflection semantics or Apple acceptance.
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const MAX_BYTES = 16 * 1024 * 1024;
@@ -30,6 +32,80 @@ function version(value) {
 }
 function sameVersion(a, b) {
   return a[0] === b[0] && a[1] === b[1];
+}
+function inspectReflectionEnvelope(bytes, start, length) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset + start, length);
+  const range = (offset, size) => {
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset > length || size > length - offset)
+      fail("reflection range out of bounds");
+  };
+  range(0, 8);
+  if (length % 4 !== 0 || view.getUint32(4, true) !== 0x52524941)
+    fail("invalid AIRR reflection envelope");
+  const root = view.getUint32(0, true);
+  if (root < 8 || root % 4 !== 0) fail("invalid reflection root");
+  range(root, 4);
+  const back = view.getInt32(root, true),
+    vtable = root - back;
+  if (back < 6 || vtable < 8 || vtable % 2 !== 0) fail("invalid reflection vtable");
+  range(vtable, 4);
+  const tableSize = view.getUint16(vtable, true),
+    inlineSize = view.getUint16(vtable + 2, true);
+  // The pinned writer's Reflection root has at most 15 fields, beginning with version 0.4.0.
+  if (
+    tableSize < 6 ||
+    tableSize > 34 ||
+    tableSize % 2 !== 0 ||
+    vtable + tableSize !== root ||
+    inlineSize < 16 ||
+    inlineSize % 4 !== 0
+  )
+    fail("invalid reflection root table");
+  range(root, inlineSize);
+  if (
+    view.getUint16(vtable + 4, true) !== 4 ||
+    view.getUint32(root + 4, true) !== 0 ||
+    view.getUint32(root + 8, true) !== 4 ||
+    view.getUint32(root + 12, true) !== 0
+  )
+    fail("unsupported reflection version");
+  let inlineOffset = 16;
+  for (let field = 1; field < (tableSize - 4) / 2; field++) {
+    const offset = view.getUint16(vtable + 4 + field * 2, true);
+    if (offset === 0) continue;
+    if (offset !== inlineOffset || offset + 4 > inlineSize) fail("invalid reflection field");
+    inlineOffset += 4;
+    const pointer = root + offset,
+      relative = view.getUint32(pointer, true);
+    const vector = pointer + relative;
+    if (relative < 4 || vector < root + inlineSize || vector % 4 !== 0)
+      fail("invalid reflection vector");
+    range(vector, 4);
+    const count = view.getUint32(vector, true);
+    range(vector + 4, count * 4);
+    // Nodes and local allocations are vectors of forward table offsets. Other vectors carry node IDs.
+    // Nested node schemas are deliberately not interpreted as semantic proof here.
+    if (field === 1 || field === 10) {
+      for (let index = 0; index < count; index++) {
+        const element = vector + 4 + index * 4,
+          target = element + view.getUint32(element, true);
+        if (target < vector + 4 + count * 4 || target % 4 !== 0)
+          fail("invalid reflection table reference");
+        range(target, 4);
+        const distance = view.getInt32(target, true),
+          table = target - distance;
+        if (distance < 4 || table < 8 || table % 2 !== 0)
+          fail("invalid reflection table reference");
+        range(table, 4);
+        const size = view.getUint16(table, true),
+          dataSize = view.getUint16(table + 2, true);
+        if (size < 4 || size % 2 !== 0 || table + size > target || dataSize < 4)
+          fail("invalid reflection table reference");
+        range(target, dataSize);
+      }
+    }
+  }
+  if (inlineOffset !== inlineSize) fail("unaccounted reflection root fields");
 }
 function inspect(bytes, expected) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -104,8 +180,11 @@ function inspect(bytes, expected) {
     if (sections[i].start < sections[i - 1].end) fail("overlapping sections");
   }
   const [functions, publicMetadata, privateMetadata, bitcode] = sections;
-  if (bitcode.end !== bytes.length) fail("unaccounted library tail");
-  if (functions.end < publicMetadata.start) tags(functions.end, publicMetadata.start);
+  const programTags =
+    functions.end < publicMetadata.start ? tags(functions.end, publicMetadata.start) : new Map();
+  const declaredTail = programTags.has("HDYN") || programTags.has("RLST");
+  if (programTags.has("HSRD")) fail("embedded debug source is unsupported");
+  if (!declaredTail && bitcode.end !== bytes.length) fail("unaccounted library tail");
   const count = view.getUint32(functions.start, true);
   if (count < 1 || count > 64) fail("invalid function count");
   let cursor = functions.start + 4;
@@ -118,6 +197,8 @@ function inspect(bytes, expected) {
     range(cursor, size, functions.end);
     const fields = tags(cursor + 4, cursor + size);
     cursor += size;
+    if (!declaredTail && fields.has("RFLT")) fail("reflection reference without declared section");
+    if (declaredTail && fields.has("SOFF")) fail("embedded debug source is unsupported");
     const nameOffset = field(fields, "NAME"),
       nameSize = fields.get("NAME").size;
     if (nameSize < 2 || nameSize > 1024 || bytes[nameOffset + nameSize - 1] !== 0)
@@ -177,9 +258,78 @@ function inspect(bytes, expected) {
       start,
       length,
       sha256: hex(bytes.subarray(hashOffset, hashOffset + 32)),
+      ...(declaredTail ? { reflectionOffset: u64(field(fields, "RFLT", 8)) } : {}),
     });
   }
   if (cursor !== functions.end) fail("function list size mismatch");
+  if (declaredTail) {
+    // Only the pinned non-debug writer's complete declared layout is accepted, never arbitrary tail bytes.
+    if (
+      programTags.size !== 3 ||
+      !programTags.has("HDYN") ||
+      !programTags.has("RLST") ||
+      !programTags.has("UUID") ||
+      functions.start !== 88 ||
+      privateMetadata.start !== publicMetadata.end ||
+      bitcode.start !== privateMetadata.end
+    )
+      fail("unsupported declared library tail");
+    field(programTags, "UUID", 16);
+    const section = (name) => {
+      const offset = field(programTags, name, 16),
+        start = u64(offset),
+        size = u64(offset + 8);
+      range(start, size);
+      return { start, size, end: start + size };
+    };
+    const dynamic = section("HDYN"),
+      reflection = section("RLST");
+    if (
+      dynamic.start !== bitcode.end ||
+      reflection.start !== dynamic.end ||
+      reflection.end !== bytes.length ||
+      dynamic.size < 12 ||
+      reflection.size < 4
+    )
+      fail("unaccounted or overlapping declared tail");
+    const dynamicTags = tags(dynamic.start, dynamic.end);
+    if (dynamicTags.size !== 1) fail("invalid dynamic header");
+    const nameOffset = field(dynamicTags, "NAME"),
+      nameSize = dynamicTags.get("NAME").size;
+    if (nameSize < 2 || nameSize > 1024 || bytes[nameOffset + nameSize - 1] !== 0)
+      fail("invalid dynamic library name");
+    const name = bytes.subarray(nameOffset, nameOffset + nameSize - 1);
+    if (
+      name.some((value) => value < 32 || [47, 92, 127].includes(value)) ||
+      !decoder.decode(name).endsWith(".metallib")
+    )
+      fail("invalid dynamic library name");
+    if (view.getUint32(reflection.start, true) !== count) fail("reflection count mismatch");
+    let relative = 4;
+    for (const record of records) {
+      if (record.reflectionOffset !== relative) fail("reflection offset mismatch");
+      range(relative, 12, reflection.size);
+      const start = reflection.start + relative,
+        size = view.getUint32(start, true);
+      const payloadSize = view.getUint32(start + 8, true);
+      if (size < 24 || payloadSize !== size - 16 || tag(start + 4) !== "RBUF")
+        fail("invalid reflection group");
+      range(relative, size, reflection.size);
+      if (tag(start + size - 4) !== "ENDT") fail("invalid reflection terminator");
+      const payload = start + 12,
+        padding = (16 - (payload % 16)) % 16;
+      if (
+        payloadSize < padding + 8 ||
+        !bytes.subarray(payload, payload + padding).every((value) => value === 0)
+      )
+        fail("invalid reflection alignment padding");
+      inspectReflectionEnvelope(bytes, payload + padding, payloadSize - padding);
+      relative += size;
+    }
+    if (relative !== reflection.size) fail("unaccounted reflection tail");
+    // Upstream supplies no reflection-specific hash. Existing bitcode hashes stay mandatory;
+    // the full-output SHA256/receipt below covers the complete declared tail as well.
+  }
   const entry = records.find((x) => x.name === expected.entry);
   if (!entry || entry.type !== TYPES[expected.stage]) fail("entry or stage mismatch");
   return records;

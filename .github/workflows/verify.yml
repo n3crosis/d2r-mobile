@@ -79,6 +79,11 @@ jobs:
             web/toolchain/metal-air-compiler/dist
             web/runtime-build/.build/air-compiler-receipt.sha256
           key: public-air-compiler-v1-${{ runner.os }}-${{ runner.arch }}-ubuntu-24.04-emsdk4.0.20-${{ steps.air_source.outputs.source_fingerprint }}
+      - name: Cache pinned public compiler source archive separately
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: web/runtime-build/.build/air-compiler-source-download
+          key: public-air-source-archive-v1-${{ steps.air_source.outputs.upstream_archive_sha256 }}
       - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         with:
           dotnet-version: "10.0.402"
@@ -115,6 +120,17 @@ jobs:
         run: node web/runtime-build/stage-preview.mjs
         env:
           EXPECTED_RUNTIME_MANIFEST_SHA256: ${{ steps.runtime.outputs.manifest_sha256 }}
+      - name: Prepare complete matching compiler source (no LLVM compilation)
+        run: node web/runtime-build/prepare-air-compiler-source.mjs --output "$RUNNER_TEMP/air-compiler-source-artifact"
+      - name: Upload complete corresponding compiler source separately
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: air-compiler-source
+          path: ${{ runner.temp }}/air-compiler-source-artifact/
+          include-hidden-files: true
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 7
       - name: Upload browser webpage and public runtimes (no game files or keys)
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:

@@ -5,7 +5,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-/* Experimental floor-Metal 3.0 frontend, NOT Apple MSL 2.3 compatibility.
+/* Experimental a2flo Metal 3.2 frontend; full Apple MSL compatibility is not proven.
  * No caller-provided compiler flags, paths, includes, or subprocesses.
  * Use one dedicated worker per compilation until upstream global caches are fixed.
  */

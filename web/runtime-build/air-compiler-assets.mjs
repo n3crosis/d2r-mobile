@@ -211,10 +211,11 @@ export async function recordAirCompilerBuild({ buildDirectory, sourceDirectory, 
     throw new Error("Built AIR compiler does not match the authored header bundle");
   const { manifest: _manifest, ...source } = identity;
   const report = {
-    version: 1,
+    version: AIR_COMPILER_RUNTIME.version,
     id: AIR_COMPILER_RUNTIME.id,
     apiVersion: 2,
     headerBundleVersion: 2,
+    sourceLanguage: AIR_COMPILER_RUNTIME.sourceLanguage,
     emscripten: "4.0.20",
     ...source,
     files,

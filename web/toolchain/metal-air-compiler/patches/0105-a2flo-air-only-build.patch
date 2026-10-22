@@ -1,15 +1,5 @@
---- a/clang/lib/CodeGen/CMakeLists.txt
-+++ b/clang/lib/CodeGen/CMakeLists.txt
-@@ -1,3 +1,9 @@
-+# The optional floor SPIR-V project is not shipped in standalone AIR builds.
-+option(CLANG_FLOOR_ENABLE_SPIRV "Enable the separately supplied floor SPIR-V writers" OFF)
-+if(CLANG_FLOOR_ENABLE_SPIRV)
-+  add_definitions(-DCLANG_FLOOR_ENABLE_SPIRV=1)
-+endif()
-+
- set(LLVM_LINK_COMPONENTS
-   Analysis
-   BitReader
+# Rebased directly onto a2flo/floor_llvm 4b173e3db383ec7164afb11ee7dc86609c88f052.
+# Provenance and conflict-resolution notes are recorded in manifest.json rebaseProvenance.
 --- a/clang/lib/CodeGen/BackendUtil.cpp
 +++ b/clang/lib/CodeGen/BackendUtil.cpp
 @@ -46,13 +46,19 @@
@@ -32,12 +22,12 @@
  #include "llvm/Target/TargetMachine.h"
  #include "llvm/Target/TargetOptions.h"
  #include "llvm/Transforms/Coroutines.h"
-@@ -1183,11 +1189,21 @@
+@@ -1177,11 +1183,21 @@
      break;
  
    case Backend_EmitSPIRV:
 +#ifdef CLANG_FLOOR_ENABLE_SPIRV
-     PerModulePasses.add(createSPIRVWriterPass(*OS));
+     PerModulePasses.add(createSPIRVWriterPass(*OS, CodeGenOpts.SPIRVVersion));
 +#else
 +    TheModule->getContext().emitError("SPIR-V emission is unavailable in this AIR-only build");
 +    return;
@@ -54,7 +44,7 @@
      break;
  
    case Backend_EmitMetalLib:
-@@ -1658,11 +1674,21 @@
+@@ -1641,11 +1657,21 @@
      break;
  
    case Backend_EmitSPIRV:
@@ -76,3 +66,32 @@
      break;
  
    case Backend_EmitMetalLib:
+--- a/clang/lib/CodeGen/CMakeLists.txt
++++ b/clang/lib/CodeGen/CMakeLists.txt
+@@ -1,3 +1,9 @@
++# The optional floor SPIR-V project is not shipped in standalone AIR builds.
++option(CLANG_FLOOR_ENABLE_SPIRV "Enable the separately supplied floor SPIR-V writers" OFF)
++if(CLANG_FLOOR_ENABLE_SPIRV)
++  add_definitions(-DCLANG_FLOOR_ENABLE_SPIRV=1)
++endif()
++
+ set(LLVM_LINK_COMPONENTS
+   Analysis
+   BitReader
+@@ -26,11 +32,15 @@
+   ProfileData
+   Remarks
+   ScalarOpts
+-  SPIRVLib
++  SelectionDAG
+   Support
+   Target
+   TransformUtils
+   )
++
++if(CLANG_FLOOR_ENABLE_SPIRV)
++  list(APPEND LLVM_LINK_COMPONENTS SPIRVLib)
++endif()
+ 
+ add_clang_library(clangCodeGen
+   BackendUtil.cpp

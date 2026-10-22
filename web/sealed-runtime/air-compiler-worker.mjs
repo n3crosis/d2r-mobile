@@ -5,6 +5,7 @@ import { inspectCompiledMetalLibrary } from "../compiled-shader-boundary.mjs";
 import {
   AIR_COMPILER_LIMITS as limits,
   AIR_COMPILER_OPTIONS,
+  AIR_COMPILER_SOURCE_LANGUAGE,
   airCompilerFailure,
   airCompilerFailureCode,
   airCompilerIdentity,
@@ -107,7 +108,7 @@ async function compile(data) {
     output = adapter.compile(data.source, {
       iosMajor: 18,
       output: "metallib",
-      sourceLanguage: "floor-metal-3.0",
+      sourceLanguage: AIR_COMPILER_SOURCE_LANGUAGE,
       mathProfile: "fast-f32",
     });
     data.source = undefined;

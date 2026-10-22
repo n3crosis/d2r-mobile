@@ -82,6 +82,200 @@ function input(binary = fixture()) {
     },
   };
 }
+// Authored a2flo section/root-vector envelope, not real compiler output or reflection semantics.
+function declaredTailFixture() {
+  const original = fixture(),
+    view = new DataView(original.buffer);
+  const oldPublic = Number(view.getBigUint64(40, true));
+  const reference = tag("RFLT", u64(4)),
+    extensionSize = 70;
+  const shift = reference.length + extensionSize;
+  const dynamic = concat(tag("NAME", enc.encode("shader.metallib\0")), enc.encode("ENDT"));
+  const dynamicStart = original.length + shift,
+    reflectionStart = dynamicStart + dynamic.length;
+  // AIRR root: version 0.4.0 and two empty four-byte-element vectors.
+  const airr = concat(
+    u32(20),
+    enc.encode("AIRR"),
+    u16(0),
+    u16(10),
+    u16(24),
+    u16(4),
+    u16(16),
+    u16(20),
+    u32(10),
+    u32(0),
+    u32(4),
+    u32(0),
+    u32(8),
+    u32(8),
+    u32(0),
+    u32(0),
+  );
+  const groupStart = reflectionStart + 4,
+    padding = (16 - ((groupStart + 12) % 16)) % 16;
+  const reflection = concat(
+    u32(1),
+    u32(16 + padding + airr.length),
+    enc.encode("RBUF"),
+    u32(padding + airr.length),
+    new Uint8Array(padding),
+    airr,
+    enc.encode("ENDT"),
+  );
+  const extension = concat(
+    tag("HDYN", concat(u64(dynamicStart), u64(dynamic.length))),
+    tag("RLST", concat(u64(reflectionStart), u64(reflection.length))),
+    tag("UUID", new Uint8Array(16)),
+    enc.encode("ENDT"),
+  );
+  assert.equal(extension.length, extensionSize);
+  const binary = concat(
+    original.subarray(0, oldPublic - 4),
+    reference,
+    original.subarray(oldPublic - 4, oldPublic),
+    extension,
+    original.subarray(oldPublic),
+    dynamic,
+    reflection,
+  );
+  binary.set(u64(binary.length), 16);
+  binary.set(u64(Number(view.getBigUint64(32, true)) + reference.length), 32);
+  binary.set(u32(view.getUint32(92, true) + reference.length), 92);
+  for (const field of [40, 56, 72])
+    binary.set(u64(Number(view.getBigUint64(field, true)) + shift), field);
+  return {
+    binary,
+    extension: oldPublic + reference.length,
+    reference: oldPublic + 2,
+    dynamic: dynamicStart,
+    reflection: reflectionStart,
+    group: groupStart,
+    padding,
+    airr: groupStart + 12 + padding,
+    bitcode: original.length - 8 + shift,
+  };
+}
+
+test("accepts only declared non-debug HDYN/RLST envelopes and binds the entire output", async () => {
+  const f = declaredTailFixture(),
+    request = input(f.binary);
+  const options = {
+    entry: "main0",
+    stage: "fragment",
+    minimumOS: [18, 0],
+    languageVersion: [2, 3],
+    metadataLengthIncludesPrefix: false,
+  };
+  const inspected = await inspectCompiledMetalLibrary(f.binary, options);
+  const legacy = await inspectCompiledMetalLibrary(fixture(), options);
+  const first = await acceptCompiledShaderOutput(request);
+  assert.equal(inspected.validation, "container-and-integrity-only");
+  assert.equal(inspected.functions[0].bitcodeSha256, legacy.functions[0].bitcodeSha256);
+  assert.equal(first.receipt.outputSha256, hash(f.binary));
+  assert.equal(first.receipt.sourceSha256, request.expected.sourceSha256);
+  // A valid tail-only change retains the bitcode hash but changes the complete output receipt.
+  f.binary[f.dynamic + 6] = "S".charCodeAt(0);
+  const second = await acceptCompiledShaderOutput(input(f.binary));
+  assert.notEqual(first.receipt.outputSha256, second.receipt.outputSha256);
+  assert.notEqual(first.receiptSha256, second.receiptSha256);
+  assert.equal(
+    (await inspectCompiledMetalLibrary(f.binary, options)).functions[0].bitcodeSha256,
+    inspected.functions[0].bitcodeSha256,
+  );
+});
+
+for (const [name, mutate, error] of [
+  [
+    "undeclared suffix",
+    (f) => {
+      f.binary = concat(f.binary, u32(0));
+      f.binary.set(u64(f.binary.length), 16);
+    },
+    /unaccounted or overlapping declared tail/,
+  ],
+  [
+    "overlapping dynamic section",
+    (f) => f.binary.set(u64(f.dynamic - 1), f.extension + 6),
+    /unaccounted or overlapping declared tail/,
+  ],
+  [
+    "out-of-bounds reflection section",
+    (f) => f.binary.set(u64(f.binary.length), f.extension + 36),
+    /section out of bounds/,
+  ],
+  [
+    "debug source declaration",
+    (f) => f.binary.set(enc.encode("HSRD"), f.extension + 44),
+    /embedded debug source/,
+  ],
+  [
+    "unknown declaration",
+    (f) => f.binary.set(enc.encode("FAKE"), f.extension + 44),
+    /unsupported declared library tail/,
+  ],
+  [
+    "reflection reference mismatch",
+    (f) => f.binary.set(u64(5), f.reference),
+    /reflection offset mismatch/,
+  ],
+  [
+    "reflection count mismatch",
+    (f) => f.binary.set(u32(2), f.reflection),
+    /reflection count mismatch/,
+  ],
+  [
+    "RBUF payload size mismatch",
+    (f) => f.binary.set(u32(8), f.group + 8),
+    /invalid reflection group/,
+  ],
+  [
+    "reflection alignment padding",
+    (f) => {
+      assert.ok(f.padding > 0);
+      f.binary[f.group + 12] = 1;
+    },
+    /invalid reflection alignment padding/,
+  ],
+  [
+    "reflection terminator",
+    (f) => f.binary.set(enc.encode("SARC"), f.binary.length - 4),
+    /invalid reflection terminator/,
+  ],
+  [
+    "AIRR identifier",
+    (f) => f.binary.set(enc.encode("MSLS"), f.airr + 4),
+    /invalid AIRR reflection envelope/,
+  ],
+  [
+    "reflection root bounds",
+    (f) => f.binary.set(u32(0xfffffffc), f.airr),
+    /reflection range out of bounds/,
+  ],
+  [
+    "reflection vector bounds",
+    (f) => f.binary.set(u32(0xffffffff), f.airr + 44),
+    /reflection range out of bounds/,
+  ],
+  [
+    "bitcode digest with valid tail",
+    (f) => {
+      f.binary[f.bitcode + 7] ^= 1;
+    },
+    /bitcode digest mismatch/,
+  ],
+])
+  test(`rejects declared-tail ${name}`, async () => {
+    const f = declaredTailFixture();
+    mutate(f);
+    await assert.rejects(acceptCompiledShaderOutput(input(f.binary)), error);
+  });
+
+test("continues rejecting legacy libraries with undeclared tails", async () => {
+  const binary = concat(fixture(), enc.encode("fragment source text"));
+  binary.set(u64(binary.length), 16);
+  await assert.rejects(acceptCompiledShaderOutput(input(binary)), /unaccounted library tail/);
+});
 for (const wrapped of [false, true])
   test(`binds source/compiler/options/output for ${wrapped ? "wrapped" : "raw"} bitcode envelope`, async () => {
     const request = input(fixture({ wrapped }));

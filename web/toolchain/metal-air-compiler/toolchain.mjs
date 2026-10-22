@@ -189,7 +189,6 @@ if (command === "prepare") {
     "clangCodeGen",
     "clangFrontend",
     "LLVMMetalLib",
-    "LLVMBitWriter50",
     "LLVMBitWriter140",
   ]);
   run("emcmake", [

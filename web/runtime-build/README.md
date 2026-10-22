@@ -70,6 +70,22 @@ overwritten. Ordinary `build.mjs` still requires a verified compiler input and
 never implicitly launches LLVM. No new CI job, release publication, full native
 Clang build, proof suite or source-only substitute is introduced.
 
+The same job also produces a separate `air-compiler-source` artifact before
+uploading `web-preview`. It contains the complete SHA-256-pinned upstream source
+archive, every ordered repository patch, the exact authored API/headers, build
+recipe, source manifest, licenses and the matching binary build receipt. Nothing
+is added to the browser payload. A per-file source report and its independently
+logged digest bind the delivery to the current compiler source identity.
+
+`prepare-air-compiler-source.mjs` reconstructs the patched tree only to verify
+the archive contents and every modified source-file digest, then discards that
+temporary tree. It never compiles LLVM or packages an existing object directory.
+The original public source archive is cached separately under its exact pinned
+SHA-256; a corrupt cache fails explicitly. An older compiler-output cache without
+this source cache needs one source download/preparation, not a compiler rebuild.
+Both artifacts have the same retention period and should be retained together
+when distributing the GPL-covered compiler. See its `THIRD_PARTY_NOTICES.md`.
+
 The compiler's generated factory, WASM, receipt, source pin, licenses/notices,
 and closed Worker are included in the normal digest-verified runtime inventory
 and transport. Shader-enabled preload instantiates it before any private input;
@@ -79,6 +95,13 @@ closing or retiring the shader runtime terminates compiler workers. Legacy
 inventories remain readable, but requesting compiled shader output without an
 authenticated compiler fails explicitly. Keeping source files is never reported
 as successful Metal library compilation.
+
+The a2flo migration uses compiler receipt/component schema version 2 and binds
+`sourceLanguage: "floor-metal-3.2"` explicitly. C API version 2 and header-bundle
+version 2 are unchanged; they alone cannot identify the frontend language.
+Old AIR schema-1 components and missing/old language identities are rejected
+rather than relabeled. Pre-AIR inventory parsing remains compatible without
+inventing compiler availability.
 
 ### Reusing an unchanged pre-AIR runtime locally
 

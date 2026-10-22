@@ -14,7 +14,7 @@ This is a native-validated addition to the experimental compiler, not a claim of
 
 Authored float scalar/vector math wrappers emit real AIR calls for fma, sqrt, rsqrt, exp2, log2, floor, trunc, rint, abs, min, max and clamp. Standard fast wrappers require profile 1; `metal::fast` explicitly names the fast behavior. The subset includes integer min/max/clamp, equal-size bit casting, scalar select/isnan, and a vector-alias-only `simd/simd.h` shim.
 
-Nine authored frontend fixtures and the API header/profile regression suite pass, alongside the original API smoke suite. The regression suite covers exact profile selection, forged filename rejection, assembly/redeclaration rejection, and repeated compilations. The native frontend uses its fork-specific `metal3.0` mode; emitted library metadata reports AIR 2.7/MSL 3.2, which does not imply complete MSL 3.2 language support.
+Nine authored frontend fixtures and the API header/profile regression suite pass, alongside the original API smoke suite. The regression suite covers exact profile selection, forged filename rejection, assembly/redeclaration rejection, and repeated compilations. These execution results belong to the prior gzorin-based baseline. The migrated a2flo frontend selects `metal3.2` mode and retains AIR 2.7/MSL 3.2 output; it still needs its own CI build and validation, and does not imply complete MSL 3.2 language support.
 
 The narrow `select(floatN, floatN, isnan(floatN))` path uses internal component masks for N=2,3,4; these are not MSL bool-vector storage or interface types. Scalar and vector NaN classification uses IEEE float-bit tests so fast-math cannot remove sanitization. See [NAN_CLASSIFICATION.md](NAN_CLASSIFICATION.md).
 

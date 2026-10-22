@@ -27,7 +27,7 @@ for (const [stage, define, values] of [
       "air64-apple-ios18.0.0",
       "-x",
       "metal",
-      "-std=metal3.0",
+      "-std=metal3.2",
       "-Werror=unknown-attributes",
       "-I",
       join(root, "api/include"),

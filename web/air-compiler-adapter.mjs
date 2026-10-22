@@ -1,5 +1,6 @@
 // 实验性 floor-Metal C API 的内存边界；不加载资产、不联网，也不声称兼容 Apple MSL。
 // Memory boundary for the experimental floor-Metal C API; no asset loading, network, or Apple MSL compatibility claim.
+import { AIR_COMPILER_SOURCE_LANGUAGE } from "./air-compiler-contract.mjs";
 const LIMITS = Object.freeze({
   source: 4 * 1024 * 1024,
   output: 64 * 1024 * 1024,
@@ -118,7 +119,7 @@ export function createAirCompilerAdapter(
     if (signal?.aborted) throw failure("AIR_ABORTED");
   };
   return Object.freeze({
-    status: "experimental-floor-metal-3.0-not-apple-msl-compatible",
+    status: `experimental-${AIR_COMPILER_SOURCE_LANGUAGE}-not-apple-msl-compatible`,
     limits: LIMITS,
     apiVersion,
     get headerSha256() {
@@ -140,7 +141,7 @@ export function createAirCompilerAdapter(
       {
         iosMajor = 18,
         output = "metallib",
-        sourceLanguage = "floor-metal-3.0",
+        sourceLanguage = AIR_COMPILER_SOURCE_LANGUAGE,
         mathProfile = "conservative",
         signal,
       } = {},
@@ -152,7 +153,7 @@ export function createAirCompilerAdapter(
       if (
         !["conservative", "fast-f32"].includes(mathProfile) ||
         (apiVersion !== 2 && mathProfile !== "conservative") ||
-        sourceLanguage !== "floor-metal-3.0" ||
+        sourceLanguage !== AIR_COMPILER_SOURCE_LANGUAGE ||
         ![18, 26].includes(iosMajor) ||
         !["metallib", "llvm-text"].includes(output)
       )

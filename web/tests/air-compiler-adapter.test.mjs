@@ -75,6 +75,7 @@ test("copies before result cleanup and reacquires heap after multiple detached-v
   assert.equal(result.status, "experimental-output-unvalidated");
   assert.equal(result.requiresWorkerTermination, true);
   assert.equal(adapter.headerSha256, fingerprint);
+  assert.equal(adapter.status, "experimental-floor-metal-3.2-not-apple-msl-compatible");
   assert.equal(adapter.used, true);
   assert.deepEqual(
     f.calls.map((x) => x[0]),
@@ -87,13 +88,18 @@ test("supports only the exact output-kind, source-language and target ABI", () =
     { output: "spirv" },
     { iosMajor: 17 },
     { sourceLanguage: "apple-msl-2.3" },
+    { sourceLanguage: "floor-metal-3.0" },
   ]) {
     const f = fake();
     assert.throws(() => f.create().compile("x", options), { code: "AIR_BAD_OPTIONS" });
     assert.equal(f.calls.length, 0);
   }
   const f = fake();
-  f.create().compile("x", { iosMajor: 26, output: "llvm-text" });
+  f.create().compile("x", {
+    iosMajor: 26,
+    output: "llvm-text",
+    sourceLanguage: "floor-metal-3.2",
+  });
   assert.deepEqual(f.calls.find((c) => c[0] === "compile").slice(-2), [26, 1]);
 });
 test("validates the pinned header fingerprint and exports without exposing module exceptions", () => {

@@ -4,6 +4,12 @@ This is an **experimental compiler integrated into the browser IPA shader path**
 
 这是已接入浏览器 IPA 着色器流程的实验性编译器，已完成部分原生及 Node WASM 执行检查。完整目录的 Chrome 编译及与 Xcode 等效的行为仍未验证。流程包含真实的语法解析、语义分析、AIR 降级和 MTLB 输出，不是容器重打包或固定示例输出。本工具包不调用 Apple 编译器、模拟器、设备或远程编译服务。
 
+## Upstream migration / 上游迁移
+
+The source base is now pinned to a2flo/floor_llvm at `4b173e3db383ec7164afb11ee7dc86609c88f052`. Existing successful native and Node WASM results refer to the previous gzorin baseline; they are not transferred automatically to this migration. CI performs the new build. No local rebuild or full-game validation is claimed.
+
+当前基于固定的 a2flo 上游版本。既有原生及 Node WASM 成功记录属于先前的 gzorin 基线，不能自动视为本次迁移通过；新版本交由 CI 构建，未宣称本地重建或完整游戏验证。
+
 ## Reproduce the native milestone / 复现原生阶段
 
 Prerequisites: Linux, C++20 compiler (tested GCC 14), CMake 3.20+, Ninja, Git, tar and Node.js or Bun. Tested bootstrap used CMake 4.4.4, Ninja 1.13.2, `-O1`, assertions, four compile jobs and one link job on a roughly 10 GiB RAM machine. Default below is two compile jobs; use `--jobs 1` on a constrained host. This builds a large compiler and needs several GiB of memory/disk, not just the small package directory.
@@ -43,7 +49,7 @@ node toolchain.mjs test --work /path/to/empty-work
 
 本轮域着色器检查保留了两个未支持的输入类别：需要填充的控制点记录，以及隐式向量 `llvm.fmuladd`。接口检查通过不代表这些情况已实现。
 
-尚未完成浏览器执行、完整游戏覆盖、完整 MSL 库和高级功能。`api/CMakeLists.txt` now builds a real WASM target tested under Node with Worker shims; production wiring does not by itself establish a finished or fully validated browser compiler. The frontend currently accepts Metal 3.0 syntax mode while the iOS 18 AIR writer emits a Metal 3.2 version tag; that tag must not be treated as full Metal 3.2 support.
+尚未完成浏览器执行、完整游戏覆盖、完整 MSL 库和高级功能。`api/CMakeLists.txt` now builds a real WASM target tested under Node with Worker shims; production wiring does not by itself establish a finished or fully validated browser compiler. The migrated a2flo frontend uses Metal 3.2 syntax mode with iOS 18 / AIR 2.7 / MSL 3.2 output. Selecting that mode does not establish complete MSL 3.2 support. Earlier native/Node results in this document describe the prior gzorin-based baseline unless explicitly identified as a2flo results; the migration requires its own CI build and validation.
 
 GPU-specific pipeline archives and iPhone verification are outside this task. Do not invoke an iOS simulator. The target is the Xcode-built IPA's precompiled shader-library behavior, not eliminating all device-side pipeline work.
 

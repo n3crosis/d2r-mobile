@@ -1,10 +1,12 @@
 // 新运行时必须携带真实编译器闭包；旧清单仍可读取，但没有编译服务。
 // New runtimes carry a real compiler closure; legacy inventories remain readable without a compiler service.
+import { AIR_COMPILER_SOURCE_LANGUAGE } from "./air-compiler-contract.mjs";
 export const AIR_COMPILER_RUNTIME = Object.freeze({
-  version: 1,
+  version: 2,
   id: "d2r-floor-metal-air-v2",
   apiVersion: 2,
   headerBundleVersion: 2,
+  sourceLanguage: AIR_COMPILER_SOURCE_LANGUAGE,
   entry: "sealed-workers/air-compiler-worker.mjs",
   factory: "toolchain/metal-air-compiler/dist/d2r_air_wasm.mjs",
   wasm: "toolchain/metal-air-compiler/dist/d2r_air_wasm.wasm",
@@ -20,10 +22,11 @@ const boundedFile = (value) =>
 
 export function validateAirCompilerBuildReceipt(report) {
   if (
-    report?.version !== 1 ||
+    report?.version !== AIR_COMPILER_RUNTIME.version ||
     report.id !== AIR_COMPILER_RUNTIME.id ||
     report.apiVersion !== 2 ||
     report.headerBundleVersion !== 2 ||
+    report.sourceLanguage !== AIR_COMPILER_SOURCE_LANGUAGE ||
     report.emscripten !== "4.0.20" ||
     !sha256(report.headerSha256) ||
     !sha256(report.sourceFingerprintSha256) ||
