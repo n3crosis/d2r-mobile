@@ -23,7 +23,9 @@ endforeach()
 string(SHA256 AIR_COMPAT_SHA256 "${AIR_HEADER_FINGERPRINT}")
 configure_file(compat_header.inc.in compat_header.inc @ONLY)
 add_library(d2r_air_api STATIC air_compiler.cpp)
-target_compile_features(d2r_air_api PRIVATE cxx_std_17)
+# a2flo LLVM headers use C++20 concepts; the wrapper must match the compiler core.
+# a2flo LLVM 头文件使用 C++20 concepts；封装层必须与编译器核心一致。
+target_compile_features(d2r_air_api PRIVATE cxx_std_20)
 # Match the LLVM build's ABI: its default static libraries omit RTTI.
 if(NOT LLVM_ENABLE_RTTI)
   if(MSVC)
