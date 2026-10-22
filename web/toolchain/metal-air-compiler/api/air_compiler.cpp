@@ -1,7 +1,6 @@
 #include "air_compiler.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/SourceManager.h"
-#include "clang/AST/ASTContext.h"
 #include "clang/AST/Attr.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/CodeGen/CodeGenAction.h"
@@ -197,12 +196,6 @@ public:
 protected:
   std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(
       clang::CompilerInstance &compiler, llvm::StringRef file) override {
-    // Metal half is a native scalar type, but this fork reuses OpenCL 1.2
-    // semantic checks. Target support alone does not enable the fp16 gate.
-    // Set this AST's feature before Sema handles any header or user source;
-    // native half arithmetic/ABI options already follow from Metal's OpenCL mode.
-    if (compiler.getLangOpts().Metal)
-      compiler.getASTContext().getOpenCLFeatures().enable("cl_khr_fp16");
     compiler.getPreprocessor().addPPCallbacks(
         std::make_unique<ProtectSemanticDiagnostics>(compiler.getDiagnostics()));
     auto codegen = clang::EmitLLVMOnlyAction::CreateASTConsumer(compiler, file);

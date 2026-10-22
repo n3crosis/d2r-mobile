@@ -40,6 +40,8 @@ export const SOURCE_ONLY_RUNTIME_ASSETS = Object.freeze([
   "toolchain/metal-air-compiler/fixtures/msl-patch-entry-name.metal",
   "toolchain/metal-air-compiler/fixtures/constant-vector-pointer-reads.metal",
   "toolchain/metal-air-compiler/fixtures/direct-buffer-vector-pointer.metal",
+  "toolchain/metal-air-compiler/fixtures/conditional-distinct-buffer-rows.metal",
+  "toolchain/metal-air-compiler/fixtures/loop-carried-buffer-pointer.metal",
   "ipa-signing-client.mjs",
   "ipa-signing-contract.mjs",
   "ipa-signing-fs.mjs",

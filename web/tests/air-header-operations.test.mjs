@@ -159,22 +159,21 @@ test("quad tessellation factors use the verified shader half layout", async () =
   assert(fixtures.includes("quad factors use half stores, not numeric integer conversion"));
 });
 
-test("Metal activates exactly the shared fp16 semantic gate before creating codegen", async () => {
+test("the authenticated Metal umbrella enables fp16 during parsing after semantic initialization", async () => {
   const apiSource = await read("air_compiler.cpp");
+  const stdlib = await read("include/metal_stdlib");
   const fixtures = await read("operations_smoke.h");
-  const activation = 'compiler.getASTContext().getOpenCLFeatures().enable("cl_khr_fp16");';
-  assert(apiSource.includes('#include "clang/AST/ASTContext.h"'));
-  assert.match(
-    apiSource,
-    /if \(compiler\.getLangOpts\(\)\.Metal\)\s*compiler\.getASTContext\(\)\.getOpenCLFeatures\(\)\.enable\("cl_khr_fp16"\);/,
-  );
-  assert.equal(apiSource.split(activation).length - 1, 1);
-  assert(apiSource.indexOf(activation) > apiSource.indexOf("CreateASTConsumer("));
-  assert(
-    apiSource.indexOf(activation) <
-      apiSource.indexOf("auto codegen = clang::EmitLLVMOnlyAction::CreateASTConsumer"),
-  );
+  const activation = "#pragma OPENCL EXTENSION cl_khr_fp16 : enable";
+  assert.equal(stdlib.split(activation).length - 1, 1);
+  assert(stdlib.indexOf(activation) > stdlib.indexOf("#define D2R_EXPERIMENTAL_METAL_STDLIB"));
+  assert(stdlib.indexOf(activation) < stdlib.indexOf("namespace metal"));
+  assert(stdlib.indexOf(activation) < stdlib.indexOf("D2R_VECTOR_TYPES(half)"));
+  assert.doesNotMatch(stdlib, /#pragma OPENCL EXTENSION (?!cl_khr_fp16\s*: enable)/);
+  // CreateASTConsumer is too early: Metal's C++20 module reader subsequently
+  // overwrites OpenCLFeatures during Sema::Initialize. Do not restore that hook.
+  assert.doesNotMatch(apiSource, /getOpenCLFeatures\(\)\.enable/);
   assert.doesNotMatch(apiSource, /-cl-ext=|#pragma OPENCL EXTENSION/);
+  assert(apiSource.includes('"-I/include", "-include", "metal_stdlib"'));
   assert(fixtures.includes("for (const unsigned profile : {0u, 1u})"));
   for (const marker of [
     "native Metal half semantics in both profiles",
@@ -227,13 +226,15 @@ test("real-WASM CI canary includes all five live operations in a fourth authored
   const canary = await read("../ci-compile-canary.mjs");
   const fixture = await read("../fixtures/msl-scalar-operations.metal");
   const cases = [...canary.matchAll(/stage: "(vertex|fragment|kernel)",\s*filename: "([^"]+)"/g)];
-  assert.equal(cases.length, 10);
+  assert.equal(cases.length, 12);
   assert.equal(new Set(cases.map((entry) => entry[1])).size, 3);
   assert(
     cases.some((entry) => entry[1] === "kernel" && entry[2] === "msl-scalar-operations.metal"),
   );
   assert(canary.includes("maxCompilations: cases.length"));
-  assert(canary.includes("authored-ten-fixture-three-stage-compilation-and-container-integrity"));
+  assert(
+    canary.includes("authored-twelve-fixture-three-stage-compilation-and-container-integrity"),
+  );
   assert.match(canary, /adapter\.compile\(source,[\s\S]*?output: "metallib"/);
   assert.match(canary, /inspectCompiledMetalLibrary\(output\.bytes,/);
   assert.match(fixture, /kernel void main0\(constant float \*input/);
@@ -294,6 +295,8 @@ test("real-WASM canaries retain named entries and public compiler regression inp
     ["vertex", "msl-patch-entry-name.metal"],
     ["fragment", "constant-vector-pointer-reads.metal"],
     ["fragment", "direct-buffer-vector-pointer.metal"],
+    ["fragment", "conditional-distinct-buffer-rows.metal"],
+    ["fragment", "loop-carried-buffer-pointer.metal"],
   ]) {
     assert(
       cases.some((entry) => entry[1] === stage && entry[2] === filename),
@@ -304,6 +307,8 @@ test("real-WASM canaries retain named entries and public compiler regression inp
     "patch_linkage_probe",
     "constant_vector_pointer_reads",
     "direct_buffer_vector_pointer",
+    "conditional_distinct_buffer_rows",
+    "loop_carried_buffer_pointer",
   ])
     assert(canary.includes(`entry: "${entry}"`), entry);
   assert.match(
@@ -352,6 +357,27 @@ test("real-WASM canaries retain named entries and public compiler regression inp
   assert(directPointer.includes("int4 selected = words[row]"));
   assert(directPointer.includes("int seed = words[0][lane]"));
   assert(directPointer.includes("return float4(float(selected.x ^ seed)"));
+
+  // Keep the exact public inputs that demonstrated select/PHI failures. Hashes
+  // authenticate authored fixture bytes, not compiler success or private data.
+  for (const [filename, entry, expectedHash] of [
+    [
+      "conditional-distinct-buffer-rows.metal",
+      "conditional_distinct_buffer_rows",
+      "92a97acb7f5c670953d634b2a1635da98db32c283cfe98e53312728c81277ef4",
+    ],
+    [
+      "loop-carried-buffer-pointer.metal",
+      "loop_carried_buffer_pointer",
+      "99e11691adfe5cef525fccfa3d64e5b21d03800f36bb351d1db50e6316247314",
+    ],
+  ]) {
+    const source = await read(`../fixtures/${filename}`);
+    assert.equal(digest(source), expectedHash, filename);
+    assert(source.includes(`fragment float4 ${entry}(`), filename);
+    assert(source.includes("constant VectorStorage* first [[id(0)]]"));
+    assert(source.includes("constant VectorStorage* second [[id(1)]]"));
+  }
 
   // All fixed fixture paths stay within the tracked compiler-prefix source
   // copy closure; this does not execute or import the WASM canary.

@@ -73,20 +73,32 @@
  				if (func.isDeclaration()) {
 --- a/llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp
 +++ b/llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp
-@@ -660,6 +660,142 @@
+@@ -108,6 +108,11 @@
+ 		
+ 		// gather pointer bitcast instructions
+ 		std::vector<BitCastInst*> ptr_bc_instrs;
++		struct constant_vector_rejection {
++			StringRef reason;
++			StringRef opcode;
++		};
++		std::unordered_map<const BitCastInst*, constant_vector_rejection> constant_vector_rejections;
+ 		
+ 		PointerBCFixup() :
+ 		FunctionPass(ID) {
+@@ -660,9 +665,263 @@
  			return true;
  		}
  		
 +		// InstCombine can fold a zero-offset constant-buffer array access into
 +		// a struct* -> vector* bitcast followed by vector/scalar GEPs. Rebuild
-+		// the read-only use tree with the actual element types, then bitcast
++		// the read-only pointer graph with the actual element types, then bitcast
 +		// the loaded values, never the pointers. Do not generalize this to
 +		// padding, regrouped vector lanes, pointer escapes, or writable memory.
 +		bool fix_metal_constant_vector_loads(BitCastInst& BC) {
 +			auto src_ptr_type = cast<PointerType>(BC.getSrcTy());
 +			auto dst_ptr_type = cast<PointerType>(BC.getDestTy());
 +			// AIR address space 2 is constant storage.
-+			if (!is_metal || src_ptr_type->getAddressSpace() != 2 ||
++			if (!is_metal || src_ptr_type->getAddressSpace() != 2 || dst_ptr_type->getAddressSpace() != 2 ||
 +				src_ptr_type->isOpaque() || dst_ptr_type->isOpaque()) {
 +				return false;
 +			}
@@ -99,7 +111,6 @@
 +			// Only walk zero-offset, single-field wrappers and nonempty arrays.
 +			// The final GEP names the original storage rather than loading a
 +			// whole buffer or pretending the buffer has a different layout.
-+			SmallVector<Value*, 8> indices { ConstantInt::get(Type::getInt32Ty(*ctx), 0) };
 +			auto element_type = src_type;
 +			for (;;) {
 +				if (auto st = dyn_cast<StructType>(element_type)) {
@@ -115,7 +126,6 @@
 +				} else {
 +					break;
 +				}
-+				indices.push_back(ConstantInt::get(Type::getInt32Ty(*ctx), 0));
 +			}
 +			auto src_vec = dyn_cast<FixedVectorType>(element_type);
 +			if (!src_vec || src_vec->getNumElements() != dst_vec->getNumElements()) {
@@ -133,59 +143,164 @@
 +				return false;
 +			}
 +
-+			// Validate the entire use tree before changing IR. Identical lane
-+			// counts and scalar/vector strides let us retain every GEP index
-+			// verbatim, including dynamic and negative indices and inbounds.
-+			SmallVector<Value*, 8> pointers { &BC };
-+			SmallVector<GetElementPtrInst*, 8> geps;
++			// Validate the whole read-only pointer SSA component in both directions.
++			// A merge is safe only when every arm has the same typed storage view.
++			// Unknown pointer roots, casts with regrouped lanes, and escapes fail
++			// before any mutation. Native source pointers are unchanged boundaries.
++			SmallVector<Instruction*, 16> pointers { &BC };
++			SmallPtrSet<Instruction*, 32> seen { &BC };
++			SmallVector<BitCastInst*, 4> roots;
++			std::unordered_map<BitCastInst*, SmallVector<Value*, 8>> root_indices;
++			SmallVector<PHINode*, 4> phis;
++			SmallVector<Instruction*, 8> derived;
 +			SmallVector<LoadInst*, 8> loads;
++			// Fixed prose and one compiler-defined opcode only. Retain reasons
++			// across candidate attempts, but emit nothing unless legacy rejects.
++			auto reject = [&](StringRef reason, const Instruction* culprit = nullptr) {
++				constant_vector_rejection detail { reason, culprit ? culprit->getOpcodeName() : "" };
++				for (auto node : seen) {
++					if (auto root = dyn_cast<BitCastInst>(node)) constant_vector_rejections[root] = detail;
++				}
++				return false;
++			};
++			auto add_pointer = [&](Value* value) {
++				auto ptr_type = dyn_cast<PointerType>(value->getType());
++				auto instr = dyn_cast<Instruction>(value);
++				if (!instr) return reject("unmapped argument or constant pointer root");
++				if (!ptr_type || ptr_type->isOpaque() || ptr_type->getAddressSpace() != 2 ||
++					(ptr_type->getPointerElementType() != dst_vec && ptr_type->getPointerElementType() != dst_scalar)) {
++					return reject("pointer type or address-space mismatch", instr);
++				}
++				if (seen.insert(instr).second) pointers.push_back(instr);
++				return true;
++			};
 +			for (size_t i = 0; i < pointers.size(); ++i) {
 +				auto ptr = pointers[i];
++				if (auto root = dyn_cast<BitCastInst>(ptr)) {
++					auto input_type = dyn_cast<PointerType>(root->getSrcTy());
++					if (!input_type || input_type->isOpaque() || input_type->getAddressSpace() != 2 ||
++						root->getSrcTy() == root->getDestTy()) return reject("unsupported root cast", root);
++					auto output_element = root->getType()->getPointerElementType();
++					auto expected = output_element == dst_vec ? static_cast<Type*>(src_vec) : src_scalar;
++					auto input_element = input_type->getPointerElementType();
++					SmallVector<Value*, 8> path;
++					if (input_element != expected) {
++						if (output_element != dst_vec || !input_element->isStructTy() || !input_element->isSized())
++							return reject("root scalar or vector storage shape mismatch", root);
++						path.push_back(ConstantInt::get(Type::getInt32Ty(*ctx), 0));
++						for (;;) {
++							if (auto st = dyn_cast<StructType>(input_element)) {
++								if (st->getNumElements() != 1 || DL->getStructLayout(st)->getElementOffset(0) != 0)
++									return reject("root wrapper layout mismatch", root);
++								input_element = st->getElementType(0);
++							} else if (auto arr = dyn_cast<ArrayType>(input_element)) {
++								if (!arr->getNumElements()) return reject("empty root array", root);
++								input_element = arr->getElementType();
++							} else break;
++							path.push_back(ConstantInt::get(Type::getInt32Ty(*ctx), 0));
++						}
++						if (input_element != src_vec) return reject("root vector element type mismatch", root);
++					}
++					roots.push_back(root);
++					root_indices.emplace(root, std::move(path));
++				} else if (auto gep = dyn_cast<GetElementPtrInst>(ptr)) {
++					auto gep_type = gep->getSourceElementType();
++					if ((gep_type != dst_vec && gep_type != dst_scalar) || gep->getNumIndices() == 0 ||
++						gep->getNumIndices() > (gep_type == dst_vec ? 2u : 1u)) return reject("GEP element or index shape mismatch", gep);
++					if (!add_pointer(gep->getPointerOperand())) return false;
++					for (auto& index : gep->indices()) if (!index->getType()->isIntegerTy()) return reject("vector GEP index", gep);
++					derived.push_back(gep);
++				} else if (auto phi = dyn_cast<PHINode>(ptr)) {
++					for (auto& incoming : phi->incoming_values()) if (!add_pointer(incoming)) return false;
++					phis.push_back(phi);
++				} else if (auto select = dyn_cast<SelectInst>(ptr)) {
++					if (!select->getCondition()->getType()->isIntegerTy(1)) return reject("vector select condition", select);
++					if (!add_pointer(select->getTrueValue()) || !add_pointer(select->getFalseValue())) return false;
++					derived.push_back(select);
++				} else return reject("unmapped pointer-producing instruction", ptr);
++
 +				for (auto user : ptr->users()) {
 +					if (auto ld = dyn_cast<LoadInst>(user)) {
-+						if (ld->getPointerOperand() != ptr || !ld->isSimple()) {
-+							return false;
-+						}
++						if (!ld->isSimple()) return reject("volatile or atomic load", ld);
++						if (ld->getPointerOperand() != ptr || ld->getType() != ptr->getType()->getPointerElementType())
++							return reject("load pointer or value type mismatch", ld);
 +						loads.push_back(ld);
-+					} else if (auto gep = dyn_cast<GetElementPtrInst>(user)) {
-+						auto gep_type = gep->getSourceElementType();
-+						if (gep->getPointerOperand() != ptr || !gep->getType()->isPointerTy() ||
-+							(gep_type != dst_vec && gep_type != dst_scalar) ||
-+							gep->getNumIndices() == 0 ||
-+							gep->getNumIndices() > (gep_type == dst_vec ? 2u : 1u)) {
-+							return false;
-+						}
-+						for (auto& index : gep->indices()) {
-+							if (!index->getType()->isIntegerTy()) {
-+								return false;
-+							}
-+						}
-+						geps.push_back(gep);
-+						pointers.push_back(gep);
-+					} else {
-+						return false;
-+					}
++					} else if (isa<GetElementPtrInst>(user) || isa<PHINode>(user) || isa<SelectInst>(user)) {
++						if (!add_pointer(user)) return false;
++					} else return reject("unsupported pointer user", dyn_cast<Instruction>(user));
 +				}
 +			}
-+			if (loads.empty()) {
-+				return false;
++			if (loads.empty()) return reject("no ordinary load");
++			for (auto root : roots) {
++				if (auto source = dyn_cast<Instruction>(root->getOperand(0)); source && seen.count(source))
++					return reject("root depends on rewritten pointer component", root);
 +			}
 +
-+			auto base = GetElementPtrInst::Create(src_type, BC.getOperand(0), indices,
-+												 BC.getName() + ".storage", &BC);
-+			base->setDebugLoc(BC.getDebugLoc());
-+			std::unordered_map<Value*, Value*> replacements { { &BC, base } };
-+			for (auto gep : geps) {
-+				auto ptr = replacements.at(gep->getPointerOperand());
-+				SmallVector<Value*, 2> gep_indices;
-+				for (auto& index : gep->indices()) {
-+					gep_indices.push_back(index);
++			// PHI placeholders break loop-carried dependencies. Plan the rest in
++			// dependency order before mutation, rejecting any unexpected cycle.
++			SmallPtrSet<Value*, 32> ready;
++			for (auto root : roots) ready.insert(root);
++			for (auto phi : phis) ready.insert(phi);
++			SmallVector<Instruction*, 8> ordered;
++			while (ordered.size() != derived.size()) {
++				auto previous_size = ordered.size();
++				for (auto instr : derived) {
++					if (ready.count(instr)) continue;
++					if (auto gep = dyn_cast<GetElementPtrInst>(instr)) {
++						if (!ready.count(gep->getPointerOperand())) continue;
++					} else {
++						auto select = cast<SelectInst>(instr);
++						if (!ready.count(select->getTrueValue()) || !ready.count(select->getFalseValue())) continue;
++					}
++					ready.insert(instr);
++					ordered.push_back(instr);
 +				}
-+				auto typed_gep = GetElementPtrInst::Create(ptr->getType()->getPointerElementType(), ptr,
-+															 gep_indices, gep->getName() + ".typed", gep);
-+				typed_gep->setIsInBounds(gep->isInBounds());
-+				typed_gep->setDebugLoc(gep->getDebugLoc());
-+				replacements.emplace(gep, typed_gep);
++				if (previous_size == ordered.size()) return reject("non-PHI dependency cycle");
++			}
++
++			std::unordered_map<Value*, Value*> replacements;
++			for (auto root : roots) {
++				auto& path = root_indices.at(root);
++				Value* base = root->getOperand(0);
++				if (!path.empty()) {
++					auto storage = GetElementPtrInst::Create(base->getType()->getPointerElementType(), base,
++						path, root->getName() + ".storage", root);
++					storage->setDebugLoc(root->getDebugLoc());
++					base = storage;
++				}
++				replacements.emplace(root, base);
++			}
++			for (auto phi : phis) {
++				auto element = phi->getType()->getPointerElementType() == dst_vec ? static_cast<Type*>(src_vec) : src_scalar;
++				auto typed_phi = PHINode::Create(PointerType::get(element, 2), phi->getNumIncomingValues(), phi->getName() + ".typed", phi);
++				typed_phi->copyMetadata(*phi);
++				typed_phi->setDebugLoc(phi->getDebugLoc());
++				replacements.emplace(phi, typed_phi);
++			}
++			for (auto instr : ordered) {
++				Instruction* typed;
++				if (auto gep = dyn_cast<GetElementPtrInst>(instr)) {
++					auto ptr = replacements.at(gep->getPointerOperand());
++					SmallVector<Value*, 2> gep_indices;
++					for (auto& index : gep->indices()) gep_indices.push_back(index);
++					auto typed_gep = GetElementPtrInst::Create(ptr->getType()->getPointerElementType(), ptr,
++						gep_indices, gep->getName() + ".typed", gep);
++					typed_gep->setIsInBounds(gep->isInBounds());
++					typed = typed_gep;
++				} else {
++					auto select = cast<SelectInst>(instr);
++					typed = SelectInst::Create(select->getCondition(), replacements.at(select->getTrueValue()),
++						replacements.at(select->getFalseValue()), select->getName() + ".typed", select);
++				}
++				typed->copyMetadata(*instr);
++				typed->setDebugLoc(instr->getDebugLoc());
++				replacements.emplace(instr, typed);
++			}
++			for (auto phi : phis) {
++				auto typed_phi = cast<PHINode>(replacements.at(phi));
++				for (unsigned i = 0; i < phi->getNumIncomingValues(); ++i) {
++					typed_phi->addIncoming(replacements.at(phi->getIncomingValue(i)), phi->getIncomingBlock(i));
++				}
 +			}
 +			for (auto ld : loads) {
 +				auto ptr = replacements.at(ld->getPointerOperand());
@@ -206,26 +321,35 @@
 +				ld->replaceAllUsesWith(value);
 +				ld->eraseFromParent();
 +			}
-+			for (auto gep : llvm::reverse(geps)) {
-+				gep->eraseFromParent();
++			// A component can consume other bitcasts from the outer worklist.
++			// Null their slots without invalidating the active range iterator.
++			for (auto& pending : ptr_bc_instrs) {
++				if (seen.count(pending)) {
++					constant_vector_rejections.erase(pending);
++					pending = nullptr;
++				}
 +			}
-+			BC.eraseFromParent();
++			// Loads are gone and all remaining users belong to the validated
++			// graph. Sever cycles before deleting any original pointer node.
++			for (auto ptr : pointers) ptr->dropAllReferences();
++			for (auto ptr : pointers) ptr->eraseFromParent();
 +			return true;
 +		}
 +
  		bool fix_pointer_bitcasts() {
++			constant_vector_rejections.clear();
  			bool did_modify = false;
++			// Normalize complete Metal components before legacy per-cast checks:
++			// a vector/scalar arm may precede its struct seed in function order.
++			for (auto BC : ptr_bc_instrs) {
++				if (BC && fix_metal_constant_vector_loads(*BC)) did_modify = true;
++			}
  			for (auto& BC : ptr_bc_instrs) {
-@@ -672,11 +808,19 @@
- 					return false;
- 				}
++				if (!BC) continue;
+ 				const auto src_ptr_type = cast<PointerType>(BC->getSrcTy());
+ 				const auto dst_ptr_type = cast<PointerType>(BC->getDestTy());
  				
-+				if (fix_metal_constant_vector_loads(*BC)) {
-+					did_modify = true;
-+					continue;
-+				}
-+
- 				// we will only replace the pointer bitcast if all users are simple loads or stores
+@@ -676,7 +935,10 @@
  				bool all_users_are_loads_or_stores = true;
  				std::vector<LoadInst*> loads;
  				std::vector<StoreInst*> stores;
@@ -237,7 +361,7 @@
  					if (auto ld = dyn_cast_or_null<LoadInst>(&instr); ld) {
  						if (is_vulkan) { // only need this for Vulkan
  							loads.emplace_back(ld);
-@@ -687,10 +831,23 @@
+@@ -687,10 +949,28 @@
  						// ignore external function calls (may e.g. be used for atomic functions)
  					} else {
  						all_users_are_loads_or_stores = false;
@@ -257,8 +381,13 @@
 -					ctx->emitError(BC, "invalid pointer bitcast: failed to run bitcast fixup (unhandled instructions)");
 +					// The instruction overload appends full IR, which local privacy
 +					// filtering must discard. Keep this error useful without it.
-+					ctx->emitError("invalid pointer bitcast: failed to run bitcast fixup (unhandled instructions); unsupported users: " +
-+								   unhandled_user_opcodes);
++					std::string error = "invalid pointer bitcast: failed to run bitcast fixup (unhandled instructions); unsupported users: " +
++						unhandled_user_opcodes;
++					if (auto reason = constant_vector_rejections.find(BC); reason != constant_vector_rejections.end()) {
++						error += "; constant-vector graph: " + reason->second.reason.str();
++						if (!reason->second.opcode.empty()) error += " (" + reason->second.opcode.str() + ")";
++					}
++					ctx->emitError(error);
  					return false;
  				}
  				if (!stores.empty() && !loads.empty()) {

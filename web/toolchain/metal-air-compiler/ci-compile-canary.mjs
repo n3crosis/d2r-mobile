@@ -1,5 +1,5 @@
-// CI 中仅编译十个固定的原创着色器，覆盖三个阶段；不读取游戏、密钥或用户文件。
-// CI-only compilation of ten fixed authored shaders across three stages, never game, key or user inputs.
+// CI 中仅编译十二个固定的原创着色器，覆盖三个阶段；不读取游戏、密钥或用户文件。
+// CI-only compilation of twelve fixed authored shaders across three stages, never game, key or user inputs.
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { createAirCompilerAdapter } from "../../air-compiler-adapter.mjs";
@@ -30,6 +30,18 @@ const cases = Object.freeze([
     stage: "fragment",
     filename: "direct-buffer-vector-pointer.metal",
     entry: "direct_buffer_vector_pointer",
+    define: "",
+  },
+  {
+    stage: "fragment",
+    filename: "conditional-distinct-buffer-rows.metal",
+    entry: "conditional_distinct_buffer_rows",
+    define: "",
+  },
+  {
+    stage: "fragment",
+    filename: "loop-carried-buffer-pointer.metal",
+    entry: "loop_carried_buffer_pointer",
     define: "",
   },
 ]);
@@ -83,7 +95,7 @@ export async function runAirCompilerCanary(module, { expectedHeaderSha256 } = {}
       }
     }
     return {
-      validation: "authored-ten-fixture-three-stage-compilation-and-container-integrity",
+      validation: "authored-twelve-fixture-three-stage-compilation-and-container-integrity",
       results,
     };
   } finally {

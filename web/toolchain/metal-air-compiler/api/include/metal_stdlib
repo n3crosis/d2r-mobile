@@ -3,6 +3,9 @@
 // Missing types and operations are intentional compile errors, not stubs.
 #ifndef D2R_EXPERIMENTAL_METAL_STDLIB
 #define D2R_EXPERIMENTAL_METAL_STDLIB
+// Metal half is native; activate the inherited OpenCL gate after Sema's
+// external-source initialization has reset its extension state.
+#pragma OPENCL EXTENSION cl_khr_fp16 : enable
 #define kernel __attribute__((compute_kernel, kernel_dim(3)))
 #define vertex __attribute__((vertex_shader))
 #define fragment __attribute__((fragment_shader))

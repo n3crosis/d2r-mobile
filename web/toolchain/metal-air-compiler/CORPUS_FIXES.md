@@ -20,17 +20,22 @@ not a new upstream rebase, ABI version or receipt format.
   `air.reverse_bits.i32`, preserving the existing call in place. Other widths,
   vectors, conflicting AIR declarations and unsupported intrinsics still fail
   closed.
-- `llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp`: handle a narrow read-only
-  constant-address-space struct-to-vector pointer cast with scalar/vector GEPs
-  and ordinary loads. Validate the whole use tree first, address original
-  storage with typed GEPs, and bitcast loaded values rather than pointers.
+- `llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp`: handle narrow read-only
+  constant-address-space pointer graphs seeded by a struct-to-vector cast.
+  Validate connected scalar/vector GEPs, PHIs, selects, ordinary loads and all
+  merge inputs before changing IR. Each root must prove compatible original
+  storage; matching pointer types alone do not authorize an unknown input.
   Equal lane counts, scalar/vector store sizes and allocation strides are
-  required. Indices, address space, alignment and bit patterns are retained.
-  Pointer escapes, stores, volatile/atomic loads, vector regrouping and
-  unsupported layouts are excluded from the new lowering; legacy validation
-  and acceptance are unchanged. Unsupported-user diagnostics add only a bounded
-  list of built-in LLVM opcode names, not source text or IR excerpts; the
-  diagnostic does not expand the accepted instruction set.
+  required. Rebuild typed storage pointers and bitcast loaded values, never
+  substitute another buffer's address. Preserve indices, address spaces,
+  alignment, bit patterns, select conditions and PHI incoming blocks/edges,
+  including loop backedges. PHI placeholders and a dependency order permit
+  cyclic components without moving or speculating loads. Pointer escapes,
+  writes, volatile/atomic loads, unknown roots, vector regrouping and unsupported
+  layouts are excluded from the new lowering; legacy validation and acceptance
+  are unchanged. Final rejection diagnostics contain bounded built-in opcode
+  names and fixed compiler-authored reason labels, not source names, types,
+  values, paths or IR excerpts. Diagnostics do not expand accepted inputs.
 
 The first two files already appear in `patchedFiles`; their final SHA256s
 change. The pointer pass is the only new source path in that set. Every source
@@ -39,7 +44,7 @@ has its own SHA256 in the ordered `patches` list.
 
 ## Authored LLVM regressions
 
-Four public pass-level fixtures are retained under `fixtures/`, separately
+Five public pass-level fixtures are retained under `fixtures/`, separately
 from the production-source patch:
 
 - `metal-final-dso-local.ll`: verify required in-memory locality immediately
@@ -51,9 +56,14 @@ from the production-source patch:
 - `metal-constant-vector-loads.ll`: check typed constant-buffer reads and exact
   index/alignment handling; reject padding, regrouping, pointer escapes, stores,
   volatile/atomic access and nonconstant address spaces.
-- `pointer-unsupported-user-diagnostics.ll`: preserve select/PHI rejection and
-  verify the four-opcode diagnostic cap, overflow marker and absence of an
-  appended instruction dump.
+- `metal-constant-vector-merges.ll`: cover read-only selects, diamond and
+  loop-carried PHIs, mutually recursive PHIs, earlier scalar/vector roots and
+  preserved indices/metadata. Nine unsupported graph categories reach unchanged
+  legacy rejection through direct select users, including unknown roots,
+  escape/write access and unmapped null/undef/poison arms.
+- `pointer-unsupported-user-diagnostics.ll`: preserve unknown-arm select/PHI
+  rejection and check bounded reason labels, the four-opcode cap, overflow
+  marker and absence of an appended instruction dump.
 
 Their `RUN` lines require `opt`, `FileCheck` and, for split fixtures,
 `split-file` from the matching patched toolchain. They have not been executed
@@ -62,8 +72,8 @@ canary do not execute these LLVM pass-level fixtures.
 
 ## Real-WASM CI canaries
 
-The fixed production CI canary now contains ten authored MSL fixtures across
-three stages. Five additions cover these source corrections:
+The fixed production CI canary now contains twelve authored MSL fixtures across
+three stages. Seven additions cover these source corrections:
 
 - `msl-internal-helper-function-constant.metal`: a retained internal helper and
   function-constant initializer exercise required `dso_local` handling.
@@ -76,12 +86,23 @@ three stages. Five additions cover these source corrections:
   fragment entry `direct_buffer_vector_pointer`.
 - `constant-vector-pointer-reads.metal`: argument-buffer pointer reads retain
   positive coverage, with fragment entry `constant_vector_pointer_reads`.
+- `conditional-distinct-buffer-rows.metal`: runtime branch selection across
+  unlike original buffer-pointer shapes, with fragment entry
+  `conditional_distinct_buffer_rows`.
+- `loop-carried-buffer-pointer.metal`: a live loop-carried buffer pointer with
+  runtime iteration/branch inputs, with fragment entry
+  `loop_carried_buffer_pointer`.
 
-The first four independently authored inputs reproduce the corresponding
-failure against the prior verified CI artifact. The last already passes that
-artifact and is not claimed as a demonstrated regression trigger. All copies
-preserve their original comments and any license notices; none contains private
-shader source or reference-library bytes.
+The first four independently authored inputs reproduced their corresponding
+failures against the earlier pre-correction artifact. The argument-buffer input
+was positive coverage, not a demonstrated failure. A retained, authenticated
+artifact for `956566f486a95a5ac85b2ce88e3346979ad70f7e` passed nine of the
+existing ten canaries; the scalar-operations case still failed its half-language
+gate. The two new, unchanged inputs fail that artifact with bounded unsupported
+`select` and `phi` diagnostics respectively. Their exact public source hashes
+are checked by the source-only fixture wiring test. All copies preserve their
+original comments and any license notices; none contains private shader source
+or reference-library bytes.
 
 The rebuilt compiler must compile every case and pass strict expected-name,
 stage, platform/version and container/bitcode-integrity inspection. A fixture's
@@ -94,10 +115,12 @@ compiler. These new success expectations remain pending a rebuilt CI artifact.
 
 ## Evidence and verification boundary
 
-These corrections respond to diagnostics from an existing verified CI artifact.
-The pointer-use shape is a source-based inference: the failing artifact did not
-emit a pre-failure IR body for the specific input. Source review and address
-models do not establish that the private corpus now compiles.
+These corrections respond to diagnostics from authenticated existing CI
+artifacts. Bounded pointer diagnostics identify the rejected opcodes, not the
+complete pre-failure IR graph. Source review, public failure reproductions and
+address models do not establish that the modified compiler or private corpus
+now passes. The new pointer-merge and half-header corrections still require a
+fresh matching CI artifact and execution checks.
 
 The source-only verification procedure is:
 

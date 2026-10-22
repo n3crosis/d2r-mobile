@@ -5,8 +5,12 @@
 ; RUN: not opt -enable-new-pm=0 -PointerBCFixup -disable-output %t/bounded.ll 2>&1 | FileCheck %s --check-prefix=BOUND
 ; These exact line endings verify that no instruction or source names are
 ; appended by LLVMContext::emitError. The original rejection is unchanged.
-; SELECT: invalid pointer bitcast: failed to run bitcast fixup (unhandled instructions); unsupported users: select{{$}}
-; PHI: invalid pointer bitcast: failed to run bitcast fixup (unhandled instructions); unsupported users: phi{{$}}
+; The select/PHI fixtures intentionally have an unknown native integer-pointer
+; argument arm. They do not have a proven matching source-storage mapping and
+; remain rejected; supported read-only merges are tested in
+; metal-constant-vector-merges.ll.
+; SELECT: invalid pointer bitcast: failed to run bitcast fixup (unhandled instructions); unsupported users: select; constant-vector graph: unmapped argument or constant pointer root{{$}}
+; PHI: invalid pointer bitcast: failed to run bitcast fixup (unhandled instructions); unsupported users: phi; constant-vector graph: unmapped argument or constant pointer root{{$}}
 ; BOUND: invalid pointer bitcast: failed to run bitcast fixup (unhandled instructions); unsupported users: getelementptr, getelementptr, getelementptr, getelementptr, ...{{$}}
 ; Authored for future CI execution. No LLVM compiler or verifier was run here.
 

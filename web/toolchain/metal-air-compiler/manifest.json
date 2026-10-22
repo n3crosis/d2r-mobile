@@ -27,7 +27,7 @@
     },
     {
       "path": "patches/0106-a2flo-corpus-compiler-fixes.patch",
-      "sha256": "ae96bafbfaeb0d62fe17d73261c82ed62fceaebdd6c28ee37b9aa6e225f0fe6f"
+      "sha256": "17187bb7dc1bfe56f2051a2eeffcccb44c22e221bec4b8ee449ea6410531182a"
     }
   ],
   "patchedFiles": {
@@ -54,7 +54,7 @@
     "llvm/lib/Transforms/LibFloor/FloorImage.cpp": "468e29894c59f85395b609ac7cbe07a79792c51215cc9575ba34948b57999c3d",
     "llvm/lib/Transforms/LibFloor/MetalFinal.cpp": "2eeff094e126d5208a73da6f9b711921f0f42c0e73b8f51b1d82c8ef4ce62197",
     "llvm/lib/Transforms/LibFloor/MetalImage.cpp": "89f4dda86f2e0d8acf73f4413693bb9de0cf20e0c22159d6263cc66fe1f25448",
-    "llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp": "0d4331cb15be4d994c2911cea1a951903e7c50f9bd5a51c60be2a9a76a28ecb1",
+    "llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp": "86ad67c0ce8379c70f299e0267042d4696b4099b2eb2c9b9317060de45e65aa1",
     "llvm/lib/Transforms/LibFloor/VulkanFinal.cpp": "660a2705c55985066d9eda8140068c907bc4037105202d9ca420d7b25f756733",
     "llvm/lib/Bitcode/MetalLib/CMakeLists.txt": "edfd044974b4f518d63bee512648c6470b58cca3dbd92aed8a9172d871d87aa1",
     "llvm/lib/Bitcode/MetalLib/MetalLibReflection.cpp": "9132a4467525638bcaf2a587640e01ced38f18eb00700ce77daef03730b756a0",
