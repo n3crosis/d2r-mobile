@@ -13,6 +13,8 @@
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/VirtualFileSystem.h"
@@ -71,6 +73,9 @@ public:
   bool overflowed() const { return exceeded; }
 };
 class RejectAssembly final : public clang::RecursiveASTVisitor<RejectAssembly> {
+#include "texture_trust.inc"
+#include "depth_trust.inc"
+#include "atomic_trust.inc"
   bool trustedMathDeclaration(clang::NamedDecl *decl, const clang::AsmLabelAttr *attr) {
     auto *function = llvm::dyn_cast<clang::FunctionDecl>(decl);
     if (!function || function->isVariadic() || function->hasBody()) return false;
@@ -78,13 +83,31 @@ class RejectAssembly final : public clang::RecursiveASTVisitor<RejectAssembly> {
     auto trusted = [&](clang::SourceLocation loc) {
       if (loc.isInvalid() || loc.isMacroID()) return false;
       auto file = sm.getFileEntryRefForID(sm.getFileID(loc));
-      return file && file->getName() == "/include/metal_math";
+      return file && (file->getName() == "/include/metal_math" || file->getName() == "/include/metal_control" || file->getName() == "/include/metal_texture" || file->getName() == "/include/metal_depth" || file->getName() == "/include/metal_atomic" || file->getName() == "/include/metal_simd" || file->getName() == "/include/metal_integer");
     };
     if (!trusted(sm.getSpellingLoc(decl->getLocation())) ||
         !trusted(sm.getExpansionLoc(decl->getLocation())) ||
         !trusted(attr->getLocation()) || decl->getLocation().isMacroID()) return false;
-    unsigned count = 0;
     const auto name = attr->getLabel();
+    auto file = sm.getFileEntryRefForID(sm.getFileID(decl->getLocation()));
+    if (file->getName() == "/include/metal_integer") {
+      if (!function->getReturnType()->isSpecificBuiltinType(clang::BuiltinType::UInt) || !function->getNumParams() || !function->getParamDecl(0)->getType()->isSpecificBuiltinType(clang::BuiltinType::UInt)) return false;
+      if (name=="air.popcount.i32") return function->getNumParams()==1;
+      return name=="air.clz.i32" && function->getNumParams()==2 && function->getParamDecl(1)->getType()->isSpecificBuiltinType(clang::BuiltinType::Bool);
+    }
+    if (file->getName() == "/include/metal_simd") return name=="air.simd_ballot.i64" && function->hasAttr<clang::ConvergentAttr>() && function->getNumParams()==1 && function->getParamDecl(0)->getType()->isSpecificBuiltinType(clang::BuiltinType::Bool) && function->getReturnType()->isSpecificBuiltinType(clang::BuiltinType::ULong);
+    if (file->getName() == "/include/metal_atomic") return trustedAtomicDeclaration(function, attr);
+    if (file->getName() == "/include/metal_depth") return trustedDepthDeclaration(function, attr);
+    if (file->getName() == "/include/metal_texture") return trustedTextureDeclaration(function, attr);
+    if (file->getName() == "/include/metal_control") {
+      auto is = [](clang::QualType type, clang::BuiltinType::Kind kind) { return type->isSpecificBuiltinType(kind); };
+      if (name == "air.discard_fragment") return function->getNumParams()==0 && is(function->getReturnType(),clang::BuiltinType::Void);
+      if (!function->hasAttr<clang::ConvergentAttr>() || !is(function->getReturnType(),clang::BuiltinType::Float)) return false;
+      if (name == "air.dfdx.f32" || name == "air.dfdy.f32") return function->getNumParams()==1 && is(function->getParamDecl(0)->getType(),clang::BuiltinType::Float);
+      if (name == "air.simd_shuffle.f32") return function->getNumParams()==2 && is(function->getParamDecl(0)->getType(),clang::BuiltinType::Float) && is(function->getParamDecl(1)->getType(),clang::BuiltinType::UShort);
+      return false;
+    }
+    unsigned count = 0;
     for (const auto candidate : {"air.fast_sqrt.f32", "air.fast_rsqrt.f32",
           "air.fast_exp2.f32", "air.fast_log2.f32", "air.fast_floor.f32",
           "air.fast_trunc.f32", "air.fast_rint.f32", "air.fast_fabs.f32"})
@@ -170,6 +193,47 @@ protected:
     return std::make_unique<clang::MultiplexConsumer>(std::move(consumers));
   }
 };
+bool validControlStages(const llvm::Module &module) {
+  for (const auto *stage : {"air.kernel", "air.vertex", "air.fragment"}) {
+    const auto *entries=module.getNamedMetadata(stage);
+    if (!entries) continue;
+    for (const auto *entry : entries->operands()) {
+      auto *value=llvm::dyn_cast<llvm::ValueAsMetadata>(entry->getOperand(0));
+      auto *function=value ? llvm::dyn_cast<llvm::Function>(value->getValue()) : nullptr;
+      if (!function) return false;
+      std::vector<const llvm::Function *> pending{function};
+      llvm::SmallPtrSet<const llvm::Function *,16> visited;
+      while (!pending.empty()) {
+        const auto *current=pending.back(); pending.pop_back();
+        if (!visited.insert(current).second) continue;
+        for (const auto &block:*current) for (const auto &instruction:block) {
+          const auto *call=llvm::dyn_cast<llvm::CallBase>(&instruction);
+          if (!call) continue;
+          const auto *callee=llvm::dyn_cast<llvm::Function>(call->getCalledOperand()->stripPointerCasts());
+          if (!callee) return false;
+          const auto name=callee->getName();
+          if ((name=="air.dfdx.f32" || name=="air.dfdy.f32" || name=="air.discard_fragment") && llvm::StringRef(stage)!="air.fragment") return false;
+          // Fragment and compute shuffle signatures are established by supplied references.
+          if (name=="air.simd_shuffle.f32" && llvm::StringRef(stage)=="air.vertex") return false;
+          auto constant=[&](unsigned index, uint64_t expected) {
+            if (index>=call->arg_size()) return false;
+            auto *value=llvm::dyn_cast<llvm::ConstantInt>(call->getArgOperand(index));
+            return value && value->getZExtValue()==expected;
+          };
+          if (name=="air.clz.i32" && !constant(1,0)) return false;
+          if (name=="air.simd_ballot.i64" && llvm::StringRef(stage)!="air.kernel") return false;
+          if (name.startswith("air.atomic.")) {
+            if (llvm::StringRef(stage)!="air.kernel" || !constant(2,0) ||
+                !constant(3,name.startswith("air.atomic.global.") ? 2 : 1) || !constant(4,1)) return false;
+          }
+          if (name=="air.wg.barrier" && (llvm::StringRef(stage)!="air.kernel" || !constant(0,2) || !constant(1,1))) return false;
+          if (!callee->isDeclaration()) pending.push_back(callee);
+        }
+      }
+    }
+  }
+  return true;
+}
 bool hasEntry(const llvm::Module &module) {
   for (const auto *name : {"air.kernel", "air.vertex", "air.fragment"})
     if (const auto *node = module.getNamedMetadata(name))
@@ -213,6 +277,10 @@ static air_result *compile(const uint8_t *source, size_t source_size,
     result->status = AIR_BAD_OPTIONS;
     return result.release();
   }
+  // The pinned fork ignores -fconvergent-functions and forces this off.
+  // Set the actual frontend option before code generation, so unannotated
+  // helpers cannot hide lane-dependent operations from early optimizations.
+  invocation->getLangOpts()->ConvergentFunctions = true;
   compiler.setInvocation(std::move(invocation));
   clang::ProcessWarningOptions(compiler.getDiagnostics(), compiler.getDiagnosticOpts());
   auto filesystem = llvm::makeIntrusiveRefCnt<llvm::vfs::InMemoryFileSystem>();
@@ -248,6 +316,11 @@ static air_result *compile(const uint8_t *source, size_t source_size,
   if (!hasEntry(*module)) {
     result->status = AIR_NO_ENTRY;
     appendDiagnostic(*result, "No AIR entry point was generated.\n");
+    return result.release();
+  }
+  if (!validControlStages(*module)) {
+    result->status = AIR_INVALID_IR;
+    appendDiagnostic(*result, "Unsupported shader stage for a control intrinsic, or unresolved indirect call.\n");
     return result.release();
   }
   for (const auto &function : *module) {

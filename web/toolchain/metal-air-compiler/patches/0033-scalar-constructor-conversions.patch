@@ -1,0 +1,14 @@
+--- a/clang/lib/Sema/SemaExprCXX.cpp
++++ b/clang/lib/Sema/SemaExprCXX.cpp
+@@ -1497,6 +1497,11 @@
+           const QualType Converted = Context.getExtVectorType(Element, InputVector->getNumElements());
+           Arg = SemaConvertVectorExpr(Arg.get(), Context.getTrivialTypeSourceInfo(Converted, Input->getExprLoc()),
+                                      Input->getExprLoc(), RParenOrBraceLoc);
++          if (Arg.isInvalid()) return ExprError();
++        } else if (Input->getType()->isArithmeticType() || Input->getType()->isEnumeralType()) {
++          // Constructor conversions are explicit, not brace-list narrowing.
++          Arg = BuildCXXFunctionalCastExpr(Context.getTrivialTypeSourceInfo(Element, Input->getExprLoc()),
++                                          Element, LParenOrBraceLoc, Input, RParenOrBraceLoc);
+           if (Arg.isInvalid()) return ExprError();
+         }
+         Components.push_back(Arg.get());

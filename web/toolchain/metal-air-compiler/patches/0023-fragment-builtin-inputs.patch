@@ -1,0 +1,146 @@
+--- a/clang/include/clang/Basic/Attr.td
++++ b/clang/include/clang/Basic/Attr.td
+@@ -1461,6 +1461,11 @@
+ 
+ // Explicit Apple-MSL graphics interfaces. Keep the existing floor spelling and
+ // automatic field-name interface unchanged unless these attributes are used.
++def MetalFrontFacing : InheritableAttr {
++  let Spellings = [CXX11<"", "front_facing", 200809>];
++  let Subjects = SubjectList<[ParmVar], ErrorDiag>;
++  let Documentation = [Undocumented];
++}
+ def MetalVertexBuiltin : InheritableAttr {
+   let Spellings = [CXX11<"", "vertex_id", 200809>, CXX11<"", "instance_id", 200809>,
+                    CXX11<"", "base_instance", 200809>];
+--- a/clang/lib/Sema/SemaDeclAttr.cpp
++++ b/clang/lib/Sema/SemaDeclAttr.cpp
+@@ -3089,6 +3089,18 @@
+ 
+ // A deliberately small, concrete stage-IO type surface. No aggregate flattening
+ // or interpolation attribute is accepted and then silently discarded.
++static void handleMetalFrontFacing(Sema &S, Decl *D, const ParsedAttr &AL) {
++  if (!S.getLangOpts().Metal ||
++      !cast<ParmVarDecl>(D)->getType()->isSpecificBuiltinType(BuiltinType::Bool) ||
++      D->hasAttr<MetalFrontFacingAttr>()) {
++    S.Diag(AL.getLoc(), S.getDiagnostics().getCustomDiagID(
++        DiagnosticsEngine::Error,
++        "Metal front_facing requires one attribute on a by-value bool parameter"));
++    return;
++  }
++  D->addAttr(::new (S.Context) MetalFrontFacingAttr(S.Context, AL));
++}
++
+ static void handleMetalVertexBuiltin(Sema &S, Decl *D, const ParsedAttr &AL) {
+   if (!S.getLangOpts().Metal ||
+       !cast<ParmVarDecl>(D)->getType()->isSpecificBuiltinType(BuiltinType::UInt) ||
+@@ -9166,6 +9178,9 @@
+   case ParsedAttr::AT_MetalBufferBinding:
+     handleMetalBufferBindingAttr(S, D, AL);
+     break;
++  case ParsedAttr::AT_MetalFrontFacing:
++    handleMetalFrontFacing(S, D, AL);
++    break;
+   case ParsedAttr::AT_MetalVertexBuiltin:
+     handleMetalVertexBuiltin(S, D, AL);
+     break;
+--- a/clang/lib/Sema/SemaDecl.cpp
++++ b/clang/lib/Sema/SemaDecl.cpp
+@@ -10182,6 +10182,30 @@
+   }
+ 
+   if (getLangOpts().Metal) {
++    bool Position = false, FrontFacing = false;
++    for (const auto *P : NewFD->parameters()) {
++      const bool IsPosition = P->hasAttr<GraphicsVertexPositionAttr>();
++      const bool IsFrontFacing = P->hasAttr<MetalFrontFacingAttr>();
++      if (!IsPosition && !IsFrontFacing) continue;
++      const auto *V = P->getType()->getAs<VectorType>();
++      if (!NewFD->hasAttr<GraphicsFragmentShaderAttr>() ||
++          (IsPosition && IsFrontFacing) ||
++          (IsPosition && (Position || !V || V->getNumElements() != 4 ||
++              !V->getElementType()->isSpecificBuiltinType(BuiltinType::Float))) ||
++          (IsFrontFacing && (FrontFacing || !P->getType()->isSpecificBuiltinType(BuiltinType::Bool))) ||
++          P->hasAttr<GraphicsStageInputAttr>() || P->hasAttr<MetalBufferBindingAttr>() ||
++          P->hasAttr<MetalVertexBuiltinAttr>()) {
++        Diag(P->getBeginLoc(), getDiagnostics().getCustomDiagID(
++            DiagnosticsEngine::Error,
++            "Metal fragment builtin requires a unique position float4 or front_facing bool parameter on a fragment entry"));
++        NewFD->setInvalidDecl();
++      }
++      Position |= IsPosition;
++      FrontFacing |= IsFrontFacing;
++    }
++  }
++
++  if (getLangOpts().Metal) {
+     bool VertexID = false, InstanceID = false, BaseInstance = false;
+     for (const auto *P : NewFD->parameters()) {
+       if (const auto *A = P->getAttr<MetalVertexBuiltinAttr>()) {
+--- a/clang/lib/CodeGen/CodeGenModule.cpp
++++ b/clang/lib/CodeGen/CodeGenModule.cpp
+@@ -3052,12 +3052,33 @@
+ 			Present = true;
+ 		}
+ 	}
++	bool direct_fragment_position = false, direct_front_facing = false;
++	for (const auto *P : FD->parameters()) {
++		const bool IsPosition = P->hasAttr<GraphicsVertexPositionAttr>();
++		const bool IsFrontFacing = P->hasAttr<MetalFrontFacingAttr>();
++		if (!IsPosition && !IsFrontFacing) continue;
++		const auto *V = P->getType()->getAs<VectorType>();
++		if (!is_fragment || (IsPosition && IsFrontFacing) ||
++			(IsPosition && (direct_fragment_position || !V || V->getNumElements() != 4 ||
++				!V->getElementType()->isSpecificBuiltinType(BuiltinType::Float))) ||
++			(IsFrontFacing && (direct_front_facing || !P->getType()->isSpecificBuiltinType(BuiltinType::Bool))) ||
++			P->hasAttr<GraphicsStageInputAttr>() || P->hasAttr<MetalBufferBindingAttr>() || P->hasAttr<MetalVertexBuiltinAttr>()) {
++			Error(P->getBeginLoc(), "unsupported or duplicate Metal fragment builtin parameter");
++			return;
++		}
++		direct_fragment_position |= IsPosition;
++		direct_front_facing |= IsFrontFacing;
++	}
+ 	unsigned all_stage_inputs = 0;
+ 	for (const auto *P : FD->parameters())
+ 		all_stage_inputs += P->hasAttr<GraphicsStageInputAttr>();
+ 	unsigned msl_stage_inputs = 0;
+ 	for (const auto *P : FD->parameters()) {
+ 		const auto *Stage = P->getAttr<GraphicsStageInputAttr>();
++		if (direct_fragment_position && Stage && !Stage->isMSL()) {
++			Error(P->getBeginLoc(), "direct Metal position cannot be combined with legacy stage_input; use stage_in");
++			return;
++		}
+ 		if (!Stage || !Stage->isMSL()) {
+ 			const auto T = P->getType();
+ 			const auto Base = T->isPointerType() || T->isReferenceType() ? T->getPointeeType() : T;
+@@ -3093,7 +3114,7 @@
+ 			}
+ 			if ((Location && !locations.insert(Location->getIndex()).second) ||
+ 				(User && !semantics.insert(User->getSemantic()->getName().str()).second) ||
+-				(IsPosition && position)) {
++				(IsPosition && (position || direct_fragment_position))) {
+ 				Error(F->getBeginLoc(), "duplicate MSL stage-input semantic");
+ 				return;
+ 			}
+@@ -3627,7 +3648,21 @@
+ 			return arg_info;
+ 		};
+ 		
+-		if (const auto *Builtin = parm->getAttr<MetalVertexBuiltinAttr>()) {
++		if (parm->hasAttr<GraphicsVertexPositionAttr>() || parm->hasAttr<MetalFrontFacingAttr>()) {
++			const bool IsPosition = parm->hasAttr<GraphicsVertexPositionAttr>();
++			SmallVector<llvm::Metadata*, 8> arg_info;
++			arg_info.push_back(llvm::ConstantAsMetadata::get(Builder.getInt32(arg_idx)));
++			arg_info.push_back(llvm::MDString::get(VMContext, IsPosition ? "air.position" : "air.front_facing"));
++			if (IsPosition) {
++				arg_info.push_back(llvm::MDString::get(VMContext, "air.center"));
++				arg_info.push_back(llvm::MDString::get(VMContext, "air.no_perspective"));
++			}
++			arg_info.push_back(llvm::MDString::get(VMContext, "air.arg_type_name"));
++			arg_info.push_back(llvm::MDString::get(VMContext, IsPosition ? "float4" : "bool"));
++			arg_info.push_back(llvm::MDString::get(VMContext, "air.arg_name"));
++			arg_info.push_back(llvm::MDString::get(VMContext, parm->getNameAsString()));
++			arg_infos.push_back(llvm::MDNode::get(VMContext, arg_info));
++		} else if (const auto *Builtin = parm->getAttr<MetalVertexBuiltinAttr>()) {
+ 			SmallVector<llvm::Metadata*, 6> arg_info;
+ 			arg_info.push_back(llvm::ConstantAsMetadata::get(Builder.getInt32(arg_idx)));
+ 			arg_info.push_back(llvm::MDString::get(VMContext,

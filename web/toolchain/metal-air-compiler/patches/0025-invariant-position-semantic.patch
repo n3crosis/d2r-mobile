@@ -1,0 +1,100 @@
+--- a/clang/include/clang/Basic/Attr.td
++++ b/clang/include/clang/Basic/Attr.td
+@@ -1461,6 +1461,13 @@
+ 
+ // Explicit Apple-MSL graphics interfaces. Keep the existing floor spelling and
+ // automatic field-name interface unchanged unless these attributes are used.
++// Preserve the output-position semantic in AIR. This does not implement the
++// separate -fpreserve-invariance compilation mode.
++def MetalInvariant : InheritableAttr {
++  let Spellings = [CXX11<"", "invariant", 200809>];
++  let Subjects = SubjectList<[Field], ErrorDiag>;
++  let Documentation = [Undocumented];
++}
+ def MetalFrontFacing : InheritableAttr {
+   let Spellings = [CXX11<"", "front_facing", 200809>];
+   let Subjects = SubjectList<[ParmVar], ErrorDiag>;
+--- a/clang/lib/Sema/SemaDeclAttr.cpp
++++ b/clang/lib/Sema/SemaDeclAttr.cpp
+@@ -3089,6 +3089,22 @@
+ 
+ // A deliberately small, concrete stage-IO type surface. No aggregate flattening
+ // or interpolation attribute is accepted and then silently discarded.
++static void handleMetalInvariant(Sema &S, Decl *D, const ParsedAttr &AL) {
++  const auto *F = cast<FieldDecl>(D);
++  const auto *V = F->getType()->getAs<VectorType>();
++  if (!S.getLangOpts().Metal || F->isBitField() || !V || V->getNumElements() != 4 ||
++      !V->getElementType()->isSpecificBuiltinType(BuiltinType::Float) ||
++      F->hasAttr<MetalInvariantAttr>()) {
++    S.Diag(AL.getLoc(), S.getDiagnostics().getCustomDiagID(
++        DiagnosticsEngine::Error,
++        "Metal invariant requires one attribute on a float4 position field"));
++    return;
++  }
++  // Position and invariant may appear in either order; the completed interface
++  // is validated when a shader entry uses the record.
++  D->addAttr(::new (S.Context) MetalInvariantAttr(S.Context, AL));
++}
++
+ static void handleMetalFrontFacing(Sema &S, Decl *D, const ParsedAttr &AL) {
+   if (!S.getLangOpts().Metal ||
+       !cast<ParmVarDecl>(D)->getType()->isSpecificBuiltinType(BuiltinType::Bool) ||
+@@ -9178,6 +9194,9 @@
+   case ParsedAttr::AT_MetalBufferBinding:
+     handleMetalBufferBindingAttr(S, D, AL);
+     break;
++  case ParsedAttr::AT_MetalInvariant:
++    handleMetalInvariant(S, D, AL);
++    break;
+   case ParsedAttr::AT_MetalFrontFacing:
+     handleMetalFrontFacing(S, D, AL);
+     break;
+--- a/clang/lib/Sema/SemaDecl.cpp
++++ b/clang/lib/Sema/SemaDecl.cpp
+@@ -10150,7 +10150,7 @@
+         HasExplicitMSL |= Inspect(Base.getType()->getAsCXXRecordDecl(), Invalid);
+       for (const auto *F : R->fields()) {
+         HasExplicitMSL |= F->hasAttr<MetalVertexAttributeAttr>() ||
+-                          F->hasAttr<MetalUserVaryingAttr>() || F->hasAttr<MetalInterpolationAttr>();
++                          F->hasAttr<MetalUserVaryingAttr>() || F->hasAttr<MetalInterpolationAttr>() || F->hasAttr<MetalInvariantAttr>();
+         if (F->hasAttr<GraphicsVertexPositionAttr>()) {
+           const auto *V = F->getType()->getAs<VectorType>();
+           if (!V || V->getNumElements() != 4 ||
+--- a/clang/lib/CodeGen/CodeGenModule.cpp
++++ b/clang/lib/CodeGen/CodeGenModule.cpp
+@@ -3032,7 +3032,7 @@
+ 		for (const auto &Base : R->bases())
+ 			if (has_msl_io(Base.getType()->getAsCXXRecordDecl())) return true;
+ 		for (const auto *F : R->fields()) {
+-			if (F->hasAttr<MetalVertexAttributeAttr>() || F->hasAttr<MetalUserVaryingAttr>() || F->hasAttr<MetalInterpolationAttr>())
++			if (F->hasAttr<MetalVertexAttributeAttr>() || F->hasAttr<MetalUserVaryingAttr>() || F->hasAttr<MetalInterpolationAttr>() || F->hasAttr<MetalInvariantAttr>())
+ 				return true;
+ 			if (has_msl_io(getContext().getBaseElementType(F->getType())->getAsCXXRecordDecl()))
+ 				return true;
+@@ -3106,7 +3106,7 @@
+ 			const auto *User = F->getAttr<MetalUserVaryingAttr>();
+ 			const bool IsPosition = F->hasAttr<GraphicsVertexPositionAttr>();
+ 			const auto T = F->getType();
+-			if (F->isBitField() || F->hasAttr<GraphicsPointSizeAttr>() ||
++			if (F->isBitField() || F->hasAttr<MetalInvariantAttr>() || F->hasAttr<GraphicsPointSizeAttr>() ||
+ 				F->hasAttr<GraphicsFBOColorLocationAttr>() || F->hasAttr<GraphicsFBODepthTypeAttr>() ||
+ 				(!T->isScalarType() && !T->isVectorType()) ||
+ 				T->isPointerType() || T->isReferenceType() ||
+@@ -3146,7 +3146,7 @@
+ 			const bool IsPosition = F->hasAttr<GraphicsVertexPositionAttr>();
+ 			const bool IsPointSize = F->hasAttr<GraphicsPointSizeAttr>();
+ 			const auto T = F->getType();
+-			if (F->isBitField() || F->hasAttr<MetalVertexAttributeAttr>() ||
++			if (F->isBitField() || (F->hasAttr<MetalInvariantAttr>() && !IsPosition) || F->hasAttr<MetalVertexAttributeAttr>() ||
+ 				F->hasAttr<MetalInterpolationAttr>() || F->hasAttr<GraphicsFBOColorLocationAttr>() ||
+ 				F->hasAttr<GraphicsFBODepthTypeAttr>() ||
+ 				(unsigned(bool(User)) + unsigned(IsPosition) + unsigned(IsPointSize) != 1)) {
+@@ -4058,6 +4058,8 @@
+ 			}
+ 			if (entry.hasAttr<GraphicsVertexPositionAttr>() || force_position) {
+ 				ret_info.push_back(llvm::MDString::get(VMContext, "air.position"));
++				if (entry.hasAttr<MetalInvariantAttr>())
++					ret_info.push_back(llvm::MDString::get(VMContext, "air.invariant"));
+ 			} else if (entry.hasAttr<GraphicsPointSizeAttr>()) {
+ 				ret_info.push_back(llvm::MDString::get(VMContext, "air.point_size"));
+ 			} else {

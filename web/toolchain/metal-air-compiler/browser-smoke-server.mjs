@@ -6,6 +6,7 @@ import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readAirHeaderIdentity } from "./header-identity.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -30,13 +31,7 @@ const wasm = await add("/compiler.wasm", resolve(build, "d2r_air_wasm.wasm"), "a
 const hash = (data) => createHash("sha256").update(data).digest("hex");
 const apiHeader = await readFile(resolve(apiSource, "air_compiler.h"), "utf8");
 const apiVersion = apiHeader.includes("air_compiler_header_bundle_version(") ? 2 : 1;
-let headerSha256;
-if (apiVersion === 2) {
-  let bundle = "d2r-air-header-bundle-v2\n";
-  for (const path of ["metal_math", "metal_stdlib", "simd/simd.h"])
-    bundle += `${path}:${hash(await readFile(resolve(apiSource, "include", path)))}\n`;
-  headerSha256 = hash(bundle);
-} else headerSha256 = hash(await readFile(resolve(apiSource, "include/metal_stdlib")));
+const headerSha256 = await readAirHeaderIdentity(apiSource, apiVersion);
 routes.set("/manifest.json", {
   type: "application/json",
   data: JSON.stringify({

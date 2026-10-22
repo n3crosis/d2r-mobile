@@ -1,0 +1,258 @@
+--- a/clang/include/clang/Basic/Attr.td
++++ b/clang/include/clang/Basic/Attr.td
+@@ -1196,6 +1196,14 @@
+ 
+ // Numeric MSL specialization constants. Conditional interface attributes are
+ // deliberately diagnosed until their AIR interface semantics are implemented.
++// Internal AST form selected by the shared function_constant parser when
++// applied to a supported conditional render-target interface.
++def MetalFunctionConstantPredicate : InheritableAttr {
++  let Spellings = [];
++  let Args = [ExprArgument<"Condition">];
++  let Documentation = [Undocumented];
++}
++
+ def MetalFunctionConstant : InheritableAttr {
+   let Spellings = [CXX11<"", "function_constant", 200809>];
+   let Args = [UnsignedArgument<"Index">];
+--- a/clang/lib/Sema/SemaDeclAttr.cpp
++++ b/clang/lib/Sema/SemaDeclAttr.cpp
+@@ -3016,6 +3016,37 @@
+   };
+   if (!S.getLangOpts().Metal) {
+     error("function_constant attribute requires Metal language mode");
++    return;
++  }
++  if (isa<FieldDecl>(D) || isa<ParmVarDecl>(D)) {
++    // Narrow first interface milestone: game-generated color first, then a
++    // direct required bool constant. Expressions and other interfaces fail.
++    const auto *Color = D->getAttr<GraphicsFBOColorLocationAttr>();
++    const auto *VD = cast<ValueDecl>(D);
++    const auto *Vec = VD->getType()->getAs<VectorType>();
++    unsigned ColorCount = 0;
++    for (const auto *A : D->attrs()) ColorCount += isa<GraphicsFBOColorLocationAttr>(A);
++    if (ColorCount != 1 || !Color || Color->getEvalLocation() > 7 || !Vec ||
++        Vec->getNumElements() != 4 ||
++        !Vec->getElementType()->isSpecificBuiltinType(BuiltinType::Float) ||
++        D->hasAttr<MetalFunctionConstantPredicateAttr>()) {
++      error("conditional function_constant requires float4 with preceding color(0..7)");
++      return;
++    }
++    if (!AL.isArgExpr(0)) {
++      error("conditional function_constant requires a direct bool function constant");
++      return;
++    }
++    Expr *Condition = AL.getArgAsExpr(0)->IgnoreParenImpCasts();
++    const auto *Ref = dyn_cast<DeclRefExpr>(Condition);
++    const auto *Constant = Ref ? dyn_cast<VarDecl>(Ref->getDecl()) : nullptr;
++    if (!Constant || !Constant->hasAttr<MetalFunctionConstantAttr>() ||
++        !Constant->getType()->isBooleanType()) {
++      error("conditional function_constant requires a direct bool function constant");
++      return;
++    }
++    D->addAttr(::new (S.Context)
++        MetalFunctionConstantPredicateAttr(S.Context, AL, Condition));
+     return;
+   }
+   auto *V = dyn_cast<VarDecl>(D);
+--- a/clang/lib/CodeGen/CodeGenModule.cpp
++++ b/clang/lib/CodeGen/CodeGenModule.cpp
+@@ -3024,6 +3024,117 @@
+ 		return type_name;
+ 	};
+ 	
++  // Required conditional render-target interface support. Struct layout and
++  // function parameters remain present; Metal specializes the AIR interface.
++  // Inspect declarations before ABI flattening: malformed/nested interface
++  // records must diagnose rather than trigger the flattening helper's asserts.
++  std::function<bool(const CXXRecordDecl *)> has_fc_predicate = [&](const CXXRecordDecl *R) {
++    if (!R || !(R = R->getDefinition())) return false;
++    for (const auto &Base : R->bases())
++      if (has_fc_predicate(Base.getType()->getAsCXXRecordDecl())) return true;
++    for (const auto *Field : R->fields()) {
++      if (Field->hasAttr<MetalFunctionConstantPredicateAttr>()) return true;
++      if (has_fc_predicate(getContext().getBaseElementType(Field->getType())->getAsCXXRecordDecl()))
++        return true;
++    }
++    return false;
++  };
++  for (const auto *P : FD->parameters()) {
++    const auto T = P->getType();
++    const auto Base = T->isPointerType() || T->isReferenceType() ? T->getPointeeType() : T;
++    if (has_fc_predicate(Base->getAsCXXRecordDecl())) {
++      Error(P->getBeginLoc(), "conditional fields are supported only in fragment output records");
++      return;
++    }
++    if (P->hasAttr<MetalFunctionConstantPredicateAttr>()) {
++      unsigned ColorCount = 0;
++      for (const auto *A : P->attrs()) {
++        ColorCount += isa<GraphicsFBOColorLocationAttr>(A);
++        if (!isa<MetalFunctionConstantPredicateAttr>(A) && !isa<GraphicsFBOColorLocationAttr>(A)) {
++          Error(P->getBeginLoc(), "conditional color parameter has unsupported additional attributes");
++          return;
++        }
++      }
++      if (ColorCount != 1 || !is_fragment || !P->hasAttr<GraphicsFBOColorLocationAttr>() ||
++          P->hasAttr<GraphicsStageInputAttr>() || P->hasAttr<MetalBufferBindingAttr>() ||
++          P->hasAttr<GraphicsVertexPositionAttr>() || P->hasAttr<GraphicsPointSizeAttr>() ||
++          P->hasAttr<GraphicsFBODepthTypeAttr>()) {
++        Error(P->getBeginLoc(), "conditional color input requires an unambiguous fragment render-target parameter");
++        return;
++      }
++    }
++  }
++  const auto *FCOutput = FD->getReturnType()->getAsCXXRecordDecl();
++  if (has_fc_predicate(FCOutput)) {
++    if (!is_fragment || FCOutput->isUnion() || FCOutput->getNumBases() ||
++        !FCOutput->isStandardLayout() || !FCOutput->isTriviallyCopyable()) {
++      Error(FD->getBeginLoc(), "conditional outputs require a plain fragment output record");
++      return;
++    }
++    for (const auto *Field : FCOutput->fields()) {
++      const auto *V = Field->getType()->getAs<VectorType>();
++      const auto *Color = Field->getAttr<GraphicsFBOColorLocationAttr>();
++      unsigned ColorCount = 0;
++      for (const auto *A : Field->attrs()) ColorCount += isa<GraphicsFBOColorLocationAttr>(A);
++      if (ColorCount != 1 || !V || V->getNumElements() != 4 ||
++          !V->getElementType()->isSpecificBuiltinType(BuiltinType::Float) ||
++          !Color || Color->getEvalLocation() > 7 || Field->isBitField() ||
++          Field->hasAttr<GraphicsVertexPositionAttr>() || Field->hasAttr<MetalUserVaryingAttr>() ||
++          Field->hasAttr<MetalVertexAttributeAttr>() || Field->hasAttr<MetalInterpolationAttr>() ||
++          Field->hasAttr<GraphicsFBODepthTypeAttr>() || Field->hasAttr<GraphicsPointSizeAttr>()) {
++        Error(Field->getBeginLoc(), "unsupported conditional fragment output layout or semantic");
++        return;
++      }
++    }
++  }
++  auto make_fc_predicate = [this](const MetalFunctionConstantPredicateAttr *Attr) -> llvm::MDNode * {
++    const auto *Ref = cast<DeclRefExpr>(Attr->getCondition()->IgnoreParenImpCasts());
++    const auto *V = cast<VarDecl>(Ref->getDecl());
++    const auto Index = V->getAttr<MetalFunctionConstantAttr>()->getIndex();
++    // Ensure numeric lowering exists even when the bool is only referenced by
++    // an attribute, not by a statement in the shader body.
++    (void)GetAddrOfGlobalVar(V);
++    llvm::GlobalVariable *Placeholder = nullptr;
++    const auto *Constants = TheModule.getNamedMetadata("air.function_constants");
++    if (Constants) for (const auto *N : Constants->operands()) {
++      if (N->getNumOperands() != 5) continue;
++      const auto *I = llvm::mdconst::dyn_extract<llvm::ConstantInt>(N->getOperand(3));
++      if (I && I->getZExtValue() == Index)
++        Placeholder = llvm::mdconst::dyn_extract<llvm::GlobalVariable>(N->getOperand(0));
++    }
++    if (!Placeholder || !Placeholder->getValueType()->isIntegerTy(8) ||
++        !Placeholder->isExternallyInitialized()) {
++      Error(Attr->getLocation(), "missing required bool specialization initializer");
++      return nullptr;
++    }
++    auto *I8 = llvm::Type::getInt8Ty(VMContext);
++    auto *Pred = new llvm::GlobalVariable(TheModule, I8, false,
++        llvm::GlobalValue::InternalLinkage, llvm::ConstantInt::get(I8, 0),
++        "__metal_implicit_fc_pred", nullptr, llvm::GlobalVariable::NotThreadLocal, 2);
++    Pred->setAlignment(llvm::Align(1));
++    addCompilerUsedGlobal(Pred);
++    auto *Ctor = llvm::Function::Create(
++        llvm::FunctionType::get(llvm::Type::getVoidTy(VMContext), false),
++        llvm::GlobalValue::InternalLinkage, "__metal_fc_pred_init", TheModule);
++    Ctor->setSection("air.static_init");
++    llvm::IRBuilder<> B(llvm::BasicBlock::Create(VMContext, "entry", Ctor));
++    auto Normalize = TheModule.getOrInsertFunction(
++        "air.normalize_function_constant_predicate.i8",
++        llvm::FunctionType::get(I8, {I8}, false));
++    if (auto *F = llvm::dyn_cast<llvm::Function>(Normalize.getCallee())) {
++      F->setDoesNotThrow();
++      F->setDoesNotAccessMemory();
++    }
++    // Load placeholder directly, avoiding dependencies on equal-priority ctor
++    // ordering. Xcode's single aggregated ctor loads this same placeholder.
++    B.CreateStore(B.CreateCall(Normalize, {B.CreateLoad(I8, Placeholder)}), Pred);
++    B.CreateRetVoid();
++    AddGlobalCtor(Ctor);
++    llvm::Metadata *Ops[] = {llvm::ConstantAsMetadata::get(Pred),
++        llvm::MDString::get(VMContext, "bool"), llvm::MDString::get(VMContext, V->getName())};
++    return llvm::MDNode::get(VMContext, Ops);
++  };
++
+ 	// Apple-MSL stage_in is a by-value plain interface record. The older floor
+ 	// stage_input path retains its existing aggregate behavior.
+ 	// Detect annotations without ABI flattening. Unsupported aggregates must reach
+@@ -3652,7 +3763,21 @@
+ 			return arg_info;
+ 		};
+ 		
+-		if (parm->hasAttr<GraphicsVertexPositionAttr>() || parm->hasAttr<MetalFrontFacingAttr>()) {
++        if (const auto *Conditional = parm->getAttr<MetalFunctionConstantPredicateAttr>()) {
++            auto *Predicate = make_fc_predicate(Conditional);
++            if (!Predicate) return;
++            SmallVector<llvm::Metadata *, 10> Info {
++                llvm::ConstantAsMetadata::get(Builder.getInt32(arg_idx)),
++                llvm::MDString::get(VMContext, "air.function_constant"), Predicate,
++                llvm::MDString::get(VMContext, "air.render_target"),
++                llvm::ConstantAsMetadata::get(Builder.getInt32(
++                    parm->getAttr<GraphicsFBOColorLocationAttr>()->getEvalLocation())),
++                llvm::MDString::get(VMContext, "air.arg_type_name"),
++                llvm::MDString::get(VMContext, "float4"),
++                llvm::MDString::get(VMContext, "air.arg_name"),
++                llvm::MDString::get(VMContext, parm->getName())};
++            arg_infos.push_back(llvm::MDNode::get(VMContext, Info));
++        } else if (parm->hasAttr<GraphicsVertexPositionAttr>() || parm->hasAttr<MetalFrontFacingAttr>()) {
+ 			const bool IsPosition = parm->hasAttr<GraphicsVertexPositionAttr>();
+ 			SmallVector<llvm::Metadata*, 8> arg_info;
+ 			arg_info.push_back(llvm::ConstantAsMetadata::get(Builder.getInt32(arg_idx)));
+@@ -4158,10 +4283,16 @@
+ 			++arg_idx; // next llvm arg
+ 		}
+ 		
+-		const auto add_fs_output = [this, &Builder, &stage_infos, &make_type_name](const ASTContext::aggregate_scalar_entry& entry,
++		const auto add_fs_output = [this, &Builder, &stage_infos, &make_type_name, &make_fc_predicate](const ASTContext::aggregate_scalar_entry& entry,
+ 																				   const unsigned int& location) {
+ 			SmallVector<llvm::Metadata*, 6> rtt_info;
+ 			
++            if (const auto *Conditional = entry.getAttr<MetalFunctionConstantPredicateAttr>()) {
++                auto *Predicate = make_fc_predicate(Conditional);
++                if (!Predicate) return;
++                rtt_info.push_back(llvm::MDString::get(VMContext, "air.function_constant"));
++                rtt_info.push_back(Predicate);
++            }
+ 			// #0/1: render target location index
+ 			rtt_info.push_back(llvm::MDString::get(VMContext, "air.render_target"));
+ 			rtt_info.push_back(llvm::ConstantAsMetadata::get(Builder.getInt32(location)));
+@@ -4189,10 +4320,16 @@
+ 			// * gather all fixed/attr locations, make sure none conflict
+ 			// * used fixed locations + generate automatic location for non-fixed outputs
+ 			std::unordered_set<unsigned int> fbo_locations;
++            std::unordered_set<unsigned int> unconditional_fbo_locations;
+ 			for (const auto& field : fields) {
+ 				if (field.hasAttr<GraphicsFBOColorLocationAttr>()) {
+ 					const auto loc_attr = field.getAttr<GraphicsFBOColorLocationAttr>();
+-					if (!fbo_locations.insert(loc_attr->getEvalLocation()).second) {
++                    const auto Location = loc_attr->getEvalLocation();
++                    const bool Conditional = field.hasAttr<MetalFunctionConstantPredicateAttr>();
++                    const bool AlreadyUsed = !fbo_locations.insert(Location).second;
++                    const bool UnconditionalUsed = unconditional_fbo_locations.count(Location);
++                    if (!Conditional) unconditional_fbo_locations.insert(Location);
++                    if (AlreadyUsed && (!Conditional || UnconditionalUsed)) {
+ 						// TODO: should have been detected earlier ...
+ 						Error(loc_attr->getLocation(), StringRef("location already in use"));
+ 						// TODO: add note of prev location?
+--- a/clang/lib/Sema/SemaDecl.cpp
++++ b/clang/lib/Sema/SemaDecl.cpp
+@@ -9730,6 +9730,19 @@
+ 
+   // Handle attributes.
+   ProcessDeclAttributes(S, NewFD, D);
++  // Conditional parameters are an entry-interface feature, never ordinary
++  // helper-function annotations that can be silently discarded.
++  if (getLangOpts().Metal && !NewFD->hasAttr<GraphicsFragmentShaderAttr>()) {
++    for (const auto *P : NewFD->parameters()) {
++      if (P->hasAttr<MetalFunctionConstantPredicateAttr>()) {
++        Diag(P->getLocation(), getDiagnostics().getCustomDiagID(
++            DiagnosticsEngine::Error,
++            "conditional color parameters require a fragment entry function"));
++        NewFD->setInvalidDecl();
++      }
++    }
++  }
++
+ 
+ #if 0 // we don't want this
+   if (getLangOpts().OpenCL) {

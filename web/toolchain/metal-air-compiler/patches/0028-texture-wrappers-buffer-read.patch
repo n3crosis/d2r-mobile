@@ -1,0 +1,199 @@
+--- a/clang/lib/CodeGen/CGOpenCLRuntime.cpp
++++ b/clang/lib/CodeGen/CGOpenCLRuntime.cpp
+@@ -88,8 +88,7 @@
+       case BuiltinType::OCLImage1dArray:
+                 return get_or_create_opaque_ptr_type("struct._texture_1d_array_t", AddrSpc);
+       case BuiltinType::OCLImage1dBuffer:
+-        llvm_unreachable("Unsupported image type (1D-buffer is not supported by metal)!");
+-        return nullptr;
++        return get_or_create_opaque_ptr_type("struct._texture_buffer_1d_t", AddrSpc);
+       case BuiltinType::OCLImage2d:
+         return get_or_create_opaque_ptr_type("struct._texture_2d_t", AddrSpc);
+       case BuiltinType::OCLImage2dArray:
+--- a/clang/lib/Sema/SemaDeclAttr.cpp
++++ b/clang/lib/Sema/SemaDeclAttr.cpp
+@@ -3073,11 +3073,23 @@
+   const bool IsBuffer = Type->isPointerType() &&
+       (Type->getPointeeType().getAddressSpace() == LangAS::opencl_global ||
+        Type->getPointeeType().getAddressSpace() == LangAS::opencl_constant);
+-  const auto *Builtin = Type->getAs<BuiltinType>();
+-  const bool IsImage2D = Builtin && Builtin->getKind() == BuiltinType::OCLImage2d;
++  QualType ResourceType = Type;
++  if (Type->isAggregateImageType()) {
++    const auto *R = Type->getAsCXXRecordDecl();
++    if (R && R->hasDefinition() && !R->getNumBases() &&
++        R->isStandardLayout() && R->isTriviallyCopyable() &&
++        std::distance(R->field_begin(), R->field_end()) == 1 &&
++        S.Context.getTypeSize(Type) == 64 && S.Context.getTypeAlign(Type) == 64)
++      ResourceType = (*R->field_begin())->getType();
++  }
++  const auto *Builtin = ResourceType->getAs<BuiltinType>();
++  const bool IsImage2D = Builtin &&
++      (Builtin->getKind() == BuiltinType::OCLImage2d ||
++       Builtin->getKind() == BuiltinType::OCLImage3d ||
++       Builtin->getKind() == BuiltinType::OCLImage1dBuffer);
+   if (Field->isBitField() || Field->getParent()->isUnion() ||
+       !(IsBuffer || IsImage2D || Type->isSamplerT())) {
+-    error("id attribute supports only device/constant pointers, image2d_t or sampler_t fields");
++    error("id supports pointers, samplers and single-handle float 2D/3D/buffer textures");
+     return;
+   }
+   if (D->hasAttr<MetalArgumentIDAttr>()) {
+--- a/clang/lib/Sema/SemaDecl.cpp
++++ b/clang/lib/Sema/SemaDecl.cpp
+@@ -17962,7 +17962,13 @@
+         const auto *ID = D->getAttr<MetalArgumentIDAttr>();
+         if (!ID || (HavePrevious && ID->getIndex() <= Previous))
+           Invalid = true;
+-        if (const auto *Field = dyn_cast<FieldDecl>(D)) {
++        if (const auto *OuterField = dyn_cast<FieldDecl>(D)) {
++          const FieldDecl *Field = OuterField;
++          if (OuterField->getType()->isAggregateImageType()) {
++            const auto *R = OuterField->getType()->getAsCXXRecordDecl();
++            if (R && R->hasDefinition() && !R->field_empty())
++              Field = *R->field_begin();
++          }
+           if (Field->getType()->isImageType()) {
+             const auto *Flags = Field->getAttr<FloorImageFlagsAttr>();
+             const auto *Data = Field->getAttr<FloorImageDataTypeAttr>();
+@@ -17970,7 +17976,7 @@
+                 !Data->getImageDataType()->isSpecificBuiltinType(BuiltinType::Float)) {
+               Diag(Field->getLocation(), getDiagnostics().getCustomDiagID(
+                   DiagnosticsEngine::Error,
+-                  "id image2d_t fields require explicit float data type and read-only image flags"));
++                  "id texture fields require explicit float data type and read-only image flags"));
+               Invalid = true;
+             }
+           }
+--- a/clang/lib/CodeGen/CodeGenModule.cpp
++++ b/clang/lib/CodeGen/CodeGenModule.cpp
+@@ -3176,7 +3176,9 @@
+ 			arg_info.push_back(llvm::ConstantAsMetadata::get(Builder.getInt32(elem_count)));
+ 			// #5: access type (sample = 0, read = 1 or write = 2)
+ 			// note that "read" is essentially a subset of "sample" -> use "sample" for r/o
+-			if (flags_attr && flags_attr->isWriteOnly()) {
++			if (type->isSpecificBuiltinType(BuiltinType::OCLImage1dBuffer)) {
++                arg_info.push_back(llvm::MDString::get(VMContext, "air.read"));
++            } else if (flags_attr && flags_attr->isWriteOnly()) {
+ 				arg_info.push_back(llvm::MDString::get(VMContext, "air.write"));
+ 			} else if (flags_attr && flags_attr->isReadWrite()) {
+ 				arg_info.push_back(llvm::MDString::get(VMContext, "air.read_write"));
+@@ -3204,7 +3206,7 @@
+ 					tex_type_name += "texture1d_array";
+ 					break;
+ 				case BuiltinType::OCLImage1dBuffer:
+-					tex_type_name += "texture1d_buffer";
++					tex_type_name += "texture_buffer";
+ 					break;
+ 				case BuiltinType::OCLImage2d:
+ 					tex_type_name += "texture2d";
+@@ -3270,7 +3272,9 @@
+ 			}
+ 			tex_type_name += sample_type_str;
+ 			tex_type_name += ", ";
+-			if (flags_attr && flags_attr->isReadOnly()) {
++			if (type->isSpecificBuiltinType(BuiltinType::OCLImage1dBuffer)) {
++                tex_type_name += "read";
++            } else if (flags_attr && flags_attr->isReadOnly()) {
+ 				tex_type_name += "sample";
+ 			} else if (flags_attr && flags_attr->isReadWrite()) {
+ 				tex_type_name += "read_write";
+@@ -3376,7 +3380,7 @@
+ 				if (explicit_ids) {
+ 					const auto *ID = field->getAttr<MetalArgumentIDAttr>();
+ 					const auto &layout = Context.getASTRecordLayout(&struct_rdecl);
+-					if (!ID || !(field_type->isPointerType() || field_type->isImageType() || field_type->isSamplerT()) ||
++					if (!ID || !(field_type->isPointerType() || field_type->isImageType() || field_type->isAggregateImageType() || field_type->isSamplerT()) ||
+ 						Context.getTypeSize(field_type) != 64 ||
+                         Context.getTypeAlign(field_type) != 64 ||
+ 						layout.getAlignment().getQuantity() != 8 ||
+@@ -3435,9 +3439,18 @@
+                 // Explicit image IDs currently admit only image2d_t with
+                 // checked float/read-only attributes. Match the AIR image type
+                 // spelling in the outer structure descriptor as well.
+-                const auto field_type_name = explicit_ids && field_type->isImageType() ?
+-                    std::string("texture2d<float, sample>") :
+-                    make_type_name(!field_pointee_type.isNull() ? field_pointee_type : field_type);
++                auto field_type_name = make_type_name(!field_pointee_type.isNull() ? field_pointee_type : field_type);
++                if (explicit_ids) {
++                    auto image_type = field_type;
++                    if (field_type->isAggregateImageType())
++                        image_type = (*field_type->getAsCXXRecordDecl()->field_begin())->getType();
++                    if (image_type->isSpecificBuiltinType(BuiltinType::OCLImage2d))
++                        field_type_name = "texture2d<float, sample>";
++                    else if (image_type->isSpecificBuiltinType(BuiltinType::OCLImage3d))
++                        field_type_name = "texture3d<float, sample>";
++                    else if (image_type->isSpecificBuiltinType(BuiltinType::OCLImage1dBuffer))
++                        field_type_name = "texture_buffer<float, read>";
++                }
+                 struct_info.push_back(llvm::MDString::get(VMContext, field_type_name));
+ 				// #4: name/identifier
+ 				struct_info.push_back(llvm::MDString::get(VMContext, field->getName()));
+@@ -3502,7 +3515,7 @@
+ 							auto arg_info = add_image_arg(img->getType(),
+ 														  img->getAttr<FloorImageFlagsAttr>(),
+ 														  img->getAttr<FloorImageDataTypeAttr>(),
+-														  base_name + std::to_string(img_idx),
++														  (explicit_ids ? field->getName().str() : base_name + std::to_string(img_idx)),
+ 														  false, arg_idx_child, buffer_or_tex_idx_child);
+ 							if (arg_info.empty()) {
+ 								return {};
+--- a/llvm/lib/Transforms/LibFloor/MetalImage.cpp
++++ b/llvm/lib/Transforms/LibFloor/MetalImage.cpp
+@@ -88,7 +88,7 @@
+ 				case COMPUTE_IMAGE_TYPE::IMAGE_1D_ARRAY:
+ 					return "texture_1d_array";
+ 				case COMPUTE_IMAGE_TYPE::IMAGE_1D_BUFFER:
+-					return "texture_1d_buffer";
++					return "texture_buffer_1d";
+ 				case COMPUTE_IMAGE_TYPE::IMAGE_DEPTH:
+ 				case COMPUTE_IMAGE_TYPE::IMAGE_DEPTH_STENCIL:
+ 					return "depth_2d";
+@@ -298,6 +298,11 @@
+ 			// for msaa: always read
+ 			// for all else: read if int coords, sample if float coords
+ 			const bool is_sample_call = (!is_msaa && !coord_type->isIntegerTy());
++            const bool is_buffer = image_type == COMPUTE_IMAGE_TYPE::IMAGE_1D_BUFFER;
++            if (is_buffer && (is_sample_call || coord_vec_type->getNumElements() != 1)) {
++                ctx->emitError(&I, "buffer textures require scalar integer read coordinates");
++                return;
++            }
+ 			
+ 			// img handle and sampler
+ 			func_arg_types.push_back(img_handle_arg->getType());
+@@ -394,7 +399,7 @@
+ 			// -> additional args: lod, bias, gradient, offset
+ 			if(!is_sample_call) {
+ 				// -> read
+-				if(!is_msaa) { // msaa is always lod 0, hence needs no arg
++				if(!is_msaa && !is_buffer) { // neither MSAA nor buffer textures have a mip argument
+ 					// -> lod
+ 					if(is_lod_or_bias) {
+ 						// for read, only int lods are allowed
+@@ -416,9 +421,10 @@
+ 					}
+ 				}
+ 				
+-				// additional (unknown) i32 0 argument
+-				func_arg_types.push_back(llvm::Type::getInt32Ty(*ctx));
+-				func_args.push_back(builder->getInt32(0));
++                // AIR read access: buffer textures in this supported subset
++                // use read (1). Preserve existing sample-access textures (0).
++                func_arg_types.push_back(llvm::Type::getInt32Ty(*ctx));
++                func_args.push_back(builder->getInt32(is_buffer ? 1 : 0));
+ 			}
+ 			else {
+ 				// -> sample
+@@ -545,7 +551,11 @@
+ 								llvm::Value* lod_arg,
+ 								const bool is_lod,
+ 								llvm::Value* data_arg) override {
+-			SmallVector<llvm::Type*, 16> func_arg_types;
++			if (image_type == COMPUTE_IMAGE_TYPE::IMAGE_1D_BUFFER) {
++                ctx->emitError(&I, "buffer texture writes are not supported");
++                return;
++            }
++            SmallVector<llvm::Type*, 16> func_arg_types;
+ 			SmallVector<llvm::Value*, 16> func_args;
+ 			
+ 			//// more arg checking

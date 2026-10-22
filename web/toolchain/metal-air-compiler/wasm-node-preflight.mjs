@@ -7,6 +7,7 @@ import { pathToFileURL, fileURLToPath } from "node:url";
 import process from "node:process";
 import { resolve, dirname, join } from "node:path";
 import assert from "node:assert/strict";
+import { readAirHeaderIdentity } from "./header-identity.mjs";
 const args = process.argv.slice(2);
 function option(name, fallback) {
   const index = args.indexOf(name);
@@ -63,18 +64,7 @@ function cString(ptr) {
   return new TextDecoder().decode(view.subarray(ptr, end));
 }
 const headerSha256 = cString(module._air_compiler_header_sha256());
-let expectedHeaderSha;
-if (apiVersion === 1)
-  expectedHeaderSha = hash(readFileSync(join(apiSource, "include/metal_stdlib")));
-else {
-  const paths = ["metal_stdlib", "metal_math", "simd/simd.h"].sort();
-  const fingerprint =
-    "d2r-air-header-bundle-v2\n" +
-    paths
-      .map((path) => `${path}:${hash(readFileSync(join(apiSource, "include", path)))}\n`)
-      .join("");
-  expectedHeaderSha = hash(fingerprint);
-}
+const expectedHeaderSha = await readAirHeaderIdentity(apiSource, apiVersion);
 assert.equal(headerSha256, expectedHeaderSha, "module matches selected source header fingerprint");
 function compile(source, kind = 0, profile = 1) {
   const bytes = new TextEncoder().encode(source);
