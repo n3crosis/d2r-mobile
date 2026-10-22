@@ -1,0 +1,221 @@
+--- a/llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp
++++ b/llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp
+@@ -727,20 +727,26 @@
+ 			auto src_type = src_ptr_type->getPointerElementType();
+ 			auto dst_vec = dyn_cast<FixedVectorType>(dst_ptr_type->getPointerElementType());
+ 			Instruction* seed = &BC;
+-			// An inverse cast is supported only when it restores the exact pointer
+-			// type stored in a proven slot. Its aggregate GEPs remain unchanged.
++			// Inverse casts must restore an exactly proven native pointer type.
++			// A direct slot is checked here; PHI/select/root provenance is checked
++			// with the complete component below. Aggregate GEPs stay unchanged.
+ 			if (auto reverse_vec = dyn_cast<FixedVectorType>(src_type);
+ 				reverse_vec && dst_ptr_type->getPointerElementType()->isStructTy()) {
+ 				auto load = dyn_cast<LoadInst>(BC.getOperand(0));
+ 				constant_pointer_slot slot;
+ 				if (!load || !get_constant_pointer_slot(*load, slot) || slot.value_type != dst_ptr_type) {
+-					constant_vector_rejections[&BC] = { "unproved reverse pointer slot",
+-						isa<Instruction>(BC.getOperand(0)) ? cast<Instruction>(BC.getOperand(0))->getOpcodeName() : "" };
+-					return false;
++					auto input = dyn_cast<Instruction>(BC.getOperand(0));
++					if (!input || (!isa<PHINode>(input) && !isa<SelectInst>(input) && !isa<BitCastInst>(input))) {
++						constant_vector_rejections[&BC] = { "unproved reverse pointer slot",
++							input ? input->getOpcodeName() : "" };
++						return false;
++					}
++					seed = input;
++				} else {
++					seed = load;
+ 				}
+ 				src_type = dst_ptr_type->getPointerElementType();
+ 				dst_vec = reverse_vec;
+-				seed = load;
+ 			}
+ 			if (!src_type->isStructTy() || !src_type->isSized() || !dst_vec) {
+ 				return false;
+@@ -791,6 +797,7 @@
+ 			std::unordered_map<Instruction*, SmallVector<Value*, 8>> root_indices;
+ 			std::unordered_map<LoadInst*, constant_pointer_slot> slot_loads;
+ 			std::unordered_map<BitCastInst*, LoadInst*> native_recasts;
++			std::unordered_map<BitCastInst*, Instruction*> merged_native_recasts;
+ 			SmallVector<Instruction*, 8> native_pointers;
+ 			SmallPtrSet<Instruction*, 32> native_seen;
+ 			bool has_native_load = false;
+@@ -803,6 +810,7 @@
+ 				constant_vector_rejection detail { reason, culprit ? culprit->getOpcodeName() : "" };
+ 				constant_vector_rejections[&BC] = detail;
+ 				for (auto& recast : native_recasts) constant_vector_rejections[recast.first] = detail;
++				for (auto& recast : merged_native_recasts) constant_vector_rejections[recast.first] = detail;
+ 				for (auto node : seen) {
+ 					if (auto root = dyn_cast<BitCastInst>(node)) constant_vector_rejections[root] = detail;
+ 				}
+@@ -907,9 +915,18 @@
+ 						loads.push_back(ld);
+ 					} else if (auto recast = dyn_cast<BitCastInst>(user)) {
+ 						auto load = dyn_cast<LoadInst>(ptr);
+-						if (!load || !slot_loads.count(load) || recast->getDestTy() != slot_loads.at(load).value_type)
+-							return reject("unsupported inverse pointer cast", recast);
+-						native_recasts.emplace(recast, load);
++						if (load && slot_loads.count(load) && recast->getDestTy() == slot_loads.at(load).value_type) {
++							// Preserve the existing direct-slot case, including vector
++							// stored-pointer types and unrelated nominal wrapper roots.
++							native_recasts.emplace(recast, load);
++						} else {
++							auto native_type = dyn_cast<PointerType>(recast->getDestTy());
++							if (ptr->getType()->getPointerElementType() != dst_vec || !native_type ||
++								native_type->isOpaque() || native_type->getAddressSpace() != 2 ||
++								!native_type->getPointerElementType()->isStructTy())
++								return reject("scalar or non-aggregate inverse pointer cast", ptr);
++							merged_native_recasts.emplace(recast, ptr);
++						}
+ 						if (!check_native_users(recast)) return false;
+ 					} else if (isa<GetElementPtrInst>(user) || isa<PHINode>(user) || isa<SelectInst>(user)) {
+ 						if (!add_pointer(user)) return false;
+@@ -922,6 +939,85 @@
+ 				if (auto load = dyn_cast<LoadInst>(root)) value = slot_loads.at(load).address;
+ 				if (auto source = dyn_cast<Instruction>(value); source && seen.count(source))
+ 					return reject("root depends on rewritten pointer component", root);
++			}
++
++			struct native_view_proof {
++				BitCastInst* recast;
++				Instruction* input;
++				SmallVector<Instruction*, 8> nodes;
++			};
++			SmallVector<native_view_proof, 4> native_views;
++			// Prove each inverse input separately. A canonical component can contain
++			// unrelated nominal wrapper types; equal layout is not native identity.
++			for (auto& recast : merged_native_recasts) {
++				native_view_proof proof { recast.first, recast.second, { recast.second } };
++				SmallPtrSet<Instruction*, 32> visited { proof.input };
++				SmallPtrSet<Instruction*, 32> anchored;
++				auto add_native_input = [&](Value* value) {
++					auto node = dyn_cast<Instruction>(value);
++					if (!node || !seen.count(node) || node->getType() != proof.input->getType())
++						return reject("unproved inverse pointer input", node);
++					if (visited.insert(node).second) proof.nodes.push_back(node);
++					return true;
++				};
++				for (size_t i = 0; i < proof.nodes.size(); ++i) {
++					auto node = proof.nodes[i];
++					if (root_indices.count(node)) {
++						Type* original_type;
++						Value* original;
++						if (auto load = dyn_cast<LoadInst>(node)) {
++							original_type = slot_loads.at(load).value_type;
++							original = slot_loads.at(load).address;
++						} else {
++							original = node->getOperand(0);
++							original_type = original->getType();
++						}
++						if (original_type != proof.recast->getDestTy())
++							return reject("inverse root nominal type mismatch", node);
++						if (isa<ConstantPointerNull>(original) || isa<UndefValue>(original) || isa<PoisonValue>(original))
++							return reject("unproved inverse native root", node);
++						// A load or scalar conversion can hide a dependency beyond
++						// the native pointer-use closure. Check the entire SSA ancestry
++						// of new-case roots before constructing any native placeholders.
++						SmallVector<Value*, 16> dependencies { original };
++						SmallPtrSet<Instruction*, 32> dependency_seen;
++						for (size_t d = 0; d < dependencies.size(); ++d) {
++							auto source = dyn_cast<Instruction>(dependencies[d]);
++							if (!source || !dependency_seen.insert(source).second) continue;
++							if (seen.count(source) || native_seen.count(source))
++								return reject("inverse root depends on rewritten native graph", node);
++							for (auto& operand : source->operands()) dependencies.push_back(operand);
++						}
++						anchored.insert(node);
++					} else if (auto phi = dyn_cast<PHINode>(node)) {
++						for (auto& value : phi->incoming_values()) if (!add_native_input(value)) return false;
++					} else if (auto select = dyn_cast<SelectInst>(node)) {
++						if (!add_native_input(select->getTrueValue()) || !add_native_input(select->getFalseValue())) return false;
++					} else return reject("unsupported inverse pointer input", node);
++				}
++				// Reachability to a root is a fixed point, not a DFS cycle shortcut.
++				// Every visited node must be anchored, including subcycles behind
++				// a merge which also has an independently valid incoming root.
++				for (;;) {
++					auto previous_size = anchored.size();
++					for (auto node : proof.nodes) {
++						if (anchored.count(node)) continue;
++						if (auto phi = dyn_cast<PHINode>(node)) {
++							for (auto& value : phi->incoming_values()) if (anchored.count(cast<Instruction>(value))) {
++								anchored.insert(node);
++								break;
++							}
++						} else {
++							auto select = cast<SelectInst>(node);
++							if (anchored.count(cast<Instruction>(select->getTrueValue())) ||
++								anchored.count(cast<Instruction>(select->getFalseValue()))) anchored.insert(node);
++						}
++					}
++					if (previous_size == anchored.size()) break;
++				}
++				for (auto node : proof.nodes) if (!anchored.count(node))
++					return reject("unanchored inverse pointer cycle", node);
++				native_views.push_back(std::move(proof));
+ 			}
+ 
+ 			// PHI placeholders break loop-carried dependencies. Plan the rest in
+@@ -966,7 +1062,41 @@
+ 				native_load->setDebugLoc(load->getDebugLoc());
+ 				native_loads.emplace(load, native_load);
+ 			}
++			std::unordered_map<BitCastInst*, Value*> merged_native_values;
++			for (auto& proof : native_views) {
++				std::unordered_map<Value*, Value*> native_values;
++				SmallPtrSet<Instruction*, 32> included;
++				for (auto node : proof.nodes) {
++					included.insert(node);
++					if (root_indices.count(node)) {
++						Value* native = node->getOperand(0);
++						if (auto load = dyn_cast<LoadInst>(node)) native = native_loads.at(load);
++						native_values.emplace(node, native);
++					} else if (auto phi = dyn_cast<PHINode>(node)) {
++						auto native_phi = PHINode::Create(proof.recast->getDestTy(), phi->getNumIncomingValues(),
++							phi->getName() + ".native", phi);
++						native_phi->copyMetadata(*phi);
++						native_phi->setDebugLoc(phi->getDebugLoc());
++						native_values.emplace(phi, native_phi);
++					}
++				}
++				for (auto node : ordered) if (included.count(node)) {
++					auto select = cast<SelectInst>(node);
++					auto native_select = SelectInst::Create(select->getCondition(), native_values.at(select->getTrueValue()),
++						native_values.at(select->getFalseValue()), select->getName() + ".native", select);
++					native_select->copyMetadata(*select);
++					native_select->setDebugLoc(select->getDebugLoc());
++					native_values.emplace(select, native_select);
++				}
++				for (auto node : proof.nodes) if (auto phi = dyn_cast<PHINode>(node)) {
++					auto native_phi = cast<PHINode>(native_values.at(phi));
++					for (unsigned i = 0; i < phi->getNumIncomingValues(); ++i)
++						native_phi->addIncoming(native_values.at(phi->getIncomingValue(i)), phi->getIncomingBlock(i));
++				}
++				merged_native_values.emplace(proof.recast, native_values.at(proof.input));
++			}
+ 			for (auto& recast : native_recasts) recast.first->replaceAllUsesWith(native_loads.at(recast.second));
++			for (auto& recast : merged_native_values) recast.first->replaceAllUsesWith(recast.second);
+ 			for (auto root : roots) {
+ 				auto& path = root_indices.at(root);
+ 				Value* base = root->getOperand(0);
+@@ -1033,7 +1163,7 @@
+ 			// A component can consume other bitcasts from the outer worklist.
+ 			// Null their slots without invalidating the active range iterator.
+ 			for (auto& pending : ptr_bc_instrs) {
+-				if (seen.count(pending) || native_recasts.count(pending)) {
++				if (seen.count(pending) || native_recasts.count(pending) || merged_native_recasts.count(pending)) {
+ 					constant_vector_rejections.erase(pending);
+ 					pending = nullptr;
+ 				}
+@@ -1041,8 +1171,10 @@
+ 			// Loads are gone and all remaining users belong to the validated
+ 			// graph. Sever cycles before deleting any original pointer node.
+ 			for (auto& recast : native_recasts) recast.first->dropAllReferences();
++			for (auto& recast : merged_native_recasts) recast.first->dropAllReferences();
+ 			for (auto ptr : pointers) ptr->dropAllReferences();
+ 			for (auto& recast : native_recasts) recast.first->eraseFromParent();
++			for (auto& recast : merged_native_recasts) recast.first->eraseFromParent();
+ 			for (auto ptr : pointers) ptr->eraseFromParent();
+ 			// Slot-address casts can be shared with other loads; only erase dead
+ 			// ones, after nulling every matching raw outer-worklist entry.

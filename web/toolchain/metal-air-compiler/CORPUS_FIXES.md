@@ -6,7 +6,10 @@ archive SHA256 are unchanged, as is the complete historical
 `manifest.json` `rebaseProvenance` record. This is an incremental source patch,
 not a new upstream rebase, ABI version or receipt format. The separate
 `0107-a2flo-typed-constant-pointer-slots.patch` adds the reviewed pointer-slot
-correction without changing any byte of `0101` through `0106`.
+correction without changing any byte of `0101` through `0106`. The additive
+`0108-a2flo-exact-inverse-pointer-merges.patch` retains all seven previous patches
+and extends only proven inverse-pointer merge handling. It does not change the
+MSL API, fixed 31-call canary, zlib fixes or runtime integrity checks.
 
 ## Changed source files
 
@@ -46,7 +49,17 @@ correction without changing any byte of `0101` through `0106`.
   of that recovered slot load; existing native aggregate GEPs, indices and merge
   edges remain unchanged. The full forward native-use closure must be read-only.
   Unknown/raw-byte/nonzero-field slots, volatile/atomic loads, shifted or inexact
-  inverse casts, escapes and writes remain outside the new lowering.
+  inverse casts, escapes and writes remain outside that direct-slot lowering.
+  `0108` separately proves each inverse PHI/select input's exact original
+  aggregate type. Every visited input must reach a matching root or typed slot;
+  equal layouts are insufficient, and a valid surrounding arm cannot justify a
+  rootless subcycle. New native merges preserve conditions, metadata, duplicate
+  edges and original insertion sites. Native GEP indices/strides and load sites
+  remain unchanged. GEP/scalar inverse inputs, mismatched nominal types,
+  null/undef/poison roots, unknown arms and hidden dependencies on the rewritten
+  graph are rejected before mutation. The existing direct-slot behavior and
+  native read-only closure remain intact. Rejection subreasons are fixed strings
+  plus bounded opcode names, never user identifiers or IR excerpts.
 - `clang/lib/CodeGen/CodeGenModule.cpp`: do not mistake annotations on an
   explicitly bound resource's pointed-to record for a second stage interface.
   Exempt only non-stage-input pointers/references with a sole `buffer` attribute
@@ -116,14 +129,16 @@ from the production-source patch:
   rejection and check bounded reason labels, the four-opcode cap, overflow
   marker and absence of an appended instruction dump.
 
-- `metal-constant-pointer-slots.ll`: ten positive functions cover typed and
-  zero-offset argument slots, separate outer/stored-pointer address spaces,
-  packed/nested records, scalar/vector views, exact inverse recasts, native
-  PHI/GEP loops and shared-load/crosslinked graphs. Fourteen isolated negative
-  modules exercise the unchanged final legacy rejection path for unproved slots,
-  address-space/layout mismatches, volatile/atomic loads, nonexact inverse casts,
-  native escapes/writes and padded wrappers. Exact source identity, split-module
-  inventory and RUN targets are checked, not the compiler's behavior.
+- `metal-constant-pointer-slots.ll`: seventeen positive functions and twenty-seven
+  isolated rejection modules. The original ten positives and fourteen negative
+  bodies remain unchanged. Seven added positives describe exact root round-trips,
+  branch-local root/slot diamonds, slot-only select seeding, loop and duplicate-edge
+  PHIs, local exact provenance within mixed nominal components and direct-slot
+  compatibility. Thirteen new negatives cover nominal mismatches, zero/shifted
+  GEP and scalar inverse inputs, rootless subcycles, hidden native dependencies,
+  invalid native constants, unknown arms, escapes and writes. All retain users
+  reaching the unchanged legacy rejection path. Source hashes, preserved bodies,
+  split-module inventory and RUN targets are checked, not compiler behavior.
 
 Their `RUN` lines require `opt`, `FileCheck` and, for split fixtures,
 `split-file` from the matching patched toolchain. They have not been executed
@@ -156,8 +171,8 @@ additions to the original list cover these source corrections:
 - `retyped-buffer-pointer-load.metal`: a demonstrated pointer-producing-load
   failure on the existing e97 and 74e5e62 artifacts, with fragment entry
   `retyped_buffer_pointer_load`. The exact public source is authenticated before
-  real-WASM compilation. Its passing expectation awaits the corrected artifact;
-  the failure diagnostic alone does not expose its incoming LLVM graph.
+  real-WASM compilation. It now passes the existing 31-call CI baseline, but
+  its earlier failure diagnostic alone does not expose its incoming LLVM graph.
   Inverse-recast cases are covered only by the unexecuted native matrix; a
   separate MSL candidate already passes the old compiler and is not included
   or represented as a reproducer of that branch.
@@ -196,8 +211,9 @@ renamed or accepted under aliases. The bounded compilation budget includes
 the four liveness variants: 31 API calls total. Each added shader is source-only, excluded from the public runtime
 payload, and included by the existing tracked compiler-directory source copy.
 Source-only tests check fixture wiring and copy closure but do not execute the
-compiler. The writer correction and expanded liveness assertions still require
-a rebuilt matching CI artifact.
+compiler. The green 144d3f2 CI baseline retains the 62a0097 compiler bytes and
+passes these existing canary checks. The new `0108` inverse-merge path has no
+new demonstrated MSL reproducer; its added native coverage remains static-only.
 
 ## Authored storage/interface regressions
 
@@ -266,28 +282,32 @@ correctly emits those flags in API LLVM text, but its strict writer rejects them
 `create_fragment_input` fails first, hiding the same missing case in
 `create_position`. The narrow consumer correction handles both. This actual
 failure shows why source review and LLVM-text checks did not prove serialization.
-Existing actual live AIRR validates absent-field parsing; synthetic true-field
-parser tests are not execution evidence for the corrected writer.
+That writer correction is included in the later green CI baseline, whose existing
+canary checks actual live/dead serialized AIRR flags. Synthetic parser tests alone
+would not establish writer execution.
 
 Source-only checker tests do not execute the API; standalone `clang -cc1` cannot
-exercise the wrapper hook. All four corrected metallibs, binary reflection,
-embedded AIR and the observed corpus omissions still need verification with a
-fresh artifact. No stage-linkage or device effect is established.
+exercise the wrapper hook. The existing real-WASM canary covers all four liveness
+combinations and their binary reflection; broader embedded-AIR/corpus equivalence
+and stage-linkage or device effects are separate, unestablished claims.
 
 ## Evidence and verification boundary
 
-These corrections respond to diagnostics from authenticated existing CI
-artifacts. Bounded pointer diagnostics identify the rejected opcodes, not the
-complete pre-failure IR graph. Source review, public failure reproductions and
-address models do not establish that the modified compiler or private corpus
-now passes. The 74e5e62 diagnostic artifact validates the earlier authored
-storage/interface, reflection and float3 type/GEP checks, but is not a passing
-release artifact because dead-input metallib serialization fails. The writer
-correction, expanded liveness checks and reviewed `0107` pointer-slot correction
-require a fresh matching artifact. The native pointer matrix has not run in this
-integration or the current CI, which does not build `opt`/FileCheck. No raw-IR API
-mode, additional job or native-tool build is added. Other pointer graph shapes
-remain unsupported; source review does not establish private-corpus success.
+These corrections respond to authenticated CI artifacts. The 62a0097 compiler,
+retained unchanged by the green 144d3f2 CI baseline, includes `0106`/`0107` and
+passes the existing strict canary. A remaining original kernel reports an
+unsupported inverse pointer cast. Its diagnostic identifies the rejected user,
+not that user's input opcode or complete pre-error graph. No usable pre-error IR
+establishes that the new PHI/select case occurs in that kernel; this integration
+does not claim actual kernel recovery.
+
+`0108` is a statically reviewed correction for the precisely defined symbolic
+cases above, pending a fresh matching artifact and unchanged-source checks. Its
+native matrix has not run here or in current CI, which does not build
+`opt`/FileCheck. No new natural-MSL probe, raw-IR API mode, extra job or native-tool
+build is added. Other pointer graph shapes remain unsupported. The conservative
+maximum diagnostic length is 278 characters, including the invalid-opcode
+fallback; subreasons cannot reveal source names, values, paths or IR.
 
 The source-only verification procedure is:
 
@@ -305,8 +325,8 @@ runtime source identity. None of these steps builds or invokes LLVM, Clang or
 WASM, and no private corpus source is included in this package.
 
 A new CI-built artifact and execution of authored regressions plus the
-unchanged corpus are still required to validate the compiler corrections.
-Existing artifacts cannot contain the writer consumer or pointer-slot corrections. The complete manifest hash
+unchanged corpus are still required to validate `0108`.
+Existing artifacts cannot contain that new inverse-merge correction. The complete manifest hash
 and all patch hashes already participate in runtime source identity, so old
 receipts must become stale rather than being relabeled or bypassed. No source
 identity, metallib entry/stage, container-integrity or bitcode-hash check is

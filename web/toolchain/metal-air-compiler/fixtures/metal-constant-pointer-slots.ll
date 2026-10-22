@@ -18,9 +18,10 @@
 ; RUN: not opt -enable-new-pm=0 -PointerBCFixup -disable-output %t/native_write.ll 2>&1 | FileCheck %s --check-prefix=REJECT-NATIVE-WRITE
 ; RUN: not opt -enable-new-pm=0 -PointerBCFixup -disable-output %t/padded_wrapper.ll 2>&1 | FileCheck %s --check-prefix=REJECT-PADDED-WRAPPER
 ; REJECT-PADDED-WRAPPER: invalid pointer bitcast: failed to run bitcast fixup (unhandled instructions); unsupported users: select; constant-vector graph: root wrapper layout mismatch
-; All negatives retain a direct select user at the unchanged legacy guard.
+; Original negatives retain a direct select user at the unchanged legacy guard.
+; New inverse negatives retain a select or GEP user that the same guard rejects.
 ; They assert actual compiler rejection, not merely refusal by the new helper.
-; This file is authored for CI. No compiler/verifier execution is claimed.
+; Native opt/FileCheck is not run by current CI. No execution is claimed.
 ; REJECT-UNKNOWN-SLOT: invalid pointer bitcast: failed to run bitcast fixup (unhandled instructions); unsupported users: select; constant-vector graph: unproved pointer slot
 ; REJECT-RAW-BYTE-SLOT: invalid pointer bitcast: failed to run bitcast fixup (unhandled instructions); unsupported users: select; constant-vector graph: unproved pointer slot
 ; REJECT-NONZERO-POINTER-FIELD: invalid pointer bitcast: failed to run bitcast fixup (unhandled instructions); unsupported users: select; constant-vector graph: unproved pointer slot
@@ -35,6 +36,34 @@
 ; REJECT-NATIVE-ESCAPE: invalid pointer bitcast: failed to run bitcast fixup (unhandled instructions); unsupported users: select; constant-vector graph: unsupported native-view user
 ; REJECT-NATIVE-WRITE: invalid pointer bitcast: failed to run bitcast fixup (unhandled instructions); unsupported users: select; constant-vector graph: unsupported native-view user
 
+; Additional inverse-provenance rejection modules; source-only, not executed.
+; RUN: not opt -enable-new-pm=0 -PointerBCFixup -disable-output %t/inverse_mixed_nominal.ll 2>&1 | FileCheck %s --check-prefix=REJECT-INVERSE-MIXED-NOMINAL
+; REJECT-INVERSE-MIXED-NOMINAL: constant-vector graph: inverse root nominal type mismatch (bitcast)
+; RUN: not opt -enable-new-pm=0 -PointerBCFixup -disable-output %t/inverse_vector_root.ll 2>&1 | FileCheck %s --check-prefix=REJECT-INVERSE-VECTOR-ROOT
+; REJECT-INVERSE-VECTOR-ROOT: constant-vector graph: inverse root nominal type mismatch (bitcast)
+; RUN: not opt -enable-new-pm=0 -PointerBCFixup -disable-output %t/inverse_zero_gep.ll 2>&1 | FileCheck %s --check-prefix=REJECT-INVERSE-ZERO-GEP
+; REJECT-INVERSE-ZERO-GEP: constant-vector graph: unsupported inverse pointer input (getelementptr)
+; RUN: not opt -enable-new-pm=0 -PointerBCFixup -disable-output %t/inverse_shifted_gep.ll 2>&1 | FileCheck %s --check-prefix=REJECT-INVERSE-SHIFTED-GEP
+; REJECT-INVERSE-SHIFTED-GEP: constant-vector graph: unsupported inverse pointer input (getelementptr)
+; RUN: not opt -enable-new-pm=0 -PointerBCFixup -disable-output %t/inverse_rootless_subcycle.ll 2>&1 | FileCheck %s --check-prefix=REJECT-INVERSE-ROOTLESS-SUBCYCLE
+; REJECT-INVERSE-ROOTLESS-SUBCYCLE: constant-vector graph: unanchored inverse pointer cycle (phi)
+; RUN: not opt -enable-new-pm=0 -PointerBCFixup -disable-output %t/inverse_transitive_native.ll 2>&1 | FileCheck %s --check-prefix=REJECT-INVERSE-TRANSITIVE-NATIVE
+; REJECT-INVERSE-TRANSITIVE-NATIVE: constant-vector graph: inverse root depends on rewritten native graph (bitcast)
+; RUN: not opt -enable-new-pm=0 -PointerBCFixup -disable-output %t/inverse_null_native.ll 2>&1 | FileCheck %s --check-prefix=REJECT-INVERSE-NULL-NATIVE
+; REJECT-INVERSE-NULL-NATIVE: constant-vector graph: unproved inverse native root (bitcast)
+; RUN: not opt -enable-new-pm=0 -PointerBCFixup -disable-output %t/inverse_undef_native.ll 2>&1 | FileCheck %s --check-prefix=REJECT-INVERSE-UNDEF-NATIVE
+; REJECT-INVERSE-UNDEF-NATIVE: constant-vector graph: unproved inverse native root (bitcast)
+; RUN: not opt -enable-new-pm=0 -PointerBCFixup -disable-output %t/inverse_poison_native.ll 2>&1 | FileCheck %s --check-prefix=REJECT-INVERSE-POISON-NATIVE
+; REJECT-INVERSE-POISON-NATIVE: constant-vector graph: unproved inverse native root (bitcast)
+; RUN: not opt -enable-new-pm=0 -PointerBCFixup -disable-output %t/inverse_unknown_arm.ll 2>&1 | FileCheck %s --check-prefix=REJECT-INVERSE-UNKNOWN-ARM
+; REJECT-INVERSE-UNKNOWN-ARM: constant-vector graph: unmapped argument or constant pointer root
+; RUN: not opt -enable-new-pm=0 -PointerBCFixup -disable-output %t/inverse_scalar_view.ll 2>&1 | FileCheck %s --check-prefix=REJECT-INVERSE-SCALAR-VIEW
+; REJECT-INVERSE-SCALAR-VIEW: constant-vector graph: scalar or non-aggregate inverse pointer cast (select)
+; RUN: not opt -enable-new-pm=0 -PointerBCFixup -disable-output %t/inverse_merged_escape.ll 2>&1 | FileCheck %s --check-prefix=REJECT-INVERSE-MERGED-ESCAPE
+; REJECT-INVERSE-MERGED-ESCAPE: constant-vector graph: unsupported native-view user (call)
+; RUN: not opt -enable-new-pm=0 -PointerBCFixup -disable-output %t/inverse_merged_write.ll 2>&1 | FileCheck %s --check-prefix=REJECT-INVERSE-MERGED-WRITE
+; REJECT-INVERSE-MERGED-WRITE: constant-vector graph: unsupported native-view user (store)
+
 ;--- slots.ll
 target datalayout = "e-p:64:64-i64:64-n8:16:32:64"
 target triple = "air64-apple-ios18.0.0"
@@ -43,6 +72,7 @@ target triple = "air64-apple-ios18.0.0"
 %PackedArguments = type <{ %Buffer addrspace(2)*, i8 }>
 %PointerRow = type { [3 x %Buffer addrspace(2)*] }
 %NestedSlots = type { [2 x %PointerRow], i64 }
+%Other = type { [8 x <4 x float>] }
 
 ; The outer slot AS1 is distinct from the AS2 pointer stored in it. Explicit
 ; alignment 1 and pointer-valued metadata must survive the single slot load.
@@ -243,11 +273,185 @@ define floor_fragment <4 x i32> @native_recast_crosslink(%Buffer addrspace(2)* a
   ret <4 x i32> %value
 }
 
+
+; New inverse provenance cases. These symbolic checks are not a claim that
+; the remaining private kernel has any particular optimized incoming graph.
+; POS-LABEL: define floor_fragment <4 x float> @inverse_root_roundtrip(
+; POS: %row = getelementptr inbounds %Buffer, %Buffer addrspace(2)* %base, i32 0, i32 0, i64 %index
+; POS-NEXT: %value = load <4 x float>, <4 x float> addrspace(2)* %row, align 4
+; POS-NEXT: ret <4 x float> %value
+define floor_fragment <4 x float> @inverse_root_roundtrip(%Buffer addrspace(2)* %base, i64 %index) {
+  %view = bitcast %Buffer addrspace(2)* %base to <4 x i32> addrspace(2)*
+  %back = bitcast <4 x i32> addrspace(2)* %view to %Buffer addrspace(2)*
+  %row = getelementptr inbounds %Buffer, %Buffer addrspace(2)* %back, i32 0, i32 0, i64 %index
+  %value = load <4 x float>, <4 x float> addrspace(2)* %row, align 4
+  ret <4 x float> %value
+}
+
+; The slot is read exactly once in its original predecessor. The native and
+; canonical PHIs preserve predecessor order; native aggregate indexing is intact.
+; POS-LABEL: define floor_fragment <4 x i32> @inverse_diamond(
+; POS: left:
+; POS: %a.storage = getelementptr %Buffer, %Buffer addrspace(2)* %base, i32 0, i32 0, i32 0
+; POS: right:
+; POS-NEXT: %b.pointer = load %Buffer addrspace(2)*, %Buffer addrspace(2)* addrspace(1)* %slot, align 1, !invariant.load ![[EMPTY]]
+; POS-NEXT: %b.storage = getelementptr %Buffer, %Buffer addrspace(2)* %b.pointer, i32 0, i32 0, i32 0
+; POS: merge:
+; POS-NEXT: %p.native = phi %Buffer addrspace(2)* [ %base, %left ], [ %b.pointer, %right ]
+; POS-NEXT: %p.typed = phi <4 x float> addrspace(2)* [ %a.storage, %left ], [ %b.storage, %right ]
+; POS-NEXT: %bits.typed = load <4 x float>, <4 x float> addrspace(2)* %p.typed, align 4
+; POS-NEXT: %bits.bits = bitcast <4 x float> %bits.typed to <4 x i32>
+; POS-NEXT: %row = getelementptr inbounds %Buffer, %Buffer addrspace(2)* %p.native, i32 0, i32 0, i64 %index
+; POS-NEXT: %value = load <4 x float>, <4 x float> addrspace(2)* %row, align 8
+define floor_fragment <4 x i32> @inverse_diamond(%Buffer addrspace(2)* %base, %Buffer addrspace(2)* addrspace(1)* %slot, i1 %condition, i64 %index) {
+entry:
+  br i1 %condition, label %left, label %right
+left:
+  %a = bitcast %Buffer addrspace(2)* %base to <4 x i32> addrspace(2)*
+  br label %merge
+right:
+  %cast.slot = bitcast %Buffer addrspace(2)* addrspace(1)* %slot to <4 x i32> addrspace(2)* addrspace(1)*
+  %b = load <4 x i32> addrspace(2)*, <4 x i32> addrspace(2)* addrspace(1)* %cast.slot, align 1, !invariant.load !0
+  br label %merge
+merge:
+  %p = phi <4 x i32> addrspace(2)* [ %a, %left ], [ %b, %right ]
+  %bits = load <4 x i32>, <4 x i32> addrspace(2)* %p, align 4
+  %back = bitcast <4 x i32> addrspace(2)* %p to %Buffer addrspace(2)*
+  %row = getelementptr inbounds %Buffer, %Buffer addrspace(2)* %back, i32 0, i32 0, i64 %index
+  %value = load <4 x float>, <4 x float> addrspace(2)* %row, align 8
+  %value.bits = bitcast <4 x float> %value to <4 x i32>
+  %result = xor <4 x i32> %bits, %value.bits
+  ret <4 x i32> %result
+}
+
+; No original wrapper-to-vector instruction exists in this case. The reverse
+; cast must seed proof through the select and both explicitly typed slot loads.
+; POS-LABEL: define floor_fragment <4 x float> @inverse_slot_select(
+; POS: %a.pointer = load %Buffer addrspace(2)*, %Buffer addrspace(2)* addrspace(1)* %first, align 1
+; POS: %b.pointer = load %Buffer addrspace(2)*, %Buffer addrspace(2)* addrspace(2)* %second, align 8
+; POS: %p.native = select i1 %condition, %Buffer addrspace(2)* %a.pointer, %Buffer addrspace(2)* %b.pointer, !prof ![[WEIGHTS:[0-9]+]]
+; POS-NEXT: %p.typed = select i1 %condition, <4 x float> addrspace(2)* %a.storage, <4 x float> addrspace(2)* %b.storage, !prof ![[WEIGHTS]]
+; POS-NEXT: %row = getelementptr %Buffer, %Buffer addrspace(2)* %p.native, i64 %object, i32 0, i64 %index
+; POS-NEXT: %value = load <4 x float>, <4 x float> addrspace(2)* %row, align 4
+define floor_fragment <4 x float> @inverse_slot_select(%Buffer addrspace(2)* addrspace(1)* %first, %Buffer addrspace(2)* addrspace(2)* %second, i1 %condition, i64 %object, i64 %index) {
+  %first.cast = bitcast %Buffer addrspace(2)* addrspace(1)* %first to <4 x i32> addrspace(2)* addrspace(1)*
+  %a = load <4 x i32> addrspace(2)*, <4 x i32> addrspace(2)* addrspace(1)* %first.cast, align 1
+  %second.cast = bitcast %Buffer addrspace(2)* addrspace(2)* %second to <4 x i32> addrspace(2)* addrspace(2)*
+  %b = load <4 x i32> addrspace(2)*, <4 x i32> addrspace(2)* addrspace(2)* %second.cast, align 8
+  %p = select i1 %condition, <4 x i32> addrspace(2)* %a, <4 x i32> addrspace(2)* %b, !prof !3
+  %back = bitcast <4 x i32> addrspace(2)* %p to %Buffer addrspace(2)*
+  %row = getelementptr %Buffer, %Buffer addrspace(2)* %back, i64 %object, i32 0, i64 %index
+  %value = load <4 x float>, <4 x float> addrspace(2)* %row, align 4
+  ret <4 x float> %value
+}
+
+; POS-LABEL: define floor_fragment <4 x float> @inverse_loop(
+; POS: loop:
+; POS-NEXT: %p.native = phi %Buffer addrspace(2)* [ %first, %entry ], [ %next.native, %loop ]
+; POS-NEXT: %p.typed = phi <4 x float> addrspace(2)* [ %a.storage, %entry ], [ %next.typed, %loop ]
+; POS-NEXT: %next.native = select i1 %choose, %Buffer addrspace(2)* %p.native, %Buffer addrspace(2)* %second
+; POS-NEXT: %next.typed = select i1 %choose, <4 x float> addrspace(2)* %p.typed, <4 x float> addrspace(2)* %b.storage
+; POS-NEXT: %row = getelementptr inbounds %Buffer, %Buffer addrspace(2)* %p.native, i32 0, i32 0, i64 %index
+; POS-NEXT: %value = load <4 x float>, <4 x float> addrspace(2)* %row, align 4
+define floor_fragment <4 x float> @inverse_loop(%Buffer addrspace(2)* %first, %Buffer addrspace(2)* %second, i1 %choose, i1 %again, i64 %index) {
+entry:
+  %a = bitcast %Buffer addrspace(2)* %first to <4 x i32> addrspace(2)*
+  %b = bitcast %Buffer addrspace(2)* %second to <4 x i32> addrspace(2)*
+  br label %loop
+loop:
+  %p = phi <4 x i32> addrspace(2)* [ %a, %entry ], [ %next, %loop ]
+  %next = select i1 %choose, <4 x i32> addrspace(2)* %p, <4 x i32> addrspace(2)* %b
+  %back = bitcast <4 x i32> addrspace(2)* %p to %Buffer addrspace(2)*
+  %row = getelementptr inbounds %Buffer, %Buffer addrspace(2)* %back, i32 0, i32 0, i64 %index
+  %value = load <4 x float>, <4 x float> addrspace(2)* %row, align 4
+  br i1 %again, label %loop, label %exit
+exit:
+  ret <4 x float> %value
+}
+
+; Both PHIs have two identical self-edge entries because the switch has two
+; edges back to the loop. Native PHIs must remain in the PHI prefix.
+; POS-LABEL: define floor_fragment <4 x float> @inverse_duplicate_edges(
+; POS: loop:
+; POS-NEXT: %p.native = phi %Buffer addrspace(2)* [ %first, %entry ], [ %q.native, %loop ], [ %q.native, %loop ]
+; POS-NEXT: %p.typed = phi <4 x float> addrspace(2)* [ %a.storage, %entry ], [ %q.typed, %loop ], [ %q.typed, %loop ]
+; POS-NEXT: %q.native = phi %Buffer addrspace(2)* [ %second, %entry ], [ %p.native, %loop ], [ %p.native, %loop ]
+; POS-NEXT: %q.typed = phi <4 x float> addrspace(2)* [ %b.storage, %entry ], [ %p.typed, %loop ], [ %p.typed, %loop ]
+; POS-NEXT: %row = getelementptr %Buffer, %Buffer addrspace(2)* %p.native, i32 0, i32 0, i64 %index
+define floor_fragment <4 x float> @inverse_duplicate_edges(%Buffer addrspace(2)* %first, %Buffer addrspace(2)* %second, i32 %choice, i64 %index) {
+entry:
+  %a = bitcast %Buffer addrspace(2)* %first to <4 x i32> addrspace(2)*
+  %b = bitcast %Buffer addrspace(2)* %second to <4 x i32> addrspace(2)*
+  br label %loop
+loop:
+  %p = phi <4 x i32> addrspace(2)* [ %a, %entry ], [ %q, %loop ], [ %q, %loop ]
+  %q = phi <4 x i32> addrspace(2)* [ %b, %entry ], [ %p, %loop ], [ %p, %loop ]
+  %back = bitcast <4 x i32> addrspace(2)* %p to %Buffer addrspace(2)*
+  %row = getelementptr %Buffer, %Buffer addrspace(2)* %back, i32 0, i32 0, i64 %index
+  %value = load <4 x float>, <4 x float> addrspace(2)* %row, align 4
+  switch i32 %choice, label %exit [ i32 0, label %loop
+                                  i32 1, label %loop ]
+exit:
+  ret <4 x float> %value
+}
+
+; The local inverse subgraph has exact Buffer roots, although an Other slot is
+; connected to the same canonical component. Its old direct-slot inverse is
+; still accepted, rather than imposing a global nominal-type restriction.
+; POS-LABEL: define floor_fragment <4 x i32> @inverse_local_nominal_types(
+; POS: %a.pointer = load %Buffer addrspace(2)*, %Buffer addrspace(2)* addrspace(2)* %first, align 8
+; POS: %b.pointer = load %Other addrspace(2)*, %Other addrspace(2)* addrspace(2)* %second, align 8
+; POS: %p.native = select i1 %condition, %Buffer addrspace(2)* %base, %Buffer addrspace(2)* %a.pointer
+; POS: %native.row = getelementptr %Buffer, %Buffer addrspace(2)* %p.native, i32 0, i32 0, i64 %index
+; POS: %other.row = getelementptr %Other, %Other addrspace(2)* %b.pointer, i32 0, i32 0, i64 %index
+define floor_fragment <4 x i32> @inverse_local_nominal_types(%Buffer addrspace(2)* %base, %Buffer addrspace(2)* addrspace(2)* %first, %Other addrspace(2)* addrspace(2)* %second, i1 %condition, i64 %index) {
+  %seed = bitcast %Buffer addrspace(2)* %base to <4 x i32> addrspace(2)*
+  %first.cast = bitcast %Buffer addrspace(2)* addrspace(2)* %first to <4 x i32> addrspace(2)* addrspace(2)*
+  %a = load <4 x i32> addrspace(2)*, <4 x i32> addrspace(2)* addrspace(2)* %first.cast, align 8
+  %second.cast = bitcast %Other addrspace(2)* addrspace(2)* %second to <4 x i32> addrspace(2)* addrspace(2)*
+  %b = load <4 x i32> addrspace(2)*, <4 x i32> addrspace(2)* addrspace(2)* %second.cast, align 8
+  %p = select i1 %condition, <4 x i32> addrspace(2)* %seed, <4 x i32> addrspace(2)* %a
+  %q = select i1 %condition, <4 x i32> addrspace(2)* %p, <4 x i32> addrspace(2)* %b
+  %bits = load <4 x i32>, <4 x i32> addrspace(2)* %q, align 4
+  %back = bitcast <4 x i32> addrspace(2)* %p to %Buffer addrspace(2)*
+  %native.row = getelementptr %Buffer, %Buffer addrspace(2)* %back, i32 0, i32 0, i64 %index
+  %native.value = load <4 x float>, <4 x float> addrspace(2)* %native.row, align 4
+  %other.back = bitcast <4 x i32> addrspace(2)* %b to %Other addrspace(2)*
+  %other.row = getelementptr %Other, %Other addrspace(2)* %other.back, i32 0, i32 0, i64 %index
+  %other.value = load <4 x float>, <4 x float> addrspace(2)* %other.row, align 4
+  %sum = fadd <4 x float> %native.value, %other.value
+  %sum.bits = bitcast <4 x float> %sum to <4 x i32>
+  %result = xor <4 x i32> %bits, %sum.bits
+  ret <4 x i32> %result
+}
+
+; The previous direct-slot inverse may restore a vector pointer, not a wrapper.
+; The new aggregate-only merge proof must not intercept that accepted case.
+; POS-LABEL: define floor_fragment <4 x i32> @inverse_direct_vector_slot(
+; POS: %a.pointer = load <4 x float> addrspace(2)*, <4 x float> addrspace(2)* addrspace(2)* %slot, align 8
+; POS: %native.row = getelementptr <4 x float>, <4 x float> addrspace(2)* %a.pointer, i64 %index
+; POS-NEXT: %native.value = load <4 x float>, <4 x float> addrspace(2)* %native.row, align 4
+define floor_fragment <4 x i32> @inverse_direct_vector_slot(%Buffer addrspace(2)* %base, <4 x float> addrspace(2)* addrspace(2)* %slot, i1 %condition, i64 %index) {
+  %seed = bitcast %Buffer addrspace(2)* %base to <4 x i32> addrspace(2)*
+  %slot.cast = bitcast <4 x float> addrspace(2)* addrspace(2)* %slot to <4 x i32> addrspace(2)* addrspace(2)*
+  %a = load <4 x i32> addrspace(2)*, <4 x i32> addrspace(2)* addrspace(2)* %slot.cast, align 8
+  %p = select i1 %condition, <4 x i32> addrspace(2)* %seed, <4 x i32> addrspace(2)* %a
+  %bits = load <4 x i32>, <4 x i32> addrspace(2)* %p, align 4
+  %back = bitcast <4 x i32> addrspace(2)* %a to <4 x float> addrspace(2)*
+  %native.row = getelementptr <4 x float>, <4 x float> addrspace(2)* %back, i64 %index
+  %native.value = load <4 x float>, <4 x float> addrspace(2)* %native.row, align 4
+  %native.bits = bitcast <4 x float> %native.value to <4 x i32>
+  %result = xor <4 x i32> %bits, %native.bits
+  ret <4 x i32> %result
+}
+
 ; POS: ![[EMPTY]] = !{}
 ; POS: ![[BYTES]] = !{i64 16}
+; POS: ![[WEIGHTS]] = !{!"branch_weights", i32 3, i32 7}
 !0 = !{}
 !1 = !{i64 16}
 !2 = !{i64 16}
+!3 = !{!"branch_weights", i32 3, i32 7}
 
 ;--- unknown_slot.ll
 target datalayout = "e-p:64:64-i64:64-n8:16:32:64"
@@ -455,4 +659,221 @@ define floor_fragment <4 x i32> @reject_padded_wrapper(%Buffer addrspace(2)* %ba
   %chosen = select i1 %condition, <4 x i32> addrspace(2)* %raw, <4 x i32> addrspace(2)* %loaded
   %value = load <4 x i32>, <4 x i32> addrspace(2)* %chosen, align 16
   ret <4 x i32> %value
+}
+
+;--- inverse_mixed_nominal.ll
+target datalayout = "e-p:64:64-i64:64-n8:16:32:64"
+target triple = "air64-apple-ios18.0.0"
+%Buffer = type { [8 x <4 x float>] }
+%Other = type { [8 x <4 x float>] }
+
+define floor_fragment <4 x float> @reject_inverse_mixed_nominal(%Buffer addrspace(2)* %first, %Other addrspace(2)* %second, i1 %condition) {
+  %a = bitcast %Buffer addrspace(2)* %first to <4 x i32> addrspace(2)*
+  %b = bitcast %Other addrspace(2)* %second to <4 x i32> addrspace(2)*
+  %p = select i1 %condition, <4 x i32> addrspace(2)* %a, <4 x i32> addrspace(2)* %b
+  %back = bitcast <4 x i32> addrspace(2)* %p to %Buffer addrspace(2)*
+  %row = getelementptr %Buffer, %Buffer addrspace(2)* %back, i32 0, i32 0, i32 0
+  %value = load <4 x float>, <4 x float> addrspace(2)* %row, align 4
+  ret <4 x float> %value
+}
+
+;--- inverse_vector_root.ll
+target datalayout = "e-p:64:64-i64:64-n8:16:32:64"
+target triple = "air64-apple-ios18.0.0"
+%Buffer = type { [8 x <4 x float>] }
+
+define floor_fragment <4 x float> @reject_inverse_vector_root(%Buffer addrspace(2)* %first, <4 x float> addrspace(2)* %second, i1 %condition) {
+  %a = bitcast %Buffer addrspace(2)* %first to <4 x i32> addrspace(2)*
+  %b = bitcast <4 x float> addrspace(2)* %second to <4 x i32> addrspace(2)*
+  %p = select i1 %condition, <4 x i32> addrspace(2)* %a, <4 x i32> addrspace(2)* %b
+  %back = bitcast <4 x i32> addrspace(2)* %p to %Buffer addrspace(2)*
+  %row = getelementptr %Buffer, %Buffer addrspace(2)* %back, i32 0, i32 0, i32 0
+  %value = load <4 x float>, <4 x float> addrspace(2)* %row, align 4
+  ret <4 x float> %value
+}
+
+;--- inverse_zero_gep.ll
+target datalayout = "e-p:64:64-i64:64-n8:16:32:64"
+target triple = "air64-apple-ios18.0.0"
+%Buffer = type { [8 x <4 x float>] }
+
+define floor_fragment <4 x float> @reject_inverse_zero_gep(%Buffer addrspace(2)* %base, i1 %condition, i64 %offset) {
+  %a = bitcast %Buffer addrspace(2)* %base to <4 x i32> addrspace(2)*
+  %b = getelementptr <4 x i32>, <4 x i32> addrspace(2)* %a, i64 0
+  %p = select i1 %condition, <4 x i32> addrspace(2)* %a, <4 x i32> addrspace(2)* %b
+  %back = bitcast <4 x i32> addrspace(2)* %p to %Buffer addrspace(2)*
+  %row = getelementptr %Buffer, %Buffer addrspace(2)* %back, i32 0, i32 0, i32 0
+  %value = load <4 x float>, <4 x float> addrspace(2)* %row, align 4
+  ret <4 x float> %value
+}
+
+;--- inverse_shifted_gep.ll
+target datalayout = "e-p:64:64-i64:64-n8:16:32:64"
+target triple = "air64-apple-ios18.0.0"
+%Buffer = type { [8 x <4 x float>] }
+
+define floor_fragment <4 x float> @reject_inverse_shifted_gep(%Buffer addrspace(2)* %base, i1 %condition, i64 %offset) {
+  %a = bitcast %Buffer addrspace(2)* %base to <4 x i32> addrspace(2)*
+  %b = getelementptr <4 x i32>, <4 x i32> addrspace(2)* %a, i64 %offset
+  %p = select i1 %condition, <4 x i32> addrspace(2)* %a, <4 x i32> addrspace(2)* %b
+  %back = bitcast <4 x i32> addrspace(2)* %p to %Buffer addrspace(2)*
+  %row = getelementptr %Buffer, %Buffer addrspace(2)* %back, i32 0, i32 0, i32 0
+  %value = load <4 x float>, <4 x float> addrspace(2)* %row, align 4
+  ret <4 x float> %value
+}
+
+;--- inverse_rootless_subcycle.ll
+target datalayout = "e-p:64:64-i64:64-n8:16:32:64"
+target triple = "air64-apple-ios18.0.0"
+%Buffer = type { [8 x <4 x float>] }
+
+; The unreachable self-loop is valid symbolic SSA. Its rootless PHI must not
+; become "proven" merely because the outer select also reaches a valid root.
+define floor_fragment <4 x float> @reject_inverse_rootless_subcycle(%Buffer addrspace(2)* %base, i1 %condition) {
+entry:
+  ret <4 x float> zeroinitializer
+dead:
+  %rootless = phi <4 x i32> addrspace(2)* [ %rootless, %dead ]
+  %a = bitcast %Buffer addrspace(2)* %base to <4 x i32> addrspace(2)*
+  %p = select i1 %condition, <4 x i32> addrspace(2)* %a, <4 x i32> addrspace(2)* %rootless
+  %back = bitcast <4 x i32> addrspace(2)* %p to %Buffer addrspace(2)*
+  %row = getelementptr %Buffer, %Buffer addrspace(2)* %back, i32 0, i32 0, i32 0
+  %value = load <4 x float>, <4 x float> addrspace(2)* %row, align 4
+  br label %dead
+}
+
+;--- inverse_transitive_native.ll
+target datalayout = "e-p:64:64-i64:64-n8:16:32:64"
+target triple = "air64-apple-ios18.0.0"
+%Buffer = type { [8 x <4 x float>] }
+
+; The native pointer-use closure stops at the data load. Full SSA ancestry
+; must still reject the later inttoptr root as a new inverse recovery boundary.
+define floor_fragment <4 x i32> @reject_inverse_transitive_native(%Buffer addrspace(2)* %base, %Buffer addrspace(2)* addrspace(2)* %slot, i1 %condition) {
+  %a = bitcast %Buffer addrspace(2)* %base to <4 x i32> addrspace(2)*
+  %slot.cast = bitcast %Buffer addrspace(2)* addrspace(2)* %slot to <4 x i32> addrspace(2)* addrspace(2)*
+  %loaded = load <4 x i32> addrspace(2)*, <4 x i32> addrspace(2)* addrspace(2)* %slot.cast, align 8
+  %old.back = bitcast <4 x i32> addrspace(2)* %loaded to %Buffer addrspace(2)*
+  %native.lane = getelementptr %Buffer, %Buffer addrspace(2)* %old.back, i32 0, i32 0, i32 0, i32 0
+  %number = load float, float addrspace(2)* %native.lane, align 4
+  %integer = bitcast float %number to i32
+  %wide = zext i32 %integer to i64
+  %dependent = inttoptr i64 %wide to %Buffer addrspace(2)*
+  %b = bitcast %Buffer addrspace(2)* %dependent to <4 x i32> addrspace(2)*
+  %p = select i1 %condition, <4 x i32> addrspace(2)* %a, <4 x i32> addrspace(2)* %b
+  %q = select i1 %condition, <4 x i32> addrspace(2)* %p, <4 x i32> addrspace(2)* %loaded
+  %bits = load <4 x i32>, <4 x i32> addrspace(2)* %q, align 4
+  %back = bitcast <4 x i32> addrspace(2)* %p to %Buffer addrspace(2)*
+  %row = getelementptr %Buffer, %Buffer addrspace(2)* %back, i32 0, i32 0, i32 0
+  %value = load <4 x float>, <4 x float> addrspace(2)* %row, align 4
+  %value.bits = bitcast <4 x float> %value to <4 x i32>
+  %result = xor <4 x i32> %bits, %value.bits
+  ret <4 x i32> %result
+}
+
+;--- inverse_null_native.ll
+target datalayout = "e-p:64:64-i64:64-n8:16:32:64"
+target triple = "air64-apple-ios18.0.0"
+%Buffer = type { [8 x <4 x float>] }
+
+define floor_fragment <4 x float> @reject_inverse_null_native(%Buffer addrspace(2)* %base, i1 %condition) {
+  %a = bitcast %Buffer addrspace(2)* %base to <4 x i32> addrspace(2)*
+  %b = bitcast %Buffer addrspace(2)* null to <4 x i32> addrspace(2)*
+  %p = select i1 %condition, <4 x i32> addrspace(2)* %a, <4 x i32> addrspace(2)* %b
+  %back = bitcast <4 x i32> addrspace(2)* %p to %Buffer addrspace(2)*
+  %row = getelementptr %Buffer, %Buffer addrspace(2)* %back, i32 0, i32 0, i32 0
+  %value = load <4 x float>, <4 x float> addrspace(2)* %row, align 4
+  ret <4 x float> %value
+}
+
+;--- inverse_undef_native.ll
+target datalayout = "e-p:64:64-i64:64-n8:16:32:64"
+target triple = "air64-apple-ios18.0.0"
+%Buffer = type { [8 x <4 x float>] }
+
+define floor_fragment <4 x float> @reject_inverse_undef_native(%Buffer addrspace(2)* %base, i1 %condition) {
+  %a = bitcast %Buffer addrspace(2)* %base to <4 x i32> addrspace(2)*
+  %b = bitcast %Buffer addrspace(2)* undef to <4 x i32> addrspace(2)*
+  %p = select i1 %condition, <4 x i32> addrspace(2)* %a, <4 x i32> addrspace(2)* %b
+  %back = bitcast <4 x i32> addrspace(2)* %p to %Buffer addrspace(2)*
+  %row = getelementptr %Buffer, %Buffer addrspace(2)* %back, i32 0, i32 0, i32 0
+  %value = load <4 x float>, <4 x float> addrspace(2)* %row, align 4
+  ret <4 x float> %value
+}
+
+;--- inverse_poison_native.ll
+target datalayout = "e-p:64:64-i64:64-n8:16:32:64"
+target triple = "air64-apple-ios18.0.0"
+%Buffer = type { [8 x <4 x float>] }
+
+define floor_fragment <4 x float> @reject_inverse_poison_native(%Buffer addrspace(2)* %base, i1 %condition) {
+  %a = bitcast %Buffer addrspace(2)* %base to <4 x i32> addrspace(2)*
+  %b = bitcast %Buffer addrspace(2)* poison to <4 x i32> addrspace(2)*
+  %p = select i1 %condition, <4 x i32> addrspace(2)* %a, <4 x i32> addrspace(2)* %b
+  %back = bitcast <4 x i32> addrspace(2)* %p to %Buffer addrspace(2)*
+  %row = getelementptr %Buffer, %Buffer addrspace(2)* %back, i32 0, i32 0, i32 0
+  %value = load <4 x float>, <4 x float> addrspace(2)* %row, align 4
+  ret <4 x float> %value
+}
+
+;--- inverse_unknown_arm.ll
+target datalayout = "e-p:64:64-i64:64-n8:16:32:64"
+target triple = "air64-apple-ios18.0.0"
+%Buffer = type { [8 x <4 x float>] }
+
+define floor_fragment <4 x float> @reject_inverse_unknown_arm(%Buffer addrspace(2)* %base, <4 x i32> addrspace(2)* %unknown, i1 %condition) {
+  %a = bitcast %Buffer addrspace(2)* %base to <4 x i32> addrspace(2)*
+  %p = select i1 %condition, <4 x i32> addrspace(2)* %a, <4 x i32> addrspace(2)* %unknown
+  %back = bitcast <4 x i32> addrspace(2)* %p to %Buffer addrspace(2)*
+  %row = getelementptr %Buffer, %Buffer addrspace(2)* %back, i32 0, i32 0, i32 0
+  %value = load <4 x float>, <4 x float> addrspace(2)* %row, align 4
+  ret <4 x float> %value
+}
+
+;--- inverse_scalar_view.ll
+target datalayout = "e-p:64:64-i64:64-n8:16:32:64"
+target triple = "air64-apple-ios18.0.0"
+%Buffer = type { [8 x <4 x float>] }
+
+define floor_fragment <4 x float> @reject_inverse_scalar_view(%Buffer addrspace(2)* %base, i1 %condition) {
+  %a = bitcast %Buffer addrspace(2)* %base to <4 x i32> addrspace(2)*
+  %lane = getelementptr <4 x i32>, <4 x i32> addrspace(2)* %a, i32 0, i32 0
+  %p = select i1 %condition, i32 addrspace(2)* %lane, i32 addrspace(2)* %lane
+  %back = bitcast i32 addrspace(2)* %p to %Buffer addrspace(2)*
+  %row = getelementptr %Buffer, %Buffer addrspace(2)* %back, i32 0, i32 0, i32 0
+  %value = load <4 x float>, <4 x float> addrspace(2)* %row, align 4
+  ret <4 x float> %value
+}
+
+;--- inverse_merged_escape.ll
+target datalayout = "e-p:64:64-i64:64-n8:16:32:64"
+target triple = "air64-apple-ios18.0.0"
+%Buffer = type { [8 x <4 x float>] }
+declare void @escape(%Buffer addrspace(2)*)
+
+define floor_fragment <4 x float> @reject_inverse_merged_escape(%Buffer addrspace(2)* %first, %Buffer addrspace(2)* %second, i1 %condition) {
+  %a = bitcast %Buffer addrspace(2)* %first to <4 x i32> addrspace(2)*
+  %b = bitcast %Buffer addrspace(2)* %second to <4 x i32> addrspace(2)*
+  %p = select i1 %condition, <4 x i32> addrspace(2)* %a, <4 x i32> addrspace(2)* %b
+  %back = bitcast <4 x i32> addrspace(2)* %p to %Buffer addrspace(2)*
+  %row = getelementptr %Buffer, %Buffer addrspace(2)* %back, i32 0, i32 0, i32 0
+  call void @escape(%Buffer addrspace(2)* %back)
+  %value = load <4 x float>, <4 x float> addrspace(2)* %row, align 4
+  ret <4 x float> %value
+}
+
+;--- inverse_merged_write.ll
+target datalayout = "e-p:64:64-i64:64-n8:16:32:64"
+target triple = "air64-apple-ios18.0.0"
+%Buffer = type { [8 x <4 x float>] }
+
+define floor_fragment <4 x float> @reject_inverse_merged_write(%Buffer addrspace(2)* %first, %Buffer addrspace(2)* %second, i1 %condition) {
+  %a = bitcast %Buffer addrspace(2)* %first to <4 x i32> addrspace(2)*
+  %b = bitcast %Buffer addrspace(2)* %second to <4 x i32> addrspace(2)*
+  %p = select i1 %condition, <4 x i32> addrspace(2)* %a, <4 x i32> addrspace(2)* %b
+  %back = bitcast <4 x i32> addrspace(2)* %p to %Buffer addrspace(2)*
+  %row = getelementptr %Buffer, %Buffer addrspace(2)* %back, i32 0, i32 0, i32 0
+  store <4 x float> zeroinitializer, <4 x float> addrspace(2)* %row, align 4
+  %value = load <4 x float>, <4 x float> addrspace(2)* %row, align 4
+  ret <4 x float> %value
 }
