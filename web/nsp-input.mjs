@@ -104,15 +104,15 @@ export async function discoverNspFolder(directory, { signal, onProgress } = {}) 
   const checkAbort = () => {
     if (signal?.aborted) throw new DOMException("Folder check cancelled.", "AbortError");
   };
-  const readFile = async (handle) => {
+  const awaitLookup = async (read) => {
     checkAbort();
-    if (!signal) return handle.getFile();
+    if (!signal) return read();
     let cancel;
     try {
       // 元数据查询不创建文件；取消后仍观察迟到的结果或拒绝。
       // Metadata lookup creates no files; still observe late results or rejections after cancellation.
       return await Promise.race([
-        handle.getFile(),
+        read(),
         new Promise((_, reject) => {
           cancel = () => reject(new DOMException("Folder check cancelled.", "AbortError"));
           signal.addEventListener("abort", cancel, { once: true });
@@ -122,6 +122,38 @@ export async function discoverNspFolder(directory, { signal, onProgress } = {}) 
     } finally {
       if (cancel) signal.removeEventListener("abort", cancel);
     }
+  };
+  const entries = () => {
+    checkAbort();
+    const iterator = directory.entries()[Symbol.asyncIterator]();
+    let returned = false;
+    const close = () => {
+      if (returned) return { done: true };
+      returned = true;
+      const cleanup = Promise.resolve().then(() => iterator.return?.() ?? { done: true });
+      // return 可能排在尚未完成的 next 后面；观察清理，但取消不能等待它。
+      // return can queue behind a pending next; observe cleanup without making cancellation wait.
+      cleanup.catch(() => {});
+      return awaitLookup(() => cleanup);
+    };
+    return {
+      [Symbol.asyncIterator]() {
+        return this;
+      },
+      async next() {
+        try {
+          const result = await awaitLookup(() => iterator.next());
+          checkAbort();
+          return result;
+        } catch (error) {
+          // next 拒绝时 for-await 不调用 return；取消分支必须主动结束枚举。
+          // for-await does not call return when next rejects; cancellation must close explicitly.
+          if (signal?.aborted) Promise.resolve(close()).catch(() => {});
+          throw error;
+        }
+      },
+      return: close,
+    };
   };
   checkAbort();
   if (directory?.kind !== "directory" || typeof directory.entries !== "function")
@@ -147,7 +179,7 @@ export async function discoverNspFolder(directory, { signal, onProgress } = {}) 
     }
   };
   progress();
-  for await (const [name, handle] of directory.entries()) {
+  for await (const [name, handle] of entries()) {
     checkAbort();
     if (++count > NSP_INPUT_LIMITS.directoryEntries)
       fail("DIRECTORY_LIMIT", "The selected folder has too many entries.");
@@ -156,7 +188,7 @@ export async function discoverNspFolder(directory, { signal, onProgress } = {}) 
       handle.kind === "file" &&
       (folded === "prod.keys" || folded === "title.keys" || folded.endsWith(".nsp"))
     ) {
-      records.set(folded, await readFile(handle));
+      records.set(folded, await awaitLookup(() => handle.getFile()));
       checkAbort();
     }
     progress();

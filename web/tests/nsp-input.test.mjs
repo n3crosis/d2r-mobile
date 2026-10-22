@@ -12,6 +12,199 @@ import {
 
 const fakeHex = (bytes) => "a5".repeat(bytes);
 for (const lateFailure of [false, true])
+  test(`folder cancellation does not wait for pending enumeration (${lateFailure ? "reject" : "resolve"})`, async () => {
+    const controller = new AbortController();
+    let entered, finish;
+    const started = new Promise((resolve) => {
+      entered = resolve;
+    });
+    const pending = new Promise((resolve, reject) => {
+      finish = () => (lateFailure ? reject(new Error("late enumeration error")) : resolve());
+    });
+    let reads = 0;
+    let progress = 0;
+    let returns = 0;
+    let finalized = 0;
+    const directory = {
+      kind: "directory",
+      entries() {
+        const iterator = (async function* () {
+          try {
+            entered();
+            await pending;
+            yield [
+              "game.nsp",
+              {
+                kind: "file",
+                getFile() {
+                  reads++;
+                  return fixture().file;
+                },
+              },
+            ];
+          } finally {
+            finalized++;
+          }
+        })();
+        const close = iterator.return.bind(iterator);
+        iterator.return = (...args) => {
+          returns++;
+          return close(...args);
+        };
+        return iterator;
+      },
+    };
+    const result = discoverNspFolder(directory, {
+      signal: controller.signal,
+      onProgress() {
+        progress++;
+      },
+    }).then(
+      () => "opened",
+      (error) => error,
+    );
+    await started;
+    controller.abort();
+    await new Promise((resolve) => setImmediate(resolve));
+    const waiting = Symbol("waiting");
+    const outcome = await Promise.race([result, Promise.resolve(waiting)]);
+    const returnsAtCancel = returns;
+    const finalizersAtCancel = finalized;
+    finish();
+    await result;
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.notEqual(outcome, waiting);
+    assert.equal(outcome.name, "AbortError");
+    assert.equal(returnsAtCancel, 1);
+    assert.equal(finalizersAtCancel, 0, "return queues behind the unfinished next call");
+    assert.equal(returns, 1);
+    assert.equal(finalized, 1);
+    assert.equal(reads, 0);
+    assert.equal(progress, 1, "late entries must not update progress");
+  });
+
+test("folder cancellation observes late enumeration and iterator cleanup rejections", async () => {
+  const controller = new AbortController();
+  let entered, rejectNext, rejectReturn;
+  const started = new Promise((resolve) => {
+    entered = resolve;
+  });
+  const next = new Promise((_, reject) => {
+    rejectNext = reject;
+  });
+  const cleanup = new Promise((_, reject) => {
+    rejectReturn = reject;
+  });
+  let returns = 0;
+  const directory = {
+    kind: "directory",
+    entries() {
+      return {
+        [Symbol.asyncIterator]() {
+          return this;
+        },
+        next() {
+          entered();
+          return next;
+        },
+        return() {
+          returns++;
+          return cleanup;
+        },
+      };
+    },
+  };
+  const result = discoverNspFolder(directory, { signal: controller.signal }).catch(
+    (error) => error,
+  );
+  await started;
+  controller.abort();
+  await new Promise((resolve) => setImmediate(resolve));
+  const waiting = Symbol("waiting");
+  const outcome = await Promise.race([result, Promise.resolve(waiting)]);
+  const returnsAtCancel = returns;
+  rejectNext(new Error("late enumeration error"));
+  rejectReturn(new Error("late cleanup error"));
+  await result;
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.notEqual(outcome, waiting);
+  assert.equal(outcome.name, "AbortError");
+  assert.equal(returnsAtCancel, 1);
+  assert.equal(returns, 1);
+});
+
+for (const cancelCleanup of [false, true])
+  test(`folder validation preserves its error while closing enumeration (${cancelCleanup ? "cancel" : "reject"})`, async () => {
+    const controller = new AbortController();
+    let entered, rejectReturn;
+    const started = new Promise((resolve) => {
+      entered = resolve;
+    });
+    const cleanup = new Promise((_, reject) => {
+      rejectReturn = reject;
+    });
+    let returns = 0;
+    const directory = {
+      kind: "directory",
+      entries() {
+        return {
+          [Symbol.asyncIterator]() {
+            return this;
+          },
+          next() {
+            return Promise.resolve({ done: false, value: ["../unsafe", { kind: "file" }] });
+          },
+          return() {
+            returns++;
+            entered();
+            return cleanup;
+          },
+        };
+      },
+    };
+    const result = discoverNspFolder(directory, {
+      signal: cancelCleanup ? controller.signal : undefined,
+    }).catch((error) => error);
+    await started;
+    const waiting = Symbol("waiting");
+    assert.equal(await Promise.race([result, Promise.resolve(waiting)]), waiting);
+    if (cancelCleanup) controller.abort();
+    else rejectReturn(new Error("iterator cleanup failed"));
+    await new Promise((resolve) => setImmediate(resolve));
+    const outcome = await Promise.race([result, Promise.resolve(waiting)]);
+    if (cancelCleanup) rejectReturn(new Error("late iterator cleanup failed"));
+    await result;
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.notEqual(outcome, waiting);
+    assert.equal(outcome.code, "UNSAFE_NAME");
+    assert.equal(returns, 1);
+  });
+
+test("cancellation from initial folder progress does not start enumeration", async () => {
+  const controller = new AbortController();
+  let enumerations = 0;
+  await assert.rejects(
+    discoverNspFolder(
+      {
+        kind: "directory",
+        entries() {
+          enumerations++;
+          return folder([]).entries();
+        },
+      },
+      {
+        signal: controller.signal,
+        onProgress() {
+          controller.abort();
+        },
+      },
+    ),
+    { name: "AbortError" },
+  );
+  assert.equal(enumerations, 0);
+});
+
+for (const lateFailure of [false, true])
   test(`folder cancellation does not wait for pending metadata (${lateFailure ? "reject" : "resolve"})`, async () => {
     const controller = new AbortController();
     let entered, finish;
