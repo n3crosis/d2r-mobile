@@ -1,8 +1,8 @@
 # Experimental Metal AIR compiler / 实验性 Metal AIR 编译器
 
-This is a **developer-only compiler subset tested natively and through Node WASM**, not the production browser shader compiler. It adapts a pinned open-source Clang/floor fork: source parsing and semantic analysis → LLVM/AIR lowering → actual MTLB serialization. No Apple compiler executable, SDK headers, simulator, device or remote compilation service is used by this package.
+This is an **experimental compiler integrated into the browser IPA shader path**, with focused native and Node WASM execution checks. Full-corpus Chrome compilation and Xcode-equivalent behavior remain unverified. It adapts a pinned open-source Clang/floor fork: source parsing and semantic analysis → LLVM/AIR lowering → actual MTLB serialization. No Apple compiler executable, SDK headers, simulator, device or remote compilation service is used by this package.
 
-这是仅供开发者使用、已完成原生及 Node WASM 测试的实验性编译器子集，尚未接入生产浏览器流程。流程包含真实的语法解析、语义分析、AIR 降级和 MTLB 输出，不是容器重打包或固定示例输出。本工具包不调用 Apple 编译器、模拟器、设备或远程编译服务。
+这是已接入浏览器 IPA 着色器流程的实验性编译器，已完成部分原生及 Node WASM 执行检查。完整目录的 Chrome 编译及与 Xcode 等效的行为仍未验证。流程包含真实的语法解析、语义分析、AIR 降级和 MTLB 输出，不是容器重打包或固定示例输出。本工具包不调用 Apple 编译器、模拟器、设备或远程编译服务。
 
 ## Reproduce the native milestone / 复现原生阶段
 
@@ -37,10 +37,10 @@ node toolchain.mjs test --work /path/to/empty-work
 ## Not ready / 尚未完成
 
 - Real Chrome execution and full game corpus compilation.
-- Complete MSL standard library, textures/samplers, builtins, function constants, framebuffer fetch and tessellation compatibility.
+- Complete MSL compatibility beyond the implemented resource, builtin, function-constant and language subset; full-corpus coverage is not established.
 - Xcode-equivalent shader behavior across the complete supplied corpus.
 
-尚未完成浏览器执行、完整游戏覆盖、完整 MSL 库和高级功能。`api/CMakeLists.txt` now builds a real WASM target tested under Node with Worker shims; it is not yet a finished production browser compiler. The frontend currently accepts Metal 3.0 syntax mode while the iOS 18 AIR writer emits a Metal 3.2 version tag; that tag must not be treated as full Metal 3.2 support.
+尚未完成浏览器执行、完整游戏覆盖、完整 MSL 库和高级功能。`api/CMakeLists.txt` now builds a real WASM target tested under Node with Worker shims; production wiring does not by itself establish a finished or fully validated browser compiler. The frontend currently accepts Metal 3.0 syntax mode while the iOS 18 AIR writer emits a Metal 3.2 version tag; that tag must not be treated as full Metal 3.2 support.
 
 GPU-specific pipeline archives and iPhone verification are outside this task. Do not invoke an iOS simulator. The target is the Xcode-built IPA's precompiled shader-library behavior, not eliminating all device-side pipeline work.
 
