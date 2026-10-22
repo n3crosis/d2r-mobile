@@ -40,6 +40,7 @@ const allowedIntegrationChanges = new Set([
   "web/runtime-build/inventory.mjs",
   "web/runtime-build/payload-policy.mjs",
   "web/scripts/validate-ipa-shaders.mjs",
+  "web/scripts/validate-ipa-shaders-smoke.mjs",
 ]);
 function git(args) {
   const result = spawnSync("git", args, {
