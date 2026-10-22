@@ -1,5 +1,6 @@
 // 实验性 floor-Metal C API 的内存边界；不加载资产、不联网，也不声称兼容 Apple MSL。
 // Memory boundary for the experimental floor-Metal C API; no asset loading, network, or Apple MSL compatibility claim.
+import { sanitizeCompilerDiagnostics, shaderFailureDiagnostic } from "./shader-diagnostics.mjs";
 import { AIR_COMPILER_SOURCE_LANGUAGE } from "./air-compiler-contract.mjs";
 const LIMITS = Object.freeze({
   source: 4 * 1024 * 1024,
@@ -30,10 +31,11 @@ const EXPORTS = [
 const encoder = new TextEncoder();
 const errors = new WeakSet();
 const wrappedModules = new WeakSet();
-function failure(code, diagnosticBytes = 0) {
+function failure(code, diagnosticBytes = 0, shaderDiagnostic) {
   const error = new Error(`Experimental shader compiler failed [${code}].`);
   error.code = code;
   error.diagnosticBytes = diagnosticBytes;
+  if (shaderDiagnostic) error.shaderDiagnostic = shaderDiagnostic;
   error.requiresWorkerTermination = true;
   errors.add(error);
   return error;
@@ -108,7 +110,7 @@ export function createAirCompilerAdapter(
     if (headerSha256 !== expectedHeaderSha256) throw failure("AIR_HEADER_IDENTITY_MISMATCH");
   } catch (error) {
     if (errors.has(error)) throw error;
-    throw failure("AIR_RUNTIME_FAILED");
+    throw failure("AIR_RUNTIME_FAILED", 0, shaderFailureDiagnostic(error));
   }
   wrappedModules.add(module);
   let compilationCount = 0,
@@ -205,11 +207,15 @@ export function createAirCompilerAdapter(
           "AIR_DIAGNOSTIC_LIMIT",
         );
         const diagnosticPointer = api.air_result_diagnostics(resultPointer);
-        region(diagnosticPointer, diagnosticSize, diagnosticSize === 0);
+        const diagnosticRegion = region(diagnosticPointer, diagnosticSize, diagnosticSize === 0);
         check(signal);
-        // 不读取或泄露含源码标识符的诊断文本，只传递稳定状态及字节数。
-        // Do not read or expose diagnostic text containing source identifiers; expose stable status and byte count only.
-        if (status !== 0) throw failure(STATUS[status], diagnosticSize);
+        // 只读取有界诊断正文；过滤源码行、路径及密钥后传给本地报告。
+        // Read bounded diagnostic prose only; remove source lines, paths and keys before local reporting.
+        if (status !== 0)
+          throw failure(STATUS[status], diagnosticSize, {
+            diagnostics: sanitizeCompilerDiagnostics(new TextDecoder().decode(diagnosticRegion)),
+            compilerPhase: "compiling",
+          });
         const size = checkNumber(
           api.air_result_size(resultPointer),
           LIMITS.output,
@@ -221,7 +227,9 @@ export function createAirCompilerAdapter(
         copied = new Uint8Array(region(pointer, size));
         check(signal);
       } catch (error) {
-        problem = errors.has(error) ? error : failure("AIR_RUNTIME_FAILED");
+        problem = errors.has(error)
+          ? error
+          : failure("AIR_RUNTIME_FAILED", 0, shaderFailureDiagnostic(error));
       } finally {
         // getter/编译/释放均可能扩展内存；清理时重新获取 HEAP，不保存旧视图。
         // Getters, compilation and cleanup may grow memory; reacquire HEAP for cleanup, never reuse stale views.

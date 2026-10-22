@@ -6,6 +6,66 @@ let phase = "new";
 let exports;
 let queue = Promise.resolve();
 const urls = [];
+// 此直接加载的 Blob 工作线程必须保持无导入；仅复制已审阅的静态诊断，绝不回传托管堆栈或着色器内容。
+// This directly loaded Blob worker must stay import-free; project reviewed static diagnostics, never managed stacks or shader content.
+const translatorMessages = new Set([
+  "Runtime not initialized",
+  "Missing real translator export",
+  "Invalid bounded shader input",
+  "Shader result cap",
+  "Shader must be 16 bytes to 1 MiB and 8-byte aligned.",
+  "Job metadata must be at most 64 KiB.",
+  "Expected job object.",
+  "Unsupported shader stage; geometry is not integrated.",
+  "Tessellation requires explicit unverified-source-port opt-in.",
+  "Graphics input requires a 0x50-byte SPH plus instructions.",
+  "Declared graphics stage does not match SPH stage bits 10..13.",
+  "Hull SPH requires nonzero threads per input primitive.",
+  "Graphics jobs require explicit attr and fout type tables.",
+  "Invalid graphics attribute/output component type or slot.",
+]);
+const translatorErrorTypes = new Set([
+  "Error",
+  "TypeError",
+  "RangeError",
+  "SyntaxError",
+  "RuntimeError",
+  "JSException",
+  "ArgumentException",
+  "ArgumentOutOfRangeException",
+  "InvalidOperationException",
+  "NotImplementedException",
+  "NotSupportedException",
+  "MissingMethodException",
+  "TypeLoadException",
+  "FileNotFoundException",
+  "OutOfMemoryException",
+]);
+function translatorDiagnostic(error) {
+  const detail = typeof error?.message === "string" ? error.message : "";
+  let firstLine = detail.slice(0, 2048).split(/\r?\n/, 1)[0];
+  const managed = /^System\.([A-Za-z]+Exception): (.*)$/.exec(firstLine);
+  let errorType = translatorErrorTypes.has(error?.name) ? error.name : "Error";
+  if (managed && translatorErrorTypes.has(managed[1])) {
+    errorType = managed[1];
+    firstLine = managed[2];
+  }
+  let message = translatorMessages.has(firstLine) ? firstLine : undefined;
+  if (!message && firstLine.startsWith("Missing embedded shader helper: "))
+    message = "Missing embedded shader helper";
+  if (!message && ["NotImplementedException", "NotSupportedException"].includes(errorType))
+    message = "Translator does not implement this operation";
+  if (
+    !message &&
+    ["MissingMethodException", "TypeLoadException", "FileNotFoundException"].includes(errorType)
+  )
+    message = "Translator dependency is missing";
+  return {
+    substep: initialized ? "translation" : "pipeline-initialization",
+    errorType,
+    ...(message ? { message } : {}),
+  };
+}
 function setPhase(next) {
   phase = next;
   if (!initialized) self.postMessage({ type: "initialization-stage", stage: next });
@@ -16,6 +76,7 @@ function reportInitializationFailure(error) {
     id: 0,
     ok: false,
     error: `Offline .NET initialization failed (${phase}): ${String(error?.message ?? error).slice(0, 4000)}`,
+    shaderDiagnostic: translatorDiagnostic(error),
   });
 }
 self.addEventListener("unhandledrejection", (event) => reportInitializationFailure(event.reason));
@@ -220,7 +281,12 @@ function run(data) {
 // Register immediately without occupying that slot, like the original shader worker.
 self.addEventListener("message", ({ data }) => {
   if (data?.type !== "initialize" && !initialized) {
-    self.postMessage({ id: data?.id, ok: false, error: "Runtime not initialized" });
+    self.postMessage({
+      id: data?.id,
+      ok: false,
+      error: "Runtime not initialized",
+      shaderDiagnostic: translatorDiagnostic(new Error("Runtime not initialized")),
+    });
     return;
   }
   queue = queue.then(async () => {
@@ -236,6 +302,7 @@ self.addEventListener("message", ({ data }) => {
         id: data?.id ?? 0,
         ok: false,
         error: `Offline .NET operation failed (${phase})${detail}`,
+        shaderDiagnostic: translatorDiagnostic(error),
       });
     }
   });

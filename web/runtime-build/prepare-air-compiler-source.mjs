@@ -146,6 +146,7 @@ try {
     ".github/workflows/verify.yml",
     "web/air-compiler-runtime-contract.mjs",
     "web/air-compiler-contract.mjs",
+    "web/shader-diagnostics.mjs",
     "web/air-compiler-adapter.mjs",
     "web/compiled-shader-boundary.mjs",
     "web/runtime-build/air-compiler-assets.mjs",

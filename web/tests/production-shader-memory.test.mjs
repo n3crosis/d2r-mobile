@@ -201,7 +201,12 @@ test("production reuses one owner per pack and releases owners and code on prepa
       } },
       trustedShell: { trustedRecipe: { shaderKeys: keys, shaderDigest: "be59c864f087b377" } }
     });
-    await assert.rejects(adapter.generateShaders(), /synthetic preparation failure/);
+    await assert.rejects(adapter.generateShaders(), (error) => {
+      assert.match(error.message, /synthetic preparation failure/);
+      assert.deepEqual(error.shaderDiagnostic, { substep: "record-preparation", errorType: "Error", record: 3 });
+      assert.doesNotMatch(JSON.stringify(error.shaderDiagnostic), /synthetic preparation failure|data:data/);
+      return true;
+    });
     assert.deepEqual(reads, ["data:data/hd/shaders/a", "data:data/hd/shaders/b"]);
     assert.deepEqual(created, ["a", "b"]);
     assert.deepEqual(disposed, ["a", "b"]);

@@ -809,7 +809,15 @@ test("shader facade rejects object and oversized correlation IDs without cloning
         worker.onmessage = resolve;
       });
       worker.postMessage(data);
-      assert.deepEqual((await reply).data, { ok: false, error: "Sealed operation failed" });
+      assert.deepEqual((await reply).data, {
+        ok: false,
+        error: "Sealed operation failed",
+        shaderDiagnostic: {
+          substep: worker === translator ? "translation" : "spirv-cross",
+          errorType: "Error",
+          message: "Invalid shader correlation ID",
+        },
+      });
     }
   }
   for (const id of [undefined, null, true, 1, "x".repeat(256)]) {
@@ -821,9 +829,134 @@ test("shader facade rejects object and oversized correlation IDs without cloning
       requestId: id,
       ok: false,
       error: "Sealed operation failed",
+      shaderDiagnostic: {
+        substep: "translation",
+        errorType: "Error",
+        message: "Runtime input cap",
+      },
     });
   }
   assert.equal(clones, 0);
+});
+
+test("shader diagnostics survive the sealed channel and facade without unrelated payloads", async (t) => {
+  const { start, state } = await setup(t, { components: ["translator", "spirvCross", "program"] });
+  const runtime = await start();
+  for (const [worker, native, data, substep] of [
+    [
+      runtime.createTranslatorWorker(),
+      state.workers[0],
+      { requestId: 19, code: new Uint8Array([1]), job: {} },
+      "translation",
+    ],
+    [
+      runtime.createCrossWorker(),
+      state.workers[1],
+      { id: 20, type: "convert", spirv: new ArrayBuffer(4), replayContext: {} },
+      "spirv-cross",
+    ],
+  ]) {
+    const pending = new Promise((resolve) => {
+      worker.onmessage = resolve;
+    });
+    worker.postMessage(data);
+    await Promise.resolve();
+    const request = native.requests.at(-1);
+    native.reply({
+      id: request.id,
+      ok: false,
+      error: "PRIVATE-CANARY",
+      shaderDiagnostic: {
+        substep,
+        errorType: "NotImplementedException",
+        message: "Translator does not implement this operation",
+        diagnostics: ["error: unsupported synthetic intrinsic", "PRIVATE-CANARY"],
+        stack: "PRIVATE-CANARY",
+        source: "PRIVATE-CANARY",
+        job: { secret: "PRIVATE-CANARY" },
+      },
+    });
+    const reply = (await pending).data;
+    assert.equal(reply.ok, false);
+    assert.equal(reply.error, "Sealed operation failed");
+    assert.deepEqual(reply.shaderDiagnostic, {
+      substep,
+      errorType: "NotImplementedException",
+      message: "Translator does not implement this operation",
+      diagnostics: ["error: unsupported synthetic intrinsic"],
+    });
+    assert.doesNotMatch(JSON.stringify(reply), /PRIVATE-CANARY/);
+  }
+  const pending = runProgram(runtime.createProgramWorker());
+  state.workers[2].reply({
+    id: 1,
+    ok: false,
+    error: "PRIVATE-CANARY",
+    shaderDiagnostic: { substep: "translation", message: "Missing real translator export" },
+  });
+  await assert.rejects(pending, (error) => {
+    assert.equal(error.message, "Runtime operation failed");
+    assert.equal(Object.hasOwn(error, "shaderDiagnostic"), false);
+    return true;
+  });
+});
+
+test("unknown shader errors remain generic, while direct translator preserves structured causes", async (t) => {
+  const { start, state } = await setup(t, { components: ["translator"] });
+  const runtime = await start();
+  const direct = runtime.createTranslator();
+  const pending = direct.translate({ job: {}, code: new Uint8Array([1]) });
+  state.workers[0].reply({
+    id: 1,
+    ok: false,
+    error: "PRIVATE-CANARY",
+    shaderDiagnostic: { substep: "translation", message: "Missing embedded shader helper" },
+  });
+  await assert.rejects(pending, (error) => {
+    assert.equal(error.shaderDiagnostic.message, "Missing embedded shader helper");
+    assert.equal(error.shaderDiagnostic.substep, "translation");
+    assert.doesNotMatch(error.message, /PRIVATE-CANARY/);
+    return true;
+  });
+  const worker = runtime.createTranslatorWorker();
+  const reply = new Promise((resolve) => {
+    worker.onmessage = resolve;
+  });
+  worker.postMessage({ requestId: 21, code: new Uint8Array([1]), job: {} });
+  await Promise.resolve();
+  state.workers[0].reply({ id: 2, ok: false, error: "PRIVATE-CANARY" });
+  const failure = (await reply).data;
+  assert.deepEqual(failure.shaderDiagnostic, {
+    substep: "translation",
+    errorType: "Error",
+    message: "Runtime operation failed",
+  });
+  assert.doesNotMatch(JSON.stringify(failure), /PRIVATE-CANARY/);
+});
+
+test("translator startup wrapper preserves structured export failures", async (t) => {
+  const setupState = await setup(t, { components: ["translator"], initialize: false });
+  const pending = setupState.start();
+  const worker = await setupState.state.firstInitialize.promise;
+  worker.reply({
+    id: 0,
+    ok: false,
+    error: "Offline .NET initialization failed",
+    shaderDiagnostic: {
+      substep: "pipeline-initialization",
+      errorType: "Error",
+      message: "Missing real translator export",
+    },
+  });
+  await assert.rejects(pending, (error) => {
+    assert.deepEqual(error.shaderDiagnostic, {
+      substep: "pipeline-initialization",
+      errorType: "Error",
+      message: "Missing real translator export",
+    });
+    return true;
+  });
+  stopped(setupState.state, setupState.controller);
 });
 
 // 观察者异常与工作线程初始化结果隔离，进度状态仍继续更新。

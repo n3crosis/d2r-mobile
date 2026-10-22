@@ -1,6 +1,7 @@
 // 浏览器打包诊断：依据固定错误代码与共享界面文字表，不显示私密输入。
 // Browser packaging diagnostics based on fixed error codes and the shared UI table, without private inputs.
 import { t } from "./i18n.mjs";
+import { sanitizeShaderDiagnostic } from "./shader-diagnostics.mjs";
 import { isAirCompilerDiagnosticCode } from "./air-compiler-contract.mjs";
 import { extractionProgressLabel, isExtractionDiagnosticCode } from "./extraction-errors.mjs";
 const reasons = Object.freeze({
@@ -207,4 +208,28 @@ export function shaderProgressLabel(event) {
     ? t("dmWebStagesShaders") +
         t("dmWebProgressFraction", progress.completedRecords, progress.totalRecords)
     : null;
+}
+
+// 失败后显示经过重新校验的阶段和编译器诊断，不复制原始错误对象。
+// Display revalidated context and compiler diagnostics after failure, never raw error objects.
+export function shaderFailureDetails(report) {
+  if (report?.stage !== "shaders" || report?.code === "CANCELLED") return [];
+  const detail = sanitizeShaderDiagnostic(report.shaderDiagnostic);
+  if (!detail) return [];
+  const context = [
+    detail.substep,
+    detail.compilerPhase,
+    detail.errorType,
+    detail.record ? `#${detail.record}` : undefined,
+    detail.variant,
+    detail.shaderStage,
+  ]
+    .filter(Boolean)
+    .join(" / ");
+  const lines = context ? [t("dmWebShaderFailureContext", context)] : [];
+  if (detail.message) lines.push(detail.message);
+  lines.push(...(detail.diagnostics ?? []));
+  if (detail.sourceSha256) lines.push(`SHA-256: ${detail.sourceSha256}`);
+  if (detail.sourceDigest) lines.push(t("dmWebShaderSourceDigest", detail.sourceDigest));
+  return [...new Set(lines)];
 }

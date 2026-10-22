@@ -10,6 +10,7 @@ import {
   SOURCE_ONLY_RUNTIME_ASSETS,
   assertNoSourceOnlyRuntimeAsset,
 } from "../runtime-build/payload-policy.mjs";
+import { AIR_COMPILER_RUNTIME } from "../air-compiler-runtime-contract.mjs";
 import { OPTIONAL_RUNTIME_ASSET_GROUPS } from "../runtime-asset-groups.mjs";
 const source = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
@@ -65,9 +66,9 @@ test("static import checks accept equivalent formatting but not comments, types 
     );
 });
 
-test("only the 55 audited source copies are rejected; live assets and proof records remain", () => {
-  assert.equal(SOURCE_ONLY_RUNTIME_ASSETS.length, 55);
-  assert.equal(new Set(SOURCE_ONLY_RUNTIME_ASSETS).size, 55);
+test("only the 61 audited source copies are rejected; live assets and proof records remain", () => {
+  assert.equal(SOURCE_ONLY_RUNTIME_ASSETS.length, 61);
+  assert.equal(new Set(SOURCE_ONLY_RUNTIME_ASSETS).size, 61);
   assert.ok(Object.isFrozen(SOURCE_ONLY_RUNTIME_ASSETS));
   for (const path of SOURCE_ONLY_RUNTIME_ASSETS)
     assert.throws(() => assertNoSourceOnlyRuntimeAsset(path), /Source-only module/);
@@ -106,6 +107,18 @@ test("frontend imports the shared client at build time, not through runtime byte
   assert.match(assembly, /await sealed\(`\$\{offline\}\/dist`, \{ bootstrap: false \}\)/);
   assert.match(assembly, /await sealed\(`\$\{offline\}\/dotnet-dist`, \{ bootstrap: false \}\)/);
   for (const path of RUNTIME_SEALED_WORKERS) {
+    if (path === AIR_COMPILER_RUNTIME.entry) {
+      assert.ok(
+        hasStaticValueImport(
+          loader,
+          "../air-compiler-runtime-contract.mjs",
+          "validateAirCompilerRuntimeComponent",
+        ),
+      );
+      assert.match(loader, /validateAirCompilerRuntimeComponent\(manifest/);
+      assert.match(assembly, /airCompilerRuntimeComponent\(airCompilerReport\)/);
+      continue;
+    }
     assert.ok(loader.includes(`"${path}"`));
     assert.ok(assembly.includes(`entry: "${path}"`));
   }

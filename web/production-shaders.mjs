@@ -4,6 +4,7 @@
  * 全目录浏览器编译。绝不调用 Apple Metal，也不在摘要证明之前发布输出。
  * Full-catalog browser compilation. Never invokes Apple Metal or publishes before digest proof.
  */
+import { shaderFailureDiagnostic } from "./shader-diagnostics.mjs";
 import { yieldBrowserTask } from "./browser-task-yield.mjs";
 import { resolveLogicalAssetSuffixes } from "./logical-asset-suffixes.mjs";
 import { assertShaderCatalog } from "./shader-catalog-adapter.mjs";
@@ -109,10 +110,17 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
         controller.signal,
       );
       let sources;
+      let failureContext = { substep: "authenticated-input" };
       const pending = [],
         c1 = [];
       const compileLibrary = async (source, key, variant, replay) => {
         check();
+        failureContext = {
+          ...failureContext,
+          substep: "source-hashing",
+          variant,
+          shaderStage: replay.msl_entry_kind,
+        };
         const sourceBytes = encoder.encode(source.replaceAll("\r\n", "\n"));
         let output;
         try {
@@ -121,12 +129,14 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
             (value) => value.toString(16).padStart(2, "0"),
           ).join("");
           check();
+          failureContext = { ...failureContext, substep: "compilation", sourceSha256 };
           output = await compiler.compile(source, {
             entry: replay.entry,
             stage: replay.msl_entry_kind,
             signal: controller.signal,
           });
           check();
+          failureContext.substep = "output-validation";
           return await acceptCompiledShaderOutput({
             source,
             binary: output.bytes,
@@ -152,6 +162,7 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
         const modules = readAuthenticatedProgramModules(extracted, selection, {
           signal: controller.signal,
         });
+        failureContext.substep = "pipeline-initialization";
         pipeline = createShaderPipeline({
           trustedShell,
           translatorWorkerUrl: runtime.workerUrls.translator,
@@ -162,6 +173,7 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
         // 完成、摘要及 c1 输出采用原生排序后的文件名顺序。
         // Group by physical source to avoid repeatedly decoding the same pack;
         // completion/digest and c1 output use native sorted filename order.
+        failureContext.substep = "catalog-lookup";
         const keys = [...expected].sort((a, b) => {
           const x = catalog.describe(a),
             y = catalog.describe(b);
@@ -174,6 +186,7 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
           if (!descriptor.embedded) packNameSet.add(descriptor.name);
         }
         const packNames = [...packNameSet];
+        failureContext.substep = "source-read";
         const packPaths = resolveLogicalAssetSuffixes(
           assets.logicalAssets,
           packNames.map((name) => `/hd/shaders/${name}`),
@@ -185,7 +198,10 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
         );
         for (const key of keys) {
           check();
+          failureContext = { substep: "catalog-lookup", record: pending.length + 1 };
           const descriptor = catalog.describe(key);
+          failureContext.substep = "source-read";
+          failureContext.shaderStage = descriptor.stage;
           let prepare;
           sources.enter(descriptor);
           if (descriptor.embedded) {
@@ -216,6 +232,7 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
             }
             prepare = (flags) => sources.pack.prepare(key, flags);
           }
+          failureContext.substep = "record-preparation";
           const prepared = await prepare({
             debug: true,
             reduced: true,
@@ -227,6 +244,7 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
             // 准备期间取消也必须清理已返回的独立代码字节。
             // Cancellation during preparation must also wipe the returned owned code bytes.
             check();
+            failureContext.substep = "translation";
             converted = await pipeline.translate({
               job: prepared.job,
               code: prepared.code,
@@ -236,6 +254,7 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
             prepared.code.fill(0);
           }
           check();
+          failureContext.substep = "reflection-validation";
           const source = converted.msl.replaceAll("\r\n", "\n");
           if (c1NeedsFullBuffer(source)) c1.push(key);
           const replay = {
@@ -266,6 +285,7 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
           const baseResult = await compileLibrary(source, key, "b", replay);
           const base = baseResult.bytes;
           retained.push(base);
+          failureContext.substep = "output-budget";
           budget.replace(0, base.length);
           let fetch = null,
             fetchResult;
@@ -273,6 +293,7 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
             fetchResult = await compileLibrary(variant.msl, key, "bf", replay);
             fetch = fetchResult.bytes;
             retained.push(fetch);
+            failureContext.substep = "output-budget";
             budget.replace(0, fetch.length);
           }
           check();
@@ -296,7 +317,9 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
           await yieldBrowserTask({ signal: controller.signal });
         }
         check();
+        failureContext = { substep: "source-proof" };
         const proof = await pipeline.verifyCompleteSourceSet();
+        failureContext.sourceDigest = proof.sourceDigest;
         if (
           proof.sourceDigest !== trustedShell.trustedRecipe.shaderDigest ||
           pending.length !== 6927
@@ -307,6 +330,7 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
         // 原生本地源码或头文件标签无需与外壳标签一致。
         // This is the only point at which shell chain labels are applied.
         // Native local source/header labels need not equal the shell label.
+        failureContext.substep = "finalization";
         const chain = trustedShell.trustedRecipe.chain,
           entries = [];
         const entry = (path, bytes) => {
@@ -356,8 +380,15 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
         check();
         return entries;
       } catch (error) {
+        // 原始异常不进入日志；仅附加经过白名单过滤的阶段诊断。
+        // Raw exceptions never enter logs; attach only allowlisted stage diagnostics.
+        const diagnostic = shaderFailureDiagnostic(error, failureContext);
         dispose();
-        throw error;
+        const failure = new Error(error?.message ?? "Shader operation failed");
+        failure.name = error?.name ?? "Error";
+        failure.code = error?.code;
+        failure.shaderDiagnostic = diagnostic;
+        throw failure;
       } finally {
         sources?.dispose();
         pipeline?.dispose();

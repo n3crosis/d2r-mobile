@@ -206,3 +206,35 @@ test("AIR preparation abort preserves in-use public input until compilation sett
   assert.equal(workers, 0, "abandoned initialization must not create a late worker");
   assert.equal(getEventListeners(controller.signal, "abort").length, 0);
 });
+
+test("worker failure preserves sanitized compiler prose through client rethrow", async (t) => {
+  const { client, workers } = await setup(t);
+  const pending = client.compile(source, options);
+  await nextTurn();
+  workers[0].reply({
+    type: "error",
+    id: workers[0].requests.at(-1).id,
+    code: "AIR_FRONTEND_FAILED",
+    shaderDiagnostic: {
+      compilerPhase: "compiling",
+      errorType: "RuntimeError",
+      diagnostics: [
+        "error: no matching function for call to 'sample'",
+        "kernel void PRIVATE_SOURCE() {}",
+      ],
+      stack: "/Users/private/path",
+      input: "PRIVATE_INPUT",
+    },
+  });
+  await assert.rejects(pending, (error) => {
+    assert.equal(error.code, "AIR_FRONTEND_FAILED");
+    assert.deepEqual(error.shaderDiagnostic, {
+      compilerPhase: "compiling",
+      errorType: "RuntimeError",
+      diagnostics: ["error: no matching function for call to 'sample'"],
+    });
+    assert.doesNotMatch(JSON.stringify(error), /PRIVATE|Users/);
+    return true;
+  });
+  assert.equal(workers[0].terminations, 1);
+});

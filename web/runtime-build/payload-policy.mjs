@@ -29,6 +29,7 @@ export const RUNTIME_SEALED_WORKERS = Object.freeze([
 export const SOURCE_ONLY_RUNTIME_ASSETS = Object.freeze([
   "air-compiler-adapter.mjs",
   "air-compiler-contract.mjs",
+  "shader-diagnostics.mjs",
   "air-compiler-runtime-contract.mjs",
   "air-compiler-worker-client.mjs",
   "sealed-runtime/air-compiler-worker.mjs",

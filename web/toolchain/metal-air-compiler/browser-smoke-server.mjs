@@ -46,6 +46,7 @@ for (const name of ["browser-smoke-worker.mjs", "browser-smoke-client.mjs"])
 for (const name of [
   "air-compiler-adapter.mjs",
   "air-compiler-contract.mjs",
+  "shader-diagnostics.mjs",
   "compiled-shader-boundary.mjs",
 ])
   await add(`/web/${name}`, resolve(here, "../..", name), "text/javascript");

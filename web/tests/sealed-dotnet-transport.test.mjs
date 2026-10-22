@@ -4,12 +4,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createContext, runInContext } from "node:vm";
+import { sanitizeShaderDiagnostic } from "../shader-diagnostics.mjs";
 
 const source = readFileSync(
   new URL("../sealed-runtime/dotnet-worker.mjs", import.meta.url),
   "utf8",
 );
-function worker({ resultJson, parse } = {}) {
+function worker({ resultJson, parse, managedError } = {}) {
   const listeners = new Map(),
     replies = [],
     calls = [];
@@ -29,6 +30,7 @@ function worker({ resultJson, parse } = {}) {
       ShaderBridge: {
         Translate(json, bytes) {
           calls.push({ job: JSON.parse(json), bytes: [...bytes] });
+          if (managedError) throw managedError;
           return resultJson === undefined
             ? JSON.stringify({ sentinel: "managed-export-reached" })
             : resultJson;
@@ -119,7 +121,72 @@ test("managed output is bounded before parsing", async () => {
     assert.equal(parses, 0);
     assert.equal(reply.ok, false);
     assert.equal(reply.error, "Offline .NET operation failed (new)");
+    assert.equal(reply.shaderDiagnostic.substep, "translation");
+    assert.equal(reply.shaderDiagnostic.message, "Shader result cap");
   }
   const transport = worker({ resultJson: '{"bounded":true}' });
   assert.equal((await transport.request(request("cs"))).result.bounded, true);
+});
+
+test("managed failures expose reviewed causes and exception types without arbitrary text", async () => {
+  for (const [message, expected, type] of [
+    [
+      "Shader must be 16 bytes to 1 MiB and 8-byte aligned.",
+      "Shader must be 16 bytes to 1 MiB and 8-byte aligned.",
+      "Error",
+    ],
+    [
+      "System.ArgumentException: Graphics jobs require explicit attr and fout type tables.\n at /PRIVATE-CANARY/frame.cs",
+      "Graphics jobs require explicit attr and fout type tables.",
+      "ArgumentException",
+    ],
+    [
+      "System.NotImplementedException: PRIVATE-CANARY",
+      "Translator does not implement this operation",
+      "NotImplementedException",
+    ],
+    [
+      "System.MissingMethodException: PRIVATE-CANARY",
+      "Translator dependency is missing",
+      "MissingMethodException",
+    ],
+    [
+      "System.InvalidOperationException: Missing embedded shader helper: PRIVATE-CANARY",
+      "Missing embedded shader helper",
+      "InvalidOperationException",
+    ],
+    ["PRIVATE-CANARY source bytes and keys", undefined, "Error"],
+    ["error: PRIVATE-CANARY is not compiler stderr", undefined, "Error"],
+  ]) {
+    const transport = worker({ managedError: new Error(message) });
+    const reply = await transport.request(request("cs"));
+    assert.equal(reply.ok, false);
+    assert.equal(reply.error, "Offline .NET operation failed (new)");
+    assert.equal(reply.shaderDiagnostic.substep, "translation");
+    assert.equal(reply.shaderDiagnostic.errorType, type);
+    assert.equal(reply.shaderDiagnostic.message, expected);
+    assert.deepEqual(sanitizeShaderDiagnostic(reply.shaderDiagnostic), {
+      ...reply.shaderDiagnostic,
+    });
+    assert.doesNotMatch(JSON.stringify(reply), /PRIVATE-CANARY/);
+    assert.equal(Object.hasOwn(reply.shaderDiagnostic, "diagnostics"), false);
+  }
+});
+
+test("standalone translator diagnostic allowlist stays within the shared boundary", () => {
+  const context = createContext({ self: { addEventListener() {} } });
+  runInContext(source, context);
+  const messages = runInContext("[...translatorMessages]", context);
+  for (const message of messages)
+    assert.equal(sanitizeShaderDiagnostic({ message })?.message, message);
+  const errorTypes = runInContext("[...translatorErrorTypes]", context);
+  for (const errorType of errorTypes)
+    assert.equal(sanitizeShaderDiagnostic({ errorType })?.errorType, errorType);
+});
+
+test("managed output parse failures do not expose the invalid returned JSON", async () => {
+  const transport = worker({ resultJson: "PRIVATE-CANARY" });
+  const reply = await transport.request(request("cs"));
+  assert.equal(reply.shaderDiagnostic.errorType, "SyntaxError");
+  assert.doesNotMatch(JSON.stringify(reply), /PRIVATE-CANARY/);
 });

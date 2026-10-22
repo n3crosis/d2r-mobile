@@ -498,8 +498,8 @@ export const catalog = Object.freeze({
     "IPA 的保存位置由浏览器决定。如果下载未开始，请使用此按钮。"
   ],
   "dmWebLogHelp": [
-    "Only stages, counts and safe error codes. No key contents or selected filenames. Kept in this tab, not uploaded. Times use your browser's local time.",
-    "仅记录阶段、计数和安全错误代码，不含密钥内容或所选文件名。日志保留在当前标签页，不会上传。时间采用浏览器本地时间。"
+    "Stages, counts, error codes and filtered shader diagnostics. No key contents or selected filenames. Kept in this tab, not uploaded. Times use your browser's local time.",
+    "记录阶段、计数、错误代码和已过滤的着色器诊断，不含密钥内容或所选文件名。日志保留在当前标签页，不会上传。时间采用浏览器本地时间。"
   ],
   "dmWebPrivacy": [
     "The IPA downloads normally. Large game resources stream to a new subfolder inside your selected folder. Existing NSPs and keys are not changed. Files never leave this device.",
@@ -792,5 +792,13 @@ export const catalog = Object.freeze({
   "dmWebRetrySigning": [
     "Retry signing",
     "重试签名"
+  ],
+  "dmWebShaderFailureContext": [
+    "Shader details: %s",
+    "着色器诊断：%s"
+  ],
+  "dmWebShaderSourceDigest": [
+    "Source digest: %s",
+    "源摘要：%s"
   ]
 });

@@ -1,3 +1,4 @@
+import { shaderFailureDiagnostic } from "./shader-diagnostics.mjs";
 // 固定生产编译配置和有界消息协议；结构验证不等于 Apple GPU 验收。
 // Fixed compilation profile and bounded protocol; structural validation is not Apple GPU acceptance.
 export const AIR_COMPILER_SOURCE_LANGUAGE = "floor-metal-3.2";
@@ -68,18 +69,20 @@ const codes = new Set([
   "AIR_OUTPUT_INVALID",
   "AIR_NETWORK_FORBIDDEN",
 ]);
-// 仅公开固定错误代码；不把原始编译诊断或源码写入界面报告。
-// Expose only fixed codes, never raw compiler diagnostics or source in UI reports.
+// 公开固定代码与经过过滤的本地诊断，不转发原始异常或源码。
+// Expose fixed codes and filtered local diagnostics, never raw exceptions or source.
 export function isAirCompilerDiagnosticCode(value) {
   return codes.has(value);
 }
 export function airCompilerFailureCode(value) {
   return codes.has(value) ? value : "AIR_RUNTIME_FAILED";
 }
-export function airCompilerFailure(code) {
+export function airCompilerFailure(code, cause, context) {
   const safe = airCompilerFailureCode(code);
   const error = new Error(`Shader compiler failed [${safe}].`);
   error.code = safe;
+  const diagnostic = shaderFailureDiagnostic(cause, context);
+  if (diagnostic) error.shaderDiagnostic = diagnostic;
   if (safe === "AIR_ABORTED") error.name = "AbortError";
   return error;
 }

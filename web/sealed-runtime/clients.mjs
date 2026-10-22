@@ -16,6 +16,7 @@ import {
 import { createAstcProducerClient as initializeAstcProducerClient } from "../astc-producer-client.mjs";
 import { prepareVerifiedIpaSigningFactory } from "./ipa-signing-factory.mjs";
 import { createAirCompilerWorkerClient } from "../air-compiler-worker-client.mjs";
+import { shaderFailureDiagnostic } from "../shader-diagnostics.mjs";
 import {
   validateAirCompilerRuntimeComponent,
   assertAirCompilerReceiptMatchesComponent,
@@ -358,7 +359,7 @@ function input(bytes, cap) {
     fail("Runtime input cap");
   return bytes.slice();
 }
-function channel(worker, onFatal, onStage) {
+function channel(worker, onFatal, onStage, shaderSubstep) {
   let next = 1,
     closed = false,
     taken = false,
@@ -397,15 +398,23 @@ function channel(worker, onFatal, onStage) {
     entry = undefined;
     clearTimeout(p.timer);
     p.signal?.removeEventListener("abort", p.abort);
-    data.ok
-      ? p.resolve(data.result === undefined ? data : data.result)
-      : p.reject(
-          new Error(
-            p.id === 0
-              ? String(data.error ?? "Runtime initialization failed").slice(0, 1200)
-              : "Runtime operation failed",
-          ),
+    if (data.ok) {
+      p.resolve(data.result === undefined ? data : data.result);
+    } else {
+      const error = new Error(
+        p.id === 0
+          ? String(data.error ?? "Runtime initialization failed").slice(0, 1200)
+          : "Runtime operation failed",
+      );
+      // 只为两个着色器组件传递白名单诊断；其他组件仍使用原有密封错误。
+      // Carry allowlisted diagnostics only for the two shader components; other components retain sealed errors.
+      if (shaderSubstep)
+        error.shaderDiagnostic = shaderFailureDiagnostic(
+          { message: data.error, shaderDiagnostic: data.shaderDiagnostic },
+          { substep: p.id === 0 ? "pipeline-initialization" : shaderSubstep },
         );
+      p.reject(error);
+    }
   };
   worker.onerror = (event) => {
     if (closed) return;
@@ -982,21 +991,27 @@ export async function prepareSealedRuntime({
         continue;
       }
       let initializationStage = "starting";
-      const c = (channels[name] = channel(new Worker(url, { type: "module" }), close, (stage) => {
-        initializationStage = String(stage).slice(0, 80);
-        const stages = {
-          "probe-before": "starting runtime",
-          "config-module": "reading configuration",
-          "loader-module": "loading engine",
-          "runtime-create": "starting engine",
-          "assembly-exports": "loading functions",
-          "probe-after": "finishing startup",
-        };
-        report(
-          { phase: "initializing", label: stages[stage] ? `${label} ${stages[stage]}` : label },
-          true,
-        );
-      }));
+      const shaderSubstep = { translator: "translation", spirvCross: "spirv-cross" }[name];
+      const c = (channels[name] = channel(
+        new Worker(url, { type: "module" }),
+        close,
+        (stage) => {
+          initializationStage = String(stage).slice(0, 80);
+          const stages = {
+            "probe-before": "starting runtime",
+            "config-module": "reading configuration",
+            "loader-module": "loading engine",
+            "runtime-create": "starting engine",
+            "assembly-exports": "loading functions",
+            "probe-after": "finishing startup",
+          };
+          report(
+            { phase: "initializing", label: stages[stage] ? `${label} ${stages[stage]}` : label },
+            true,
+          );
+        },
+        shaderSubstep,
+      ));
       const transferred = plan.assets.map(([local, value]) => [local, value.slice().buffer]);
       // 验证后的公开原件由 assets 保留；传输副本准备好后即可释放计划中的重复引用。
       // assets retains verified public originals; drop duplicate plan references once copies are ready.
@@ -1011,9 +1026,14 @@ export async function prepareSealedRuntime({
           true,
         );
       } catch (error) {
-        throw new Error(
+        const failure = new Error(
           `${name} initialization (${initializationStage}): ${String(error?.message ?? error).slice(0, 1200)}`,
         );
+        if (shaderSubstep)
+          failure.shaderDiagnostic = shaderFailureDiagnostic(error, {
+            substep: "pipeline-initialization",
+          });
+        throw failure;
       }
       if (signal?.aborted) throw new DOMException("Runtime cancelled", "AbortError");
       if (result?.initialized !== true || buffers.some((buffer) => buffer.byteLength !== 0))
@@ -1282,6 +1302,7 @@ export async function prepareSealedRuntime({
     }
     function workerFacade(client, invoke, inputField) {
       let stopped = false;
+      const substep = inputField === "code" ? "translation" : "spirv-cross";
       const events = new Map();
       const bridge = {
         onmessage: null,
@@ -1338,11 +1359,12 @@ export async function prepareSealedRuntime({
                 replayContext: jsonOptions(data.replayContext),
               };
             }
-          } catch {
+          } catch (error) {
             const reply = {
               ...correlation,
               ok: false,
               error: "Sealed operation failed",
+              shaderDiagnostic: shaderFailureDiagnostic(error, { substep }),
             };
             Promise.resolve().then(() => emit(reply));
             return;
@@ -1380,12 +1402,13 @@ export async function prepareSealedRuntime({
             })
             .then(
               (reply) => emit(reply),
-              () =>
+              (error) =>
                 emit({
                   id: snapshot?.id,
                   requestId: snapshot?.requestId,
                   ok: false,
                   error: "Sealed operation failed",
+                  shaderDiagnostic: shaderFailureDiagnostic(error, { substep }),
                 }),
             );
         },

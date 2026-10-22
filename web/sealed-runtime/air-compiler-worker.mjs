@@ -1,5 +1,6 @@
 // 已验证父级传入编译后的 WASM；本工作线程从不获取编译器、源码或辅助文件。
 // The verified parent supplies compiled WASM; this worker never fetches code, source or helper files.
+import { shaderFailureDiagnostic } from "../shader-diagnostics.mjs";
 import { createAirCompilerAdapter } from "../air-compiler-adapter.mjs";
 import { inspectCompiledMetalLibrary } from "../compiled-shader-boundary.mjs";
 import {
@@ -18,11 +19,15 @@ let adapter,
   initializing = false,
   active = false,
   retired = false,
-  sourceBytes = 0;
+  sourceBytes = 0,
+  compilerPhase = "initializing";
 const fail = (code) => {
   throw airCompilerFailure(code);
 };
-const progress = (id, phase) => scope.postMessage({ type: "progress", id, phase });
+const progress = (id, phase) => {
+  compilerPhase = phase;
+  scope.postMessage({ type: "progress", id, phase });
+};
 const hex = (bytes) => Array.from(bytes, (x) => x.toString(16).padStart(2, "0")).join("");
 
 function disableNetwork() {
@@ -124,8 +129,8 @@ async function compile(data) {
         ...AIR_COMPILER_OPTIONS,
         metadataLengthIncludesPrefix: false,
       });
-    } catch {
-      fail("AIR_OUTPUT_INVALID");
+    } catch (error) {
+      throw airCompilerFailure("AIR_OUTPUT_INVALID", error, { substep: "output-validation" });
     }
     retired =
       output.requiresWorkerTermination ||
@@ -170,8 +175,14 @@ scope.addEventListener("message", async ({ data }) => {
     else if (data.type === "compile") await compile(data);
     else fail("AIR_PROTOCOL_FAILED");
   } catch (error) {
-    // Never transmit source text, raw exceptions, entry identifiers or compiler diagnostics.
-    scope.postMessage({ type: "error", id: data?.id, code: airCompilerFailureCode(error?.code) });
+    // 只传递有界且已过滤的诊断，不传源码、路径或原始异常。
+    // Transfer only bounded filtered diagnostics, never source, paths or raw exceptions.
+    scope.postMessage({
+      type: "error",
+      id: data?.id,
+      code: airCompilerFailureCode(error?.code),
+      shaderDiagnostic: shaderFailureDiagnostic(error, { compilerPhase }),
+    });
     adapter?.dispose();
     retired = true;
     scope.close();

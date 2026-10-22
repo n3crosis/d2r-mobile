@@ -17,6 +17,7 @@ import {
   packagingActivity,
   packagingFailureMessage,
   packagingFailureSummary,
+  shaderFailureDetails,
   committedCleanupWarning,
   resourceProgressLabel,
   shaderProgressLabel,
@@ -614,6 +615,7 @@ export default function App() {
             stage?: string;
             code?: string;
             detailCode?: string;
+            shaderDiagnostic?: unknown;
             outputStarted?: boolean;
             legacyPack?: { status?: string; directoryName?: string };
             resources?: { status?: string; directoryName?: string };
@@ -639,6 +641,7 @@ export default function App() {
         return;
       }
       appendActivity(packagingFailureSummary(report), true);
+      for (const detail of shaderFailureDetails(report)) appendActivity(detail, true);
       setStatus(packagingFailureMessage(report));
     } finally {
       acceptingProgress = false;

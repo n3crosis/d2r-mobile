@@ -623,3 +623,36 @@ test("shader failures preserve only fixed AIR codes at the shader stage", async 
     });
   }
 });
+
+test("shader report exposes useful bounded diagnostics without original exception text", async () => {
+  const f = fixture();
+  f.adapters.generateShaders = async () => {
+    throw Object.assign(new Error("/Users/private/prod.keys PRIVATE_RAW_CAUSE"), {
+      code: "AIR_FRONTEND_FAILED",
+      shaderDiagnostic: {
+        substep: "compilation",
+        record: 4,
+        variant: "bf",
+        shaderStage: "fragment",
+        compilerPhase: "compiling",
+        sourceSha256: "b".repeat(64),
+        diagnostics: [
+          "use of undeclared identifier 'texture_missing'",
+          "error: password = PRIVATE_SECRET",
+        ],
+        path: "/Users/private/game.nsp",
+      },
+    });
+  };
+  await assert.rejects(runPackagingJob(f), (error) => {
+    assert.equal(error.report.detailCode, "AIR_FRONTEND_FAILED");
+    assert.equal(error.report.shaderDiagnostic.substep, "compilation");
+    assert.equal(error.report.shaderDiagnostic.record, 4);
+    assert.deepEqual(error.report.shaderDiagnostic.diagnostics, [
+      "use of undeclared identifier 'texture_missing'",
+    ]);
+    assert.equal(error.report.shaderDiagnostic.sourceSha256, "b".repeat(64));
+    assert.doesNotMatch(JSON.stringify(error.report), /PRIVATE|Users|prod.keys/);
+    return true;
+  });
+});

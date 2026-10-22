@@ -4,6 +4,7 @@
  * 浏览器计算、顶点及片段翻译器到 SPIRV-Cross 的适配器。不包含包写入器。
  * Browser compute/vertex/fragment translator -> SPIRV-Cross adapter. No package writer.
  */
+import { shaderFailureDiagnostic } from "./shader-diagnostics.mjs";
 import { validateShellContract } from "./shell-contract.mjs";
 import {
   CROSS_COMMIT,
@@ -257,6 +258,7 @@ export function createShaderPipeline({
         requestId = ++sequence;
       const remaining = () => Math.max(1, deadline - Date.now());
       let bytes, jobBytes, spirv, mslBytes;
+      let substep = "translation";
       try {
         // Buffer.slice() 与输入共享内存；始终分配独立的普通字节副本。
         // Buffer.slice() aliases its input; always allocate a plain owned byte copy.
@@ -273,7 +275,11 @@ export function createShaderPipeline({
           transfer: [bytes.buffer],
           decode(data) {
             if (data?.requestId !== requestId) return { matched: false };
-            if (data.error) throw error(`Shader translation failed: ${data.error}`);
+            if (data.error) {
+              const failure = error("Shader translation failed");
+              failure.shaderDiagnostic = shaderFailureDiagnostic(data, { substep: "translation" });
+              throw failure;
+            }
             if (!data.result) throw error("Missing translator result");
             return { matched: true, result: data.result };
           },
@@ -281,6 +287,7 @@ export function createShaderPipeline({
         const resources = resourceFacts(translated.resources, requestJob.key, requestJob.stage);
         spirv = decodeBase64(translated.spirvBase64);
         const spirvSha256 = await hash(spirv);
+        substep = "spirv-cross";
         const converted = await rpc({
           workerFactory,
           url: crossUrl,
@@ -295,11 +302,15 @@ export function createShaderPipeline({
           transfer: [spirv.buffer],
           decode(data) {
             if (data?.id !== requestId) return { matched: false };
-            if (data.ok !== true)
-              throw error(`SPIRV-Cross conversion failed: ${data.error ?? "invalid reply"}`);
+            if (data.ok !== true) {
+              const failure = error("SPIRV-Cross conversion failed");
+              failure.shaderDiagnostic = shaderFailureDiagnostic(data, { substep: "spirv-cross" });
+              throw failure;
+            }
             return { matched: true, result: data.result };
           },
         });
+        substep = "reflection-validation";
         if (
           !converted ||
           typeof converted.msl !== "string" ||
@@ -376,6 +387,9 @@ export function createShaderPipeline({
           installable: false,
           metalCompiled: false,
         };
+      } catch (failure) {
+        failure.shaderDiagnostic = shaderFailureDiagnostic(failure, { substep });
+        throw failure;
       } finally {
         // 清理仍由本地持有的快照；真实 Worker 已转移的缓冲区不可再写入。
         // Wipe locally owned snapshots; real-worker transfers may have detached their buffers.

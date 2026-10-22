@@ -9,6 +9,7 @@ import {
   sanitizeShaderRecordProgress,
   packagingFailureMessage,
   packagingFailureSummary,
+  shaderFailureDetails,
   sanitizeResourceOutcome,
   sanitizeResourceProgress,
   resourceProgressLabel,
@@ -376,5 +377,45 @@ test("shader reports display allowlisted AIR codes without raw compiler text", (
   assert.doesNotMatch(
     packagingFailureSummary({ ...report, detailCode: "AIR_PRIVATE-SOURCE-CANARY" }),
     /PRIVATE/,
+  );
+});
+
+test("shader failure details show actionable local diagnostics without raw reports", () => {
+  const report = {
+    stage: "shaders",
+    code: "STAGE_FAILED",
+    message: "PRIVATE-RAW-REPORT",
+    stack: "PRIVATE-STACK",
+    shaderDiagnostic: {
+      substep: "compilation",
+      compilerPhase: "frontend",
+      errorType: "Error",
+      record: 1,
+      variant: "b",
+      shaderStage: "vertex",
+      diagnostics: ["error: use of undeclared identifier 'reverse_bits'"],
+      sourceSha256: "a".repeat(64),
+      sourceDigest: "b".repeat(16),
+      private: "PRIVATE-KEY",
+      path: "/PRIVATE-PATH",
+    },
+  };
+  const lines = shaderFailureDetails(report).join("\n");
+  assert.match(lines, /compilation/);
+  assert.match(lines, /#1/);
+  assert.match(lines, /reverse_bits/);
+  assert.match(lines, /SHA-256: a{64}/);
+  assert.doesNotMatch(lines, /PRIVATE/);
+  assert.deepEqual(shaderFailureDetails({ ...report, stage: "secrets" }), []);
+  assert.deepEqual(shaderFailureDetails({ ...report, code: "CANCELLED" }), []);
+  assert.deepEqual(shaderFailureDetails({ stage: "shaders" }), []);
+});
+
+test("UI appends sanitized shader detail lines after the failure summary", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  assert.match(
+    app,
+    /appendActivity\(packagingFailureSummary\(report\), true\);\s*for \(const detail of shaderFailureDetails\(report\)\) appendActivity\(detail, true\)/,
   );
 });

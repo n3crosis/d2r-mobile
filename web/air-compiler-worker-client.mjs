@@ -77,7 +77,8 @@ export async function createAirCompilerWorkerClient({
     current,
     disposed = false,
     active = false,
-    nextId = 0;
+    nextId = 0,
+    compilerPhase = "verifying";
   function stop(reason) {
     const state = current;
     current = undefined;
@@ -134,9 +135,10 @@ export async function createAirCompilerWorkerClient({
           stop(airCompilerFailure("AIR_PROTOCOL_FAILED"));
           return;
         }
+        compilerPhase = data.phase;
         report(pending.onProgress, data.phase);
       } else if (data.type === "error") {
-        stop(airCompilerFailure(data.code));
+        stop(airCompilerFailure(data.code, data, { compilerPhase }));
       } else {
         state.pending = undefined;
         pending.resolve(data);
@@ -192,6 +194,7 @@ export async function createAirCompilerWorkerClient({
   async function start(requestSignal, callback) {
     ensureLive(requestSignal);
     if (current?.initialized) return current;
+    compilerPhase = "initializing";
     report(callback, "initializing");
     ensureLive(requestSignal);
     const state = connect();
@@ -241,6 +244,7 @@ export async function createAirCompilerWorkerClient({
       )
         fail("AIR_ASSET_MISMATCH");
       check(signal);
+      compilerPhase = "preparing";
       report(onProgress, "preparing");
       return await WebAssembly.compile(wasmBytes);
     })();
@@ -257,7 +261,7 @@ export async function createAirCompilerWorkerClient({
     await start(signal, onProgress);
   } catch (error) {
     dispose();
-    throw airCompilerFailure(error?.code);
+    throw airCompilerFailure(error?.code, error, { compilerPhase });
   }
   return Object.freeze({
     initialized: true,
@@ -277,6 +281,7 @@ export async function createAirCompilerWorkerClient({
       let bytes;
       try {
         const state = await start(requestSignal, callback);
+        compilerPhase = "compiling";
         const result = await request(
           state,
           { type: "compile", source, entry, stage },
@@ -317,7 +322,7 @@ export async function createAirCompilerWorkerClient({
         return output;
       } catch (error) {
         stop(error);
-        throw airCompilerFailure(error?.code);
+        throw airCompilerFailure(error?.code, error, { compilerPhase });
       } finally {
         bytes?.fill(0);
         source = undefined;

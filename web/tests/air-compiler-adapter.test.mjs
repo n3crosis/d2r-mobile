@@ -409,3 +409,34 @@ test("bounded reuse is v2-only and poisons the module after a failed compile", (
   f.module.status = 0;
   assert.throws(() => adapter.compile("valid"), { code: "AIR_ADAPTER_DISPOSED" });
 });
+
+test("frontend failure retains filtered prose before freeing result memory", () => {
+  const f = fake();
+  const diagnostic = [
+    "unknown type name 'missing_texture'",
+    "/Users/private/Game/shader.metal:4:7: error: use of undeclared identifier 'helper_fn'",
+    "4 | kernel void SECRET_SOURCE() { secret(); }",
+    "  |       ^",
+    "error: prod.keys = PRIVATE_KEY_CANARY",
+  ].join("\n");
+  f.module.status = 3;
+  f.module.diagnosticSize = encoder.encode(diagnostic).length;
+  f.module.onCompile = () => f.module.HEAPU8.set(encoder.encode(diagnostic), 768);
+  assert.throws(
+    () => f.create().compile("synthetic"),
+    (error) => {
+      assert.equal(error.code, "AIR_FRONTEND_FAILED");
+      assert.deepEqual(error.shaderDiagnostic.diagnostics, [
+        "unknown type name 'missing_texture'",
+        "source:4:7: error: use of undeclared identifier 'helper_fn'",
+      ]);
+      assert.equal(error.shaderDiagnostic.compilerPhase, "compiling");
+      assert.doesNotMatch(JSON.stringify(error), /Users|Game|SECRET_SOURCE|PRIVATE_KEY_CANARY/);
+      return true;
+    },
+  );
+  assert.deepEqual(
+    f.calls.slice(-2).map(([name]) => name),
+    ["result_free", "free"],
+  );
+});

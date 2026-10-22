@@ -1,6 +1,7 @@
 // 依据显式适配器契约及 ZIP 写入器提交边界协调本地打包事务。
 // Coordinate local packaging transactions from explicit adapter contracts and ZIP writer commit boundaries.
 import { isExtractionDiagnosticCode, extractionProgressLabel } from "./extraction-errors.mjs";
+import { shaderFailureDiagnostic } from "./shader-diagnostics.mjs";
 import { isAirCompilerDiagnosticCode } from "./air-compiler-contract.mjs";
 import { discoverNspFiles, discoverNspFolder } from "./nsp-input.mjs";
 import { resolveContentSelection } from "./content-selection.mjs";
@@ -420,6 +421,7 @@ export async function runPackagingJob(options) {
           (failedStage === "shaders" && isAirCompilerDiagnosticCode(cause?.code))
             ? cause.code
             : null,
+        ...(failedStage === "shaders" ? { shaderDiagnostic: shaderFailureDiagnostic(cause) } : {}),
         outputStarted,
         committed,
         commitStarted,
