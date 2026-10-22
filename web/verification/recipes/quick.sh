@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$VERIFY_ROOT/web"
+# 在安装依赖或构建运行时前检查共享文字表及其派生数据来源。
+# Check shared UI text and derived-data provenance before dependency or runtime builds.
+node toolchain/hud-recipes-js/verify-sources.mjs
+node toolchain/overlay-recipe-js/scripts/verify-source.mjs
 bun install --frozen-lockfile
 bun audit --audit-level=high
 bun run build
