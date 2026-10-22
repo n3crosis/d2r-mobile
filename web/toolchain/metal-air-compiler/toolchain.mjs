@@ -44,6 +44,19 @@ async function checkSource() {
   for (const [path, expected] of Object.entries(manifest.patchedFiles))
     if ((await digest(join(source, path))) !== expected)
       throw Error(`Patched source mismatch: ${path}`);
+  // Storage layout must not change after record lowering and optimization.
+  // Check the actual prepared sources, not a duplicated expected layout string.
+  const target = await readFile(join(source, "clang/lib/Basic/Targets/SPIR.h"), "utf8");
+  const finalization = await readFile(
+    join(source, "llvm/lib/Transforms/LibFloor/MetalFinal.cpp"),
+    "utf8",
+  );
+  const initialLayout = target.match(
+    /class LLVM_LIBRARY_VISIBILITY AIR64TargetInfo\b[\s\S]*?resetDataLayout\("([^"]+)"\);/,
+  );
+  const finalLayouts = [...finalization.matchAll(/\bMod\.setDataLayout\("([^"]+)"\);/g)];
+  if (!initialLayout || finalLayouts.length !== 1 || initialLayout[1] !== finalLayouts[0][1])
+    throw Error("AIR64 initial and final storage DataLayouts must match");
 }
 if (command === "prepare") {
   const archive = option("--archive");

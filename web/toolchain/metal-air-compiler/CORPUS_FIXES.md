@@ -36,11 +36,45 @@ not a new upstream rebase, ABI version or receipt format.
   are unchanged. Final rejection diagnostics contain bounded built-in opcode
   names and fixed compiler-authored reason labels, not source names, types,
   values, paths or IR excerpts. Diagnostics do not expand accepted inputs.
+- `clang/lib/CodeGen/CodeGenModule.cpp`: do not mistake annotations on an
+  explicitly bound resource's pointed-to record for a second stage interface.
+  Exempt only non-stage-input pointers/references with a sole `buffer` attribute
+  in device/constant address space, or a validated `threadgroup` binding in
+  local address space on a compute kernel. Existing binding, address-space,
+  stage and conflicting-attribute validation still applies; real `stage_in`
+  records retain full interface checks. Unbound and by-value decorated records
+  remain rejected. This is the project's explicit-binding subset, not a general
+  MSL or Apple ABI compatibility claim. Separately, ordinary data-buffer
+  reflection uses AST member offsets, allocated member/array-element sizes and
+  source alignment, retaining the existing 16-byte alignment cap. Indirect
+  buffers, stage/payload packing and member-offset handling for bases,
+  polymorphism, unions and bitfields retain their prior paths. This correction
+  changes metadata, not LLVM storage types, GEPs or loads/stores.
+- `clang/lib/Basic/Targets/SPIR.h`: initialize AIR64 with the same vector storage
+  DataLayout already used by final AIR output. Previously, byte-aligned vectors
+  caused record lowering and optimization to use smaller allocation sizes and
+  array strides before finalization increased alignment. The change is confined
+  to AIR64 vector alignment clauses; other targets, scalar/pointer layouts and
+  final AIR layout are unchanged. Unlike the reflection repair, this changes
+  early storage layout and can affect aggregate shapes and optimization.
 
-The first two files already appear in `patchedFiles`; their final SHA256s
-change. The pointer pass is the only new source path in that set. Every source
-file changed by any active patch remains covered, and the incremental patch
-has its own SHA256 in the ordered `patches` list.
+The AST, finalization and CodeGen files already appear in `patchedFiles`; their
+final SHA256s change. The pointer pass and AIR64 target header are the new source
+paths beyond the first five patches.
+Every source file changed by any active patch remains covered, and the
+incremental patch has its own SHA256 in the ordered `patches` list.
+
+The project-owned `api/air_compiler.cpp` separately finalizes fragment-input
+liveness after the completed frontend optimization and before verification and
+either serialization. It adds a terminal `air.arg_unused` only for unused
+`air.fragment_input`/`air.position` arguments, with bounds-checked original
+indices. Cloned metadata preserves every existing operand and order; existing
+markers are not duplicated. Other stages, resource/output descriptors, signatures,
+bodies, bindings and attributes are unchanged. Malformed input metadata fails
+closed. This API source is authenticated by the existing runtime source identity.
+The writer has later clone-only optimization; the hook is not a general claim
+about last uses disappearing only in that writer. Read-only evidence confirms
+all 47 observed omissions are already unused before the writer.
 
 ## Authored LLVM regressions
 
@@ -72,8 +106,9 @@ canary do not execute these LLVM pass-level fixtures.
 
 ## Real-WASM CI canaries
 
-The fixed production CI canary now contains twelve authored MSL fixtures across
-three stages. Seven additions cover these source corrections:
+The fixed production CI canary now contains eighteen authored MSL fixtures across
+three stages, plus a supplemental live/dead fragment-input pair. Thirteen
+additions to the original list cover these source corrections:
 
 - `msl-internal-helper-function-constant.metal`: a retained internal helper and
   function-constant initializer exercise required `dso_local` handling.
@@ -92,6 +127,16 @@ three stages. Seven additions cover these source corrections:
 - `loop-carried-buffer-pointer.metal`: a live loop-carried buffer pointer with
   runtime iteration/branch inputs, with fragment entry
   `loop_carried_buffer_pointer`.
+- `msl-stage-record-threadgroup.metal` and `msl-stage-record-buffers.metal`:
+  a by-value stage input shares its decorated record type with separately bound
+  storage, using exact kernel entries `stage_record_threadgroup` and
+  `stage_record_buffers`.
+- `msl-buffer-reflection-{mixed,array,float3,nested}.metal`: four ordinary-buffer
+  compilation probes with exact kernel entries `reflection_mixed`,
+  `reflection_array`, `reflection_float3` and `reflection_nested`. The same
+  canary also requests LLVM text through the real WASM API and checks exact
+  reflection for all four, plus actual type allocation and source GEP offsets
+  for the float3 probe. Container success alone is insufficient.
 
 The first four independently authored inputs reproduced their corresponding
 failures against the earlier pre-correction artifact. The argument-buffer input
@@ -100,18 +145,82 @@ artifact for `956566f486a95a5ac85b2ce88e3346979ad70f7e` passed nine of the
 existing ten canaries; the scalar-operations case still failed its half-language
 gate. The two new, unchanged inputs fail that artifact with bounded unsupported
 `select` and `phi` diagnostics respectively. Their exact public source hashes
-are checked by the source-only fixture wiring test. All copies preserve their
-original comments and any license notices; none contains private shader source
+are checked by the source-only fixture wiring test. The two storage/interface
+inputs independently reproduce the missing-stage-in diagnostic on the
+verified e97e74c artifact; all 15 authored storage/interface negative cases
+remain rejected by that baseline. This is baseline evidence, not execution of
+the updated compiler. All four reflection probes compiled and passed strict
+container inspection on e97e74c, while their emitted metadata reproduced the
+layout defects. All copies preserve their original comments and any license notices; none contains private shader source
 or reference-library bytes.
 
 The rebuilt compiler must compile every case and pass strict expected-name,
 stage, platform/version and container/bitcode-integrity inspection. A fixture's
 explicit entry overrides only the default `main0`; rejected entry names are not
-renamed or accepted under aliases. The compilation budget follows the fixed
-case count. Each added shader is source-only, excluded from the public runtime
+renamed or accepted under aliases. The bounded compilation budget includes
+18 fixed metallib cases, four reflection LLVM-text checks, and both formats for
+the two liveness variants: 26 API calls total. Each added shader is source-only, excluded from the public runtime
 payload, and included by the existing tracked compiler-directory source copy.
 Source-only tests check fixture wiring and copy closure but do not execute the
 compiler. These new success expectations remain pending a rebuilt CI artifact.
+
+## Authored storage/interface regressions
+
+`fixtures/stage-storage.json` indexes the two byte-preserved public positives
+and 15 negative inputs under `fixtures/stage-storage-negative/`. The existing
+`run-msl-fixtures.mjs` runner checks positive entry names and distinct
+storage/interface metadata, plus expected rejection diagnostics for missing or
+duplicate bindings, wrong address spaces/stages, conflicting annotations,
+unbound pointers and by-value records. No extra workflow or runner is needed.
+
+This native runner has not been executed for these corrections. Source-only
+checks authenticate the localized guard delta and fixture inventory; they do
+not establish compilation, metadata correctness or GPU execution. The two
+positives additionally use the existing strict real-WASM CI canary path.
+
+## Authored ordinary-buffer reflection regressions
+
+`fixtures/buffer-reflection.json` indexes four unchanged MIT-licensed probes
+and expected metadata: a mixed scalar/vector/array record, a vector-only array,
+a float3 record and a nested-record array. The existing native MSL runner uses
+`check-buffer-reflection.mjs` to check buffer size, alignment, binding, address
+space, field offsets, allocated strides/counts and recursive field descriptors.
+The real-WASM canary uses the same checker after the shared API's optimization.
+Its float3 storage check derives allocation from the emitted type and DataLayout,
+requires size 80/alignment 16, array base 32/stride 16, and actual source GEP
+offsets 0/16/48/64. This deliberately bounded parser is not a general LLVM reader.
+Source-only tests use hand-authored metadata/type syntax to exercise assertions,
+not compiler output or compiler correctness. Read-only replay rejects the known
+e97 reflection defects and its 112-byte float3 storage type.
+
+The baseline float3 probe also has a distinct storage mismatch: its final LLVM
+type occupies 112 bytes, versus its 80-byte source ABI. Reflection alone cannot
+repair that. The separate AIR64 DataLayout correction addresses the traced
+cause before record lowering and optimization, rather than rewriting metadata
+or deleting padding late. Fresh compiler output must still establish size 80,
+alignment 16, field offsets 0/16/32/64 and a 16-byte array stride. Neither successful
+compilation nor corrected reflection proves these memory semantics.
+
+The DataLayout change removes an inherited low-alignment AIR optimization
+assumption, so the next artifact needs a broader regression sweep: stage and
+argument-buffer paths, scalar/vector operations, nested aggregates, arrays,
+matrices, helper calls, three-lane vectors and two/four-lane controls, plus the
+unchanged corpus. No compiled reference or private corpus source is included.
+
+## Authored fragment-input liveness regression
+
+`msl-fragment-input-liveness.metal` uses an unchanged macro-controlled interface
+with live/dead stage inputs, position and sparse buffer bindings 9/13. The same
+real-WASM canary compiles both variants to strict-checked metallibs and LLVM text.
+`check-fragment-input-liveness.mjs` resolves the entry's actual input descriptors,
+checks exact operand order, interpolation, five retained indices/signature and
+final argument uses, and requires two terminal unused markers only in the dead
+variant. Even the unused resource remains unmarked. Existing e97 output passes
+the live check and fails the dead check for exactly the two missing markers.
+Source-only checker tests do not execute the API; standalone `clang -cc1` cannot
+exercise this wrapper hook. Updated artifact output, final serialized bitcode,
+the 47 observed corpus omissions and any new metadata differences still require
+verification. No stage-linkage or device effect is established.
 
 ## Evidence and verification boundary
 
@@ -119,8 +228,9 @@ These corrections respond to diagnostics from authenticated existing CI
 artifacts. Bounded pointer diagnostics identify the rejected opcodes, not the
 complete pre-failure IR graph. Source review, public failure reproductions and
 address models do not establish that the modified compiler or private corpus
-now passes. The new pointer-merge and half-header corrections still require a
-fresh matching CI artifact and execution checks.
+now passes. The storage/interface, reflection, AIR64 DataLayout and input-liveness corrections
+still require a fresh matching CI artifact and execution checks. Further pointer graph
+shapes remain unsupported; no unreviewed pointer extension is included here.
 
 The source-only verification procedure is:
 
@@ -131,7 +241,8 @@ node --test ../../tests/air-compiler-source-provenance.test.mjs
 ```
 
 `prepare` verifies the archive hash, checks and applies every patch in order,
-then checks every final modified-source SHA256. The provenance regression
+then checks every final modified-source SHA256 and verifies that AIR64's initial
+and final DataLayout strings match in the prepared source. The provenance regression
 checks exact patch inventory, patch digests, modified-source path coverage and
 runtime source identity. None of these steps builds or invokes LLVM, Clang or
 WASM, and no private corpus source is included in this package.

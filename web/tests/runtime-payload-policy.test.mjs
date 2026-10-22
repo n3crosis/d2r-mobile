@@ -66,9 +66,9 @@ test("static import checks accept equivalent formatting but not comments, types 
     );
 });
 
-test("only the 70 audited source-only assets are rejected; live assets and proof records remain", () => {
-  assert.equal(SOURCE_ONLY_RUNTIME_ASSETS.length, 70);
-  assert.equal(new Set(SOURCE_ONLY_RUNTIME_ASSETS).size, 70);
+test("only the 77 audited source-only assets are rejected; live assets and proof records remain", () => {
+  assert.equal(SOURCE_ONLY_RUNTIME_ASSETS.length, 77);
+  assert.equal(new Set(SOURCE_ONLY_RUNTIME_ASSETS).size, 77);
   assert.ok(Object.isFrozen(SOURCE_ONLY_RUNTIME_ASSETS));
   for (const path of SOURCE_ONLY_RUNTIME_ASSETS)
     assert.throws(() => assertNoSourceOnlyRuntimeAsset(path), /Source-only module/);
@@ -100,6 +100,13 @@ test("the fixed added CI shaders cannot enter the public runtime payload", () =>
     "toolchain/metal-air-compiler/fixtures/direct-buffer-vector-pointer.metal",
     "toolchain/metal-air-compiler/fixtures/conditional-distinct-buffer-rows.metal",
     "toolchain/metal-air-compiler/fixtures/loop-carried-buffer-pointer.metal",
+    "toolchain/metal-air-compiler/fixtures/msl-stage-record-threadgroup.metal",
+    "toolchain/metal-air-compiler/fixtures/msl-stage-record-buffers.metal",
+    "toolchain/metal-air-compiler/fixtures/msl-buffer-reflection-mixed.metal",
+    "toolchain/metal-air-compiler/fixtures/msl-buffer-reflection-array.metal",
+    "toolchain/metal-air-compiler/fixtures/msl-buffer-reflection-float3.metal",
+    "toolchain/metal-air-compiler/fixtures/msl-buffer-reflection-nested.metal",
+    "toolchain/metal-air-compiler/fixtures/msl-fragment-input-liveness.metal",
   ]) {
     assert(SOURCE_ONLY_RUNTIME_ASSETS.includes(fixture));
     assert(!RUNTIME_DIRECT_ASSETS.includes(fixture));

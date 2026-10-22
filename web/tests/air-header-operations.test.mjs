@@ -226,14 +226,14 @@ test("real-WASM CI canary includes all five live operations in a fourth authored
   const canary = await read("../ci-compile-canary.mjs");
   const fixture = await read("../fixtures/msl-scalar-operations.metal");
   const cases = [...canary.matchAll(/stage: "(vertex|fragment|kernel)",\s*filename: "([^"]+)"/g)];
-  assert.equal(cases.length, 12);
+  assert.equal(cases.length, 18);
   assert.equal(new Set(cases.map((entry) => entry[1])).size, 3);
   assert(
     cases.some((entry) => entry[1] === "kernel" && entry[2] === "msl-scalar-operations.metal"),
   );
   assert(canary.includes("maxCompilations: cases.length"));
   assert(
-    canary.includes("authored-twelve-fixture-three-stage-compilation-and-container-integrity"),
+    canary.includes("authored-eighteen-fixture-three-stage-compilation-and-container-integrity"),
   );
   assert.match(canary, /adapter\.compile\(source,[\s\S]*?output: "metallib"/);
   assert.match(canary, /inspectCompiledMetalLibrary\(output\.bytes,/);
@@ -297,6 +297,12 @@ test("real-WASM canaries retain named entries and public compiler regression inp
     ["fragment", "direct-buffer-vector-pointer.metal"],
     ["fragment", "conditional-distinct-buffer-rows.metal"],
     ["fragment", "loop-carried-buffer-pointer.metal"],
+    ["kernel", "msl-stage-record-threadgroup.metal"],
+    ["kernel", "msl-stage-record-buffers.metal"],
+    ["kernel", "msl-buffer-reflection-mixed.metal"],
+    ["kernel", "msl-buffer-reflection-array.metal"],
+    ["kernel", "msl-buffer-reflection-float3.metal"],
+    ["kernel", "msl-buffer-reflection-nested.metal"],
   ]) {
     assert(
       cases.some((entry) => entry[1] === stage && entry[2] === filename),
@@ -309,6 +315,12 @@ test("real-WASM canaries retain named entries and public compiler regression inp
     "direct_buffer_vector_pointer",
     "conditional_distinct_buffer_rows",
     "loop_carried_buffer_pointer",
+    "stage_record_threadgroup",
+    "stage_record_buffers",
+    "reflection_mixed",
+    "reflection_array",
+    "reflection_float3",
+    "reflection_nested",
   ])
     assert(canary.includes(`entry: "${entry}"`), entry);
   assert.match(
@@ -385,6 +397,49 @@ test("real-WASM canaries retain named entries and public compiler regression inp
     assert.match(entry[2], /^[A-Za-z0-9_-]+\.metal$/);
     assert((await read(`../fixtures/${entry[2]}`)).includes("#include <metal_stdlib>"));
   }
+});
+
+test("real-WASM canary checks emitted reflection and actual float3 storage, not only containers", async () => {
+  const canary = await read("../ci-compile-canary.mjs");
+  for (const marker of [
+    'from "./check-buffer-reflection.mjs"',
+    'new URL("./fixtures/buffer-reflection.json", import.meta.url)',
+    "maxCompilations: cases.length + reflectionFixtures.length",
+    'assert.equal(sourceSha256, reflection.sha256, "reviewed reflection fixture identity")',
+    'output: "llvm-text"',
+    'new TextDecoder("utf-8", { fatal: true }).decode(irOutput.bytes)',
+    "checkReflection(ir, reflection)",
+    'if (fixture.entry === "reflection_float3") checkFloat3Storage(ir)',
+    "irOutput?.bytes.fill(0)",
+    'assert.equal(llvmValidation.length, reflectionFixtures.length, "all reflection probes ran")',
+  ])
+    assert(canary.includes(marker), marker);
+  assert(
+    canary.indexOf("checkReflection(ir, reflection)") < canary.indexOf("llvmValidation.push("),
+  );
+});
+
+test("real-WASM canary preserves strict containers for both API liveness variants", async () => {
+  const canary = await read("../ci-compile-canary.mjs");
+  for (const marker of [
+    'from "./check-fragment-input-liveness.mjs"',
+    "const livenessVariants = Object.freeze([false, true])",
+    "maxCompilations: cases.length + reflectionFixtures.length + livenessVariants.length * 2",
+    'const livenessFilename = "msl-fragment-input-liveness.metal"',
+    "5aa0bc64fe9d8df5b7afb8b2d7454782403962bdf28883f6e6e925a3c36db6a0",
+    "#define LIVENESS_KEEP_ALL ${Number(keepAll)}\\n${livenessText}",
+    'entry: "fragment_input_liveness"',
+    "checkFragmentInputLiveness(ir, { keepAll })",
+    'validation: "exact-api-input-descriptors-and-final-argument-uses"',
+  ])
+    assert(canary.includes(marker), marker);
+  const loop = canary.slice(canary.indexOf("for (const keepAll of livenessVariants)"));
+  assert.match(
+    loop,
+    /output: "metallib"[\s\S]*inspectCompiledMetalLibrary\(output.bytes,[\s\S]*entry: "fragment_input_liveness",\s*stage: "fragment",\s*minimumOS: \[18, 0\],\s*languageVersion: \[3, 2\],\s*metadataLengthIncludesPrefix: false/,
+  );
+  assert.match(loop, /output: "llvm-text"[\s\S]*checkFragmentInputLiveness\(ir, \{ keepAll \}\)/);
+  assert.match(loop, /finally \{\s*output\?\.bytes.fill\(0\);\s*irOutput\?\.bytes.fill\(0\);/);
 });
 
 test("header identity still fingerprints the full fixed bundle without a pinned replacement", async () => {

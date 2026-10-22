@@ -5,6 +5,10 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { OPTIONAL_RUNTIME_ASSET_GROUPS } from "../../runtime-asset-groups.mjs";
 import {
+  AIR_COMPILER_RUNTIME,
+  airCompilerRuntimeComponent,
+} from "../../air-compiler-runtime-contract.mjs";
+import {
   RUNTIME_DIRECT_ASSETS,
   RUNTIME_SEALED_WORKERS,
   SOURCE_ONLY_RUNTIME_ASSETS,
@@ -12,6 +16,25 @@ import {
 const encode = (text) => new TextEncoder().encode(text),
   sha = (bytes) => createHash("sha256").update(bytes).digest("hex"),
   shell = encode("synthetic pinned shell");
+const compilerFactory = encode("synthetic compiler factory, never executed");
+const compilerWasm = encode("synthetic compiler WASM, preparation is mocked");
+const compilerReceipt = {
+  version: AIR_COMPILER_RUNTIME.version,
+  id: AIR_COMPILER_RUNTIME.id,
+  apiVersion: AIR_COMPILER_RUNTIME.apiVersion,
+  headerBundleVersion: AIR_COMPILER_RUNTIME.headerBundleVersion,
+  sourceLanguage: AIR_COMPILER_RUNTIME.sourceLanguage,
+  emscripten: "4.0.20",
+  headerSha256: sha(encode("synthetic headers")),
+  sourceFingerprintSha256: sha(encode("synthetic source fingerprint")),
+  sourceManifestSha256: sha(encode("synthetic source manifest")),
+  sourceCommit: "a".repeat(40),
+  sourceInputs: { "toolchain.mjs": sha(encode("synthetic toolchain")) },
+  files: {
+    "d2r_air_wasm.mjs": { bytes: compilerFactory.length, sha256: sha(compilerFactory) },
+    "d2r_air_wasm.wasm": { bytes: compilerWasm.length, sha256: sha(compilerWasm) },
+  },
+};
 const profile = {
   id: "synthetic-profile",
   archivePath: "profile/shell.zip",
@@ -53,8 +76,9 @@ mock.module("../../astc-producer-client.mjs", {
     },
   },
 });
-class Worker {
+class Worker extends EventTarget {
   constructor(url) {
+    super();
     this.url = url;
     this.terminated = false;
     state.workers.push(this);
@@ -62,6 +86,24 @@ class Worker {
   postMessage(message, transfers) {
     const cloned = structuredClone(message, { transfer: transfers });
     assert.equal(cloned.type, "initialize");
+    if (cloned.factoryBytes instanceof ArrayBuffer) {
+      assert.equal(state.fetches.length, state.expectedFetches);
+      assert.deepEqual(new Uint8Array(cloned.factoryBytes), compilerFactory);
+      assert.deepEqual(cloned.wasmModule, { syntheticCompilerModule: true });
+      assert.equal(cloned.factorySha256, sha(compilerFactory));
+      assert.equal(cloned.wasmSha256, sha(compilerWasm));
+      assert.equal(cloned.headerSha256, compilerReceipt.headerSha256);
+      this.assetNames = ["factory", "wasm"];
+      state.compilerInitializations++;
+      queueMicrotask(() =>
+        this.dispatchEvent(
+          new MessageEvent("message", {
+            data: { type: "initialized", id: cloned.id, heapBytes: 4096 },
+          }),
+        ),
+      );
+      return;
+    }
     this.assetNames = cloned.assets.map(([name]) => name);
     queueMicrotask(() =>
       this.onmessage({ data: { id: 0, ok: true, result: { initialized: true } } }),
@@ -81,13 +123,19 @@ globalThis.caches = {
   },
 };
 let serial = 0;
-async function setup({ enabled = false, absent = false, full = false } = {}) {
+async function setup({
+  enabled = false,
+  absent = false,
+  full = false,
+  missingAirComponent = false,
+} = {}) {
   state = {
     fetches: [],
     workers: [],
     helperCalls: 0,
     privateCalls: 0,
     producerCloses: 0,
+    compilerInitializations: 0,
     signal: new AbortController().signal,
   };
   const data = new Map([
@@ -102,6 +150,9 @@ async function setup({ enabled = false, absent = false, full = false } = {}) {
   if (full) {
     for (const path of [...RUNTIME_DIRECT_ASSETS, ...RUNTIME_SEALED_WORKERS])
       if (!data.has(path)) data.set(path, encode(`synthetic ${path}`));
+    data.set(AIR_COMPILER_RUNTIME.factory, compilerFactory);
+    data.set(AIR_COMPILER_RUNTIME.wasm, compilerWasm);
+    data.set(AIR_COMPILER_RUNTIME.receipt, encode(JSON.stringify(compilerReceipt)));
     const closure = (directory, names) => {
       const assets = names.map((path) => {
         const bytes = encode(`synthetic ${directory}/${path}`);
@@ -138,6 +189,9 @@ async function setup({ enabled = false, absent = false, full = false } = {}) {
   }));
   const manifest = {
       version: 1,
+      ...(full && !missingAirComponent
+        ? { components: { airCompiler: airCompilerRuntimeComponent(compilerReceipt) } }
+        : {}),
       assets,
       totalBytes: assets.reduce((sum, asset) => sum + asset.bytes, 0),
     },
@@ -229,7 +283,20 @@ test("cleanup failure remains awaitable while runtime identity is revoked", asyn
   assert.throws(() => runtime.createAstcProducerClient(), /unavailable/);
   await assert.rejects(closing, /synthetic cleanup failure/);
 });
-test("every production plan initializes from retained assembly paths without raw client sources", async () => {
+test("incomplete AIR component metadata rejects before worker creation", async () => {
+  const { prepareSealedRuntime, options } = await setup({ full: true, missingAirComponent: true });
+  await assert.rejects(prepareSealedRuntime(options), /Verified AIR compiler component is missing/);
+  assert.deepEqual(state.fetches, ["runtime-manifest.json"]);
+  assert.equal(state.workers.length, 0);
+  assert.equal(state.privateCalls, 0);
+});
+test("every production plan initializes from retained assembly paths without raw client sources", async (t) => {
+  let compilerPreparations = 0;
+  t.mock.method(WebAssembly, "compile", async (bytes) => {
+    assert.deepEqual(bytes, compilerWasm);
+    compilerPreparations++;
+    return { syntheticCompilerModule: true };
+  });
   const { prepareSealedRuntime, options, data } = await setup({ enabled: true, full: true });
   assert.ok(SOURCE_ONLY_RUNTIME_ASSETS.every((path) => !data.has(path)));
   const runtime = await prepareSealedRuntime(options);
@@ -240,13 +307,17 @@ test("every production plan initializes from retained assembly paths without raw
     "extraction",
     "spirvCross",
     "program",
+    "airCompiler",
     "astcProducer",
   ]);
-  assert.equal(state.workers.length, 7);
+  assert.equal(state.workers.length, 8);
+  assert.equal(compilerPreparations, 1);
+  assert.equal(state.compilerInitializations, 1);
+  assert.equal(state.privateCalls, 0);
   assert.equal(state.fetches.length, state.expectedFetches);
   assert.equal(state.helperCalls, 1);
   assert.deepEqual(
-    state.workers.slice(0, 6).map((worker) => worker.assetNames),
+    state.workers.slice(0, 7).map((worker) => worker.assetNames),
     [
       ["image-kernels.wasm", "png-codec.wasm", "font-rasterizer.wasm"],
       [
@@ -266,6 +337,7 @@ test("every production plan initializes from retained assembly paths without raw
       ["hactool-boundary.wasm"],
       ["spirv-cross.wasm"],
       ["capstone-lz4.wasm"],
+      ["factory", "wasm"],
     ],
   );
   for (const path of SOURCE_ONLY_RUNTIME_ASSETS)

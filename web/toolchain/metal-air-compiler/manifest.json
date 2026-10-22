@@ -27,11 +27,12 @@
     },
     {
       "path": "patches/0106-a2flo-corpus-compiler-fixes.patch",
-      "sha256": "17187bb7dc1bfe56f2051a2eeffcccb44c22e221bec4b8ee449ea6410531182a"
+      "sha256": "dd41adc4403392216cb5a0a4ec0eda0e932ceea2e87a61bd380edd2af76a7a73"
     }
   ],
   "patchedFiles": {
     "clang/include/clang/Basic/Attr.td": "a471de505e6c69fc76e214fc431e30fe5e22e576be0da4efd46ce7b3b5c4616c",
+    "clang/lib/Basic/Targets/SPIR.h": "e90c20a141c7918f6d4c922f73965bfa2e4d540b17c62305665d0460f43ed48a",
     "clang/lib/AST/ASTContext.cpp": "380d2e18adf9c499420ded678f3a2dcf1a54c8a4da08edbbeb47d31ca9bf3ffc",
     "clang/lib/AST/Decl.cpp": "4deae175f0d5433c050fefdac0db7904cf88e2410a216e9aaa5e6af84ca1c794",
     "clang/lib/AST/RecordLayoutBuilder.cpp": "2ea871bef2a2dce8b4eaec3fcd8e74ec5203853df32ea80010f657ea888a2c80",
@@ -47,7 +48,7 @@
     "clang/lib/CodeGen/CGCall.cpp": "a775b94f9dd39df8cc8591eaa54fa3e1fb2ca42e8068478f081bdb1d67aaebfd",
     "clang/lib/CodeGen/CGExprCXX.cpp": "a3962a3a612a256831f37395183a09df977ca5fc5401356931219caf36c43e17",
     "clang/lib/CodeGen/CGOpenCLRuntime.cpp": "76254d6d07ba60e59d4faa3b825924c66abd107d7181b67225f90574708dfe3c",
-    "clang/lib/CodeGen/CodeGenModule.cpp": "a4ffa67ee59a5914b3c3e38ea1952d223b8160497fbfda35c94e3c5c43017b17",
+    "clang/lib/CodeGen/CodeGenModule.cpp": "24a2c4602921cb219f27ed3edc2db2db924c000109177e0dc3588155879da678",
     "clang/lib/CodeGen/CodeGenTypes.cpp": "b63f080ff05fb56e923e849b1c56c07dd83278edc4ebed2c5d3fadb05fa05862",
     "clang/lib/CodeGen/CodeGenTypes.h": "bbb38103de877bfa70bb1ba3b1c67aaecafa7889d5edbb054577cc2b65978a7b",
     "llvm/include/llvm/Transforms/LibFloor/FloorImage.h": "797f537613c7ae608c8376161a538cdbf639dc4fa17a2923d43e4ba39c34208c",

@@ -391,3 +391,92 @@
  					return false;
  				}
  				if (!stores.empty() && !loads.empty()) {
+--- a/clang/lib/CodeGen/CodeGenModule.cpp
++++ b/clang/lib/CodeGen/CodeGenModule.cpp
+@@ -3667,7 +3667,20 @@
+ 		if (!Stage || !Stage->isMSL()) {
+ 			const auto T = P->getType();
+ 			const auto Base = T->isPointerType() || T->isReferenceType() ? T->getPointeeType() : T;
+-			if (has_msl_io(Base->getAsCXXRecordDecl())) {
++			// Interface field attributes do not turn explicitly bound storage into
++			// another stage input. Binding validation above and in Sema still applies.
++			// In particular, never exempt a conflicting legacy stage_input parameter.
++			const bool IsStoragePointer = !Stage && (T->isPointerType() || T->isReferenceType());
++			const auto AS = Base.getAddressSpace();
++			bool HasOnlyBufferBinding = true;
++			for (const auto *A : P->attrs())
++				HasOnlyBufferBinding &= isa<MetalBufferBindingAttr>(A);
++			const bool IsBoundBuffer = IsStoragePointer && HasOnlyBufferBinding &&
++				P->hasAttr<MetalBufferBindingAttr>() &&
++				(AS == LangAS::opencl_global || AS == LangAS::opencl_constant);
++			const bool IsBoundThreadgroup = IsStoragePointer && is_kernel &&
++				P->hasAttr<MetalThreadgroupBindingAttr>() && AS == LangAS::opencl_local;
++			if (!IsBoundBuffer && !IsBoundThreadgroup && has_msl_io(Base->getAsCXXRecordDecl())) {
+ 				Error(P->getBeginLoc(), "explicit MSL stage-input semantics require stage_in");
+ 				return;
+ 			}
+@@ -4005,6 +4018,18 @@
+ 				Error(struct_rdecl.getBeginLoc(), "id fields require a plain constant argument-buffer reference");
+ 				return {};
+ 			}
++			// Ordinary data-buffer reflection describes the AST memory layout, not
++			// a sum of LLVM store sizes. Packed LLVM records can contain explicit
++			// padding, and three-component vectors have padded allocation sizes.
++			// Keep argument-buffer IDs, stage/payload packing and flattened base
++			// classes on their existing paths. A base field's index is not an index
++			// into this record's AST layout.
++			bool use_ast_layout = !is_indirect && !indirect_buffer && !align_vectors &&
++				!parent_decl.hasAttr<GraphicsStageInputAttr>() && !struct_rdecl.isUnion() &&
++				!struct_rdecl.getNumBases() && !struct_rdecl.isPolymorphic();
++			for (const auto &field : fields)
++				use_ast_layout &= !field->isBitField();
++			const auto *record_layout = use_ast_layout ? &Context.getASTRecordLayout(&struct_rdecl) : nullptr;
+ 			SmallVector<llvm::Metadata*, 16> struct_info;
+ 			uint32_t offset = 0;
+ 			for (const auto& field : fields) {
+@@ -4061,6 +4086,12 @@
+ 				}
+ 				
+ 				auto size = (uint32_t)getDataLayout().getTypeStoreSize(llvm_field_type);
++				if (record_layout) {
++					offset = (uint32_t)(record_layout->getFieldOffset(field->getFieldIndex()) / Context.getCharWidth());
++					// For arrays, field_type is the element type: AIR stores its stride
++					// separately from the element count, including tail padding.
++					size = (uint32_t)Context.getTypeSizeInChars(field_type).getQuantity();
++				}
+ 				if (align_vectors && (llvm_field_type->isVectorTy() || is_vector_compat)) {
+ 					const auto vec_type = (is_vector_compat ? getTypes().ConvertTypeForMem(Context.get_compat_vector_type(field_cxx_rdecl)) : llvm_field_type);
+ 					assert(size > 0 && vec_type && vec_type->isVectorTy());
+@@ -4303,7 +4334,13 @@
+ 			arg_info.push_back(llvm::MDString::get(VMContext, "air.arg_type_align_size"));
+ 			// max out at 16 for normal types, anything higher is unreasonable
+ 			// for argument/indirect buffers, always assume an 8-byte alignment
+-			const auto align_size = std::min(getDataLayout().getABITypeAlign(llvm_pointee_type).value(),
++			// LLVM's packed record alignment can be smaller than the source
++			// buffer alignment even when explicit padding preserves all offsets.
++			const auto type_align = !indirect_buffer && !is_indirect &&
++				!clang_pointee_type->isIncompleteType() && !clang_pointee_type->isFunctionType() ?
++				uint64_t(Context.getTypeAlignInChars(clang_pointee_type).getQuantity()) :
++				getDataLayout().getABITypeAlign(llvm_pointee_type).value();
++			const auto align_size = std::min(type_align,
+ 											 indirect_buffer ? uint64_t(8u) : uint64_t(16u));
+ 			arg_info.push_back(llvm::ConstantAsMetadata::get(Builder.getInt32(align_size)));
+ 			// #14/#15: type name
+--- a/clang/lib/Basic/Targets/SPIR.h
++++ b/clang/lib/Basic/Targets/SPIR.h
+@@ -382,9 +382,12 @@
+     PointerWidth = PointerAlign = 64;
+     SizeType     = TargetInfo::UnsignedLong;
+     PtrDiffType = IntPtrType = TargetInfo::SignedLong;
+-    // for initial compilation and optimization, allow more liberal vector alignment to enable better libfloor vector <-> LLVM vector replacements/casting/optimizations
+-    // -> this will later be reset during MetalFinalModuleCleanup in MetalFinal
+-    resetDataLayout("e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v16:8:8-v24:8:8-v32:8:8-v48:8:8-v64:8:8-v96:8:8-v128:8:8-v192:8:8-v256:8:8-v512:8:8-v1024:8:8-n8:16:32");
++    // Use the final AIR storage layout from the start. Lowering records with
++    // byte-aligned vectors inserts explicit padding based on smaller vector
++    // allocation sizes (for example, 12 instead of 16 bytes for float3).
++    // Raising the alignment in MetalFinalModuleCleanup cannot repair those
++    // records or array strides already used by code generation/optimization.
++    resetDataLayout("e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v16:16:16-v24:32:32-v32:32:32-v48:64:64-v64:64:64-v96:128:128-v128:128:128-v192:256:256-v256:256:256-v512:512:512-v1024:1024:1024-n8:16:32");
+     AddrSpaceMap = &AIRAddrSpaceMap;
+   }
+   

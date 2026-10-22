@@ -1,10 +1,15 @@
-// CI 中仅编译十二个固定的原创着色器，覆盖三个阶段；不读取游戏、密钥或用户文件。
-// CI-only compilation of twelve fixed authored shaders across three stages, never game, key or user inputs.
+// CI 中仅编译固定的原创着色器，覆盖三个阶段；不读取游戏、密钥或用户文件。
+// CI-only authored shaders and bounded LLVM-text regressions, never game, key or user inputs.
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import assert from "node:assert/strict";
 import { createAirCompilerAdapter } from "../../air-compiler-adapter.mjs";
 import { inspectCompiledMetalLibrary } from "../../compiled-shader-boundary.mjs";
 import { AIR_COMPILER_SOURCE_LANGUAGE } from "../../air-compiler-contract.mjs";
+import { checkReflection, checkFloat3Storage } from "./check-buffer-reflection.mjs";
+import { checkFragmentInputLiveness } from "./check-fragment-input-liveness.mjs";
+
+const livenessVariants = Object.freeze([false, true]);
 
 const cases = Object.freeze([
   { stage: "vertex", filename: "msl-vertex.metal", define: "#define SCALE 2.0f\n" },
@@ -44,18 +49,59 @@ const cases = Object.freeze([
     entry: "loop_carried_buffer_pointer",
     define: "",
   },
+  {
+    stage: "kernel",
+    filename: "msl-stage-record-threadgroup.metal",
+    entry: "stage_record_threadgroup",
+    define: "",
+  },
+  {
+    stage: "kernel",
+    filename: "msl-stage-record-buffers.metal",
+    entry: "stage_record_buffers",
+    define: "",
+  },
+  {
+    stage: "kernel",
+    filename: "msl-buffer-reflection-mixed.metal",
+    entry: "reflection_mixed",
+    define: "",
+  },
+  {
+    stage: "kernel",
+    filename: "msl-buffer-reflection-array.metal",
+    entry: "reflection_array",
+    define: "",
+  },
+  {
+    stage: "kernel",
+    filename: "msl-buffer-reflection-float3.metal",
+    entry: "reflection_float3",
+    define: "",
+  },
+  {
+    stage: "kernel",
+    filename: "msl-buffer-reflection-nested.metal",
+    entry: "reflection_nested",
+    define: "",
+  },
 ]);
 
 // The caller authenticates the actual module and passes its independently computed
 // fixed-header digest. This probes the real frontend, passes, writer and boundary,
 // not Apple acceptance, Chrome execution or full-game compatibility.
 export async function runAirCompilerCanary(module, { expectedHeaderSha256 } = {}) {
+  const reflectionFixtures = JSON.parse(
+    await readFile(new URL("./fixtures/buffer-reflection.json", import.meta.url), "utf8"),
+  );
   const adapter = createAirCompilerAdapter(module, {
     expectedHeaderSha256,
     apiVersion: 2,
-    maxCompilations: cases.length,
+    maxCompilations: cases.length + reflectionFixtures.length + livenessVariants.length * 2,
   });
   const results = [];
+  const llvmValidation = [];
+  const fragmentInputLiveness = [];
   try {
     for (const fixture of cases) {
       const text = await readFile(
@@ -65,6 +111,7 @@ export async function runAirCompilerCanary(module, { expectedHeaderSha256 } = {}
       const source = fixture.define + text;
       const sourceSha256 = createHash("sha256").update(source).digest("hex");
       let output;
+      let irOutput;
       try {
         output = adapter.compile(source, {
           iosMajor: 18,
@@ -79,6 +126,28 @@ export async function runAirCompilerCanary(module, { expectedHeaderSha256 } = {}
           languageVersion: [3, 2],
           metadataLengthIncludesPrefix: false,
         });
+        const reflection = reflectionFixtures.find(
+          (candidate) => candidate.file === `fixtures/${fixture.filename}`,
+        );
+        if (reflection) {
+          assert.equal(sourceSha256, reflection.sha256, "reviewed reflection fixture identity");
+          irOutput = adapter.compile(source, {
+            iosMajor: 18,
+            output: "llvm-text",
+            sourceLanguage: AIR_COMPILER_SOURCE_LANGUAGE,
+            mathProfile: "fast-f32",
+          });
+          const ir = new TextDecoder("utf-8", { fatal: true }).decode(irOutput.bytes);
+          checkReflection(ir, reflection);
+          if (fixture.entry === "reflection_float3") checkFloat3Storage(ir);
+          llvmValidation.push({
+            fixture: fixture.filename,
+            reflection: "exact-buffer-offsets-sizes-alignment-and-bindings",
+            ...(fixture.entry === "reflection_float3"
+              ? { storage: "80-byte-type-16-byte-float3-stride-and-exact-source-geps" }
+              : {}),
+          });
+        }
         results.push({
           fixture: fixture.filename,
           entry: fixture.entry ?? "main0",
@@ -92,11 +161,73 @@ export async function runAirCompilerCanary(module, { expectedHeaderSha256 } = {}
         });
       } finally {
         output?.bytes.fill(0);
+        irOutput?.bytes.fill(0);
       }
     }
+    assert.equal(llvmValidation.length, reflectionFixtures.length, "all reflection probes ran");
+    const livenessFilename = "msl-fragment-input-liveness.metal";
+    const livenessText = await readFile(
+      new URL(`./fixtures/${livenessFilename}`, import.meta.url),
+      "utf8",
+    );
+    assert.equal(
+      createHash("sha256").update(livenessText).digest("hex"),
+      "5aa0bc64fe9d8df5b7afb8b2d7454782403962bdf28883f6e6e925a3c36db6a0",
+      "reviewed liveness fixture identity",
+    );
+    for (const keepAll of livenessVariants) {
+      const source = `#define LIVENESS_KEEP_ALL ${Number(keepAll)}\n${livenessText}`;
+      let output;
+      let irOutput;
+      try {
+        output = adapter.compile(source, {
+          iosMajor: 18,
+          output: "metallib",
+          sourceLanguage: AIR_COMPILER_SOURCE_LANGUAGE,
+          mathProfile: "fast-f32",
+        });
+        await inspectCompiledMetalLibrary(output.bytes, {
+          entry: "fragment_input_liveness",
+          stage: "fragment",
+          minimumOS: [18, 0],
+          languageVersion: [3, 2],
+          metadataLengthIncludesPrefix: false,
+        });
+        irOutput = adapter.compile(source, {
+          iosMajor: 18,
+          output: "llvm-text",
+          sourceLanguage: AIR_COMPILER_SOURCE_LANGUAGE,
+          mathProfile: "fast-f32",
+        });
+        const ir = new TextDecoder("utf-8", { fatal: true }).decode(irOutput.bytes);
+        checkFragmentInputLiveness(ir, { keepAll });
+        fragmentInputLiveness.push({
+          fixture: livenessFilename,
+          variant: keepAll ? "live" : "dead",
+          sourceSha256: createHash("sha256").update(source).digest("hex"),
+          bytes: output.bytes.byteLength,
+          unusedInputs: keepAll ? 0 : 2,
+          validation: "exact-api-input-descriptors-and-final-argument-uses",
+        });
+      } catch (error) {
+        throw new Error(
+          `AIR CI fragment input liveness failed for ${keepAll ? "live" : "dead"} variant`,
+          { cause: error },
+        );
+      } finally {
+        output?.bytes.fill(0);
+        irOutput?.bytes.fill(0);
+      }
+    }
+    assert.equal(
+      adapter.compilationCount,
+      cases.length + reflectionFixtures.length + livenessVariants.length * 2,
+    );
     return {
-      validation: "authored-twelve-fixture-three-stage-compilation-and-container-integrity",
+      validation: "authored-eighteen-fixture-three-stage-compilation-and-container-integrity",
       results,
+      llvmValidation,
+      fragmentInputLiveness,
     };
   } finally {
     adapter.dispose();

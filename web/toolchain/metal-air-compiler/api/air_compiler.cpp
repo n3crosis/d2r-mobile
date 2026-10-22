@@ -10,8 +10,11 @@
 #include "clang/Lex/PPCallbacks.h"
 #include "clang/Lex/Preprocessor.h"
 #include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -338,6 +341,60 @@ bool isPatchControlPointGetter(const llvm::Module &module,
   return false;
 }
 
+// MetalFinal strips implicit parameters before the last InstCombine/GVN/ADCE
+// cleanups. Inspect the frontend-final module here, so an already-unused
+// retained fragment input can be marked without changing its ABI. The metallib
+// writer later clones/internalizes/optimizes globals; this is not a claim to
+// discover every additional input that might become unused only in that writer.
+bool finalizeFragmentInputLiveness(llvm::Module &module) {
+  auto *entries = module.getNamedMetadata("air.fragment");
+  if (!entries) return true;
+  auto &context = module.getContext();
+  for (unsigned entryIndex = 0; entryIndex < entries->getNumOperands(); ++entryIndex) {
+    const auto *entry = entries->getOperand(entryIndex);
+    if (entry->getNumOperands() < 3) return false;
+    const auto *value = llvm::dyn_cast_or_null<llvm::ValueAsMetadata>(entry->getOperand(0).get());
+    const auto *function = value ? llvm::dyn_cast<llvm::Function>(value->getValue()) : nullptr;
+    const auto *inputs = llvm::dyn_cast_or_null<llvm::MDNode>(entry->getOperand(2).get());
+    if (!function || function->isDeclaration() || !inputs) return false;
+    llvm::SmallVector<llvm::Metadata *, 16> newInputs;
+    bool changed = false;
+    for (const auto &operand : inputs->operands()) {
+      newInputs.push_back(operand.get());
+      const auto *input = llvm::dyn_cast_or_null<llvm::MDNode>(operand.get());
+      if (!input || input->getNumOperands() < 2) return false;
+      const auto *semantic = llvm::dyn_cast_or_null<llvm::MDString>(input->getOperand(1).get());
+      if (!semantic) return false;
+      // Do not infer liveness metadata for resources, other builtins or stages.
+      if (semantic->getString() != "air.fragment_input" &&
+          semantic->getString() != "air.position") continue;
+      const auto *index = llvm::mdconst::dyn_extract_or_null<llvm::ConstantInt>(input->getOperand(0).get());
+      if (!index || !index->getType()->isIntegerTy(32) ||
+          index->getValue().uge(function->arg_size())) return false;
+      if (!function->getArg(unsigned(index->getZExtValue()))->use_empty()) continue;
+      bool alreadyUnused = false;
+      for (const auto &field : input->operands()) {
+        const auto *key = llvm::dyn_cast_or_null<llvm::MDString>(field.get());
+        alreadyUnused |= key && key->getString() == "air.arg_unused";
+      }
+      if (alreadyUnused) continue;
+      // Clone rather than mutate potentially shared descriptors. Preserve every
+      // existing operand and append the zero-operand flag in reference order.
+      llvm::SmallVector<llvm::Metadata *, 16> fields;
+      for (const auto &field : input->operands()) fields.push_back(field.get());
+      fields.push_back(llvm::MDString::get(context, "air.arg_unused"));
+      newInputs.back() = llvm::MDNode::get(context, fields);
+      changed = true;
+    }
+    if (!changed) continue;
+    llvm::SmallVector<llvm::Metadata *, 4> entryFields;
+    for (const auto &field : entry->operands()) entryFields.push_back(field.get());
+    entryFields[2] = llvm::MDNode::get(context, newInputs);
+    entries->setOperand(entryIndex, llvm::MDNode::get(context, entryFields));
+  }
+  return true;
+}
+
 bool hasEntry(const llvm::Module &module) {
   for (const auto *name : {"air.kernel", "air.vertex", "air.fragment"})
     if (const auto *node = module.getNamedMetadata(name))
@@ -407,6 +464,13 @@ static air_result *compile(const uint8_t *source, size_t source_size,
   if (!module) {
     result->status = AIR_INVALID_IR;
     appendDiagnostic(*result, "Frontend did not produce an LLVM module.\n");
+    return result.release();
+  }
+  // Both text and metallib serialization consume this same finalized module.
+  // Keep the existing verifier and all subsequent integrity checks in place.
+  if (!finalizeFragmentInputLiveness(*module)) {
+    result->status = AIR_INVALID_IR;
+    appendDiagnostic(*result, "Invalid AIR fragment input metadata.\n");
     return result.release();
   }
   std::string verification;
