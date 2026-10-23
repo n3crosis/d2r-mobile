@@ -59,11 +59,13 @@ export function invokeSigningNative(native, password) {
     );
     if (code !== 0)
       throw signingError(
-        code === -206
-          ? "SIGNING_PROFILE_MISMATCH"
-          : code === -203
-            ? "SIGNING_IDENTITY_INVALID"
-            : "SIGNING_FAILED",
+        code === -207
+          ? "SIGNING_APPLICATION_ID_TOO_LONG"
+          : code === -206
+            ? "SIGNING_PROFILE_MISMATCH"
+            : code === -203
+              ? "SIGNING_IDENTITY_INVALID"
+              : "SIGNING_FAILED",
       );
   } finally {
     for (const { pointer, length } of allocations) {

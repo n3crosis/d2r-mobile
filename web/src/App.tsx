@@ -13,7 +13,6 @@ import { prepareBrowserPackager, takeCommittedDownload } from "../browser-packag
 import { DEFAULT_SHELL_PROFILE_ID } from "../shell-profiles.mjs";
 import { discoverGameFolder } from "../game-input.mjs";
 import { PROGRAM_COMPATIBILITY } from "../program-compatibility.mjs";
-import { selectDefaultNspNames } from "../nsp-default-selection.mjs";
 import { createDownloadPreparation, attemptAutomaticDownload } from "../download-preparation.mjs";
 import { signWithLocalFiles } from "../signing-input.mjs";
 import { IPA_SIGNING_LIMITS } from "../ipa-signing-contract.mjs";
@@ -50,6 +49,7 @@ type LoadingProgress = {
 };
 type InputMode = "packages" | "extracted";
 type FolderProgress = {
+  inputMode?: string;
   extractedFileCount?: number;
   nspCount: number;
   prodKeysFound: boolean;
@@ -57,15 +57,17 @@ type FolderProgress = {
 };
 type ActivityEntry = { id: number; text: string };
 type RomfsProgress = { phase: "base" | "merged"; percent: number };
-const folderSummary = (progress: FolderProgress, inputMode: InputMode) =>
-  inputMode === "extracted"
+const folderSummary = (progress: FolderProgress) =>
+  progress.inputMode === "extracted"
     ? t("dmWebExtractedSummary", progress.extractedFileCount ?? 0)
-    : t(
-        "dmWebFolderSummary",
-        progress.nspCount,
-        t(progress.prodKeysFound ? "dmWebFound" : "dmWebMissing"),
-        t(progress.titleKeysFound ? "dmWebFoundOptional" : "dmWebNotProvided"),
-      );
+    : progress.inputMode === "packages"
+      ? t(
+          "dmWebFolderSummary",
+          progress.nspCount,
+          t(progress.prodKeysFound ? "dmWebFound" : "dmWebMissing"),
+          t(progress.titleKeysFound ? "dmWebFoundOptional" : "dmWebNotProvided"),
+        )
+      : t("dmWebDetectingInput");
 const megabytes = (bytes: number) => t("dmWebMegabytes", (bytes / 1_000_000).toFixed(1));
 const loadingLabel = (phase: string) =>
   t(phase === "download" ? "dmWebDownloading" : "dmWebPreparing");
@@ -106,7 +108,7 @@ export default function App() {
     )
     .map((release) => release.gameVersion)
     .join(", ");
-  const [inputMode, setInputMode] = useState<InputMode>("packages");
+  const [inputMode, setInputMode] = useState<InputMode | null>(null);
   const [appCustomization, setAppCustomization] = useState<AppCustomizationDraft>({});
   const [customizationError, setCustomizationError] = useState("");
   const customizationValidation = useMemo(() => {
@@ -142,7 +144,6 @@ export default function App() {
   const [romfsProgress, setRomfsProgress] = useState<RomfsProgress | null>(null);
   const [folder, setFolder] = useState<FileSystemDirectoryHandle | null>(null);
   const [nspNames, setNspNames] = useState<string[]>([]);
-  const [selectedNsps, setSelectedNsps] = useState<Set<string>>(() => new Set());
   const [download, setDownload] = useState<{ url: string; fileName: string } | null>(null);
   const signedDownload = download?.fileName === "D2RMobile-signed.ipa";
   const [finished, setFinished] = useState(false);
@@ -321,26 +322,24 @@ export default function App() {
       selectedName = selected.name;
       setFolder(null);
       setNspNames([]);
-      setSelectedNsps(new Set());
+      setInputMode(null);
       setStatus(t("dmWebChecking", selected.name));
       const files = await discoverGameFolder(selected, {
-        inputMode,
         signal: controller.signal,
         onProgress: (event: FolderProgress) => {
           if (controller.signal.aborted || !current()) return;
           progress = event;
-          setStatus(t("dmWebCheckingProgress", selected.name, folderSummary(event, inputMode)));
+          setStatus(t("dmWebCheckingProgress", selected.name, folderSummary(event)));
         },
       });
       controller.signal.throwIfAborted();
       if (!current()) return;
       const names = files.nsps.map((file) => file.name);
-      const selectedNames = selectDefaultNspNames(names);
       setNspNames(names);
-      setSelectedNsps(new Set(selectedNames));
+      setInputMode(files.inputMode);
       setFolder(selected);
       appendActivity(
-        inputMode === "extracted"
+        files.inputMode === "extracted"
           ? t("dmWebExtractedChecked")
           : t(
               "dmWebFolderChecked",
@@ -351,9 +350,9 @@ export default function App() {
       );
       setStatus(
         t(
-          inputMode === "extracted" ? "dmWebExtractedReady" : "dmWebReviewSelection",
+          files.inputMode === "extracted" ? "dmWebExtractedReady" : "dmWebPackagesReady",
           selected.name,
-          folderSummary(progress, inputMode),
+          folderSummary({ ...progress, inputMode: files.inputMode }),
         ),
       );
     } catch (error) {
@@ -366,7 +365,7 @@ export default function App() {
       } else {
         setFolder(null);
         setNspNames([]);
-        setSelectedNsps(new Set());
+        setInputMode(null);
         appendActivity(t("dmWebFolderFailed"), true);
         const code = (error as { code?: string })?.code;
         const permissionError =
@@ -375,9 +374,7 @@ export default function App() {
         const reason = permissionError
           ? t("dmWebFolderPermission")
           : gameFolderFailureMessage(code);
-        setStatus(
-          `${selectedName ? `${selectedName}: ${folderSummary(progress, inputMode)} ` : ""}${reason}`,
-        );
+        setStatus(`${selectedName ? `${selectedName}: ${folderSummary(progress)} ` : ""}${reason}`);
       }
     } finally {
       // 显式取消后必须重载，立即关闭已预加载的运行时；仅关闭选取器仍允许重试。
@@ -452,9 +449,12 @@ export default function App() {
       const signingMessage = t(
         controller.signal.aborted
           ? "dmWebSigningCancelled"
-          : signingError instanceof Error && signingError.message === "SIGNING_PROFILE_MISMATCH"
-            ? "dmWebSigningProfileMismatch"
-            : "dmWebSigningFailed",
+          : signingError instanceof Error &&
+              signingError.message === "SIGNING_APPLICATION_ID_TOO_LONG"
+            ? "dmWebSigningApplicationIdTooLong"
+            : signingError instanceof Error && signingError.message === "SIGNING_PROFILE_MISMATCH"
+              ? "dmWebSigningProfileMismatch"
+              : "dmWebSigningFailed",
       );
       setSigningStatus(signingMessage);
       appendActivity(signingMessage, true);
@@ -513,10 +513,11 @@ export default function App() {
       !ready ||
       busy ||
       !folder ||
+      !inputMode ||
       !packager.current ||
       customizationValidation.error ||
       customizationError ||
-      (inputMode === "packages" && !selectedNsps.size)
+      (inputMode === "packages" && !nspNames.length)
     )
       return;
     if (
@@ -592,7 +593,7 @@ export default function App() {
         ...(Object.keys(preparedCustomization).length
           ? { appCustomization: preparedCustomization }
           : {}),
-        ...(inputMode === "packages" ? { selectedNspNames: [...selectedNsps] } : {}),
+        ...(inputMode === "packages" ? { selectedNspNames: nspNames } : {}),
         exportResources: !skipResources,
         signal: controller.signal,
         onProgress: (event: {
@@ -778,128 +779,189 @@ export default function App() {
       <Card className="w-full">
         <CardHeader>
           <CardTitle>{t("dmWebTitle")}</CardTitle>
+          <CardDescription>{t("dmWebAutoInstructions")}</CardDescription>
           <CardDescription>
-            {t(inputMode === "extracted" ? "dmWebExtractedInstructions" : "dmWebInstructions")}
+            {t(
+              "dmWebOutputCompatibility",
+              t(target === "ios18" ? "dmWebTarget18" : "dmWebTarget26"),
+              t(legacyAstc ? "dmWebLegacyTextures" : "dmWebBcTextures"),
+            )}
           </CardDescription>
-          <CardDescription>
-            {t(target === "ios18" ? "dmWebCompatibility18" : "dmWebCompatibility")}
-          </CardDescription>
+          <CardDescription>{t("dmWebOptionsBeforeFolder")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <label htmlFor="input-mode" className="text-sm font-medium">
-              {t("dmWebInputMode")}
-            </label>
-            <select
-              id="input-mode"
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
-              value={inputMode}
-              disabled={!ready || busy || finished || download !== null}
-              onChange={(event) => {
-                const next = event.target.value;
-                if (
-                  (next !== "packages" && next !== "extracted") ||
-                  next === inputMode ||
-                  operationGate.current.busy ||
-                  !ready ||
-                  busy ||
-                  finished ||
-                  download !== null
-                )
-                  return;
-                setInputMode(next);
-                setFolder(null);
-                setNspNames([]);
-                setSelectedNsps(new Set());
-                setSkipResources(false);
-                setStatus(t("dmWebReady"));
-              }}
+          <div className="flex flex-wrap gap-3">
+            <Button variant="outline" onClick={() => void choose()} disabled={!ready || busy}>
+              {t("dmWebChoose")}
+            </Button>
+            <Button
+              onClick={() => void generate()}
+              disabled={
+                !ready ||
+                !folder ||
+                !inputMode ||
+                Boolean(customizationValidation.error || customizationError) ||
+                (inputMode === "packages" && !nspNames.length) ||
+                busy ||
+                (signing && (!signingReady || !credentialsSelected))
+              }
+              aria-busy={generating}
             >
-              <option value="packages">{t("dmWebInputPackages")}</option>
-              <option value="extracted">{t("dmWebInputExtracted")}</option>
-            </select>
-          </div>
-          <div className="space-y-2">
-            <label htmlFor="ios-target" className="text-sm font-medium">
-              {t("dmWebTarget")}
-            </label>
-            <select
-              id="ios-target"
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
-              aria-describedby="ios-target-help"
-              value={target}
-              disabled={hasSelectedFolder || busy || generating || download !== null}
-              onChange={(event) => {
-                const next = event.target.value;
-                if (
-                  (next !== "ios18" && next !== "ios26") ||
-                  next === target ||
-                  operationGate.current.busy ||
-                  hasSelectedFolder ||
-                  busy ||
-                  generating ||
-                  download !== null
-                )
-                  return;
-                // 密封运行时只初始化一次；选择输入之前用整页重载切换封闭目标。
-                // The sealed runtime initializes once; reload to switch closed targets before selecting inputs.
-                const url = new URL(window.location.href);
-                if (next === "ios18") url.searchParams.set("target", "ios18");
-                else url.searchParams.delete("target");
-                window.location.assign(url.href);
-              }}
-            >
-              <option value="ios26">{t("dmWebTarget26")}</option>
-              <option value="ios18">{t("dmWebTarget18")}</option>
-            </select>
-            <p id="ios-target-help" className="text-xs text-muted-foreground">
-              {t("dmWebTargetReload")}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {t("dmWebSupportedVersions", supportedVersions)}
-            </p>
-          </div>
-          <div className="space-y-2">
-            {inputMode === "packages" && (
-              <>
-                <label className="flex items-start gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    className="mt-1"
-                    checked={!skipContentHashes}
-                    aria-describedby="verify-content-hashes-help"
-                    disabled={hasSelectedFolder || busy || generating || download !== null}
-                    onChange={(event) => {
-                      if (
-                        operationGate.current.busy ||
-                        hasSelectedFolder ||
-                        busy ||
-                        generating ||
-                        download !== null
-                      )
-                        return;
-                      const url = new URL(window.location.href);
-                      if (event.target.checked) url.searchParams.set("skipContentHashes", "0");
-                      else url.searchParams.delete("skipContentHashes");
-                      window.location.assign(url.href);
-                    }}
-                  />
-                  {t("dmWebVerifyHashOption")}
-                </label>
-                <p id="verify-content-hashes-help" className="text-xs text-muted-foreground">
-                  {t("dmWebVerifyHashHelp")}
-                </p>
-              </>
+              {generating && (
+                <span
+                  className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none"
+                  aria-hidden="true"
+                />
+              )}
+              {generating ? t("dmWebGenerating") : t("dmWebGenerate")}
+            </Button>
+            {busy && (
+              <Button
+                variant="outline"
+                disabled={cancelling}
+                onClick={() => {
+                  setReady(false);
+                  setCancelling(true);
+                  cancellation.current?.abort();
+                  pendingGenerationStatus.current = null;
+                  pendingRomfsProgress.current = undefined;
+                  setRomfsProgress(null);
+                  setStatus(t("dmWebCancellingWait"));
+                  appendActivity(t("dmWebCancellationRequested"), true);
+                }}
+              >
+                {cancelling ? t("dmWebCancelling") : t("dmWebCancel")}
+              </Button>
             )}
-            <label className="flex items-start gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="mt-1"
-                checked={legacyAstc}
-                aria-describedby="legacy-option-help"
+          </div>
+          <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
+            {status}
+          </p>
+          {folder && (
+            <div className="space-y-2">
+              <p className="break-all text-sm font-medium">{folder.name}</p>
+              {inputMode === "extracted" ? (
+                <p className="text-xs text-muted-foreground">{t("dmWebExtractedInstructions")}</p>
+              ) : (
+                <details className="space-y-2 text-xs text-muted-foreground">
+                  <summary className="cursor-pointer">
+                    {t("dmWebIncludedPackages", nspNames.length)}
+                  </summary>
+                  <ul className="space-y-1 break-all">
+                    {nspNames.map((name) => (
+                      <li key={name}>{name}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </div>
+          )}
+          {signingStatus && (
+            <p className="text-sm text-muted-foreground" role="status">
+              {signingStatus}
+            </p>
+          )}
+          {resourceOutcome && (
+            <p className="text-sm text-muted-foreground" role="status">
+              {resourceOutcome}
+            </p>
+          )}
+          {downloadPreparationFailed && (
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground" role="status">
+                {t("dmWebDownloadPreparationFailed")}
+              </p>
+              <Button onClick={() => prepareDownload()}>
+                {t("dmWebRetryDownloadPreparation")}
+              </Button>
+            </div>
+          )}
+          {signingRetryAvailable && (
+            <Button onClick={retrySigning} disabled={busy || !credentialsSelected}>
+              {t("dmWebRetrySigning")}
+            </Button>
+          )}
+          {download && (
+            <div className="space-y-2">
+              <Button asChild>
+                <a href={download.url} download={download.fileName}>
+                  {t(
+                    originalIdentityDownload
+                      ? "dmWebCustomOriginalDownload"
+                      : signedDownload
+                        ? "dmWebSignedDownload"
+                        : "dmWebDownload",
+                  )}
+                </a>
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                {t(
+                  originalIdentityDownload
+                    ? "dmWebCustomOriginalRetained"
+                    : signedDownload
+                      ? "dmWebSignedHelp"
+                      : "dmWebDownloadHelp",
+                )}
+              </p>
+            </div>
+          )}
+          {legacyAstc && legacyStatus && (
+            <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
+              {legacyStatus}
+            </p>
+          )}
+          {generating && (
+            <div className="space-y-2 rounded-md border bg-muted/50 p-3 text-sm">
+              <p className="font-medium">
+                {cancelling ? t("dmWebStopping") : t("dmWebInProgress")}
+              </p>
+              <progress
+                className="h-2 w-full accent-primary"
+                aria-label={
+                  cancelling
+                    ? t("dmWebStoppingAria")
+                    : romfsProgress
+                      ? t(
+                          "dmWebVerification",
+                          t(romfsProgress.phase === "base" ? "dmWebBase" : "dmWebMerged"),
+                        )
+                      : t("dmWebProgressAria")
+                }
+                value={cancelling ? undefined : romfsProgress?.percent}
+                max={100}
+              />
+              <p className="text-xs text-muted-foreground">
+                {cancelling
+                  ? t("dmWebWaitCleanup")
+                  : romfsProgress
+                    ? t(
+                        "dmWebVerificationPercent",
+                        t(romfsProgress.phase === "base" ? "dmWebBase" : "dmWebMerged"),
+                        romfsProgress.percent,
+                      )
+                    : t("dmWebLargePackages")}
+              </p>
+            </div>
+          )}
+          <details className="space-y-4 rounded-md border p-3">
+            <summary className="cursor-pointer text-sm font-medium">
+              {t("dmWebAdvancedOptions")}
+            </summary>
+            <div className="space-y-2">
+              <label htmlFor="ios-target" className="text-sm font-medium">
+                {t("dmWebTarget")}
+              </label>
+              <select
+                id="ios-target"
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                aria-describedby="ios-target-help"
+                value={target}
                 disabled={hasSelectedFolder || busy || generating || download !== null}
                 onChange={(event) => {
+                  const next = event.target.value;
                   if (
+                    (next !== "ios18" && next !== "ios26") ||
+                    next === target ||
                     operationGate.current.busy ||
                     hasSelectedFolder ||
                     busy ||
@@ -907,29 +969,62 @@ export default function App() {
                     download !== null
                   )
                     return;
-                  // 在接触私有输入前重载，确保可选资源已预加载。
-                  // Reload before private inputs so optional resources are preloaded.
+                  // 密封运行时只初始化一次；选择输入之前用整页重载切换封闭目标。
+                  // The sealed runtime initializes once; reload to switch closed targets before selecting inputs.
                   const url = new URL(window.location.href);
-                  if (event.target.checked) url.searchParams.set("legacyAstc", "1");
-                  else url.searchParams.delete("legacyAstc");
+                  if (next === "ios18") url.searchParams.set("target", "ios18");
+                  else url.searchParams.delete("target");
                   window.location.assign(url.href);
                 }}
-              />
-              {t("dmWebLegacyOption")}
-            </label>
-            <p id="legacy-option-help" className="text-xs text-muted-foreground">
-              {t("dmWebLegacyHelp")}
-            </p>
-            {legacyAstc && (
-              <div className="space-y-2">
-                <label htmlFor="astc-preset" className="text-sm font-medium">
-                  {t("dmWebAstcPreset")}
-                </label>
-                <select
-                  id="astc-preset"
-                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
-                  value={astcPreset}
-                  aria-describedby="astc-preset-help"
+              >
+                <option value="ios26">{t("dmWebTarget26")}</option>
+                <option value="ios18">{t("dmWebTarget18")}</option>
+              </select>
+              <p id="ios-target-help" className="text-xs text-muted-foreground">
+                {t("dmWebTargetReload")}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {t("dmWebSupportedVersions", supportedVersions)}
+              </p>
+            </div>
+            <div className="space-y-2">
+              {inputMode !== "extracted" && (
+                <>
+                  <label className="flex items-start gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={!skipContentHashes}
+                      aria-describedby="verify-content-hashes-help"
+                      disabled={hasSelectedFolder || busy || generating || download !== null}
+                      onChange={(event) => {
+                        if (
+                          operationGate.current.busy ||
+                          hasSelectedFolder ||
+                          busy ||
+                          generating ||
+                          download !== null
+                        )
+                          return;
+                        const url = new URL(window.location.href);
+                        if (event.target.checked) url.searchParams.set("skipContentHashes", "0");
+                        else url.searchParams.delete("skipContentHashes");
+                        window.location.assign(url.href);
+                      }}
+                    />
+                    {t("dmWebVerifyHashOption")}
+                  </label>
+                  <p id="verify-content-hashes-help" className="text-xs text-muted-foreground">
+                    {t("dmWebVerifyHashHelp")}
+                  </p>
+                </>
+              )}
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={legacyAstc}
+                  aria-describedby="legacy-option-help"
                   disabled={hasSelectedFolder || busy || generating || download !== null}
                   onChange={(event) => {
                     if (
@@ -940,24 +1035,92 @@ export default function App() {
                       download !== null
                     )
                       return;
-                    // 在选择私有输入前重载，使预设在整个作业期间保持固定。
-                    // Reload before private input selection so the preset stays fixed for the entire job.
+                    // 在接触私有输入前重载，确保可选资源已预加载。
+                    // Reload before private inputs so optional resources are preloaded.
                     const url = new URL(window.location.href);
-                    if (event.target.value === "fast") url.searchParams.set("astcPreset", "fast");
-                    else url.searchParams.delete("astcPreset");
+                    if (event.target.checked) url.searchParams.set("legacyAstc", "1");
+                    else url.searchParams.delete("legacyAstc");
                     window.location.assign(url.href);
                   }}
-                >
-                  <option value="thorough">{t("dmWebAstcThorough")}</option>
-                  <option value="fast">{t("dmWebAstcFast")}</option>
-                </select>
-                <p id="astc-preset-help" className="text-xs text-muted-foreground">
-                  {t("dmWebAstcPresetHelp")}
-                </p>
+                />
+                {t("dmWebLegacyOption")}
+              </label>
+              <p id="legacy-option-help" className="text-xs text-muted-foreground">
+                {t("dmWebLegacyHelp")}
+              </p>
+              {legacyAstc && (
+                <div className="space-y-2">
+                  <label htmlFor="astc-preset" className="text-sm font-medium">
+                    {t("dmWebAstcPreset")}
+                  </label>
+                  <select
+                    id="astc-preset"
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                    value={astcPreset}
+                    aria-describedby="astc-preset-help"
+                    disabled={hasSelectedFolder || busy || generating || download !== null}
+                    onChange={(event) => {
+                      if (
+                        operationGate.current.busy ||
+                        hasSelectedFolder ||
+                        busy ||
+                        generating ||
+                        download !== null
+                      )
+                        return;
+                      // 在选择私有输入前重载，使预设在整个作业期间保持固定。
+                      // Reload before private input selection so the preset stays fixed for the entire job.
+                      const url = new URL(window.location.href);
+                      if (event.target.value === "fast") url.searchParams.set("astcPreset", "fast");
+                      else url.searchParams.delete("astcPreset");
+                      window.location.assign(url.href);
+                    }}
+                  >
+                    <option value="thorough">{t("dmWebAstcThorough")}</option>
+                    <option value="fast">{t("dmWebAstcFast")}</option>
+                  </select>
+                  <p id="astc-preset-help" className="text-xs text-muted-foreground">
+                    {t("dmWebAstcPresetHelp")}
+                  </p>
+                </div>
+              )}
+            </div>
+            {folder && (
+              <div className="space-y-2">
+                <label className="flex items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={skipResources}
+                    disabled={!ready || busy}
+                    aria-describedby={skipResources ? "skip-resources-help" : undefined}
+                    onChange={(event) => {
+                      if (operationGate.current.busy) return;
+                      setSkipResources(event.target.checked);
+                    }}
+                  />
+                  {t("dmWebSkipResources")}
+                </label>
+                {skipResources && (
+                  <p id="skip-resources-help" className="text-xs text-muted-foreground">
+                    {t(
+                      inputMode === "extracted"
+                        ? "dmWebExtractedSkipResourcesHelp"
+                        : "dmWebSkipResourcesHelp",
+                    )}
+                    {legacyAstc ? ` ${t("dmWebSkipKeepsLegacy")}` : ""}
+                  </p>
+                )}
               </div>
             )}
-          </div>
-          <div className="space-y-2">
+          </details>
+          <details
+            className="space-y-2 rounded-md border p-3"
+            open={signing || signingRetryAvailable}
+          >
+            <summary className="cursor-pointer text-sm font-medium">
+              {t("dmWebSigningOptions")}
+            </summary>
             <label className="flex items-start gap-2 text-sm">
               <input
                 type="checkbox"
@@ -1034,7 +1197,7 @@ export default function App() {
                 </label>
               </fieldset>
             )}
-          </div>
+          </details>
           <AppCustomizationFields
             value={appCustomization}
             disabled={!ready || busy || finished || download !== null}
@@ -1047,205 +1210,6 @@ export default function App() {
             }}
           />
           {storageAdvisory && <p className="text-xs text-muted-foreground">{storageAdvisory}</p>}
-          <div className="flex flex-wrap gap-3">
-            <Button variant="outline" onClick={() => void choose()} disabled={!ready || busy}>
-              {t("dmWebChoose")}
-            </Button>
-            <Button
-              onClick={() => void generate()}
-              disabled={
-                !ready ||
-                !folder ||
-                Boolean(customizationValidation.error || customizationError) ||
-                (inputMode === "packages" && !selectedNsps.size) ||
-                busy ||
-                (signing && (!signingReady || !credentialsSelected))
-              }
-              aria-busy={generating}
-            >
-              {generating && (
-                <span
-                  className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none"
-                  aria-hidden="true"
-                />
-              )}
-              {generating ? t("dmWebGenerating") : t("dmWebGenerate")}
-            </Button>
-            {busy && (
-              <Button
-                variant="outline"
-                disabled={cancelling}
-                onClick={() => {
-                  setReady(false);
-                  setCancelling(true);
-                  cancellation.current?.abort();
-                  pendingGenerationStatus.current = null;
-                  pendingRomfsProgress.current = undefined;
-                  setRomfsProgress(null);
-                  setStatus(t("dmWebCancellingWait"));
-                  appendActivity(t("dmWebCancellationRequested"), true);
-                }}
-              >
-                {cancelling ? t("dmWebCancelling") : t("dmWebCancel")}
-              </Button>
-            )}
-          </div>
-          {inputMode === "packages" && nspNames.length > 0 && (
-            <fieldset className="space-y-2 rounded-md border p-3" disabled={!ready || busy}>
-              <legend className="px-1 text-sm font-medium">{t("dmWebPackages")}</legend>
-              <p id="package-selection-help" className="text-xs text-muted-foreground">
-                {t("dmWebSelectionHelp")}
-              </p>
-              {nspNames.map((name) => (
-                <label key={name} className="flex items-start gap-2 text-sm break-all">
-                  <input
-                    type="checkbox"
-                    className="mt-1"
-                    aria-describedby="package-selection-help package-selection-count"
-                    checked={selectedNsps.has(name)}
-                    onChange={(event) => {
-                      if (operationGate.current.busy) return;
-                      setSkipResources(false);
-                      const checked = event.target.checked;
-                      setSelectedNsps((current) => {
-                        const next = new Set(current);
-                        if (checked) next.add(name);
-                        else next.delete(name);
-                        return next;
-                      });
-                    }}
-                  />
-                  {name}
-                </label>
-              ))}
-              <p
-                id="package-selection-count"
-                className="text-xs text-muted-foreground"
-                role="status"
-              >
-                {t("dmWebSelectedCount", selectedNsps.size, nspNames.length)}
-                {selectedNsps.size === 0 ? t("dmWebSelectOne") : ""}
-              </p>
-            </fieldset>
-          )}
-          {folder && (
-            <div className="space-y-2">
-              <label className="flex items-start gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="mt-1"
-                  checked={skipResources}
-                  disabled={!ready || busy}
-                  aria-describedby={skipResources ? "skip-resources-help" : undefined}
-                  onChange={(event) => {
-                    if (operationGate.current.busy) return;
-                    setSkipResources(event.target.checked);
-                  }}
-                />
-                {t("dmWebSkipResources")}
-              </label>
-              {skipResources && (
-                <p id="skip-resources-help" className="text-xs text-muted-foreground">
-                  {t(
-                    inputMode === "extracted"
-                      ? "dmWebExtractedSkipResourcesHelp"
-                      : "dmWebSkipResourcesHelp",
-                  )}
-                  {legacyAstc ? ` ${t("dmWebSkipKeepsLegacy")}` : ""}
-                </p>
-              )}
-            </div>
-          )}
-          {signingStatus && (
-            <p className="text-sm text-muted-foreground" role="status">
-              {signingStatus}
-            </p>
-          )}
-          {resourceOutcome && (
-            <p className="text-sm text-muted-foreground" role="status">
-              {resourceOutcome}
-            </p>
-          )}
-          {downloadPreparationFailed && (
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground" role="status">
-                {t("dmWebDownloadPreparationFailed")}
-              </p>
-              <Button onClick={() => prepareDownload()}>
-                {t("dmWebRetryDownloadPreparation")}
-              </Button>
-            </div>
-          )}
-          {signingRetryAvailable && (
-            <Button onClick={retrySigning} disabled={busy || !credentialsSelected}>
-              {t("dmWebRetrySigning")}
-            </Button>
-          )}
-          {download && (
-            <div className="space-y-2">
-              <Button asChild>
-                <a href={download.url} download={download.fileName}>
-                  {t(
-                    originalIdentityDownload
-                      ? "dmWebCustomOriginalDownload"
-                      : signedDownload
-                        ? "dmWebSignedDownload"
-                        : "dmWebDownload",
-                  )}
-                </a>
-              </Button>
-              <p className="text-xs text-muted-foreground">
-                {t(
-                  originalIdentityDownload
-                    ? "dmWebCustomOriginalRetained"
-                    : signedDownload
-                      ? "dmWebSignedHelp"
-                      : "dmWebDownloadHelp",
-                )}
-              </p>
-            </div>
-          )}
-          <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
-            {status}
-          </p>
-          {legacyAstc && legacyStatus && (
-            <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
-              {legacyStatus}
-            </p>
-          )}
-          {generating && (
-            <div className="space-y-2 rounded-md border bg-muted/50 p-3 text-sm">
-              <p className="font-medium">
-                {cancelling ? t("dmWebStopping") : t("dmWebInProgress")}
-              </p>
-              <progress
-                className="h-2 w-full accent-primary"
-                aria-label={
-                  cancelling
-                    ? t("dmWebStoppingAria")
-                    : romfsProgress
-                      ? t(
-                          "dmWebVerification",
-                          t(romfsProgress.phase === "base" ? "dmWebBase" : "dmWebMerged"),
-                        )
-                      : t("dmWebProgressAria")
-                }
-                value={cancelling ? undefined : romfsProgress?.percent}
-                max={100}
-              />
-              <p className="text-xs text-muted-foreground">
-                {cancelling
-                  ? t("dmWebWaitCleanup")
-                  : romfsProgress
-                    ? t(
-                        "dmWebVerificationPercent",
-                        t(romfsProgress.phase === "base" ? "dmWebBase" : "dmWebMerged"),
-                        romfsProgress.percent,
-                      )
-                    : t("dmWebLargePackages")}
-              </p>
-            </div>
-          )}
           <details className="space-y-2 text-xs text-muted-foreground">
             <summary className="cursor-pointer">{t("dmWebLogCount", activity.length)}</summary>
             <p>{t("dmWebLogHelp")}</p>

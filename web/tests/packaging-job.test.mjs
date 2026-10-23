@@ -773,7 +773,7 @@ test("extracted orchestration accepts a separate selection capability without fa
     assert.equal(context.selection, selection);
     return {};
   };
-  await runPackagingJob({ ...f, input: inputs, inputMode: "extracted" });
+  await runPackagingJob({ ...f, input: inputs });
   await assert.rejects(
     runPackagingJob({ ...fixture(), input: inputs, inputMode: "extracted", selectedNspNames: [] }),
   );

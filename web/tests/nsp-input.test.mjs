@@ -329,6 +329,15 @@ function fixture(entries = [{ name: "content.nca", offset: 0n, size: 4n }], extr
   };
   return { file, bytes, view, dataOffset, reads };
 }
+function nspBlob() {
+  const image = fixture();
+  const bytes = new Uint8Array(image.file.size);
+  bytes.set(image.bytes);
+  return Object.assign(new Blob([bytes]), {
+    name: "game.nsp",
+    webkitRelativePath: "chosen/game.nsp",
+  });
+}
 function folder(entries) {
   return {
     kind: "directory",
@@ -380,6 +389,65 @@ test("root folder discovery is case insensitive and never recurses or reads unre
   );
   assert.equal(selection.prodKeys, prod);
   assert.deepEqual(selection.nsps, [nsp]);
+});
+
+test("discovery accepts NSP and XCI by default, alone or mixed, with required prod.keys", async () => {
+  const [prod] = keys();
+  for (const names of [["game.NSP"], ["game.XCI"], ["base.xci", "update.nsp"]]) {
+    const packages = names.map((name) => localFile(name, "synthetic"));
+    const files = [prod, ...packages];
+    const progress = [];
+    const discovered = await discoverNspFolder(
+      folder(files.map((file) => [file.name, handle(file)])),
+      { onProgress: (event) => progress.push(event) },
+    );
+    assert.deepEqual(discovered.nsps, packages);
+    assert.equal(discovered.titleKeys, undefined);
+    assert.equal(progress.at(-1).nspCount, packages.length);
+    assert.deepEqual(discoverNspFiles(files).nsps, packages);
+    await assert.rejects(
+      discoverNspFolder(folder(packages.map((file) => [file.name, handle(file)]))),
+      code("MISSING_INPUT"),
+    );
+    assert.throws(() => discoverNspFiles(packages), code("MISSING_INPUT"));
+  }
+});
+
+test("discovery excludes unsupported package extensions without opening them", async () => {
+  const [prod] = keys();
+  const unsupported = [
+    "game.nsz",
+    "game.xcz",
+    "game.ncz",
+    "game.xci.00",
+    "game.nsp.00",
+    "game.zip",
+  ];
+  const entries = unsupported.map((name) => [
+    name,
+    {
+      kind: "file",
+      getFile() {
+        throw new Error("Unsupported files must not be opened");
+      },
+    },
+  ]);
+  const files = unsupported.map((name) => localFile(name, "synthetic"));
+  await assert.rejects(
+    discoverNspFolder(folder([[prod.name, handle(prod)], ...entries])),
+    code("MISSING_INPUT"),
+  );
+  assert.throws(() => discoverNspFiles([prod, ...files]), code("MISSING_INPUT"));
+  const xci = localFile("base.xci", "synthetic");
+  assert.deepEqual(
+    (
+      await discoverNspFolder(
+        folder([[prod.name, handle(prod)], [xci.name, handle(xci)], ...entries]),
+      )
+    ).nsps,
+    [xci],
+  );
+  assert.deepEqual(discoverNspFiles([prod, xci, ...files]).nsps, [xci]);
 });
 
 test("discovery rejects missing files, unsafe names, duplicates, and oversized keys", async () => {
@@ -620,7 +688,7 @@ test("key read buffers are cleared best-effort on both success and error", async
 });
 
 test("full folder preflight returns no key contents, handles, or build readiness claim", async () => {
-  const result = await preflightNspFolder([...keys(), fixture().file]);
+  const result = await preflightNspFolder([...keys(), nspBlob()]);
   assert.equal(result.stage, "metadata-only");
   assert.equal(result.canBuildIpa, false);
   assert.equal(result.packages.length, 1);
@@ -692,10 +760,14 @@ test("NSP filename decoder does not discard a leading BOM or allow format contro
 });
 
 test("package count and key-size caps apply without reading contents", async () => {
-  const many = keys().map((file) => [file.name, handle(file)]);
+  const many = keys();
   for (let i = 0; i <= NSP_INPUT_LIMITS.packages; i++)
-    many.push([`${i}.nsp`, handle(fixture().file)]);
-  await assert.rejects(discoverNspFolder(folder(many)), code("PACKAGE_LIMIT"));
+    many.push(localFile(`${i}.${i % 2 ? "xci" : "nsp"}`, "synthetic"));
+  await assert.rejects(
+    discoverNspFolder(folder(many.map((file) => [file.name, handle(file)]))),
+    code("PACKAGE_LIMIT"),
+  );
+  assert.throws(() => discoverNspFiles(many), code("PACKAGE_LIMIT"));
   await assert.rejects(
     inspectKeyFile(
       {
@@ -720,7 +792,7 @@ test("folder discovery and preflight accept absent optional title keys", async (
     ]),
   );
   assert.equal(inputs.titleKeys, undefined);
-  const result = await preflightNspFolder([prod, nsp]);
+  const result = await preflightNspFolder([prod, nspBlob()]);
   assert.equal(result.titleKeys.entries, 0);
 });
 

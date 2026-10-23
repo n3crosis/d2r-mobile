@@ -1,18 +1,24 @@
 # Alternate local game inputs
 
-The browser accepts two explicit input modes. Neither route uploads private game
+The browser automatically detects package or already-extracted input from the
+selected folder. Root-level NSP/XCI files take precedence; missing or invalid keys
+never cause a fallback to extracted input. Neither route uploads private game
 files or keys. Real-game XCI and extracted-folder conversion have not been run;
 this change is covered by authored synthetic input/provenance tests only.
 
 ## Packages: NSP and XCI
 
 Select a folder with `prod.keys` and one or more `.nsp` or `.xci` files directly
-inside it. `title.keys` remains optional. Existing package checkboxes can mix an
-XCI base with an NSP update or DLC. Filename hints only preselect files; the
-existing authenticated NCA/CNMT policy still associates and selects contents.
+inside it. `title.keys` remains optional. Every discovered package is included,
+including an XCI base with an NSP update or DLC; there are no package checkboxes
+or filename-based preselection. The existing authenticated NCA/CNMT policy still
+associates and selects contents.
 The legacy `nsps` / `selectedNspNames` API names now include both package types.
-The standalone `discoverNspFolder` / `discoverNspFiles` APIs remain NSP-only
-unless their explicit `allowXci` option is enabled.
+Both `discoverNspFolder` and `discoverNspFiles` discover NSP and XCI packages by
+default. `discoverGameFolder` and `discoverGameFiles` automatically detect the
+input route and return its concrete `inputMode`; internal callers may pin that
+mode when rescanning a selection. Direct `generate()` calls also auto-detect when
+no mode is supplied.
 
 `inspectGamePackage` dispatches on PFS0/HEAD magic, not the filename extension.
 The authored XCI parser reads the HEAD header and HFS0 indexes with at most 64 KiB

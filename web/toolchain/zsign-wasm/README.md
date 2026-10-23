@@ -106,6 +106,13 @@ limit. Such profiles may be valid for Apple tooling but are not supported here;
 the bridge does not invent container, app-group or iCloud capabilities.
 Unsupported profiles retain the unsigned-download fallback.
 
+The existing 255-character application-ID limit includes the profile prefix and
+separator, not only the bundle ID. A validated prefix plus bundle exceeding that
+bound returns `-207` / `SIGNING_APPLICATION_ID_TOO_LONG`, separately from profile
+mismatch (`-206`). Exact and wildcard matching and all length bounds are unchanged.
+Source tests and mocked native statuses do not execute this new return path;
+the patched signer must be rebuilt in CI before runtime delivery.
+
 These checks do not verify the CMS Apple signature, trust chain, revocation,
 device eligibility, required application capabilities or installability.
 

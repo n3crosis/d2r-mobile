@@ -19,7 +19,7 @@ class ZSignAsset {
     void *m_x509Cert = nullptr;
     string m_strProvData, m_strEntitleData, m_strApplicationId, m_strTeamId;
     static bool GetCMSContent(const string &, string &) { return false; }
-    bool ValidateProfileForBundle(const string &);
+    bool ValidateProfileForBundle(const string &, bool *applicationIdentifierTooLong = nullptr);
 };
 #include "profile-compatibility.inc"
 
@@ -157,6 +157,41 @@ int main(int argc, char **argv) {
     assert(!D2RConcreteEntitlements(expanded, 17, remaining));
     assert(!D2RMatchApplication("LEGACY1234.com.*", "LEGACY1234.com."));
     assert(!D2RMatchApplication("LEGACY1234.com.*", "LEGACY1234.company.app"));
+
+    // 长度错误只区分既有上限，不扩大匹配范围，也不限制未签名自定义。
+    // Distinguish the existing length cap without expanding matches or limiting unsigned edits.
+    for (const string &prefix : {string("LEGACY1234"), string(64, 'A')}) {
+        jvalue boundary = base;
+        boundary["ApplicationIdentifierPrefix"] = jvalue(jvalue::E_ARRAY);
+        boundary["ApplicationIdentifierPrefix"].push_back(prefix);
+        boundary["Entitlements"]["application-identifier"] = prefix + ".*";
+        boundary["Entitlements"]["keychain-access-groups"] = jvalue(jvalue::E_ARRAY);
+        const size_t supported = 255 - prefix.size() - 1;
+        for (size_t length : {supported, supported + 1, size_t(255)}) {
+            const string bundle = "com." + string(length - 4, 'a');
+            bool tooLong = true;
+            const bool accepted = D2RProfileEntitlements(boundary, metadata, bundle, expanded,
+                                                        application, team, &tooLong);
+            assert(accepted == (length == supported));
+            assert(tooLong == (length > supported));
+            assert(application.size() == prefix.size() + 1 + length);
+            assert(D2RIdentifier(bundle, true));
+            assert(D2RMatchApplication(prefix + ".*", application) == accepted);
+            boundary["Entitlements"]["application-identifier"] = prefix + "." + bundle;
+            assert(D2RProfileEntitlements(boundary, metadata, bundle, expanded, application, team,
+                                          &tooLong) == accepted);
+            assert(tooLong == (length > supported));
+            boundary["Entitlements"]["application-identifier"] = prefix + ".*";
+        }
+    }
+    bool tooLong = true;
+    assert(!D2RProfileEntitlements(base, metadata, "com.other.app", expanded, application, team,
+                                   &tooLong));
+    assert(!tooLong);
+    tooLong = true;
+    assert(!D2RProfileEntitlements(base, metadata, "invalid..bundle", expanded, application, team,
+                                   &tooLong));
+    assert(!tooLong);
 
     const string dates = "<key>CreationDate</key><date>2020-01-01T00:00:00Z</date>"
                          "<key>ExpirationDate</key><date>2030-01-01T00:00:00Z</date>";

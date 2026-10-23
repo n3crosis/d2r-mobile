@@ -273,7 +273,14 @@ export function createExtractionJobAdapter({
       used = true;
       signal?.throwIfAborted();
       if (inputs?.inputMode === "extracted") {
-        const state = { closed: false, extracted: false, local: null, inspected: null };
+        const state = {
+          closed: false,
+          extracted: false,
+          local: null,
+          inspected: null,
+          extractionSignal: null,
+          abort: null,
+        };
         const openingLifetime = new AbortController();
         const localSignal = signal
           ? AbortSignal.any([signal, openingLifetime.signal])
@@ -283,9 +290,11 @@ export function createExtractionJobAdapter({
           openingLifetime.abort();
           state.local?.dispose();
         };
+        state.abort = abort;
         const session = Object.freeze({
           async dispose() {
             signal?.removeEventListener("abort", abort);
+            state.extractionSignal?.removeEventListener("abort", abort);
             state.closed = true;
             openingLifetime.abort();
             state.local?.dispose();
@@ -409,6 +418,10 @@ export function createExtractionJobAdapter({
           if (state.extracted || canonical(selection) !== canonical(state.local.selection))
             fail("EXTRACTION_SELECTION_MISMATCH");
           state.extracted = true;
+          // 提取阶段可以使用独立信号；取消同样撤销已借出的模块和资源读取器。
+          // Extraction may use its own signal; cancellation also revokes borrowed modules and resource readers.
+          state.extractionSignal = signal;
+          signal?.addEventListener("abort", state.abort, { once: true });
           const check = (readSignal) => {
             lookup(session);
             state.local.check(readSignal);

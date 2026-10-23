@@ -253,31 +253,30 @@ test("deadline overrides cannot disable or exceed bounded production defaults", 
   }
 });
 
-test("profile mismatch keeps the committed unsigned download available", async () => {
-  const original = ipa();
-  let retainedBlob;
-  const fallback = createDownloadPreparation({
-    createObjectURL: (blob) => {
-      retainedBlob = blob;
-      return "blob:unsigned";
-    },
-    revokeObjectURL() {},
+for (const errorCode of ["SIGNING_PROFILE_MISMATCH", "SIGNING_APPLICATION_ID_TOO_LONG"])
+  test(`${errorCode} keeps the committed unsigned download available`, async () => {
+    const original = ipa();
+    let retainedBlob;
+    const fallback = createDownloadPreparation({
+      createObjectURL: (blob) => {
+        retainedBlob = blob;
+        return "blob:unsigned";
+      },
+      revokeObjectURL() {},
+    });
+    fallback.retain({ blob: original, fileName: "D2RMobile-unsigned.ipa" });
+    const before = fallback.prepare();
+    const { client, worker } = await ready((w) =>
+      queueMicrotask(() => w.reply({ id: 1, ok: false, error: { code: errorCode } })),
+    );
+    await assert.rejects(client.sign({ ipa: original, credentials: identity() }), {
+      message: errorCode,
+    });
+    assert.deepEqual(fallback.prepare(), before);
+    assert.equal(retainedBlob, original);
+    assert.equal(worker.terminated, 1);
+    fallback.dispose();
   });
-  fallback.retain({ blob: original, fileName: "D2RMobile-unsigned.ipa" });
-  const before = fallback.prepare();
-  const { client, worker } = await ready((w) =>
-    queueMicrotask(() =>
-      w.reply({ id: 1, ok: false, error: { code: "SIGNING_PROFILE_MISMATCH" } }),
-    ),
-  );
-  await assert.rejects(client.sign({ ipa: original, credentials: identity() }), {
-    message: "SIGNING_PROFILE_MISMATCH",
-  });
-  assert.deepEqual(fallback.prepare(), before);
-  assert.equal(retainedBlob, original);
-  assert.equal(worker.terminated, 1);
-  fallback.dispose();
-});
 
 for (const event of ["error", "messageerror"])
   test(`lifetime ${event} handling preserves active failure and releases listeners`, async () => {

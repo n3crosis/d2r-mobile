@@ -68,22 +68,20 @@ async function readRange(file, start, length) {
     fail("READ_FAILED", "Could not read the selected local file.");
   }
 }
-function finishDiscovery(records, allowXci = false) {
+function finishDiscovery(records) {
   const prodKeys = records.get("prod.keys");
   const titleKeys = records.get("title.keys");
   const nsps = [...records.entries()]
-    .filter(([name]) => name.endsWith(".nsp") || (allowXci && name.endsWith(".xci")))
+    .filter(([name]) => name.endsWith(".nsp") || name.endsWith(".xci"))
     .map(([, file]) => file);
   if (!prodKeys || nsps.length === 0) {
     fail(
       "MISSING_INPUT",
-      allowXci
-        ? "Place prod.keys and at least one .nsp or .xci directly in the selected folder. title.keys is optional."
-        : "Place prod.keys and at least one .nsp directly in the selected folder. title.keys is optional.",
+      "Place prod.keys and at least one .nsp or .xci directly in the selected folder. title.keys is optional.",
     );
   }
   if (nsps.length > NSP_INPUT_LIMITS.packages)
-    fail("PACKAGE_LIMIT", "Too many NSP files in the selected folder.");
+    fail("PACKAGE_LIMIT", "Too many package files in the selected folder.");
   for (const file of [prodKeys, titleKeys].filter(Boolean)) {
     if (fileSize(file) > BigInt(NSP_INPUT_LIMITS.keyBytes))
       fail("KEY_SIZE", "A key file exceeds the size limit.");
@@ -102,8 +100,7 @@ function addName(seen, name) {
  * 仅枚举根条目。不递归或打开无关文件。
  * Enumerates only root entries. Does not recurse or open unrelated files.
  */
-export async function discoverNspFolder(directory, { signal, onProgress, allowXci = false } = {}) {
-  if (typeof allowXci !== "boolean") fail("DIRECTORY", "Invalid package discovery option.");
+export async function discoverNspFolder(directory, { signal, onProgress } = {}) {
   const checkAbort = () => {
     if (signal?.aborted) throw new DOMException("Folder check cancelled.", "AbortError");
   };
@@ -170,7 +167,7 @@ export async function discoverNspFolder(directory, { signal, onProgress, allowXc
         onProgress?.({
           scannedEntries: count,
           nspCount: [...records.keys()].filter(
-            (name) => name.endsWith(".nsp") || (allowXci && name.endsWith(".xci")),
+            (name) => name.endsWith(".nsp") || name.endsWith(".xci"),
           ).length,
           prodKeysFound: records.has("prod.keys"),
           titleKeysFound: records.has("title.keys"),
@@ -194,7 +191,7 @@ export async function discoverNspFolder(directory, { signal, onProgress, allowXc
       (folded === "prod.keys" ||
         folded === "title.keys" ||
         folded.endsWith(".nsp") ||
-        (allowXci && folded.endsWith(".xci")))
+        folded.endsWith(".xci"))
     ) {
       records.set(folded, await awaitLookup(() => handle.getFile()));
       checkAbort();
@@ -202,14 +199,13 @@ export async function discoverNspFolder(directory, { signal, onProgress, allowXc
     progress();
   }
   checkAbort();
-  return finishDiscovery(records, allowXci);
+  return finishDiscovery(records);
 }
 /**
  * input[webkitdirectory] 的后备路径。浏览器可能在此调用前已递归枚举。
  * Fallback for input[webkitdirectory]. Browser may enumerate recursively before this call.
  */
-export function discoverNspFiles(files, { allowXci = false } = {}) {
-  if (typeof allowXci !== "boolean") fail("DIRECTORY", "Invalid package discovery option.");
+export function discoverNspFiles(files) {
   const seen = new Set();
   const directories = new Set();
   const records = new Map();
@@ -236,11 +232,11 @@ export function discoverNspFiles(files, { allowXci = false } = {}) {
       folded === "prod.keys" ||
       folded === "title.keys" ||
       folded.endsWith(".nsp") ||
-      (allowXci && folded.endsWith(".xci"))
+      folded.endsWith(".xci")
     )
       records.set(folded, file);
   }
-  return finishDiscovery(records, allowXci);
+  return finishDiscovery(records);
 }
 
 /**
@@ -486,7 +482,11 @@ export async function preflightNspFolder(input) {
   const titleKeys = files.titleKeys
     ? await inspectKeyFile(files.titleKeys, "title")
     : inspectKeyBytes(new Uint8Array(), "title");
+  // 延迟加载共用分派器，避免它对 inspectNsp 的反向依赖形成静态循环。
+  // Load the shared dispatcher lazily to avoid a static cycle through its inspectNsp import.
+  const { inspectGamePackage } = await import("./package-input.mjs");
   const packages = [];
-  for (const file of files.nsps) packages.push({ name: file.name, ...(await inspectNsp(file)) });
+  for (const file of files.nsps)
+    packages.push({ name: file.name, ...(await inspectGamePackage(file)) });
   return { packages, prodKeys, titleKeys, stage: "metadata-only", canBuildIpa: false };
 }

@@ -109,7 +109,7 @@ replace("zsign_export.cpp", old, new)
 replace(
     "openssl.h",
     "\tbool GenerateCMS(const string& strCDHashData,",
-    "\tbool ValidateProfileForBundle(const string& bundleId);\n\n\tbool GenerateCMS(const string& strCDHashData,",
+    "\tbool ValidateProfileForBundle(const string& bundleId, bool* applicationIdentifierTooLong = nullptr);\n\n\tbool GenerateCMS(const string& strCDHashData,",
 )
 with (output / "openssl.cpp").open("a") as file:
     file.write('\n#include "profile-compatibility.inc"\n')
@@ -137,9 +137,12 @@ replace(
     }
     if (fclose(info) != 0) infoValid = false;
     jvalue infoPlist;
+    bool applicationIdentifierTooLong = false;
     if (!infoValid || infoData.empty() || !infoPlist.read_plist(infoData) ||
         !infoPlist.is_object() || !infoPlist["CFBundleIdentifier"].is_string() ||
-        !zsa.ValidateProfileForBundle(infoPlist["CFBundleIdentifier"].as_string())) return -206;""",
+        !zsa.ValidateProfileForBundle(infoPlist["CFBundleIdentifier"].as_string(),
+                                      &applicationIdentifierTooLong))
+        return applicationIdentifierTooLong ? -207 : -206;""",
 )
 # wasm32 的 int64_t 不一定是 long；使用工具链提供的格式宏。
 # wasm32 int64_t is not necessarily long; use the toolchain's format macro.

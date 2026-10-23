@@ -1,8 +1,8 @@
-# Local NSP input inspection scope
+# Local package discovery and inspection scope
 
 ## Folder contract
 
-Put all NSP packages and `prod.keys` directly inside one folder. `title.keys` is optional; include it if your package needs external title keys,
+Put all NSP/XCI packages and `prod.keys` directly inside one folder. `title.keys` is optional; include it if your package needs external title keys,
 then select that folder locally. Do not send key files in chat, upload them to a
 service, or commit them. Selection is read-only; this module performs no network,
 telemetry, storage, extraction, or filesystem writes.
@@ -17,10 +17,11 @@ metadata read; an in-flight browser read cannot be forcibly interrupted.
 one common selected root and ignores nested candidate files. The browser may
 already have enumerated descendants before supplying that list; the native
 folder-handle route avoids that work. Both paths enforce a bounded entry count.
-Matching is case-insensitive, ambiguous duplicates are rejected, and names must
+Both paths accept `.nsp` and `.xci` files by default. Matching is case-insensitive,
+ambiguous duplicates are rejected, and names must
 be normalized NFC safe single components. Unrelated files are not opened.
 
-Limits: 4,096 directory entries, 128 NSP files, 1 MiB per key file. These are
+Limits: 4,096 directory entries, 128 packages, 1 MiB per key file. These are
 frontend defensive limits, not asserted Nintendo format limits.
 
 ## Independent deeper inspection APIs
@@ -40,10 +41,11 @@ layout acceptance alone does not run them or establish a valid package/key set.
   padding, LF/CRLF, and an optional final newline. Names are case-insensitive;
   duplicates, malformed/odd-length hex, and invalid known widths are errors.
   Error messages contain line numbers, never key names, rights IDs, or values.
-- `preflightNspFolder(input)` combines discovery and deeper inspection, returning
+- `preflightNspFolder(input)` combines discovery with content-based NSP/XCI inspection, returning
   metadata only, with `stage: 'metadata-only'` and `canBuildIpa: false`. It reads
   key contents, unlike the layout-only discovery API. Do not silently replace
-  layout-only checks with this API.
+  layout-only checks with this API. The legacy name covers both supported package
+  types through `inspectGamePackage`; the low-level `inspectNsp` remains PFS0-specific.
 
 Missing or empty `title.keys` is allowed because no assertion about title-key requirements
 can be made without inspecting NCA metadata. The Worker creates an empty memory-only input when the file is absent. Rights-free content can use `prod.keys` alone; a rights-managed encrypted section with no matching title key fails with the safe `TITLE_KEY_REQUIRED` diagnostic. This boundary does not import or derive keys from NSP ticket files. Empty production keys are rejected.

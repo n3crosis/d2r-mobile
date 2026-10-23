@@ -204,12 +204,13 @@ export async function prepareBrowserPackager({
       /**
        * 仅允许明确跳过原始资源导出；验证及补充包导出保持不变。
        * Allow only explicit original-resource export skipping; validation and supplemental export stay unchanged.
+       * Omitted inputMode detects the input route; pass a discovered mode to pin a rescan.
        * @param {{input: any, selectedNspNames?: any, inputMode?: "packages"|"extracted", signal?: AbortSignal, onProgress?: (event: any) => void, exportResources?: boolean, appCustomization?: any}} options
        */
       async generate({
         input,
         selectedNspNames,
-        inputMode = "packages",
+        inputMode,
         signal,
         onProgress,
         exportResources = true,

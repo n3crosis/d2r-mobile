@@ -402,8 +402,8 @@ export const catalog = Object.freeze({
     "正在生成 IPA…"
   ],
   "dmWebGenerate": [
-    "Generate unsigned IPA",
-    "生成未签名 IPA"
+    "Generate IPA",
+    "生成 IPA"
   ],
   "dmWebCancellingWait": [
     "Cancelling… Waiting for the current operation to stop.",
@@ -738,8 +738,8 @@ export const catalog = Object.freeze({
     "可选：在本地签名 IPA"
   ],
   "dmWebSigningHelp": [
-    "Unsigned IPA is the default. Enable before choosing a folder; the page reloads and preloads signing tools. Credentials stay on this device and are not uploaded.",
-    "默认生成未签名 IPA。请在选择文件夹前启用；页面将重载并预载签名工具。凭据仅在本设备使用，不上传。"
+    "Unsigned IPA by default. Enable signing before choosing a folder; this reloads the page. Credentials stay on this device.",
+    "默认生成未签名 IPA。请在选择文件夹前启用签名，页面会重载。凭据仅留在本设备。"
   ],
   "dmWebSigningCredentials": [
     "Local signing credentials",
@@ -814,8 +814,8 @@ export const catalog = Object.freeze({
     "已提取的 ExeFS / RomFS"
   ],
   "dmWebExtractedInstructions": [
-    "Choose a folder containing already-merged ExeFS and RomFS. No keys needed. Base/update only; expansion input is unsupported and DLC metadata is not authenticated.",
-    "选择包含已合并 ExeFS 和 RomFS 的文件夹，无需密钥。仅支持基础游戏与更新，不支持扩展内容；DLC 元数据未经认证。"
+    "Merged ExeFS and RomFS detected. No keys needed. Base/update only; expansion input is unsupported and DLC metadata is not authenticated.",
+    "已识别合并的 ExeFS 和 RomFS，无需密钥。仅支持基础游戏与更新；不支持扩展内容，DLC 元数据未经认证。"
   ],
   "dmWebExtractedSummary": [
     "%s extracted file(s) found; no keys needed.",
@@ -968,5 +968,49 @@ export const catalog = Object.freeze({
   "dmWebExtractedSkipResourcesHelp": [
     "Skip only if the device already has resources from this exact merged folder. Existing device files are not verified.",
     "仅在设备上已有此合并文件夹对应的资源时跳过。不会验证设备上已有的文件。"
+  ],
+  "dmWebAutoInstructions": [
+    "Choose your game folder: NSP/XCI with prod.keys, or already-merged ExeFS/RomFS. The format is detected automatically.",
+    "选择游戏文件夹，自动识别 NSP/XCI（需 prod.keys）或已合并的 ExeFS/RomFS。"
+  ],
+  "dmWebOutputCompatibility": [
+    "For %s. %s",
+    "目标：%s。%s"
+  ],
+  "dmWebBcTextures": [
+    "BC texture support required.",
+    "需要 GPU 支持 BC 纹理。"
+  ],
+  "dmWebLegacyTextures": [
+    "Experimental older-GPU textures; device compatibility unverified.",
+    "实验性旧 GPU 纹理；设备兼容性未经验证。"
+  ],
+  "dmWebOptionsBeforeFolder": [
+    "Older iOS, older GPU or local signing? Set the options below before choosing a folder.",
+    "旧版 iOS、旧 GPU 或本地签名？请在选择文件夹前设置下方选项。"
+  ],
+  "dmWebAdvancedOptions": [
+    "Advanced",
+    "高级选项"
+  ],
+  "dmWebSigningOptions": [
+    "Local signing (optional)",
+    "本地签名（可选）"
+  ],
+  "dmWebDetectingInput": [
+    "Detecting game files…",
+    "正在识别游戏文件…"
+  ],
+  "dmWebIncludedPackages": [
+    "All %s packages included",
+    "包含全部 %s 个软件包"
+  ],
+  "dmWebPackagesReady": [
+    "%s: %s All packages included. Ready to generate.",
+    "%s：%s 全部软件包已包含，可生成 IPA。"
+  ],
+  "dmWebSigningApplicationIdTooLong": [
+    "The profile prefix plus bundle ID exceeds this signer's 255-character limit. Unsigned IPA retained; use it with another signer, or reload and generate with a shorter bundle ID.",
+    "描述文件前缀加应用标识超过此签名工具的 255 字符上限。未签名 IPA 已保留；请使用其他签名工具，或重新载入并以较短应用标识生成。"
   ]
 });

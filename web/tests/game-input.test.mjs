@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { discoverGameFolder, discoverGameFiles } from "../game-input.mjs";
-import { discoverNspFolder } from "../nsp-input.mjs";
+import { NSP_INPUT_LIMITS } from "../nsp-input.mjs";
 const blob = (name, value = "synthetic", relative = `root/${name}`) =>
   Object.assign(new Blob([value]), { name, webkitRelativePath: relative });
 function directory(entries) {
@@ -53,7 +53,7 @@ function extracted({
     ],
   ]);
 }
-test("package mode finds NSP plus XCI, preserves required keys and old NSP API", async () => {
+test("package folder and FileList discovery accept NSP plus XCI and require prod.keys", async () => {
   const root = directory(
     ["base.xci", "update.nsp", "prod.keys"].map((name) => [name, file(blob(name))]),
   );
@@ -66,18 +66,20 @@ test("package mode finds NSP plus XCI, preserves required keys and old NSP API",
   );
   assert.equal(progress.at(-1).nspCount, 2);
   assert.deepEqual(
-    (await discoverNspFolder(root)).nsps.map((f) => f.name),
-    ["update.nsp"],
+    discoverGameFiles(["base.xci", "update.nsp", "prod.keys"].map((name) => blob(name))).nsps.map(
+      (f) => f.name,
+    ),
+    ["base.xci", "update.nsp"],
   );
   await assert.rejects(discoverGameFolder(directory([["base.xci", file(blob("base.xci"))]])), {
     code: "MISSING_INPUT",
   });
+  assert.throws(() => discoverGameFiles([blob("base.xci")]), { code: "MISSING_INPUT" });
 });
 test("extracted discovery reads metadata only, includes bounded file references and ignores keys", async () => {
   const reads = [],
     progress = [];
   const found = await discoverGameFolder(extracted({ reads }), {
-    inputMode: "extracted",
     onProgress: (event) => progress.push(event),
   });
   assert.equal(found.inputMode, "extracted");
@@ -93,6 +95,131 @@ test("extracted discovery reads metadata only, includes bounded file references 
   assert.equal(progress.at(-1).extractedFileCount, 3);
   assert.equal(reads.length, 3);
   assert.equal(Object.hasOwn(found, "prodKeys"), false);
+});
+test("automatic discovery prefers root packages and never falls back after a package error", async () => {
+  const extractedFiles = ["ExeFS/main", "ExeFS/sdk", "RomFS/data/build_manifest.psv"].map((path) =>
+    blob(path.split("/").at(-1), "synthetic", `root/${path}`),
+  );
+  const untouched = {
+    kind: "directory",
+    entries() {
+      throw Error("Extracted directories must not be opened when a package is present");
+    },
+  };
+  for (const name of ["base.NSP", "base.XCI"]) {
+    for (const key of [
+      undefined,
+      blob("prod.keys"),
+      blob("prod.keys", new Uint8Array(NSP_INPUT_LIMITS.keyBytes + 1)),
+    ]) {
+      const files = [blob(name), ...(key ? [key] : [])];
+      const root = directory([
+        ["ExeFS", untouched],
+        ["RomFS", untouched],
+        ...files.map((value) => [value.name, file(value)]),
+      ]);
+      const fallback = [...files, ...extractedFiles];
+      if (!key || key.size > NSP_INPUT_LIMITS.keyBytes) {
+        const code = key ? "KEY_SIZE" : "MISSING_INPUT";
+        await assert.rejects(discoverGameFolder(root), { code });
+        assert.throws(() => discoverGameFiles(fallback), { code });
+      } else {
+        assert.equal((await discoverGameFolder(root)).inputMode, "packages");
+        assert.equal(discoverGameFiles(fallback).inputMode, "packages");
+      }
+    }
+  }
+  assert.equal(discoverGameFiles(extractedFiles).inputMode, "extracted");
+  assert.equal(
+    discoverGameFiles([...extractedFiles, blob("nested.xci", "synthetic", "root/other/nested.xci")])
+      .inputMode,
+    "extracted",
+  );
+  await assert.rejects(discoverGameFolder(directory([["game.xcz", file(blob("game.xcz"))]])), {
+    code: "EXTRACTED_MISSING_INPUT",
+  });
+  assert.throws(() => discoverGameFiles([blob("game.xcz")]), {
+    code: "EXTRACTED_MISSING_INPUT",
+  });
+});
+test("automatic detection enumerates the root once and is bounded before metadata reads", async () => {
+  const input = directory(["base.xci", "prod.keys"].map((name) => [name, file(blob(name))]));
+  let enumerations = 0;
+  const root = {
+    kind: "directory",
+    entries() {
+      assert.equal(++enumerations, 1);
+      return input.entries();
+    },
+  };
+  assert.equal((await discoverGameFolder(root)).inputMode, "packages");
+  let yielded = 0,
+    closed = false;
+  const large = {
+    kind: "directory",
+    async *entries() {
+      try {
+        for (let i = 0; i < NSP_INPUT_LIMITS.directoryEntries + 2; i++) {
+          yielded++;
+          yield [`other${i}`, { kind: "directory" }];
+        }
+      } finally {
+        closed = true;
+      }
+    },
+  };
+  await assert.rejects(discoverGameFolder(large), { code: "DIRECTORY_LIMIT" });
+  assert.equal(yielded, NSP_INPUT_LIMITS.directoryEntries + 1);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(closed, true);
+});
+test("automatic detection cancels stalled enumeration and observes late failures", async () => {
+  const already = new AbortController();
+  already.abort();
+  await assert.rejects(
+    discoverGameFolder(
+      {
+        kind: "directory",
+        entries() {
+          throw Error("An already cancelled detection must not start enumeration");
+        },
+      },
+      { signal: already.signal },
+    ),
+    { name: "AbortError" },
+  );
+  for (const rejects of [false, true]) {
+    const controller = new AbortController(),
+      entered = Promise.withResolvers(),
+      late = Promise.withResolvers();
+    let closed = 0;
+    const root = {
+      kind: "directory",
+      entries() {
+        return {
+          [Symbol.asyncIterator]() {
+            return this;
+          },
+          next() {
+            entered.resolve();
+            return late.promise;
+          },
+          return() {
+            closed++;
+            return Promise.reject(Error("late cleanup"));
+          },
+        };
+      },
+    };
+    const pending = discoverGameFolder(root, { signal: controller.signal });
+    await entered.promise;
+    controller.abort();
+    await assert.rejects(pending, { name: "AbortError" });
+    assert.equal(closed, 1);
+    if (rejects) late.reject(Error("late enumeration"));
+    else late.resolve({ done: false, value: ["base.xci", file(blob("base.xci"))] });
+    await new Promise((resolve) => setImmediate(resolve));
+  }
 });
 test("extracted folder and FileList paths accept native casing and reject missing/ambiguous/unsafe aliases", async () => {
   await discoverGameFolder(extracted({ exefsName: "exefs", romfsName: "romfs" }), {

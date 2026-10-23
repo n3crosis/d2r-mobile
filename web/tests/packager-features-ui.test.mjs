@@ -56,7 +56,6 @@ function inputContext(overrides = {}) {
         "setInputMode",
         "setFolder",
         "setNspNames",
-        "setSelectedNsps",
         "setSkipResources",
         "setStatus",
         "setAppCustomization",
@@ -67,27 +66,8 @@ function inputContext(overrides = {}) {
   };
   return { writes, context };
 }
-test("changing input route invalidates selected inputs and resource skipping atomically", () => {
-  const { context, writes } = inputContext();
-  vm.runInNewContext(handler("select", "input-mode"), context)({ target: { value: "extracted" } });
-  assert.deepEqual(
-    writes.map(([name]) => name),
-    [
-      "setInputMode",
-      "setFolder",
-      "setNspNames",
-      "setSelectedNsps",
-      "setSkipResources",
-      "setStatus",
-    ],
-  );
-  assert.equal(writes[0][1], "extracted");
-  assert.equal(writes[1][1], null);
-  assert.equal(writes[2][1].length, 0);
-  assert.equal(writes[3][1].size, 0);
-  assert.equal(writes[4][1], false);
-});
-test("stale or terminal input/customization changes cannot mutate an active operation", () => {
+test("manual route and package selectors are removed without changing customization guards", () => {
+  assert.doesNotMatch(app, /id="input-mode"|selectedNsps|selectDefaultNspNames|package-selection/);
   for (const overrides of [
     { ready: false },
     { busy: true },
@@ -96,33 +76,22 @@ test("stale or terminal input/customization changes cannot mutate an active oper
     { operationGate: { current: { busy: true } } },
   ]) {
     const { context, writes } = inputContext(overrides);
-    vm.runInNewContext(
-      handler("select", "input-mode"),
-      context,
-    )({ target: { value: "extracted" } });
     vm.runInNewContext(handler("AppCustomizationFields"), context)({ displayName: "changed" });
     assert.equal(writes.length, 0);
   }
-  for (const value of ["packages", "unknown", ""]) {
-    const { context, writes } = inputContext();
-    vm.runInNewContext(handler("select", "input-mode"), context)({ target: { value } });
-    assert.equal(writes.length, 0);
-  }
 });
-test("package input remains default and only package mode submits selected package names", () => {
-  assert.match(app, /useState<InputMode>\("packages"\)/);
-  assert.match(app, /discoverGameFolder\(selected, \{\s*inputMode,\s*signal:/);
+test("folder auto-detection includes all packages and preserves the detected generation route", () => {
+  assert.match(app, /useState<InputMode \| null>\(null\)/);
+  assert.match(app, /discoverGameFolder\(selected, \{\s*signal:/);
+  assert.match(app, /setInputMode\(files.inputMode\)/);
+  assert.match(app, /inputMode === "packages" \? \{ selectedNspNames: nspNames \} : \{\}/);
+  assert.equal((app.match(/inputMode === "packages" && !nspNames.length/g) ?? []).length, 2);
+  assert.match(app, /dmWebIncludedPackages", nspNames.length/);
   assert.match(
-    app,
-    /inputMode === "packages" \? \{ selectedNspNames: \[\.\.\.selectedNsps\] \} : \{\}/,
+    catalog.dmWebAutoInstructions[0],
+    /NSP\/XCI.*prod.keys.*already-merged ExeFS\/RomFS/,
   );
-  assert.equal((app.match(/inputMode === "packages" && !selectedNsps.size/g) ?? []).length, 2);
-  assert.match(app, /inputMode === "packages" && nspNames.length > 0/);
-  assert.match(catalog.dmWebInstructions[0], /NSP\/XCI.*prod.keys/);
-  assert.match(
-    catalog.dmWebExtractedInstructions[0],
-    /already-merged ExeFS and RomFS.*No keys needed/,
-  );
+  assert.match(catalog.dmWebExtractedInstructions[0], /Merged ExeFS and RomFS.*No keys needed/);
   assert.match(
     catalog.dmWebExtractedInstructions[0],
     /Base\/update only.*expansion input is unsupported.*not authenticated/,
@@ -298,7 +267,7 @@ async function runPreflight(options, makeIcon) {
     ...state,
     folder: {},
     inputMode: "extracted",
-    selectedNsps: new Set(),
+    nspNames: [],
     signing: false,
     customizationError: "",
     customizationValidation: {

@@ -1,6 +1,11 @@
 // 在现有包输入之外提供有界的本地已提取目录选择，不宣称 NCA 认证。
 // Add bounded local extracted-directory selection without claiming NCA authentication.
-import { discoverNspFolder, discoverNspFiles, NspInputError } from "./nsp-input.mjs";
+import {
+  discoverNspFolder,
+  discoverNspFiles,
+  NspInputError,
+  NSP_INPUT_LIMITS,
+} from "./nsp-input.mjs";
 import { ROMFS_LIMITS } from "./romfs-tree.mjs";
 import { indexFiles, REQUIRED_NSO_MODULES, safeRelativePath } from "./preflight.mjs";
 
@@ -117,19 +122,55 @@ async function cancellable(action, signal) {
     signal.removeEventListener("abort", abort);
   }
 }
+// 只枚举根目录来选择输入路径；任何包文件都优先于已提取目录。
+// Choose the input route from root entries only; any package takes precedence over extracted data.
+async function detectFolder(directory, signal) {
+  signal?.throwIfAborted();
+  if (directory?.kind !== "directory" || typeof directory.entries !== "function") fail("DIRECTORY");
+  const entries = [],
+    iterator = directory.entries()[Symbol.asyncIterator]();
+  let exhausted = false;
+  /** @type {"packages"|"extracted"} */
+  let inputMode = "extracted";
+  try {
+    for (;;) {
+      const item = await cancellable(() => iterator.next(), signal);
+      signal?.throwIfAborted();
+      if (item.done) {
+        exhausted = true;
+        break;
+      }
+      if (entries.length >= NSP_INPUT_LIMITS.directoryEntries) fail("DIRECTORY_LIMIT");
+      const [name, handle] = item.value;
+      if (handle?.kind === "file" && /\.(?:nsp|xci)$/iu.test(name)) inputMode = "packages";
+      entries.push(item.value);
+    }
+  } finally {
+    if (!exhausted)
+      Promise.resolve()
+        .then(() => iterator.return?.())
+        .catch(() => {});
+  }
+  return {
+    inputMode,
+    directory: {
+      kind: "directory",
+      async *entries() {
+        yield* entries;
+      },
+    },
+  };
+}
 /**
  * @param {any} directory
  * @param {{inputMode?: "packages"|"extracted", signal?: AbortSignal, onProgress?: (event: {inputMode: string, extractedFileCount: number, nspCount: number, prodKeysFound: boolean, titleKeysFound: boolean, scannedEntries?: number}) => void}} [options]
  */
-export async function discoverGameFolder(
-  directory,
-  { inputMode = "packages", signal, onProgress } = {},
-) {
+export async function discoverGameFolder(directory, { inputMode, signal, onProgress } = {}) {
+  if (inputMode === undefined) ({ directory, inputMode } = await detectFolder(directory, signal));
   mode(inputMode);
   if (inputMode === "packages") {
     const files = await discoverNspFolder(directory, {
       signal,
-      allowXci: true,
       onProgress: (event) => observer(onProgress, inputMode, 0, event),
     });
     return { ...files, inputMode };
@@ -185,10 +226,22 @@ export async function discoverGameFolder(
 }
 /** @param {Iterable<File>} files
  * @param {{inputMode?: "packages"|"extracted"}} [options] */
-export function discoverGameFiles(files, { inputMode = "packages" } = {}) {
+export function discoverGameFiles(files, { inputMode } = {}) {
+  if (inputMode === undefined) {
+    const selected = [];
+    inputMode = "extracted";
+    for (const file of files) {
+      if (selected.length >= ROMFS_LIMITS.members) fail("EXTRACTED_LIMIT");
+      const parts = (file.webkitRelativePath || "").split("/");
+      if (parts.length === 2 && /\.(?:nsp|xci)$/iu.test(parts[1])) inputMode = "packages";
+      if (inputMode === "packages" && selected.length >= NSP_INPUT_LIMITS.directoryEntries)
+        fail("DIRECTORY_LIMIT");
+      selected.push(file);
+    }
+    files = selected;
+  }
   mode(inputMode);
-  if (inputMode === "packages")
-    return { ...discoverNspFiles(files, { allowXci: true }), inputMode };
+  if (inputMode === "packages") return { ...discoverNspFiles(files), inputMode };
   const records = [],
     seen = new Set();
   let root,

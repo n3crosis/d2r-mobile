@@ -219,24 +219,29 @@ test("initialization failure is sanitized; no private work can run after close",
   assert.equal(h.closed, 1);
 });
 
-test("native profile mismatch is closed, wipes credentials and never packages output", async () => {
-  const h = harness();
-  h.native._zsign_sign_bundle = () => -206;
-  await initialize(h);
-  const credentials = makeCredentials();
-  await h.handle({ id: 1, type: "sign", ipa: input(), credentials });
-  assert.deepEqual(h.messages.at(-1), {
-    id: 1,
-    ok: false,
-    error: { code: "SIGNING_PROFILE_MISMATCH" },
+for (const [nativeCode, errorCode] of [
+  [-206, "SIGNING_PROFILE_MISMATCH"],
+  [-207, "SIGNING_APPLICATION_ID_TOO_LONG"],
+  [-208, "SIGNING_FAILED"],
+])
+  test(`native failure ${nativeCode} wipes credentials and never packages output`, async () => {
+    const h = harness();
+    h.native._zsign_sign_bundle = () => nativeCode;
+    await initialize(h);
+    const credentials = makeCredentials();
+    await h.handle({ id: 1, type: "sign", ipa: input(), credentials });
+    assert.deepEqual(h.messages.at(-1), {
+      id: 1,
+      ok: false,
+      error: { code: errorCode },
+    });
+    assert.deepEqual(h.events, ["inspect", "dispose"]);
+    assert.equal(h.files.size, 0);
+    assert.equal(h.freed.length, 9);
+    assert.ok(h.native.HEAPU8.every((value) => value === 0));
+    assert.equal(credentials.password, "");
+    assert.equal(h.closed, 1);
   });
-  assert.deepEqual(h.events, ["inspect", "dispose"]);
-  assert.equal(h.files.size, 0);
-  assert.equal(h.freed.length, 9);
-  assert.ok(h.native.HEAPU8.every((value) => value === 0));
-  assert.equal(credentials.password, "");
-  assert.equal(h.closed, 1);
-});
 
 test("real store snapshots package after mutable storage, credentials and native heap are cleared", async () => {
   class SyncBlob extends Blob {
@@ -344,32 +349,36 @@ test("packaging rejection and closure after early cleanup never publish partial 
   }
 });
 
-test("profile rejection survives cleanup failure and never publishes an archive", async () => {
-  const h = harness({
-    mountArchive: () => ({
-      collectEntries() {
-        assert.fail("Rejected profile cannot collect signed output");
-      },
-      dispose() {
-        throw Error("unmount failure");
-      },
-    }),
+for (const [nativeCode, errorCode] of [
+  [-206, "SIGNING_PROFILE_MISMATCH"],
+  [-207, "SIGNING_APPLICATION_ID_TOO_LONG"],
+])
+  test(`${errorCode} survives cleanup failure without publishing an archive`, async () => {
+    const h = harness({
+      mountArchive: () => ({
+        collectEntries() {
+          assert.fail("Rejected profile cannot collect signed output");
+        },
+        dispose() {
+          throw Error("unmount failure");
+        },
+      }),
+    });
+    h.native._zsign_sign_bundle = () => nativeCode;
+    await initialize(h);
+    const credentials = makeCredentials();
+    await h.handle({ id: 1, type: "sign", ipa: input(), credentials });
+    assert.deepEqual(h.messages.at(-1), {
+      id: 1,
+      ok: false,
+      error: { code: errorCode },
+    });
+    assert.ok(!h.events.includes("package"));
+    assert.equal(h.files.size, 0);
+    assert.ok(h.native.HEAPU8.every((v) => v === 0));
+    assert.equal(credentials.password, "");
+    assert.equal(h.closed, 1);
   });
-  h.native._zsign_sign_bundle = () => -206;
-  await initialize(h);
-  const credentials = makeCredentials();
-  await h.handle({ id: 1, type: "sign", ipa: input(), credentials });
-  assert.deepEqual(h.messages.at(-1), {
-    id: 1,
-    ok: false,
-    error: { code: "SIGNING_PROFILE_MISMATCH" },
-  });
-  assert.ok(!h.events.includes("package"));
-  assert.equal(h.files.size, 0);
-  assert.ok(h.native.HEAPU8.every((v) => v === 0));
-  assert.equal(credentials.password, "");
-  assert.equal(h.closed, 1);
-});
 
 test("cleanup failure alone remains fatal and never publishes an archive", async () => {
   const h = harness({

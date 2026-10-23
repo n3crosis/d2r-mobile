@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { validateStagedZip } from "../../staged-zip-validator.mjs";
 import { readInputContentPolicy } from "../../extraction-job-adapter.mjs";
 import * as shellProfiles from "../../shell-profiles.mjs";
+import { discoverGameFolder } from "../../game-input.mjs";
 let state;
 const unsigned = Object.freeze({ blob: new Blob([new Uint8Array(22)]), fileName: "unsigned.ipa" });
 const signed = Object.freeze({ blob: new Blob([new Uint8Array(23)]), fileName: "signed.ipa" });
@@ -145,9 +146,14 @@ mock.module("../../staged-zip-validator.mjs", {
 mock.module("../../packaging-job.mjs", {
   namedExports: {
     PackagingJobError: class extends Error {},
-    async runPackagingJob({ adapters }) {
+    async runPackagingJob({ adapters, input, inputMode }) {
       state.jobs = (state.jobs ?? 0) + 1;
       const context = { selection: {}, manifest: {} };
+      if (state.detectInput) {
+        state.forwardedInputMode = inputMode;
+        context.inputs = await discoverGameFolder(input, { inputMode });
+        state.detectedInputMode = context.inputs.inputMode;
+      }
       await adapters.extractSelected(context);
       await adapters.createOutput(context);
       await adapters.generateProgram(context);
@@ -339,3 +345,65 @@ for (const stage of ["asset", "shader"])
     assert.equal(state[`${stage}Retirements`] ?? 0, 0);
     await packager.close();
   });
+
+test("direct generate automatically detects extracted input and never downgrades a package error", async () => {
+  const file = (name) => ({
+    kind: "file",
+    getFile: async () => Object.assign(new Blob(["synthetic"]), { name }),
+  });
+  const directory = (entries) => ({
+    kind: "directory",
+    queryPermission: async () => "granted",
+    async *entries() {
+      yield* entries;
+    },
+  });
+  const extracted = [
+    [
+      "ExeFS",
+      directory([
+        ["main", file("main")],
+        ["sdk", file("sdk")],
+      ]),
+    ],
+    [
+      "RomFS",
+      directory([["data", directory([["build_manifest.psv", file("build_manifest.psv")]])]]),
+    ],
+  ];
+  for (const packages of [
+    [],
+    [
+      ["base.xci", file("base.xci")],
+      ["prod.keys", file("prod.keys")],
+    ],
+  ]) {
+    reset();
+    state.detectInput = true;
+    const packager = await prepareBrowserPackager();
+    assert.equal(
+      (
+        await packager.generate({
+          input: directory([...extracted, ...packages]),
+          exportResources: false,
+        })
+      ).committed,
+      true,
+    );
+    assert.equal(state.forwardedInputMode, undefined);
+    assert.equal(state.detectedInputMode, packages.length ? "packages" : "extracted");
+    await packager.close();
+  }
+  reset();
+  state.detectInput = true;
+  const packager = await prepareBrowserPackager();
+  await assert.rejects(
+    packager.generate({
+      input: directory([...extracted, ["base.xci", file("base.xci")]]),
+      exportResources: false,
+    }),
+    { code: "MISSING_INPUT" },
+  );
+  assert.equal(state.detectedInputMode, undefined);
+  await packager.close();
+});

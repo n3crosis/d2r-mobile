@@ -9,7 +9,7 @@ test("resource skip is opt-in, resets with selection, and has a distinct outcome
   assert.match(app, /\[skipResources, setSkipResources\] = useState\(false\)/);
   assert.match(app, /exportResources: !skipResources/);
   assert.match(app, /setHasSelectedFolder\(true\);\s+setSkipResources\(false\)/);
-  assert.match(app, /setSkipResources\(false\);\s+const checked = event.target.checked/);
+  assert.doesNotMatch(app, /setSelectedNsps|package-selection/);
   assert.match(app, /result.resources.status === "skipped"/);
   assert.match(app, /report\?\.resources\?\.status === "skipped"/);
   assert.match(app, /skipResources &&/);

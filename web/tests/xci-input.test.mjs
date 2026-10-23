@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { inspectXci, XCI_INPUT_LIMITS, XciInputError } from "../xci-input.mjs";
+import { preflightNspFolder } from "../nsp-input.mjs";
 
 // Authored synthetic HEAD/HFS0 images only. No game content, keys, or copied fixtures.
 const digest = (bytes) => createHash("sha256").update(bytes).digest();
@@ -514,4 +515,23 @@ test("normalizes short-read and rejected local read failures", async () => {
     },
   });
   await rejects(image, "READ_FAILED");
+});
+
+test("package preflight dispatches XCI by content and rejects unknown supported-name formats", async () => {
+  const image = fixture();
+  const file = (name, bytes) =>
+    Object.assign(new Blob([bytes]), { name, webkitRelativePath: `chosen/${name}` });
+  const prod = file("prod.keys", `header_key = ${"a5".repeat(32)}\n`);
+  const bytes = range(image.segments, 0n, image.file.size);
+  for (const name of ["game.xci", "game.nsp"]) {
+    const result = await preflightNspFolder([prod, file(name, bytes)]);
+    assert.equal(result.packages.length, 1);
+    assert.equal(result.packages[0].format, "XCI");
+    assert.equal(result.packages[0].entries[0].name, "program.nca");
+    assert.equal(result.stage, "metadata-only");
+    assert.equal(result.canBuildIpa, false);
+    await assert.rejects(preflightNspFolder([prod, file(name, new Uint8Array(512))]), {
+      code: "PACKAGE_FORMAT",
+    });
+  }
 });

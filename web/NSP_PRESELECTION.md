@@ -1,11 +1,11 @@
-# NSP filename preselection
+# Game package inclusion
 
 中文：[NSP_PRESELECTION.zh-CN.md](NSP_PRESELECTION.zh-CN.md)
 
-When exactly one filename contains the canonical bracketed D2R base title ID and at least one contains its update ID, the folder picker preselects only those base and update files. The Warlock DLC remains in the folder but is unchecked until the user explicitly selects it. The title IDs are shared with `d2r-expansion-policy.mjs`. Multiple update candidates remain subject to authenticated version and ambiguity checks.
+Choose a folder, then generate the IPA. The folder picker detects NSP/XCI packages or a complete, already-merged ExeFS/RomFS layout. Packages take precedence whenever present; missing or invalid keys never trigger an extracted-input fallback.
 
-The existing fallback is unchanged: without that recognized base/update combination, all discovered NSP names are initially selected. Checkboxes remain editable. Changing folders or checkbox selections resets the original-resource reuse option.
+Every discovered package is included, including any supplied DLC. There are no package checkboxes or filename-based preselection rules. To leave out a package, remove it from the chosen input folder. Changing folders resets the resource-reuse option.
 
-Names are only selection hints, not authentication. Renaming an unrelated package does not bypass authenticated metadata, content digest, title, version, or executable checks. No DLC is required when absent.
+Filenames are not authentication. Authenticated package metadata still determines accepted titles, versions, updates and DLC. Unrelated or ambiguous packages fail validation rather than being silently ignored. DLC is not required when absent. Extracted input remains limited to merged base/update content and does not authenticate DLC metadata.
 
-Synthetic coverage: `node --test tests/nsp-default-selection.test.mjs` from `web`. No game or device validation is implied.
+Inert UI/state coverage: `node --test tests/packager-features-ui.test.mjs tests/simple-packager-flow.test.mjs` from `web`. No browser, game or device validation is implied.

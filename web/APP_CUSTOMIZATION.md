@@ -61,6 +61,10 @@ concrete-entitlement restrictions, fixed paths and empty native-edit options rem
 unchanged. A profile for the original ID does not authorize a different ID unless
 its supported wildcard grant matches it. No arbitrary entitlements or profile
 rewrites are accepted. Signing failure retains the customized unsigned IPA.
+The local signer separately limits the profile prefix plus `.` plus bundle identifier
+to 255 characters. Exceeding that existing bound reports an explicit signing-length
+limitation, not a profile mismatch; unsigned customization still accepts up to 255
+characters. Use another signer, or reload and generate with a shorter identifier.
 
 Customization failure after assembly retains the **original, uncustomized unsigned
 IPA** with an explicit recovery label; it is not silently signed or reported as a

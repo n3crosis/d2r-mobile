@@ -477,7 +477,7 @@ test("signing still checks the final root identifier with no caller-selected nat
   );
   assert.ok(bridge.includes('fopen("/work/Payload/App.app/Info.plist", "rb")'));
   assert.ok(
-    bridge.includes('zsa.ValidateProfileForBundle(infoPlist["CFBundleIdentifier"].as_string())'),
+    bridge.includes('zsa.ValidateProfileForBundle(infoPlist["CFBundleIdentifier"].as_string(),'),
   );
   assert.ok(
     bridge.includes("!bundleVersion.empty() || !displayName.empty() || !entitlementsFile.empty()"),

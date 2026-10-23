@@ -1,7 +1,7 @@
 // 离线兼容性门禁，不验证 Apple 信任链、撤销状态或设备安装资格。
 // Offline compatibility gate, not Apple trust-chain, revocation or device-install verification.
-// 包含于 openssl.cpp；头文件声明 bool ValidateProfileForBundle(const string&)。
-// Include in openssl.cpp; declare bool ValidateProfileForBundle(const string&) in openssl.h.
+// 包含于 openssl.cpp；openssl.h 声明 ValidateProfileForBundle(const string&, bool* = nullptr)。
+// Include in openssl.cpp; declare ValidateProfileForBundle(const string&, bool* = nullptr) in openssl.h.
 #include <ctime>
 
 namespace {
@@ -175,7 +175,10 @@ bool D2RConcreteEntitlements(const jvalue &value, size_t depth, size_t &remainin
 }
 
 bool D2RProfileEntitlements(const jvalue &profile, X509 *cert, const string &bundle,
-                            jvalue &entitlements, string &application, string &team) {
+                            jvalue &entitlements, string &application, string &team,
+                            bool *applicationIdentifierTooLong = nullptr) {
+    if (applicationIdentifierTooLong)
+        *applicationIdentifierTooLong = false;
     if (!D2RIdentifier(bundle, true))
         return false;
     const jvalue &teams = profile["TeamIdentifier"];
@@ -210,6 +213,13 @@ bool D2RProfileEntitlements(const jvalue &profile, X509 *cert, const string &bun
     if (matching != 1)
         return false;
     application = prefix + "." + bundle;
+    // 保留现有签名长度上限；这不是证书或描述文件不匹配。
+    // Preserve the signing length limit; exceeding it is not a certificate/profile mismatch.
+    if (application.size() > 255) {
+        if (applicationIdentifierTooLong)
+            *applicationIdentifierTooLong = true;
+        return false;
+    }
     if (!D2RMatchApplication(pattern, application))
         return false;
     entitlements["application-identifier"] = application;
@@ -242,7 +252,10 @@ bool D2RProfileEntitlements(const jvalue &profile, X509 *cert, const string &bun
 }
 } // namespace
 
-bool ZSignAsset::ValidateProfileForBundle(const string &bundleId) {
+bool ZSignAsset::ValidateProfileForBundle(const string &bundleId,
+                                         bool *applicationIdentifierTooLong) {
+    if (applicationIdentifierTooLong)
+        *applicationIdentifierTooLong = false;
     if (m_bAdhoc || !m_x509Cert || m_strProvData.empty() ||
         m_strProvData.size() > D2R_PROFILE_BYTES)
         return false;
@@ -261,7 +274,8 @@ bool ZSignAsset::ValidateProfileForBundle(const string &bundleId) {
         return false;
     jvalue entitlements;
     string application, team;
-    if (!D2RProfileEntitlements(profile, certificate, bundleId, entitlements, application, team))
+    if (!D2RProfileEntitlements(profile, certificate, bundleId, entitlements, application, team,
+                                applicationIdentifierTooLong))
         return false;
     string encoded;
     entitlements.style_write_plist(encoded);

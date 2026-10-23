@@ -292,3 +292,40 @@ test("cleanup cancels opening with stalled module read and wipes late bytes", as
   await new Promise((resolve) => setImmediate(resolve));
   assert(late.every((byte) => byte === 0));
 });
+
+for (const sharedSignal of [false, true])
+  test(`extraction-stage cancellation revokes local provenance and borrowed bytes (${sharedSignal ? "shared" : "separate"} signal)`, async () => {
+    const controller = new AbortController();
+    const adapter = createExtractionJobAdapter({
+      contentMode: "optional-warlock",
+      createWorker() {
+        assert.fail("local route has no worker");
+      },
+    });
+    const session = await adapter.openSecretSession({
+      inputs: input(),
+      signal: sharedSignal ? controller.signal : undefined,
+    });
+    const selection = await adapter.selectContents({ session });
+    const extracted = await adapter.extractSelected({
+      session,
+      selection,
+      signal: controller.signal,
+    });
+    const borrowed = readAuthenticatedProgramModules(extracted, selection);
+    const resource = readAuthenticatedAssets(extracted, selection).romfs.getFile(
+      "data/build_manifest.psv",
+    );
+    controller.abort();
+    for (const read of [
+      readAuthenticatedProgramModules,
+      readAuthenticatedAssets,
+      readInputContentPolicy,
+    ])
+      assert.throws(() => read(extracted, selection), /PROVENANCE/);
+    await assert.rejects(resource.readAt(0n, 1));
+    assert.throws(() => extracted.logicalAssets.lookup("anything"));
+    assert(borrowed.main.every((byte) => byte === 0));
+    assert(borrowed.sdk.every((byte) => byte === 0));
+    await adapter.cleanup();
+  });
