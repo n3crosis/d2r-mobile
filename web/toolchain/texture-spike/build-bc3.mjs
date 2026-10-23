@@ -8,7 +8,7 @@ const crate = join(root, "rust-bc3");
 const source = readFileSync(new URL("../../../dm/ios/tools/gen_widestash_art.py", import.meta.url));
 if (
   createHash("sha256").update(source).digest("hex") !==
-  "5c3a4b1985625ba5ba7f727e0fd77afc1b835b1f9b3ca6337dbdc36626bea073"
+  "f58435e650cc12e1472eb229a7eb5d4e08f7477f37f5d91376df5ad5af952c79"
 )
   throw new Error("Original BC3 source changed; review Rust encoder parity before rebuilding");
 const rustEnv = { ...process.env, RUSTUP_TOOLCHAIN: "1.99.1" };

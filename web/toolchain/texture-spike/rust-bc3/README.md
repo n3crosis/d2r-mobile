@@ -5,8 +5,11 @@ by the existing C/WASM NVN block-linear sprite packer. It does not start Python,
 use NumPy, fetch assets, or import host functions.
 
 The algorithm ports `dm/ios/tools/gen_widestash_art.py::bc3` from source SHA-256
-`5c3a4b1985625ba5ba7f727e0fd77afc1b835b1f9b3ca6337dbdc36626bea073`:
-float64 covariance, eight normalized power iterations, first-index ties,
+`f58435e650cc12e1472eb229a7eb5d4e08f7477f37f5d91376df5ad5af952c79`:
+The v2 source update changes only the native library-loading helper; the extracted
+`bc3` function remains byte-identical and is checked independently before packaging.
+
+Algorithm: float64 covariance, eight normalized power iterations, first-index ties,
 round-to-even 565 quantization, max/min interpolated alpha, and edge replication.
 No fast-math or fused multiply-add is requested. A tiny development comparison
 against the original covered random, constant and transparent images including

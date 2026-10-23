@@ -5,6 +5,10 @@ cd "$VERIFY_ROOT/web"
 # Check shared UI text and derived-data provenance before dependency or runtime builds.
 node toolchain/hud-recipes-js/verify-sources.mjs
 node toolchain/overlay-recipe-js/scripts/verify-source.mjs
+node toolchain/art-recipes-js/scripts/verify-source.mjs
+node toolchain/asset-transforms-js/scripts/verify-source.mjs
+node toolchain/casc-overlay-js/scripts/verify-source.mjs
+python3 toolchain/texture-spike/package-encoder.py
 bun install --frozen-lockfile
 bun audit --audit-level=high
 bun run build
