@@ -1,8 +1,8 @@
 // 浏览器本地打包界面：依据打包进度协议与共享多语文字表。
 // Local browser packaging UI based on the packaging progress protocol and shared multilingual table.
-import { t, browserLanguage } from "../i18n.mjs";
+import { t, browserLanguage, setBrowserLanguage, subscribeLanguage } from "../i18n.mjs";
 import { FolderOpenIcon, PackageIcon, ShieldCheckIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -103,6 +103,7 @@ const megabytes = (bytes: number) => t("dmWebMegabytes", (bytes / 1_000_000).toF
 const loadingLabel = (phase: string) =>
   t(phase === "download" ? "dmWebDownloading" : "dmWebPreparing");
 export default function App() {
+  const language = useSyncExternalStore(subscribeLanguage, browserLanguage, browserLanguage);
   const [target, setTarget] = useState(() =>
     new URLSearchParams(window.location.search).get("target") === "ios18" ? "ios18" : "ios26",
   );
@@ -149,20 +150,28 @@ export default function App() {
     [profileId],
   );
   const [customizationError, setCustomizationError] = useState("");
-  const customizationValidation = useMemo(() => {
+  const customizationDraftValidation = useMemo(() => {
     try {
       return {
         options: normalizeAppCustomizationDraft(appCustomization, appCustomizationDefaults),
-        error: "",
+        error: null,
       };
     } catch (error) {
-      return { options: undefined, error: appCustomizationFailureMessage(error) };
+      return { options: undefined, error };
     }
   }, [appCustomization, appCustomizationDefaults]);
+  // Translate the current validation result during render, not inside the cached normalization.
+  const customizationValidation = {
+    options: customizationDraftValidation.options,
+    error:
+      customizationDraftValidation.error === null
+        ? ""
+        : appCustomizationFailureMessage(customizationDraftValidation.error),
+  };
   useEffect(() => {
-    document.documentElement.lang = browserLanguage();
+    document.documentElement.lang = language;
     document.title = t("dmWebTitle");
-  }, []);
+  }, [language]);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [copyStatus, setCopyStatus] = useState("");
   const lastActivity = useRef("");
@@ -906,6 +915,27 @@ export default function App() {
     <main className="mx-auto flex min-h-screen max-w-3xl items-start px-4 py-8 sm:items-center sm:px-6 sm:py-12">
       <Card className="w-full gap-5 overflow-hidden border-primary/15 pt-0 shadow-sm">
         <CardHeader className="gap-3 border-b border-primary/10 bg-linear-to-br from-primary/10 via-card to-card py-6">
+          <div className="space-y-1">
+            <Field orientation="horizontal" className="ml-auto w-fit gap-2">
+              <FieldLabel htmlFor="ui-language">Language / 语言</FieldLabel>
+              <NativeSelect
+                id="ui-language"
+                value={language}
+                aria-describedby="ui-language-help"
+                onChange={(event) => setBrowserLanguage(event.target.value)}
+              >
+                <NativeSelectOption value="en" lang="en">
+                  English
+                </NativeSelectOption>
+                <NativeSelectOption value="zh-CN" lang="zh-CN">
+                  简体中文
+                </NativeSelectOption>
+              </NativeSelect>
+            </Field>
+            <p id="ui-language-help" className="text-right text-xs text-muted-foreground">
+              {t("dmWebLanguageHistoryHelp")}
+            </p>
+          </div>
           <div className="flex items-center gap-3">
             <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
               <PackageIcon className="size-6" aria-hidden="true" />

@@ -30,14 +30,16 @@ function attribute(node, name) {
     (entry) => ts.isJsxAttribute(entry) && entry.name.getText(parsed) === name,
   );
 }
-test("default primary flow contains no expanded selectors and keeps overrides together", () => {
+test("language remains visible while generation selectors stay in Advanced", () => {
   const advanced = details.find((node) =>
     node.getText(parsed).includes('t("dmWebAdvancedOptions")'),
   );
   assert.ok(advanced);
   assert.equal(attribute(advanced.openingElement, "open"), undefined);
   for (const select of selects) {
-    assert.ok(select.pos > advanced.pos && select.end < advanced.end);
+    if (attribute(select, "id")?.initializer?.text === "ui-language") {
+      assert.ok(select.pos < advanced.pos);
+    } else assert.ok(select.pos > advanced.pos && select.end < advanced.end);
   }
   for (const setting of [
     "checked={legacyAstc}",

@@ -185,7 +185,7 @@ test("translation overlaps four compiles without preparing a fifth record; cance
   assert.equal(run.state.translated.length, 4);
   await nextTurn();
   assert.equal(run.state.translated.length, 4);
-  run.state.calls[2].complete();
+  run.state.calls.find((call) => call.source === "synthetic2").complete();
   await until(() => run.state.translated.length === 5);
   assert.equal(run.state.proofs, 0);
   run.controller.abort();
@@ -202,7 +202,7 @@ test("the first compile failure aborts siblings and retains its own record diagn
   await until(() => run.state.active === 4);
   const failure = new Error("synthetic compiler failure");
   failure.code = "AIR_FRONTEND_FAILED";
-  run.state.calls[2].reject(failure);
+  run.state.calls.find((call) => call.source === "synthetic2").reject(failure);
   await assert.rejects(run.result, (error) => {
     assert.equal(error.code, "AIR_FRONTEND_FAILED");
     assert.equal(error.shaderDiagnostic.record, 3);

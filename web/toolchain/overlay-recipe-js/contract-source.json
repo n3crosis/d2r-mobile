@@ -1,5 +1,5 @@
 {
-  "sourceFingerprint": "20bf127eda2a73bb0e234a2bf460339df0c20e06dd18731d8f67a4748220fea2",
+  "sourceFingerprint": "6b6435b970af695a88d39d02782ffabe35368ad5213c21ea4070866a1a6f0a9e",
   "normalizedSources": {
     "dm/android/tools/stage_touch_assets.py": "03a98e98708a7a14fbc6385daaaf8e2987afffa32dd088086a307a168ddcc26d",
     "dm/data/casc_overlay/borrowed_paths.tsv": "16f5a8eb0d4288d1afa14189ff9e29ea8ce2fe19575ff5cb02265bd87a6d91c7",
@@ -8,7 +8,7 @@
     "dm/gfx/tex/nvn_deswizzle.c": "989859a8c0112ca430d4788dbe428efac6687e195a8675589a171dc8421d3b4d",
     "dm/gfx/tex/nvn_deswizzle.h": "8760c6b3327088cb51c87df7d71845c97f9b866414437a0bc41498b0746a431a",
     "dm/host/dm_kills.c": "8a0de7a29ce473621dc94eee60fc397f14058309eb1e96ba394a54835d1bb436",
-    "dm/i18n/ui_text.tsv": "3cd0a00a77e34e8524bcfaaebd9028f60c227198af475595ec39c3cc2654a62d",
+    "dm/i18n/ui_text.tsv": "1cdf55f15f3ebefec60cb443583829a582dc7fd37901f54f67663e53d2d348a7",
     "dm/ios/Sources/TouchArt/native_art_manifest.json": "334ed8adfa6d21feea33946692a1d5088b5ed39edb36545241ee543414382a5e",
     "dm/ios/docs/native_art_v1_geometry.json": "7332bf327af662259cde973d5ed6ba80af472e4f0c232ea4dfe3fcf0a17a4799",
     "dm/ios/docs/touch_layout_spec_native_binding_v5.json": "e0e649d9c0a6cb6861f166db0e705be196f69a20c40993116f591b13cdcfec1f",
