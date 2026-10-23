@@ -7,6 +7,7 @@ import vm from "node:vm";
 import ts from "typescript";
 import { PROGRAM_COMPATIBILITY } from "../program-compatibility.mjs";
 import { catalog } from "../i18n-catalog.mjs";
+import { createGenerationProgress } from "../generation-progress.mjs";
 import {
   appCustomizationFailureMessage,
   gameFolderFailureMessage,
@@ -84,7 +85,10 @@ test("folder auto-detection includes all packages and preserves the detected gen
   assert.match(app, /useState<InputMode \| null>\(null\)/);
   assert.match(app, /discoverGameFolder\(selected, \{\s*signal:/);
   assert.match(app, /setInputMode\(files.inputMode\)/);
-  assert.match(app, /inputMode === "packages" \? \{ selectedNspNames: nspNames \} : \{\}/);
+  assert.match(
+    app,
+    /jobOptions.inputMode === "packages" \? \{ selectedNspNames: nspNames \} : \{\}/,
+  );
   assert.equal((app.match(/inputMode === "packages" && !nspNames.length/g) ?? []).length, 2);
   assert.match(app, /dmWebIncludedPackages", nspNames.length/);
   assert.match(
@@ -96,7 +100,10 @@ test("folder auto-detection includes all packages and preserves the detected gen
     catalog.dmWebExtractedInstructions[0],
     /Base\/update only.*expansion input is unsupported.*not authenticated/,
   );
-  assert.match(app, /if \(inputMode === "packages"\)\s*appendActivity\(t\(skipContentHashes/);
+  assert.match(
+    app,
+    /if \(jobOptions.inputMode === "packages"\)\s*appendActivity\(\s*t\(jobOptions.skipContentHashes/,
+  );
 });
 test("compatibility display derives from the actual selected profile registry", () => {
   assert.match(
@@ -154,7 +161,7 @@ test("icon preflight precedes runtime consumption and invalid input remains corr
     preflight,
     /else \{\s*setCustomizationError\(appCustomizationFailureMessage\(error\)\);\s*setStatus\(t\("dmWebCustomCorrect"\)\)/,
   );
-  assert.match(preflight, /if \(signing\) clearSigningInputs\(\)/);
+  assert.match(preflight, /if \(jobOptions.signing\) clearSigningInputs\(\)/);
   assert.match(preflight, /operation.finish\(\);\s*return;\s*\}/);
   assert.doesNotMatch(preflight, /jobPackager.generate\(|downloadPreparation.current.retain/);
 });
@@ -268,6 +275,8 @@ async function runPreflight(options, makeIcon) {
     generation.indexOf('    setResourceOutcome("")'),
   );
   const writes = [],
+    progress = [],
+    generationTracker = { current: null },
     cancellation = { current: null },
     mounted = { current: true };
   let closes = 0;
@@ -277,7 +286,21 @@ async function runPreflight(options, makeIcon) {
     folder: {},
     inputMode: "extracted",
     nspNames: [],
+    profileId: "v2.0.0-ios26",
+    legacyAstc: false,
     signing: false,
+    astcPreset: "thorough",
+    skipContentHashes: true,
+    skipResources: false,
+    generationTracker,
+    createGenerationProgress: (jobOptions) => {
+      assert.equal(Object.isFrozen(jobOptions), true);
+      return createGenerationProgress(jobOptions);
+    },
+    publishProgress: (tracker) => {
+      if (mounted.current && generationTracker.current === tracker)
+        progress.push(tracker.snapshot());
+    },
     customizationError: "",
     customizationValidation: {
       options: makeIcon ? { icon: makeIcon(cancellation, mounted) } : options,
@@ -313,7 +336,7 @@ async function runPreflight(options, makeIcon) {
     `(async () => { ${source}\n return preparedCustomization; })()`,
     context,
   );
-  return { prepared, state, writes, closes, gate: context.operationGate.current };
+  return { prepared, state, writes, progress, closes, gate: context.operationGate.current };
 }
 
 test("actual icon preflight failure allows correction without closing the prepared packager", async () => {
@@ -326,6 +349,8 @@ test("actual icon preflight failure allows correction without closing the prepar
   assert.equal(result.state.generating, false);
   assert.equal(result.gate.busy, false);
   assert.match(result.state.customizationError, /opaque square PNG/);
+  assert.equal(result.progress.at(-1).status, "failed");
+  assert.equal(result.progress.at(-1).percent, 0);
 });
 
 test("actual icon preflight cancellation closes runtime once and releases the UI lease", async () => {
@@ -347,6 +372,8 @@ test("actual icon preflight cancellation closes runtime once and releases the UI
   assert.equal(result.state.generating, false);
   assert.equal(result.gate.busy, false);
   assert.equal(result.state.status, "dmWebCancelledReload");
+  assert.equal(result.progress.at(-1).status, "cancelled");
+  assert.equal(result.progress.at(-1).percent, 0);
 });
 
 // 恢复分支直接来自真实界面，覆盖自定义之前发生的提交后清理失败。
@@ -397,8 +424,15 @@ test("download preparation retries preserve manual original-identity recovery", 
   );
   for (const originalIdentityDownload of [false, true]) {
     const calls = [];
+    const tracker = createGenerationProgress();
+    tracker.fail();
     vm.runInNewContext(`${prepare}\nprepareDownload();`, {
       originalIdentityDownload,
+      generationTracker: { current: tracker },
+      publishProgress: (current) => {
+        assert.equal(current, tracker);
+        calls.push(["progress", current.snapshot()]);
+      },
       downloadPreparation: {
         current: {
           prepare: () => ({ status: "ready", url: "blob:local", fileName: "original.ipa" }),
@@ -409,6 +443,9 @@ test("download preparation retries preserve manual original-identity recovery", 
       attemptAutomaticDownload: () => calls.push(["automatic"]),
     });
     assert.equal(calls.filter(([kind]) => kind === "prepared").length, 1);
+    assert.equal(calls.filter(([kind]) => kind === "progress").length, 1);
+    assert.equal(calls.find(([kind]) => kind === "progress")[1].status, "failed");
+    assert.ok(tracker.snapshot().percent < 100);
     assert.equal(
       calls.filter(([kind]) => kind === "automatic").length,
       originalIdentityDownload ? 0 : 1,

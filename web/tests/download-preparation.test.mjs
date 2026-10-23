@@ -120,7 +120,7 @@ test("UI retry never reruns conversion and completed outcomes bypass conversion-
   );
   assert.match(
     app,
-    /if \(generationCompleted\) \{[\s\S]*?dmWebDownloadPreparationFailed[\s\S]*?return;\s+\}\s+const report/,
+    /if \(generationCompleted\) \{[\s\S]*?dmWebDownloadPreparationFailed[\s\S]*?return;\s+\}\s+tracker.fail\(controller.signal.aborted\);\s+publishProgress\(tracker\);\s+const report/,
   );
   assert.match(app, /preparedDownload.dispose\(\)/);
   assert.match(app, downloadRetryButton);

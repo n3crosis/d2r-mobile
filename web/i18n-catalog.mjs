@@ -974,8 +974,8 @@ export const catalog = Object.freeze({
     "选择游戏文件夹，自动识别 NSP/XCI（需 prod.keys）或已合并的 ExeFS/RomFS。"
   ],
   "dmWebOutputCompatibility": [
-    "For %s. %s",
-    "目标：%s。%s"
+    "iOS 26+ by default; iOS 18+ compatibility in Advanced. Selected: %s. %s",
+    "默认 iOS 26+；高级选项中可选 iOS 18+ 兼容模式。当前选择：%s。%s"
   ],
   "dmWebBcTextures": [
     "BC texture support required.",
@@ -1020,5 +1020,205 @@ export const catalog = Object.freeze({
   "dmWebCustomReset": [
     "Reset to shell defaults",
     "恢复外壳默认值"
+  ],
+  "dmWebGuideTitle": [
+    "Preparation & installation guide",
+    "准备与安装指南"
+  ],
+  "dmWebGuideIntro": [
+    "The IPA and game resources are separate. Select a step for details; browsing this guide does not mark installation or copying complete.",
+    "IPA 与游戏资源分开保存。选择步骤查看说明；浏览指南不代表已完成安装或复制。"
+  ],
+  "dmWebGuidePrepare": [
+    "Prepare",
+    "准备文件"
+  ],
+  "dmWebGuideGenerate": [
+    "Generate",
+    "生成文件"
+  ],
+  "dmWebGuideInstall": [
+    "Install IPA",
+    "安装 IPA"
+  ],
+  "dmWebGuideCopy": [
+    "Copy resources",
+    "复制资源"
+  ],
+  "dmWebGuidePackages": [
+    "Put the supported base game and compatible update NSP/XCI files together with prod.keys at the root of one folder. Add title.keys only if a matching external title key is needed; compatible known DLC is optional.",
+    "将支持版本的基础游戏及兼容更新 NSP/XCI 与 prod.keys 放在同一文件夹的根目录。仅在需要外部匹配密钥时提供 title.keys；兼容的已知 DLC 为可选内容。"
+  ],
+  "dmWebGuideExtracted": [
+    "Alternatively, use already-merged ExeFS/RomFS folders without keys. This route supports base/update only, not expansion content. The input format is detected automatically.",
+    "也可使用已合并的 ExeFS/RomFS 文件夹，无需密钥；此方式仅支持基础游戏及更新，不支持扩展内容。无需手动选择输入模式。"
+  ],
+  "dmWebGuideFolderAccess": [
+    "Use a desktop Chromium browser, choose that folder and allow read/write access. Leave space for the resource export and browser temporary files.",
+    "使用桌面 Chromium 浏览器，选择该文件夹并允许读写。预留资源导出与浏览器临时文件所需的空间。"
+  ],
+  "dmWebGuideExport": [
+    "For a first install, leave “Skip resource export” off. Skip only when matching game, update and DLC resources are already on the device; the browser cannot check them.",
+    "首次安装请勿勾选“跳过资源导出”。仅在设备上已有完全匹配的游戏、更新及 DLC 资源时跳过；浏览器无法检查设备上的资源。"
+  ],
+  "dmWebGuideOutputs": [
+    "Generation provides D2RMobile-unsigned.ipa, or D2RMobile-signed.ipa after successful local signing. Resources are saved separately inside the input folder as D2R-resources-<UUID>/data/…, not inside the IPA.",
+    "生成后可下载 D2RMobile-unsigned.ipa（本地签名成功后为 D2RMobile-signed.ipa）。资源另存到输入文件夹内的 D2R-resources-<UUID>/data/…，不在 IPA 中。"
+  ],
+  "dmWebGuideLegacy": [
+    "The older-GPU option also exports LegacyDevicePack-<UUID> alongside the resources. Keep and copy that supplemental folder too.",
+    "若启用旧 GPU 选项，还会在旁边生成 LegacyDevicePack-<UUID>。请保留并复制此补充包。"
+  ],
+  "dmWebGuideSignInstall": [
+    "Unsigned IPA: install Sideloadly for Mac or Windows from its official site below. It signs the IPA and installs it on your device.",
+    "未签名 IPA：从下方 Sideloadly 官网安装 Mac 或 Windows 版工具。它可为 IPA 签名并安装到设备。"
+  ],
+  "dmWebGuideFirstLaunch": [
+    "On first launch, “No game resources yet” is expected until the separate resources are copied. The install package does not contain the full game resources.",
+    "第一次打开时，在尚未复制资源的情况下出现“暂无游戏资源”提示是正常的。安装包本身不含完整游戏资源。"
+  ],
+  "dmWebGuideDestination": [
+    "Open Files → On My iPhone / iPad → the app’s folder (D2R Mobile, or your custom app name).",
+    "打开“文件”→“我的 iPhone / iPad”→应用文件夹（D2R Mobile 或自定义应用名）。"
+  ],
+  "dmWebGuideCopyWhole": [
+    "Copy the entire completed D2R-resources-<UUID> folder there, preserving its name and inner data folder. If generated, copy LegacyDevicePack-<UUID> to the same app folder too. Do not use an incomplete export.",
+    "将已完成的 D2R-resources-<UUID> 文件夹整体复制到此处，保持名称和内部 data 文件夹结构不变。若已生成 LegacyDevicePack-<UUID>，也将其复制到同一应用文件夹；不要复制未完成的导出。"
+  ],
+  "dmWebGuideRetry": [
+    "Wait for copying to finish, then return to the app and tap Retry. The phone does not need NSP/XCI or key files.",
+    "等待复制完成，然后返回应用点“重试”。手机上不需要 NSP/XCI 或密钥文件。"
+  ],
+  "dmWebOverallTitle": [
+    "Overall generation",
+    "生成总进度"
+  ],
+  "dmWebOverallEstimate": [
+    "Stage-based estimate, not time remaining. Stages can take very different amounts of time.",
+    "按已完成阶段估算，并非剩余时间；各阶段耗时可能差异很大。"
+  ],
+  "dmWebOverallCount": [
+    "%s%% · %s/%s stages complete",
+    "%s%% · 已完成 %s/%s 个阶段"
+  ],
+  "dmWebOverallUnmeasured": [
+    "This stage has no measurable total; progress advances when it finishes.",
+    "此阶段没有可量化的总量，完成后总进度才会前进。"
+  ],
+  "dmWebOverallPreparing": [
+    "Preparing this generation job",
+    "正在准备本次生成"
+  ],
+  "dmWebOverallInput": [
+    "Checking and extracting game input",
+    "正在检查并提取游戏输入"
+  ],
+  "dmWebOverallFinalize": [
+    "Finalizing the IPA and app options",
+    "正在完成 IPA 与应用选项"
+  ],
+  "dmWebOverallLegacy": [
+    "Saving the ASTC supplemental pack",
+    "正在保存 ASTC 补充包"
+  ],
+  "dmWebOverallSigning": [
+    "Signing the requested IPA",
+    "正在签名所需的 IPA"
+  ],
+  "dmWebOverallDownload": [
+    "Preparing the IPA download link",
+    "正在准备 IPA 下载链接"
+  ],
+  "dmWebOverallReady": [
+    "Requested IPA ready to download. Installation and resource copying are separate manual steps.",
+    "所需的 IPA 已可下载。安装与复制资源仍需手动完成。"
+  ],
+  "dmWebOverallFailed": [
+    "Generation did not finish. See the status below.",
+    "生成未完成。请查看下方状态。"
+  ],
+  "dmWebOverallCancelled": [
+    "Generation cancelled; the requested output is not complete.",
+    "生成已取消，所需的输出尚未完成。"
+  ],
+  "dmWebOverallSigningIncomplete": [
+    "Signed output is not complete. The unsigned IPA is available; retry signing below.",
+    "签名输出尚未完成。未签名 IPA 已保留，可在下方重试签名。"
+  ],
+  "dmWebOverallDownloadPending": [
+    "The IPA is retained, but its download link is not ready. Retry download preparation below.",
+    "IPA 已保留，但下载链接尚未就绪。请在下方重试准备下载。"
+  ],
+  "dmWebOverallSigningStage": [
+    "Signing step %s/%s",
+    "签名步骤 %s/%s"
+  ],
+  "dmWebGuideTargets": [
+    "Choose the default iOS 26+ target or iOS 18+ compatibility in Advanced before generating. The standard output requires BC texture support; the older-GPU option is experimental and device compatibility is unverified.",
+    "生成前可在高级选项中选择默认的 iOS 26+ 目标或 iOS 18+ 兼容模式。标准输出需要 GPU 支持 BC 纹理；旧 GPU 选项为实验性功能，设备兼容性未经验证。"
+  ],
+  "dmWebGuideConnect": [
+    "Connect and unlock your iPhone/iPad by USB, tap Trust if prompted, then select the device in Sideloadly.",
+    "用 USB 连接并解锁 iPhone/iPad，按提示点“信任”，然后在 Sideloadly 中选择该设备。"
+  ],
+  "dmWebGuideSideload": [
+    "Drag the IPA into Sideloadly, keep Apple ID Sideload selected, enter your own Apple Account and click Start to sign and install. Complete account prompts in the installer, never on this page.",
+    "将 IPA 拖入 Sideloadly，保留 Apple ID Sideload 模式，输入自己的 Apple 账户并点 Start 进行签名及安装。账户验证只在安装工具中完成，不在本网页输入。"
+  ],
+  "dmWebGuideTrust": [
+    "If requested, enable Settings → Privacy & Security → Developer Mode, restart and confirm. For Untrusted Developer, trust your signing account in Settings → General → VPN & Device Management.",
+    "若提示启用开发者模式：设置 → 隐私与安全性 → 开发者模式，然后重新启动并确认。若提示开发者不受信任：设置 → 通用 → VPN 与设备管理，信任用于签名的账户。"
+  ],
+  "dmWebGuideRefresh": [
+    "Free Apple Accounts need signing refreshed every 7 days. Use the same account and bundle ID, and back up saves. Do not delete the app to refresh it: its saves and resources can be removed.",
+    "免费 Apple 账户需每 7 天刷新签名。沿用同一账户与应用标识，并备份存档；不要为了刷新而删除应用，否则可能删除其中的存档与资源。"
+  ],
+  "dmWebGuideSigned": [
+    "Already signed IPA: its signature and provisioning profile must cover your device. On Mac, use Apple Configurator: select device → Add → Apps → Choose from my Mac → select the IPA.",
+    "已有签名的 IPA：签名与描述文件必须适用于该设备。Mac 可使用 Apple Configurator：选择设备 → 添加 → App → 从我的 Mac 中选取 → 选择 IPA。"
+  ],
+  "dmWebGuideTransfer": [
+    "Mac: connect by USB, select your device in Finder → Files, and drag the whole resource folder onto the app name. Windows: choose the app in Apple Devices → device → Files; if folders are not accepted, expand the ZIP instructions below. File sharing transfers resources, not signing/installing an unsigned IPA.",
+    "Mac：用 USB 连接设备，在 Finder 中选择设备 → 文件，将完整资源文件夹拖到应用名上。Windows：在 Apple Devices → 设备 → 文件中选择应用；若不接受文件夹，请展开下方 ZIP 传输说明。文件共享只用于传资源，不会为未签名 IPA 签名安装。"
+  ],
+  "dmWebGuideZip": [
+    "If whole-folder transfer is unavailable, zip the complete folder, drag the ZIP into the app’s file-sharing area, then tap it in the app folder in Files to extract. Move the resource folder out of any extra ZIP wrapper so it sits directly in the app folder. Allow space for both ZIP and extracted files.",
+    "若不能直接传整个文件夹，可将完整文件夹压成 ZIP，拖入上述应用文件共享区，再到手机的应用文件夹中点 ZIP 解压。将资源文件夹移出多余的 ZIP 外层目录，保持其直接位于应用文件夹内；预留 ZIP 与解压文件所需空间。"
+  ],
+  "dmWebGuideSideloadlyLink": [
+    "Sideloadly official site",
+    "Sideloadly 官网"
+  ],
+  "dmWebGuideInstallerHelpLink": [
+    "Installation & signing help",
+    "安装与签名帮助"
+  ],
+  "dmWebGuideConfiguratorLink": [
+    "Signed IPA installation",
+    "已签名 IPA 安装说明"
+  ],
+  "dmWebGuideMacTransferLink": [
+    "Mac file sharing",
+    "Mac 传文件说明"
+  ],
+  "dmWebGuideWindowsTransferLink": [
+    "Windows file sharing",
+    "Windows 传文件说明"
+  ],
+  "dmWebGuideUnzipLink": [
+    "Unzip in Files",
+    "在“文件”中解压 ZIP"
+  ],
+  "dmWebGuideWindowsSetup": [
+    "For Sideloadly on Windows, follow its setup links for Apple’s web-download iTunes and iCloud, not the Microsoft Store versions.",
+    "Windows 的 Sideloadly 请按官网要求安装 Apple 网页下载版 iTunes 与 iCloud，而不是 Microsoft Store 版本。"
+  ],
+  "dmWebGuideSigningDetails": [
+    "Signing, trust & refresh details",
+    "签名、信任与刷新说明"
+  ],
+  "dmWebGuideTransferDetails": [
+    "Folder transfer unavailable? Use ZIP",
+    "不支持文件夹传输？使用 ZIP"
   ]
 });

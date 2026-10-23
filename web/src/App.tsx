@@ -4,12 +4,16 @@ import { t, browserLanguage } from "../i18n.mjs";
 import { FolderOpenIcon, PackageIcon, ShieldCheckIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import {
   Accordion,
   AccordionItem,
   AccordionTrigger,
   AccordionContent,
 } from "@/components/ui/accordion";
+import { InstallationGuide } from "@/components/InstallationGuide";
+import { GenerationProgress } from "@/components/GenerationProgress";
+import { createGenerationProgress } from "../generation-progress.mjs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
@@ -79,7 +83,7 @@ type FolderProgress = {
   titleKeysFound: boolean;
 };
 type ActivityEntry = { id: number; text: string };
-type RomfsProgress = { phase: "base" | "merged"; percent: number };
+type GenerationTracker = ReturnType<typeof createGenerationProgress>;
 const folderSummary = (progress: FolderProgress) =>
   progress.inputMode === "extracted"
     ? t("dmWebExtractedSummary", progress.extractedFileCount ?? 0)
@@ -169,7 +173,20 @@ export default function App() {
   const copyRequest = useRef(0);
   const activityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingGenerationStatus = useRef<string | null>(null);
-  const pendingRomfsProgress = useRef<RomfsProgress | null | undefined>(undefined);
+  const generationTracker = useRef<GenerationTracker | null>(null);
+  const pendingOverallProgress = useRef<{
+    tracker: GenerationTracker;
+    snapshot: ReturnType<GenerationTracker["snapshot"]>;
+  } | null>(null);
+  const [overallProgress, setOverallProgress] = useState<ReturnType<
+    GenerationTracker["snapshot"]
+  > | null>(null);
+  const publishProgress = useCallback((tracker: GenerationTracker | null) => {
+    if (mounted.current && tracker && generationTracker.current === tracker) {
+      pendingOverallProgress.current = null;
+      setOverallProgress(tracker.snapshot());
+    }
+  }, []);
   const [loading, setLoading] = useState<LoadingProgress | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [status, setStatus] = useState(t("dmWebLoading"));
@@ -177,7 +194,6 @@ export default function App() {
     [busy, setBusy] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [cancelling, setCancelling] = useState(false);
-  const [romfsProgress, setRomfsProgress] = useState<RomfsProgress | null>(null);
   const [folder, setFolder] = useState<FileSystemDirectoryHandle | null>(null);
   const [nspNames, setNspNames] = useState<string[]>([]);
   const [download, setDownload] = useState<{ url: string; fileName: string } | null>(null);
@@ -203,13 +219,10 @@ export default function App() {
       setStatus(pendingGenerationStatus.current);
       pendingGenerationStatus.current = null;
     }
-    if (pendingRomfsProgress.current !== undefined) {
-      const next = pendingRomfsProgress.current;
-      pendingRomfsProgress.current = undefined;
-      setRomfsProgress((current) =>
-        current?.phase === next?.phase && current?.percent === next?.percent ? current : next,
-      );
-    }
+    const pendingProgress = pendingOverallProgress.current;
+    pendingOverallProgress.current = null;
+    if (pendingProgress && generationTracker.current === pendingProgress.tracker)
+      setOverallProgress(pendingProgress.snapshot);
   }, []);
   const appendActivity = useCallback(
     (text: string | null, force = false) => {
@@ -243,7 +256,7 @@ export default function App() {
       if (activityTimer.current !== null) clearTimeout(activityTimer.current);
       activityTimer.current = null;
       pendingGenerationStatus.current = null;
-      pendingRomfsProgress.current = undefined;
+      pendingOverallProgress.current = null;
     };
   }, []);
   const packager = useRef<Packager | null>(null),
@@ -443,6 +456,9 @@ export default function App() {
   }
   function prepareDownload(automatic = !originalIdentityDownload) {
     const prepared = downloadPreparation.current.prepare();
+    const tracker = generationTracker.current;
+    tracker?.downloadPrepared(prepared.status === "ready");
+    publishProgress(tracker);
     if (prepared.status !== "ready") {
       setDownloadPreparationFailed(true);
       appendActivity(t("dmWebDownloadPreparationFailed"), true);
@@ -464,6 +480,9 @@ export default function App() {
     controller: AbortController,
     current: () => boolean,
   ): Promise<boolean> {
+    const tracker = generationTracker.current;
+    tracker?.startSigning();
+    publishProgress(tracker);
     setSigningRetryAvailable(false);
     setSigningStatus(t("dmWebSigningWorking"));
     let attempt: Awaited<ReturnType<Packager["prepareSigning"]>> | undefined;
@@ -480,10 +499,16 @@ export default function App() {
         profileFile: profileInput.current?.files?.[0],
         password: passwordInput.current?.value ?? "",
         signal: controller.signal,
-        onProgress: undefined,
+        onProgress: (event: { stage: string; completed: number; total: number }) => {
+          if (!current() || controller.signal.aborted) return;
+          tracker?.observeSigning(event);
+          publishProgress(tracker);
+        },
       });
       if (!current()) return false;
       downloadPreparation.current.retain(signed);
+      tracker?.signed(signed);
+      publishProgress(tracker);
       unsignedForSigning.current = null;
       setSigningStatus(t("dmWebSigningComplete"));
       setStatus(t("dmWebSigningComplete"));
@@ -503,6 +528,8 @@ export default function App() {
               ? "dmWebSigningProfileMismatch"
               : "dmWebSigningFailed",
       );
+      tracker?.signingFailed(controller.signal.aborted);
+      publishProgress(tracker);
       setSigningStatus(signingMessage);
       appendActivity(signingMessage, true);
       setStatus(t("dmWebUnsignedReady"));
@@ -574,12 +601,25 @@ export default function App() {
       return;
     const operation = operationGate.current.begin();
     if (!operation) return;
+    const jobOptions = Object.freeze({
+      profileId,
+      legacyAstc,
+      signing,
+      astcPreset,
+      skipContentHashes,
+      exportResources: !skipResources,
+      inputMode,
+    });
+    const tracker = createGenerationProgress(jobOptions);
+    generationTracker.current = tracker;
+    publishProgress(tracker);
     const jobPackager = packager.current;
     const current = () => mounted.current && operation.isCurrent();
     const controller = operation.controller;
     cancellation.current = controller;
     setBusy(true);
     setGenerating(true);
+    setCancelling(false);
     setCustomizationError("");
     let preparedCustomization;
     try {
@@ -596,11 +636,13 @@ export default function App() {
       }
     } catch (error) {
       if (current()) {
+        tracker.fail(controller.signal.aborted);
+        publishProgress(tracker);
         if (controller.signal.aborted) {
           setReady(false);
           setFinished(true);
           setStatus(t("dmWebCancelledReload"));
-          if (signing) clearSigningInputs();
+          if (jobOptions.signing) clearSigningInputs();
           try {
             await jobPackager.close();
           } catch {
@@ -619,33 +661,36 @@ export default function App() {
       operation.finish();
       return;
     }
+    tracker.prepared();
+    publishProgress(tracker);
     setResourceOutcome("");
     setCancelling(false);
-    pendingRomfsProgress.current = undefined;
-    setRomfsProgress(null);
     setReady(false);
     setStatus(t("dmWebStarting"));
-    if (legacyAstc) setLegacyStatus(t("dmWebLegacyPreparing"));
+    if (jobOptions.legacyAstc) setLegacyStatus(t("dmWebLegacyPreparing"));
     appendActivity(t("dmWebGenerationStarted"), true);
-    if (inputMode === "packages")
-      appendActivity(t(skipContentHashes ? "dmWebSkipHashActive" : "dmWebFastMode"), true);
+    if (jobOptions.inputMode === "packages")
+      appendActivity(
+        t(jobOptions.skipContentHashes ? "dmWebSkipHashActive" : "dmWebFastMode"),
+        true,
+      );
     else appendActivity(t("dmWebExtractedChecked"), true);
     let acceptingProgress = true;
     let generationCompleted = false;
     let keepSigningFactory = false;
     try {
       const result = await jobPackager.generate({
-        profileId,
-        legacyAstc,
-        astcPreset,
-        skipContentHashes,
+        profileId: jobOptions.profileId,
+        legacyAstc: jobOptions.legacyAstc,
+        astcPreset: jobOptions.astcPreset,
+        skipContentHashes: jobOptions.skipContentHashes,
         input: folder,
-        inputMode,
+        inputMode: jobOptions.inputMode,
         ...(Object.keys(preparedCustomization).length
           ? { appCustomization: preparedCustomization }
           : {}),
-        ...(inputMode === "packages" ? { selectedNspNames: nspNames } : {}),
-        exportResources: !skipResources,
+        ...(jobOptions.inputMode === "packages" ? { selectedNspNames: nspNames } : {}),
+        exportResources: jobOptions.exportResources,
         signal: controller.signal,
         onProgress: (event: {
           label?: string;
@@ -671,6 +716,9 @@ export default function App() {
           };
         }) => {
           if (!acceptingProgress || controller.signal.aborted || !current()) return;
+          tracker.observe(event);
+          pendingOverallProgress.current = { tracker, snapshot: tracker.snapshot() };
+          appendActivity(null);
           const shaderLabel = shaderProgressLabel(event);
           if (shaderLabel) {
             // 记录计数只更新合并后的状态行，不逐条写入活动日志。
@@ -681,7 +729,11 @@ export default function App() {
           }
           // 补充包导出单独显示，不把它的完成状态当作 IPA 完成。
           // Show the supplemental export separately; its completion is not IPA completion.
-          if (legacyAstc && event.stage === "assets" && event.diagnostic?.kind === "legacy-astc") {
+          if (
+            jobOptions.legacyAstc &&
+            event.stage === "assets" &&
+            event.diagnostic?.kind === "legacy-astc"
+          ) {
             const blocks = event.diagnostic.completedBlocks;
             const bytes = event.diagnostic.processedBytes;
             if (
@@ -695,7 +747,7 @@ export default function App() {
               setLegacyStatus(t("dmWebLegacyConverting", blocks, (bytes / 1_000_000).toFixed(1)));
             return;
           }
-          if (legacyAstc && event.stage === "legacy-pack") {
+          if (jobOptions.legacyAstc && event.stage === "legacy-pack") {
             setLegacyStatus(
               event.state === "complete"
                 ? t("dmWebLegacyComplete", event.directoryName ?? "")
@@ -710,24 +762,14 @@ export default function App() {
           const activityLabel = packagingActivity(event);
           pendingGenerationStatus.current =
             resourceProgressLabel(event) ?? activityLabel ?? t("dmWebInProgress");
-          const phase = event.diagnostic?.stage;
-          const percent = event.diagnostic?.completed;
-          pendingRomfsProgress.current =
-            (phase === "romfs-base" || phase === "romfs-merged") &&
-            event.state !== "failed" &&
-            event.state !== "complete" &&
-            typeof percent === "number" &&
-            Number.isFinite(percent) &&
-            percent >= 0 &&
-            percent <= 100
-              ? { phase: phase === "romfs-base" ? "base" : "merged", percent }
-              : null;
           appendActivity(activityLabel, event.state === "failed" || event.state === "complete");
         },
       });
       if (!current()) return;
       generationCompleted = true;
-      if (legacyAstc && result.legacyPack?.status === "complete")
+      tracker.generated(result);
+      publishProgress(tracker);
+      if (jobOptions.legacyAstc && result.legacyPack?.status === "complete")
         setLegacyStatus(t("dmWebLegacyComplete", result.legacyPack.directoryName));
       downloadPreparation.current.retain(result.download);
       appendActivity(t("dmWebUnsignedReady"), true);
@@ -740,8 +782,8 @@ export default function App() {
       }
       // 下载准备失败只提供重试，不重新运行转换或覆盖已完成导出状态。
       // Download preparation failures offer retry only, without rerunning conversion or overwriting completed exports.
-      prepareDownload(!signing);
-      if (signing) {
+      prepareDownload(!jobOptions.signing);
+      if (jobOptions.signing) {
         acceptingProgress = false;
         pendingGenerationStatus.current = null;
         unsignedForSigning.current = result.download;
@@ -750,10 +792,14 @@ export default function App() {
     } catch (error) {
       if (!current()) return;
       if (generationCompleted) {
+        tracker.downloadPrepared(false);
+        publishProgress(tracker);
         setDownloadPreparationFailed(true);
         appendActivity(t("dmWebDownloadPreparationFailed"), true);
         return;
       }
+      tracker.fail(controller.signal.aborted);
+      publishProgress(tracker);
       const report = (
         error as {
           report?: {
@@ -768,7 +814,7 @@ export default function App() {
         }
       )?.report;
       if (report?.resources?.status === "skipped") setResourceOutcome(t("dmWebResourcesSkipped"));
-      if (legacyAstc)
+      if (jobOptions.legacyAstc)
         setLegacyStatus(
           report?.legacyPack?.status === "complete"
             ? t("dmWebLegacyComplete", report.legacyPack.directoryName ?? "")
@@ -799,7 +845,7 @@ export default function App() {
     } finally {
       acceptingProgress = false;
       if (current()) {
-        if (signing) clearSigningInputs();
+        if (jobOptions.signing) clearSigningInputs();
         pendingGenerationStatus.current = null;
       }
       // 仅签名失败保留公开签名工厂；转换失败或签名成功关闭全部所有权。
@@ -815,8 +861,6 @@ export default function App() {
       }
       if (current()) {
         pendingGenerationStatus.current = null;
-        pendingRomfsProgress.current = undefined;
-        setRomfsProgress(null);
         setBusy(false);
         setGenerating(false);
         setCancelling(false);
@@ -848,6 +892,7 @@ export default function App() {
           <CardDescription className="text-xs">{t("dmWebOptionsBeforeFolder")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <InstallationGuide />
           <div className="grid gap-3 sm:grid-cols-2">
             <Button
               variant="outline"
@@ -901,10 +946,10 @@ export default function App() {
                 onClick={() => {
                   setReady(false);
                   setCancelling(true);
+                  generationTracker.current?.cancel();
+                  publishProgress(generationTracker.current);
                   cancellation.current?.abort();
                   pendingGenerationStatus.current = null;
-                  pendingRomfsProgress.current = undefined;
-                  setRomfsProgress(null);
                   setStatus(t("dmWebCancellingWait"));
                   appendActivity(t("dmWebCancellationRequested"), true);
                 }}
@@ -913,6 +958,7 @@ export default function App() {
               </Button>
             )}
           </div>
+          <GenerationProgress progress={overallProgress} />
           <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
             {status}
           </p>
@@ -992,39 +1038,6 @@ export default function App() {
             <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
               {legacyStatus}
             </p>
-          )}
-          {generating && (
-            <div className="space-y-2 rounded-md border bg-muted/50 p-3 text-sm">
-              <p className="font-medium">
-                {cancelling ? t("dmWebStopping") : t("dmWebInProgress")}
-              </p>
-              <progress
-                className="h-2 w-full accent-primary"
-                aria-label={
-                  cancelling
-                    ? t("dmWebStoppingAria")
-                    : romfsProgress
-                      ? t(
-                          "dmWebVerification",
-                          t(romfsProgress.phase === "base" ? "dmWebBase" : "dmWebMerged"),
-                        )
-                      : t("dmWebProgressAria")
-                }
-                value={cancelling ? undefined : romfsProgress?.percent}
-                max={100}
-              />
-              <p className="text-xs text-muted-foreground">
-                {cancelling
-                  ? t("dmWebWaitCleanup")
-                  : romfsProgress
-                    ? t(
-                        "dmWebVerificationPercent",
-                        t(romfsProgress.phase === "base" ? "dmWebBase" : "dmWebMerged"),
-                        romfsProgress.percent,
-                      )
-                    : t("dmWebLargePackages")}
-              </p>
-            </div>
           )}
           <Accordion
             type="multiple"
@@ -1344,15 +1357,21 @@ export default function App() {
           </Accordion>
           {loading && !loadFailed && (
             <div className="space-y-2 text-xs text-muted-foreground">
-              {loading.phase === "download" && loading.totalBytes > 0 ? (
+              {loading.phase === "download" &&
+              Number.isFinite(loading.loadedBytes) &&
+              Number.isFinite(loading.totalBytes) &&
+              loading.totalBytes > 0 ? (
                 <>
-                  <progress
-                    className="h-2 w-full accent-primary"
+                  <Progress
+                    className="[&_[data-slot=progress-indicator]]:motion-reduce:transition-none"
                     aria-label={t("dmWebFilesLoaded")}
-                    value={loading.loadedBytes}
-                    max={loading.totalBytes}
+                    aria-describedby="runtime-loading-details"
+                    value={Math.min(
+                      100,
+                      Math.max(0, (loading.loadedBytes / loading.totalBytes) * 100),
+                    )}
                   />
-                  <p>
+                  <p id="runtime-loading-details">
                     {t(
                       "dmWebFilesReady",
                       megabytes(loading.loadedBytes),
@@ -1369,9 +1388,10 @@ export default function App() {
                   </p>
                 </>
               ) : (
-                <progress
-                  className="h-2 w-full accent-primary"
+                <Progress
+                  className="bg-primary/30 motion-safe:animate-pulse"
                   aria-label={loadingLabel(loading.phase)}
+                  value={null}
                 />
               )}
             </div>

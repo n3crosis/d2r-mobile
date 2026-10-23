@@ -322,15 +322,22 @@ test("late unmounted discovery cannot publish state or release a replacement ope
 // 固定诊断按优先级映射；不把原始证书、描述文件或错误内容带进界面。
 // Map fixed diagnostics in precedence order without exposing certificate, profile or raw error content.
 test("signer length limit stays actionable, sanitized, and subordinate to cancellation", () => {
-  const start = app.indexOf("      const signingMessage = t(");
-  const expression = app.slice(start, app.indexOf("      setSigningStatus(signingMessage)", start));
+  let expression;
+  function findDiagnostic(node) {
+    if (ts.isVariableDeclaration(node) && node.name.getText(parsed) === "signingMessage") {
+      expression = node.initializer?.getText(parsed);
+    }
+    ts.forEachChild(node, findDiagnostic);
+  }
+  findDiagnostic(parsed);
+  assert.ok(expression);
   for (const [code, expected] of [
     ["SIGNING_APPLICATION_ID_TOO_LONG", "dmWebSigningApplicationIdTooLong"],
     ["SIGNING_PROFILE_MISMATCH", "dmWebSigningProfileMismatch"],
     ["PRIVATE-PROFILE-NAME", "dmWebSigningFailed"],
   ]) {
     for (const aborted of [false, true]) {
-      const result = vm.runInNewContext(`${expression}\nsigningMessage;`, {
+      const result = vm.runInNewContext(expression, {
         Error,
         signingError: new Error(code),
         controller: { signal: { aborted } },

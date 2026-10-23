@@ -9,7 +9,10 @@ const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
 test("older-GPU choice stays in page and reaches the next generation", () => {
   assert.match(app, /get\("legacyAstc"\) === "1"/);
   assert.match(app, /prepareBrowserPackager\(\{[\s\S]*?editableOptions: true,/);
-  assert.match(app, /jobPackager.generate\(\{\s+profileId,\s+legacyAstc,/);
+  assert.match(
+    app,
+    /jobPackager.generate\(\{\s+profileId: jobOptions\.profileId,\s+legacyAstc: jobOptions\.legacyAstc,/,
+  );
   assert.match(app, /setLegacyAstc\(/);
   assert.doesNotMatch(app, /window\.location\.assign|hasSelectedFolder/);
   assert.match(app, /window\.history\.replaceState/);
