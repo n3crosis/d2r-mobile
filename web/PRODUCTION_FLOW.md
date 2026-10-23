@@ -15,9 +15,9 @@ inventory; its actual Mach-O target is inspected.
 One folder supplies all NSP files, prod.keys, and optional title.keys. Isolated extraction
 owns keys through the last authenticated lazy read. The callable sequence is
 program rewriting, native art, HUD, generated tables, frontend/remaining art and
-CASC overlays, full shader conversion, inventory checks, then local staged IPA
-writing. Private data is never uploaded. Generation is single-use; cancellation
-closes the session and requires reload.
+[CASC overlays](toolchain/overlay-recipe-js/README.md), full shader conversion,
+inventory checks, then local staged IPA writing. Private data is never uploaded.
+Generation is single-use; cancellation closes the session and requires reload.
 
 The shader chain label alone is **not** a compatibility blocker. Native
 `d2rm_pack.py` explicitly relabels metadata and the c1 directory to the shell's
@@ -90,6 +90,14 @@ source-backed behavior, not proof of base-only gameplay or runtime loading.
   or evidence of iOS installer compatibility. Exact limits remain in
   [zip-reader.mjs](zip-reader.mjs), [zip-writer.mjs](zip-writer.mjs) and
   [zip64-writer.mjs](zip64-writer.mjs).
+- [Raw-file staging](raw-file-stage.mjs) backs archive decoding and ASTC/CASC
+  pack assembly in private OPFS. Callers supply an explicit total byte budget,
+  serialize operations of at most 1 MiB, finalize before replay reads, and dispose
+  after consumption. Cleanup drains in-flight I/O and removes only the owned
+  directory; failures remain observable and retryable. Caller-held `File`
+  snapshots cannot be revoked, and crashes may leave staging directories. There
+  is no quota reservation or RAM fallback. [Synthetic tests](tests/raw-file-stage.test.mjs)
+  cover these contracts, not browser quota or crash recovery.
 - [RomFS indexing](romfs-tree.mjs) requires the same immutable, authenticated
   final IVFC data level throughout its lifetime; authentication and rejection of
   stale reads belong to the extraction boundary. It preserves BigInt offsets,

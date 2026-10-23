@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import test from "node:test";
-import { readForkSource, readReviewedSourceLock } from "./fixtures/air-fork-source/fork-source.mjs";
+import {
+  sourceReviewOptions,
+  readForkSource,
+  readReviewedSourceLock,
+} from "./fixtures/air-fork-source/fork-source.mjs";
 
 const compiler = new URL("../toolchain/metal-air-compiler/", import.meta.url);
 const nativeFixtures = new Set([
@@ -21,113 +25,133 @@ const digest = (value) => createHash("sha256").update(value).digest("hex");
 
 // These are source-contract checks only. Actual frontend/IR behavior is checked
 // by the authored header smoke cases when a compiler build is available.
-test("scalar sin, cos and ceil use exact AIR labels and explicit fast exports", async () => {
-  const math = await read("include/metal_math");
-  const apiSource = await read("air_compiler.cpp");
-  const profileStart = math.indexOf("#if defined(AIR_FAST_MATH)");
-  const profileEnd = math.indexOf("#endif", profileStart);
-  assert(profileStart >= 0 && profileEnd > profileStart);
-  for (const operation of ["sin", "cos", "ceil"]) {
+test(
+  "scalar sin, cos and ceil use exact AIR labels and explicit fast exports",
+  sourceReviewOptions,
+  async () => {
+    const math = await read("include/metal_math");
+    const apiSource = await read("air_compiler.cpp");
+    const profileStart = math.indexOf("#if defined(AIR_FAST_MATH)");
+    const profileEnd = math.indexOf("#endif", profileStart);
+    assert(profileStart >= 0 && profileEnd > profileStart);
+    for (const operation of ["sin", "cos", "ceil"]) {
+      assert(
+        math.includes(
+          `float ${operation}(float) __asm__("air.fast_${operation}.f32") __attribute__((const));`,
+        ),
+      );
+      assert(math.includes(`template<class T> T ${operation}(T) = delete;`));
+      assert(
+        math.includes(
+          `AIR_INLINE float ${operation}(float x) { return __air_detail::${operation}(x); }`,
+        ),
+      );
+      const exports = [...math.matchAll(new RegExp(`using fast::${operation};`, "g"))];
+      assert.equal(exports.length, 1);
+      assert(exports[0].index > profileStart && exports[0].index < profileEnd);
+      assert(apiSource.includes(`"air.fast_${operation}.f32"`));
+    }
+    assert.doesNotMatch(math, /__builtin_(?:sin|cos|ceil)|\bfmod\s*\(/);
+  },
+);
+
+test(
+  "bit reversal uses uint AIR ABI and bit-preserving signed wrappers",
+  sourceReviewOptions,
+  async () => {
+    const integer = await read("include/metal_integer");
+    const apiSource = await read("air_compiler.cpp");
+    assert(integer.includes('uint reverse(uint) __asm__("air.reverse_bits.i32");'));
+    assert(integer.includes("template<class T> T reverse_bits(T) = delete;"));
+    assert(integer.includes("uint reverse_bits(uint x) { return __integer_detail::reverse(x); }"));
     assert(
-      math.includes(
-        `float ${operation}(float) __asm__("air.fast_${operation}.f32") __attribute__((const));`,
+      integer.includes(
+        "int reverse_bits(int x) { return as_type<int>(reverse_bits(as_type<uint>(x))); }",
       ),
     );
-    assert(math.includes(`template<class T> T ${operation}(T) = delete;`));
+    assert.doesNotMatch(integer, /__builtin_bitreverse/);
+    assert(apiSource.includes('name=="air.reverse_bits.i32"'));
+    const fixtures = await read("operations_smoke.h");
+    assert(fixtures.includes('{"short", "ushort", "long", "ulong", "int2", "uint2"}'));
+    assert(fixtures.includes("unsupported bit reversal width"));
+  },
+);
+
+test(
+  "SIMD all is convergent, boolean, and limited to compute by the API",
+  sourceReviewOptions,
+  async () => {
+    const simd = await read("include/metal_simd");
+    const apiSource = await read("air_compiler.cpp");
+    assert(simd.includes('bool all(bool) __asm__("air.simd_all") __attribute__((convergent));'));
+    assert.match(
+      simd,
+      /bool simd_all\(bool predicate\)\s*\{\s*return __simd_detail::all\(predicate\);/,
+    );
+    assert.match(
+      apiSource,
+      /name=="air\.simd_all"\) && llvm::StringRef\(stage\)!="air\.kernel"\) return false;/,
+    );
+    assert.match(
+      apiSource,
+      /return name=="air\.simd_all" && function->getReturnType\(\)->isSpecificBuiltinType\(clang::BuiltinType::Bool\);/,
+    );
+    assert.match(
+      apiSource,
+      /hasAttr<clang::ConstAttr>\(\) \|\| function->hasAttr<clang::PureAttr>\(\)/,
+    );
+    assert.match(apiSource, /invocation->getLangOpts\(\)->ConvergentFunctions = true;/);
+  },
+);
+
+test(
+  "assembly trust remains tied to physical header provenance and exact declarations",
+  sourceReviewOptions,
+  async () => {
+    const apiSource = await read("air_compiler.cpp");
+    assert.match(apiSource, /function->isVariadic\(\) \|\| function->hasBody\(\)/);
+    assert.match(apiSource, /loc\.isInvalid\(\) \|\| loc\.isMacroID\(\)/);
+    for (const location of [
+      "sm.getSpellingLoc(decl->getLocation())",
+      "sm.getExpansionLoc(decl->getLocation())",
+      "attr->getLocation()",
+    ])
+      assert(apiSource.includes(`!trusted(${location})`));
+    assert.match(apiSource, /getFileEntryRefForID\(sm\.getFileID\(loc\)\)/);
+    assert.match(apiSource, /function->getNumParams\(\) != count/);
+    assert.match(apiSource, /for \(const auto \*parameter : function->parameters\(\)\)/);
+  },
+);
+
+test(
+  "the guarded standard umbrella exposes atomic and barrier declarations",
+  sourceReviewOptions,
+  async () => {
+    const stdlib = await read("include/metal_stdlib");
+    const atomic = await read("include/metal_atomic");
+    const apiSource = await read("air_compiler.cpp");
+    assert.match(stdlib, /#include <metal_atomic>\s*#endif\s*$/);
+    assert(stdlib.indexOf("#include <metal_atomic>") > stdlib.indexOf("#include <metal_control>"));
     assert(
-      math.includes(
-        `AIR_INLINE float ${operation}(float x) { return __air_detail::${operation}(x); }`,
+      stdlib.indexOf("#define FLOOR_AIR_METAL_STDLIB") < stdlib.indexOf("#include <metal_atomic>"),
+    );
+    assert(
+      atomic.indexOf("#define FLOOR_AIR_METAL_ATOMIC") < atomic.indexOf("#include <metal_stdlib>"),
+    );
+    assert(atomic.includes("enum class mem_flags { mem_threadgroup = 2 };"));
+    assert(atomic.includes("void threadgroup_barrier(mem_flags flags)"));
+    assert(
+      apiSource.includes(
+        'if (file->getName() == "/include/metal_atomic") return trustedAtomicDeclaration(function, attr);',
       ),
     );
-    const exports = [...math.matchAll(new RegExp(`using fast::${operation};`, "g"))];
-    assert.equal(exports.length, 1);
-    assert(exports[0].index > profileStart && exports[0].index < profileEnd);
-    assert(apiSource.includes(`"air.fast_${operation}.f32"`));
-  }
-  assert.doesNotMatch(math, /__builtin_(?:sin|cos|ceil)|\bfmod\s*\(/);
-});
-
-test("bit reversal uses uint AIR ABI and bit-preserving signed wrappers", async () => {
-  const integer = await read("include/metal_integer");
-  const apiSource = await read("air_compiler.cpp");
-  assert(integer.includes('uint reverse(uint) __asm__("air.reverse_bits.i32");'));
-  assert(integer.includes("template<class T> T reverse_bits(T) = delete;"));
-  assert(integer.includes("uint reverse_bits(uint x) { return __integer_detail::reverse(x); }"));
-  assert(
-    integer.includes(
-      "int reverse_bits(int x) { return as_type<int>(reverse_bits(as_type<uint>(x))); }",
-    ),
-  );
-  assert.doesNotMatch(integer, /__builtin_bitreverse/);
-  assert(apiSource.includes('name=="air.reverse_bits.i32"'));
-  const fixtures = await read("operations_smoke.h");
-  assert(fixtures.includes('{"short", "ushort", "long", "ulong", "int2", "uint2"}'));
-  assert(fixtures.includes("unsupported bit reversal width"));
-});
-
-test("SIMD all is convergent, boolean, and limited to compute by the API", async () => {
-  const simd = await read("include/metal_simd");
-  const apiSource = await read("air_compiler.cpp");
-  assert(simd.includes('bool all(bool) __asm__("air.simd_all") __attribute__((convergent));'));
-  assert.match(
-    simd,
-    /bool simd_all\(bool predicate\)\s*\{\s*return __simd_detail::all\(predicate\);/,
-  );
-  assert.match(
-    apiSource,
-    /name=="air\.simd_all"\) && llvm::StringRef\(stage\)!="air\.kernel"\) return false;/,
-  );
-  assert.match(
-    apiSource,
-    /return name=="air\.simd_all" && function->getReturnType\(\)->isSpecificBuiltinType\(clang::BuiltinType::Bool\);/,
-  );
-  assert.match(
-    apiSource,
-    /hasAttr<clang::ConstAttr>\(\) \|\| function->hasAttr<clang::PureAttr>\(\)/,
-  );
-  assert.match(apiSource, /invocation->getLangOpts\(\)->ConvergentFunctions = true;/);
-});
-
-test("assembly trust remains tied to physical header provenance and exact declarations", async () => {
-  const apiSource = await read("air_compiler.cpp");
-  assert.match(apiSource, /function->isVariadic\(\) \|\| function->hasBody\(\)/);
-  assert.match(apiSource, /loc\.isInvalid\(\) \|\| loc\.isMacroID\(\)/);
-  for (const location of [
-    "sm.getSpellingLoc(decl->getLocation())",
-    "sm.getExpansionLoc(decl->getLocation())",
-    "attr->getLocation()",
-  ])
-    assert(apiSource.includes(`!trusted(${location})`));
-  assert.match(apiSource, /getFileEntryRefForID\(sm\.getFileID\(loc\)\)/);
-  assert.match(apiSource, /function->getNumParams\(\) != count/);
-  assert.match(apiSource, /for \(const auto \*parameter : function->parameters\(\)\)/);
-});
-
-test("the guarded standard umbrella exposes atomic and barrier declarations", async () => {
-  const stdlib = await read("include/metal_stdlib");
-  const atomic = await read("include/metal_atomic");
-  const apiSource = await read("air_compiler.cpp");
-  assert.match(stdlib, /#include <metal_atomic>\s*#endif\s*$/);
-  assert(stdlib.indexOf("#include <metal_atomic>") > stdlib.indexOf("#include <metal_control>"));
-  assert(
-    stdlib.indexOf("#define FLOOR_AIR_METAL_STDLIB") < stdlib.indexOf("#include <metal_atomic>"),
-  );
-  assert(
-    atomic.indexOf("#define FLOOR_AIR_METAL_ATOMIC") < atomic.indexOf("#include <metal_stdlib>"),
-  );
-  assert(atomic.includes("enum class mem_flags { mem_threadgroup = 2 };"));
-  assert(atomic.includes("void threadgroup_barrier(mem_flags flags)"));
-  assert(
-    apiSource.includes(
-      'if (file->getName() == "/include/metal_atomic") return trustedAtomicDeclaration(function, attr);',
-    ),
-  );
-  assert(
-    apiSource.includes(
-      'if (name=="air.wg.barrier" && (llvm::StringRef(stage)!="air.kernel" || !constant(0,2) || !constant(1,1))) return false;',
-    ),
-  );
-});
+    assert(
+      apiSource.includes(
+        'if (name=="air.wg.barrier" && (llvm::StringRef(stage)!="air.kernel" || !constant(0,2) || !constant(1,1))) return false;',
+      ),
+    );
+  },
+);
 
 test("authored executable fixtures are wired into the existing header smoke suite", async () => {
   const smoke = await read("header_smoke.cpp");
@@ -147,88 +171,102 @@ test("authored executable fixtures are wired into the existing header smoke suit
     assert(fixtures.includes(marker), marker);
 });
 
-test("quad tessellation factors use the verified shader half layout", async () => {
-  const tessellation = await read("include/metal_tessellation");
-  const fixtures = await read("operations_smoke.h");
-  assert.match(
-    tessellation,
-    /struct MTLQuadTessellationFactorsHalf\s*\{\s*half edgeTessellationFactor\[4\];\s*half insideTessellationFactor\[2\];\s*\};/,
-  );
-  for (const assertion of [
-    "sizeof(MTLQuadTessellationFactorsHalf)==12",
-    "alignof(MTLQuadTessellationFactorsHalf)==2",
-    "__builtin_offsetof(MTLQuadTessellationFactorsHalf,edgeTessellationFactor)==0",
-    "__builtin_offsetof(MTLQuadTessellationFactorsHalf,insideTessellationFactor)==8",
-  ]) {
-    assert(tessellation.includes(assertion), assertion);
-    assert(fixtures.includes(assertion), assertion);
-  }
-  assert(fixtures.includes("quad factors retain half-array IR layout"));
-  assert(fixtures.includes("quad factors use half stores, not numeric integer conversion"));
-});
+test(
+  "quad tessellation factors use the verified shader half layout",
+  sourceReviewOptions,
+  async () => {
+    const tessellation = await read("include/metal_tessellation");
+    const fixtures = await read("operations_smoke.h");
+    assert.match(
+      tessellation,
+      /struct MTLQuadTessellationFactorsHalf\s*\{\s*half edgeTessellationFactor\[4\];\s*half insideTessellationFactor\[2\];\s*\};/,
+    );
+    for (const assertion of [
+      "sizeof(MTLQuadTessellationFactorsHalf)==12",
+      "alignof(MTLQuadTessellationFactorsHalf)==2",
+      "__builtin_offsetof(MTLQuadTessellationFactorsHalf,edgeTessellationFactor)==0",
+      "__builtin_offsetof(MTLQuadTessellationFactorsHalf,insideTessellationFactor)==8",
+    ]) {
+      assert(tessellation.includes(assertion), assertion);
+      assert(fixtures.includes(assertion), assertion);
+    }
+    assert(fixtures.includes("quad factors retain half-array IR layout"));
+    assert(fixtures.includes("quad factors use half stores, not numeric integer conversion"));
+  },
+);
 
-test("the authenticated Metal umbrella enables fp16 during parsing after semantic initialization", async () => {
-  const apiSource = await read("air_compiler.cpp");
-  const stdlib = await read("include/metal_stdlib");
-  const fixtures = await read("operations_smoke.h");
-  const activation = "#pragma OPENCL EXTENSION cl_khr_fp16 : enable";
-  assert.equal(stdlib.split(activation).length - 1, 1);
-  assert(stdlib.indexOf(activation) > stdlib.indexOf("#define FLOOR_AIR_METAL_STDLIB"));
-  assert(stdlib.indexOf(activation) < stdlib.indexOf("namespace metal"));
-  assert(stdlib.indexOf(activation) < stdlib.indexOf("AIR_VECTOR_TYPES(half)"));
-  assert.doesNotMatch(stdlib, /#pragma OPENCL EXTENSION (?!cl_khr_fp16\s*: enable)/);
-  // CreateASTConsumer is too early: Metal's C++20 module reader subsequently
-  // overwrites OpenCLFeatures during Sema::Initialize. Do not restore that hook.
-  assert.doesNotMatch(apiSource, /getOpenCLFeatures\(\)\.enable/);
-  assert.doesNotMatch(apiSource, /-cl-ext=|#pragma OPENCL EXTENSION/);
-  assert(apiSource.includes('"-I/include", "-include", "metal_stdlib"'));
-  assert(fixtures.includes("for (const unsigned profile : {0u, 1u})"));
-  for (const marker of [
-    "native Metal half semantics in both profiles",
-    "half helper preserves native argument and return ABI",
-    "scalar and vector half arithmetic stay native",
-    "half memory and explicit float conversions remain typed",
-  ])
-    assert(fixtures.includes(marker), marker);
-});
+test(
+  "the authenticated Metal umbrella enables fp16 during parsing after semantic initialization",
+  sourceReviewOptions,
+  async () => {
+    const apiSource = await read("air_compiler.cpp");
+    const stdlib = await read("include/metal_stdlib");
+    const fixtures = await read("operations_smoke.h");
+    const activation = "#pragma OPENCL EXTENSION cl_khr_fp16 : enable";
+    assert.equal(stdlib.split(activation).length - 1, 1);
+    assert(stdlib.indexOf(activation) > stdlib.indexOf("#define FLOOR_AIR_METAL_STDLIB"));
+    assert(stdlib.indexOf(activation) < stdlib.indexOf("namespace metal"));
+    assert(stdlib.indexOf(activation) < stdlib.indexOf("AIR_VECTOR_TYPES(half)"));
+    assert.doesNotMatch(stdlib, /#pragma OPENCL EXTENSION (?!cl_khr_fp16\s*: enable)/);
+    // CreateASTConsumer is too early: Metal's C++20 module reader subsequently
+    // overwrites OpenCLFeatures during Sema::Initialize. Do not restore that hook.
+    assert.doesNotMatch(apiSource, /getOpenCLFeatures\(\)\.enable/);
+    assert.doesNotMatch(apiSource, /-cl-ext=|#pragma OPENCL EXTENSION/);
+    assert(apiSource.includes('"-I/include", "-include", "metal_stdlib"'));
+    assert(fixtures.includes("for (const unsigned profile : {0u, 1u})"));
+    for (const marker of [
+      "native Metal half semantics in both profiles",
+      "half helper preserves native argument and return ABI",
+      "scalar and vector half arithmetic stay native",
+      "half memory and explicit float conversions remain typed",
+    ])
+      assert(fixtures.includes(marker), marker);
+  },
+);
 
-test("only reference-established device uint add extends atomics to fragments", async () => {
-  const apiSource = await read("air_compiler.cpp");
-  const trust = await read("atomic_trust.inc");
-  const fixtures = await read("operations_smoke.h");
-  assert.match(
-    apiSource,
-    /const bool fragmentAdd=llvm::StringRef\(stage\)=="air\.fragment" &&\s*name=="air\.atomic\.global\.add\.u\.i32";/,
-  );
-  assert(
-    apiSource.includes('(llvm::StringRef(stage)!="air.kernel" && !fragmentAdd) || !constant(2,0)'),
-  );
-  assert(
-    apiSource.includes(
-      '!constant(3,name.startswith("air.atomic.global.") ? 2 : 1) || !constant(4,1)',
-    ),
-  );
-  assert(
-    trust.includes(
-      'const bool global=name=="air.atomic.global.add.u.i32" || name=="air.atomic.global.min.u.i32";',
-    ),
-  );
-  assert(trust.includes("function->getNumParams()!=5 || !is(function->getReturnType(),B::UInt)"));
-  assert(
-    trust.includes(
-      "pointee.getAddressSpace()!=(global ? clang::LangAS::opencl_global : clang::LangAS::opencl_local)",
-    ),
-  );
-  for (const marker of [
-    "fragment device atomic add",
-    "fragment global min remains rejected",
-    "fragment local atomics remain rejected",
-    "vertex global add remains rejected",
-    "fragment barrier remains rejected",
-    "fragment atomic flags remain exact",
-  ])
-    assert(fixtures.includes(marker), marker);
-});
+test(
+  "only reference-established device uint add extends atomics to fragments",
+  sourceReviewOptions,
+  async () => {
+    const apiSource = await read("air_compiler.cpp");
+    const trust = await read("atomic_trust.inc");
+    const fixtures = await read("operations_smoke.h");
+    assert.match(
+      apiSource,
+      /const bool fragmentAdd=llvm::StringRef\(stage\)=="air\.fragment" &&\s*name=="air\.atomic\.global\.add\.u\.i32";/,
+    );
+    assert(
+      apiSource.includes(
+        '(llvm::StringRef(stage)!="air.kernel" && !fragmentAdd) || !constant(2,0)',
+      ),
+    );
+    assert(
+      apiSource.includes(
+        '!constant(3,name.startswith("air.atomic.global.") ? 2 : 1) || !constant(4,1)',
+      ),
+    );
+    assert(
+      trust.includes(
+        'const bool global=name=="air.atomic.global.add.u.i32" || name=="air.atomic.global.min.u.i32";',
+      ),
+    );
+    assert(trust.includes("function->getNumParams()!=5 || !is(function->getReturnType(),B::UInt)"));
+    assert(
+      trust.includes(
+        "pointee.getAddressSpace()!=(global ? clang::LangAS::opencl_global : clang::LangAS::opencl_local)",
+      ),
+    );
+    for (const marker of [
+      "fragment device atomic add",
+      "fragment global min remains rejected",
+      "fragment local atomics remain rejected",
+      "vertex global add remains rejected",
+      "fragment barrier remains rejected",
+      "fragment atomic flags remain exact",
+    ])
+      assert(fixtures.includes(marker), marker);
+  },
+);
 
 test("real-WASM CI canary includes all five live operations in a fourth authored fixture", async () => {
   const canary = await read("../ci-compile-canary.mjs");
@@ -475,29 +513,33 @@ test("real-WASM canary preserves strict containers and binary flags for four liv
   assert.match(loop, /finally \{\s*output\?\.bytes.fill\(0\);\s*irOutput\?\.bytes.fill\(0\);/);
 });
 
-test("generic header identity fingerprints all ten authenticated headers in its own domain", async () => {
-  const cmake = await read("CMakeLists.txt");
-  const paths = cmake
-    .match(/set\(AIR_HEADER_PATHS\s+([^)]*)\)/)[1]
-    .trim()
-    .split(/\s+/)
-    .sort();
-  for (const header of ["metal_math", "metal_integer", "metal_simd"])
-    assert(paths.includes(header));
-  assert.equal(paths.length, 10);
-  let fingerprint = "floor-air-header-bundle-v2\n";
-  for (const path of paths) fingerprint += `${path}:${digest(await read(`include/${path}`))}\n`;
-  assert.equal(
-    digest(fingerprint),
-    "694371baef693289d23f75c9b5721227b8290281c513dc81cc6f8f696b3ec7eb",
-  );
-  const lock = await readReviewedSourceLock();
-  assert.deepEqual(
-    paths,
-    Object.keys(lock.sdkFiles)
-      .filter((path) => path.startsWith("api/include/"))
-      .map((path) => path.slice(12))
-      .sort(),
-  );
-  assert(cmake.includes('set(AIR_HEADER_FINGERPRINT "floor-air-header-bundle-v2\\n")'));
-});
+test(
+  "generic header identity fingerprints all ten authenticated headers in its own domain",
+  sourceReviewOptions,
+  async () => {
+    const cmake = await read("CMakeLists.txt");
+    const paths = cmake
+      .match(/set\(AIR_HEADER_PATHS\s+([^)]*)\)/)[1]
+      .trim()
+      .split(/\s+/)
+      .sort();
+    for (const header of ["metal_math", "metal_integer", "metal_simd"])
+      assert(paths.includes(header));
+    assert.equal(paths.length, 10);
+    let fingerprint = "floor-air-header-bundle-v2\n";
+    for (const path of paths) fingerprint += `${path}:${digest(await read(`include/${path}`))}\n`;
+    assert.equal(
+      digest(fingerprint),
+      "694371baef693289d23f75c9b5721227b8290281c513dc81cc6f8f696b3ec7eb",
+    );
+    const lock = await readReviewedSourceLock();
+    assert.deepEqual(
+      paths,
+      Object.keys(lock.sdkFiles)
+        .filter((path) => path.startsWith("api/include/"))
+        .map((path) => path.slice(12))
+        .sort(),
+    );
+    assert(cmake.includes('set(AIR_HEADER_FINGERPRINT "floor-air-header-bundle-v2\\n")'));
+  },
+);

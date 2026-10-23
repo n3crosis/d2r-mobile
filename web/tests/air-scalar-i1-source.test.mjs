@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
+  sourceReviewOptions,
   readForkSource,
   readOriginalAirProvenance,
 } from "./fixtures/air-fork-source/fork-source.mjs";
@@ -12,28 +13,32 @@ const read = (path) => readFile(new URL(path, root), "utf8");
 const hash = (data) => createHash("sha256").update(data).digest("hex");
 
 // Source-only assertions: no compiler, LLVM parser/verifier or generated shader runs.
-test("scalar i1 conversion hardening retains its exact authenticated fork source boundary", async () => {
-  const { manifest, receipt } = await readOriginalAirProvenance();
-  const path = "patches/0110-a2flo-scalar-i1-conversions.patch";
-  const sha256 = "1e41886634d829084a3752d56723e38b55ff20dd75649510be6c4be446ca0c82";
-  const source = await readForkSource("llvm/lib/Transforms/LibFloor/MetalFinal.cpp");
-  assert.equal(manifest.patches.length, 10);
-  assert.deepEqual(manifest.patches[9], { path, sha256 });
-  assert.equal(receipt.sourceInputs[path], sha256);
-  assert.equal(hash(source), "b7f8c3d17df3fddea4e87cd8a6fc2ac6ed0d53531714f9403b73ab72f3c39973");
-  assert.equal(
-    manifest.patchedFiles["llvm/lib/Transforms/LibFloor/MetalFinal.cpp"],
-    "b7f8c3d17df3fddea4e87cd8a6fc2ac6ed0d53531714f9403b73ab72f3c39973",
-  );
-  assert.equal(
-    hash(await readForkSource("wasm/api/air_compiler.cpp")),
-    "5d06207b69e57435934bec8e4e67e71c014d6c890fe2ff625e96cc1d4dc7a448",
-  );
-  assert.equal(
-    hash(await read("ci-compile-canary.mjs")),
-    "19415766142c77a9443478e74d5413a300397c28a1a0395b2f99d22d3547eeca",
-  );
-});
+test(
+  "scalar i1 conversion hardening retains its exact authenticated fork source boundary",
+  sourceReviewOptions,
+  async () => {
+    const { manifest, receipt } = await readOriginalAirProvenance();
+    const path = "patches/0110-a2flo-scalar-i1-conversions.patch";
+    const sha256 = "1e41886634d829084a3752d56723e38b55ff20dd75649510be6c4be446ca0c82";
+    const source = await readForkSource("llvm/lib/Transforms/LibFloor/MetalFinal.cpp");
+    assert.equal(manifest.patches.length, 10);
+    assert.deepEqual(manifest.patches[9], { path, sha256 });
+    assert.equal(receipt.sourceInputs[path], sha256);
+    assert.equal(hash(source), "b7f8c3d17df3fddea4e87cd8a6fc2ac6ed0d53531714f9403b73ab72f3c39973");
+    assert.equal(
+      manifest.patchedFiles["llvm/lib/Transforms/LibFloor/MetalFinal.cpp"],
+      "b7f8c3d17df3fddea4e87cd8a6fc2ac6ed0d53531714f9403b73ab72f3c39973",
+    );
+    assert.equal(
+      hash(await readForkSource("wasm/api/air_compiler.cpp")),
+      "5d06207b69e57435934bec8e4e67e71c014d6c890fe2ff625e96cc1d4dc7a448",
+    );
+    assert.equal(
+      hash(await read("ci-compile-canary.mjs")),
+      "19415766142c77a9443478e74d5413a300397c28a1a0395b2f99d22d3547eeca",
+    );
+  },
+);
 
 test("release CI retains strict canary, failure evidence and complete source-artifact safeguards", async () => {
   const workflow = await readFile(

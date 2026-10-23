@@ -1,9 +1,16 @@
 # Offline texture runtime: sealed-worker proof
 
-This standalone synthetic harness implements a narrow part of
-`../../OFFLINE_RUNTIME_LOADING_SCOPE.md`. It does not change the production UI or
-CSP, support real inputs, integrate Pyodide/.NET, or certify the entire browser as
-a security sandbox. **The scoped Linux Chromium proof passed CI; production integration remains disabled.**
+This standalone synthetic harness preserves the narrow texture isolation proof
+below. Its `prepare-bundle.mjs` also supplies production texture assets. The
+[current production flow](../../PRODUCTION_FLOW.md) preloads public dependencies
+before private inputs but does not enforce a CSP network lockdown. No-upload
+behavior is not browser-enforced isolation, and this historical proof does not
+establish isolation of the current production application.
+
+The complete public runtime assembly passed Verify at `158d6cf`; that historical
+build result is not a real-input network-isolation or game-execution proof.
+Separate [Pyodide](PYODIDE_SCOPE.md) and [.NET](DOTNET_SCOPE.md) records retain their
+own evidence and limitations.
 
 ## Concrete boundary
 
@@ -62,13 +69,11 @@ PLAYWRIGHT_ENTRY=/absolute/path/to/playwright/index.mjs \
   node web/toolchain/offline-runtime-spike/browser-proof.mjs
 ```
 
-`.github/workflows/offline-runtime-checks.yml` rebuilds the official pinned SDK
-output and runs this proof using Playwright 1.64.1 on Ubuntu. It neither deploys
-nor uploads runtime binaries. A green result proves only this exact texture
-path on that Chromium build; it does not cover Windows/macOS, other runtime
-loaders, WebRTC, navigations, compromised code, extensions, or hosting headers.
-The production app's existing CSP is unchanged. The broader release gates remain
-in the scope document.
+The explicit local `offline-wasm` profile in [TESTING.md](../../TESTING.md)
+retains this proof; the current Verify workflow does not run it. A passing result
+proves only this texture path on the recorded Chromium build, not other runtimes,
+Windows/macOS, WebRTC, navigation, compromised code, extensions or hosting headers.
+The harness's strict CSP is separate from the production application's policy.
 
 ## Verified execution (2026-10-20)
 

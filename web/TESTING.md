@@ -33,6 +33,19 @@ local verification commands, not automatic build prerequisites. No full proof
 suite is required after every source change. Contributors install these tools;
 hosted packager users do not.
 
+Compiler source-review cases are skipped with an explicit reason by default;
+local checker and fixture tests still run. To include the source-review cases,
+point the existing test command at an already available, matching reviewed source tree:
+
+```sh
+cd web
+D2R_AIR_SOURCE_REVIEW_DIR=/absolute/path/to/reviewed/floor_llvm bun run test
+```
+
+These checks never download or execute a compiler. An explicitly set but empty,
+missing or invalid source directory fails, as do changed source digests.
+Production release authentication and the strict compile canary are unchanged.
+
 ## Local proof profiles
 
 These remain available for explicit local development only. GitHub does not run

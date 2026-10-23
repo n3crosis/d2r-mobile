@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
+  sourceReviewOptions,
   readForkSource,
   readOriginalAirProvenance,
 } from "./fixtures/air-fork-source/fork-source.mjs";
@@ -12,36 +13,44 @@ const read = (path) => readFile(new URL(path, root), "utf8");
 const hash = (source) => createHash("sha256").update(source).digest("hex");
 
 // Source identity/coverage checks only: no native opt, verifier or compiler is run.
-test("typed pointer-slot correction retains its authenticated fork source boundary", async () => {
-  const { manifest, receipt } = await readOriginalAirProvenance();
-  const path = "patches/0107-a2flo-typed-constant-pointer-slots.patch";
-  const expected = "a347fbee6ebebf76a8eae835d3bcbfaff8a4082651c2e42d6a0f980b867c27ec";
-  assert.equal(manifest.patches.length, 10);
-  assert.deepEqual(manifest.patches[6], { path, sha256: expected });
-  assert.equal(receipt.sourceInputs[path], expected);
-  assert.equal(
-    receipt.sourceInputs["patches/0106-a2flo-corpus-compiler-fixes.patch"],
-    "70e7f251eb79ef54d6725d314d0199fe813d11bba0294e349e6a9c3008976867",
-    "writer and earlier corrections retain their original provenance",
-  );
-  const source = await readForkSource("llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp");
-  assert.equal(hash(source), "bd857274c61741b968bbc5c9d7fc9a849b99757fba93290f260031e54ca65c06");
-});
+test(
+  "typed pointer-slot correction retains its authenticated fork source boundary",
+  sourceReviewOptions,
+  async () => {
+    const { manifest, receipt } = await readOriginalAirProvenance();
+    const path = "patches/0107-a2flo-typed-constant-pointer-slots.patch";
+    const expected = "a347fbee6ebebf76a8eae835d3bcbfaff8a4082651c2e42d6a0f980b867c27ec";
+    assert.equal(manifest.patches.length, 10);
+    assert.deepEqual(manifest.patches[6], { path, sha256: expected });
+    assert.equal(receipt.sourceInputs[path], expected);
+    assert.equal(
+      receipt.sourceInputs["patches/0106-a2flo-corpus-compiler-fixes.patch"],
+      "70e7f251eb79ef54d6725d314d0199fe813d11bba0294e349e6a9c3008976867",
+      "writer and earlier corrections retain their original provenance",
+    );
+    const source = await readForkSource("llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp");
+    assert.equal(hash(source), "bd857274c61741b968bbc5c9d7fc9a849b99757fba93290f260031e54ca65c06");
+  },
+);
 
-test("exact inverse merges retain authenticated nominal-root and cycle proofs", async () => {
-  const { manifest, receipt } = await readOriginalAirProvenance();
-  const path = "patches/0108-a2flo-exact-inverse-pointer-merges.patch";
-  const expected = "f64c9fcbdae68aa36438cadce6fdc3d034a9c8a994b78e6125c594150ccbbb6f";
-  assert.deepEqual(manifest.patches[7], { path, sha256: expected });
-  assert.equal(receipt.sourceInputs[path], expected);
-  const source = await readForkSource("llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp");
-  assert.equal(hash(source), "bd857274c61741b968bbc5c9d7fc9a849b99757fba93290f260031e54ca65c06");
-  assert.equal(
-    hash(await read("ci-compile-canary.mjs")),
-    "19415766142c77a9443478e74d5413a300397c28a1a0395b2f99d22d3547eeca",
-    "existing 31-call strict real-WASM canary is unchanged",
-  );
-});
+test(
+  "exact inverse merges retain authenticated nominal-root and cycle proofs",
+  sourceReviewOptions,
+  async () => {
+    const { manifest, receipt } = await readOriginalAirProvenance();
+    const path = "patches/0108-a2flo-exact-inverse-pointer-merges.patch";
+    const expected = "f64c9fcbdae68aa36438cadce6fdc3d034a9c8a994b78e6125c594150ccbbb6f";
+    assert.deepEqual(manifest.patches[7], { path, sha256: expected });
+    assert.equal(receipt.sourceInputs[path], expected);
+    const source = await readForkSource("llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp");
+    assert.equal(hash(source), "bd857274c61741b968bbc5c9d7fc9a849b99757fba93290f260031e54ca65c06");
+    assert.equal(
+      hash(await read("ci-compile-canary.mjs")),
+      "19415766142c77a9443478e74d5413a300397c28a1a0395b2f99d22d3547eeca",
+      "existing 31-call strict real-WASM canary is unchanged",
+    );
+  },
+);
 
 test("native slot matrix contains seventeen positive functions and twenty-seven isolated rejections", async () => {
   const matrix = await read("fixtures/metal-constant-pointer-slots.ll");
@@ -194,15 +203,19 @@ test("demonstrated pointer-slot MSL input is authenticated in the strict real-WA
   );
 });
 
-test("canonical GEP restoration retains its exact authenticated fork invariants", async () => {
-  const { manifest, receipt } = await readOriginalAirProvenance();
-  const path = "patches/0109-a2flo-canonical-gep-recasts.patch";
-  const expected = "52724314a6e3095290fdd933ceb0caa51e057162216d523a8c62a5a73b906e85";
-  assert.deepEqual(manifest.patches[8], { path, sha256: expected });
-  assert.equal(receipt.sourceInputs[path], expected);
-  const source = await readForkSource("llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp");
-  assert.equal(hash(source), "bd857274c61741b968bbc5c9d7fc9a849b99757fba93290f260031e54ca65c06");
-});
+test(
+  "canonical GEP restoration retains its exact authenticated fork invariants",
+  sourceReviewOptions,
+  async () => {
+    const { manifest, receipt } = await readOriginalAirProvenance();
+    const path = "patches/0109-a2flo-canonical-gep-recasts.patch";
+    const expected = "52724314a6e3095290fdd933ceb0caa51e057162216d523a8c62a5a73b906e85";
+    assert.deepEqual(manifest.patches[8], { path, sha256: expected });
+    assert.equal(receipt.sourceInputs[path], expected);
+    const source = await readForkSource("llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp");
+    assert.equal(hash(source), "bd857274c61741b968bbc5c9d7fc9a849b99757fba93290f260031e54ca65c06");
+  },
+);
 
 test("canonical GEP matrix retains nine symbolic positives and eighteen isolated rejections", async () => {
   const matrix = await read("fixtures/metal-canonical-gep-recasts.ll");

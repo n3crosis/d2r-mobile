@@ -1,13 +1,15 @@
 # Native overlay recipe, without Python
 
-This scoped implementation replaces the bounded `overlay-recipe` operation. It
-does not access a filesystem, fetch assets, serialize CASC archives, or change
-shared runtime dispatch. Inputs and outputs retain the existing worker contract.
+The [production asset runtime](../asset-runtime-js/runtime.mjs) dispatches the
+bounded `overlay-recipe` operation to this JavaScript implementation. It does not
+access a filesystem, fetch assets or serialize CASC archives. Inputs and outputs
+retain the existing worker contract.
 
 ## Upstream source revision and shell activation
 
-Production still uses the verified v1.0.18 shell contract. Empty operation options
-retain its exact historical i18n rows, four-language settings page and sidecars;
+[Production shell profiles](../../shell-profiles.mjs) select the b811b901 release
+recipe below for both v2.0.0 targets. Empty operation options still retain the
+legacy v1.0.18 i18n rows, four-language settings page and sidecars;
 `legacy-v1-data.json` records the source commit and original data hashes. A compact
 67-key exclusion and one language-row replacement reconstruct the exact old key
 order, translations and page bytes, rather than shipping duplicate recipe tables.
@@ -122,7 +124,6 @@ strings are not available; production checksum checks are unchanged.
 By default, the two PNG inputs use their known decoded test pixels. Add `--wasm`
 after building the exact PNG codec to verify that dependency too. This is
 complete synthetic recipe parity, not full-title or game compatibility evidence.
-The operation is not integrated into shared worker dispatch by this directory.
 
 The full oracle exposed a pre-existing wrapper defect: its `gen_merc_art` stub
 provided `ART` but omitted the native `DX=63` and `DY=11` used by mercenary layout

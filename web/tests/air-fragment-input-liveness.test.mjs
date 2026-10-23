@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { readForkSource } from "./fixtures/air-fork-source/fork-source.mjs";
+import { sourceReviewOptions, readForkSource } from "./fixtures/air-fork-source/fork-source.mjs";
 import { checkFragmentInputLiveness } from "../toolchain/metal-air-compiler/check-fragment-input-liveness.mjs";
 
 function syntheticIR(keepVarying, keepPosition = keepVarying) {
@@ -124,41 +124,45 @@ test("checker will not accept orphan matching descriptors or another entry/stage
     assert.throws(() => checkFragmentInputLiveness(invalid));
 });
 
-test("authenticated fork source runs narrow finalization after optimization and before verifier/output", async () => {
-  const source = await readForkSource("wasm/api/air_compiler.cpp");
-  const helper = source.slice(
-    source.indexOf("bool finalizeFragmentInputLiveness("),
-    source.indexOf("bool hasEntry("),
-  );
-  assert.match(helper, /getNamedMetadata\("air\.fragment"\)/);
-  assert.match(
-    helper,
-    /semantic->getString\(\) != "air\.fragment_input" &&\s*semantic->getString\(\) != "air\.position"/,
-  );
-  assert.match(helper, /index->getValue\(\)\.uge\(function->arg_size\(\)\)/);
-  assert.match(helper, /function->getArg\(unsigned\(index->getZExtValue\(\)\)\)->use_empty\(\)/);
-  assert.match(helper, /if \(alreadyUnused\) continue;/);
-  assert.match(
-    helper,
-    /for \(const auto &field : input->operands\(\)\) fields.push_back\(field.get\(\)\);\s*fields.push_back\(llvm::MDString::get\(context, "air.arg_unused"\)\);/,
-  );
-  assert.match(helper, /entryFields\[2\] = llvm::MDNode::get\(context, newInputs\);/);
-  assert.doesNotMatch(
-    helper,
-    /replaceAllUsesWith|replaceOperandWith|mutateType|mutateFunctionType|removeArg|setAttributes|air\.vertex|air\.kernel|air\.function_constants/,
-  );
-  const positions = [
-    "compiler.ExecuteAction(action)",
-    "auto module = action.takeModule();",
-    "if (!finalizeFragmentInputLiveness(*module))",
-    "if (llvm::verifyModule(*module, &errors))",
-    "if (!validControlStages(*module))",
-    "Output output(result->data);",
-    "if (output_kind == AIR_LLVM_TEXT)",
-    "writerSucceeded = llvm::WriteMetalLibToFile(*module, output);",
-  ].map((needle) => source.indexOf(needle));
-  assert(positions.every((p, i) => p >= 0 && (i === 0 || positions[i - 1] < p)));
-});
+test(
+  "authenticated fork source runs narrow finalization after optimization and before verifier/output",
+  sourceReviewOptions,
+  async () => {
+    const source = await readForkSource("wasm/api/air_compiler.cpp");
+    const helper = source.slice(
+      source.indexOf("bool finalizeFragmentInputLiveness("),
+      source.indexOf("bool hasEntry("),
+    );
+    assert.match(helper, /getNamedMetadata\("air\.fragment"\)/);
+    assert.match(
+      helper,
+      /semantic->getString\(\) != "air\.fragment_input" &&\s*semantic->getString\(\) != "air\.position"/,
+    );
+    assert.match(helper, /index->getValue\(\)\.uge\(function->arg_size\(\)\)/);
+    assert.match(helper, /function->getArg\(unsigned\(index->getZExtValue\(\)\)\)->use_empty\(\)/);
+    assert.match(helper, /if \(alreadyUnused\) continue;/);
+    assert.match(
+      helper,
+      /for \(const auto &field : input->operands\(\)\) fields.push_back\(field.get\(\)\);\s*fields.push_back\(llvm::MDString::get\(context, "air.arg_unused"\)\);/,
+    );
+    assert.match(helper, /entryFields\[2\] = llvm::MDNode::get\(context, newInputs\);/);
+    assert.doesNotMatch(
+      helper,
+      /replaceAllUsesWith|replaceOperandWith|mutateType|mutateFunctionType|removeArg|setAttributes|air\.vertex|air\.kernel|air\.function_constants/,
+    );
+    const positions = [
+      "compiler.ExecuteAction(action)",
+      "auto module = action.takeModule();",
+      "if (!finalizeFragmentInputLiveness(*module))",
+      "if (llvm::verifyModule(*module, &errors))",
+      "if (!validControlStages(*module))",
+      "Output output(result->data);",
+      "if (output_kind == AIR_LLVM_TEXT)",
+      "writerSucceeded = llvm::WriteMetalLibToFile(*module, output);",
+    ].map((needle) => source.indexOf(needle));
+    assert(positions.every((p, i) => p >= 0 && (i === 0 || positions[i - 1] < p)));
+  },
+);
 
 test("authored fixture keeps identical live/dead interfaces and out-of-scope resource", () => {
   const source = readFileSync(
