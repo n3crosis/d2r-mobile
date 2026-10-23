@@ -2,6 +2,7 @@
 // Export supplemental packs using main.m renamed-folder lookup and astc_pack.py finalize layout, removing only tracked owned entries.
 import { createResourceWriteBuffer } from "./resource-write-buffer.mjs";
 import { validateLegacyPackMetadata } from "./astc-output-validator.mjs";
+import { unusedOutputDirectory, withResourceOutputLock } from "./resource-output-lock.mjs";
 export const LEGACY_PACK_EXPORT_MARKER = ".d2rm-legacy-pack-export.json";
 export const LEGACY_PACK_EXPORT_CHUNK_BYTES = 64 * 1024;
 const encoder = new TextEncoder();
@@ -19,13 +20,34 @@ export class LegacyPackExportError extends Error {
  * finalizedPack 必须来自仍有效的内部最终暂存；哈希和位置契约不是认证。既不关闭源也不联网。
  * finalizedPack must come from a live internal finalized stage; hash/location contracts are not authentication. Never disposes the source or uses networking.
  */
-export async function exportLegacyDevicePack({
+export async function exportLegacyDevicePack(options = {}) {
+  try {
+    return await withResourceOutputLock(
+      options.locks ?? globalThis.navigator?.locks,
+      options.signal,
+      () => exportLegacyPack(options),
+    );
+  } catch (cause) {
+    if (cause instanceof LegacyPackExportError) throw cause;
+    throw new LegacyPackExportError(cause, {
+      status: "incomplete",
+      code: options.signal?.aborted ? "CANCELLED" : "LEGACY_PACK_EXPORT_FAILED",
+      directoryName: null,
+      filesWritten: 0,
+      bytesWritten: 0,
+      totalBytes: 0,
+      cleanupComplete: true,
+      incompleteMarkerPresent: false,
+      cleanupCodes: [],
+    });
+  }
+}
+async function exportLegacyPack({
   finalizedPack,
   outputDirectoryHandle,
   signal,
   onProgress,
   secureContext = globalThis.isSecureContext,
-  randomUUID = () => globalThis.crypto.randomUUID(),
 } = {}) {
   let directoryName = null,
     folder,
@@ -170,13 +192,7 @@ export async function exportLegacyDevicePack({
     if ((await outputDirectoryHandle.queryPermission({ mode: "readwrite" })) !== "granted")
       fail("LEGACY_PACK_PERMISSION_REQUIRED");
     check();
-    const uuid = randomUUID();
-    if (
-      typeof uuid !== "string" ||
-      !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(uuid)
-    )
-      fail("LEGACY_PACK_INVALID_ID");
-    directoryName = `Legacy Device Pack-${uuid}`;
+    directoryName = await unusedOutputDirectory(outputDirectoryHandle, "Legacy Device Pack", check);
     folder = await create(outputDirectoryHandle, directoryName, "directory");
     marker = await create(folder.handle, LEGACY_PACK_EXPORT_MARKER, "file");
     await writeMarker("incomplete");

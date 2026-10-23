@@ -4,6 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { exportRomfsResources, RESOURCE_EXPORT_MARKER } from "../resource-folder-export.mjs";
+import { resourceOutputLocks } from "./fixtures/resource-output-locks.mjs";
 const moduleSource = await readFile(
   new URL("../resource-folder-export.mjs", import.meta.url),
   "utf8",
@@ -80,7 +81,11 @@ for (const abortFails of [true, false])
     const fs = fixture(abortFails);
     try {
       await assert.rejects(
-        exportRomfsResources({ romfs: fs.romfs, outputDirectoryHandle: fs.root }),
+        exportRomfsResources({
+          romfs: fs.romfs,
+          outputDirectoryHandle: fs.root,
+          locks: resourceOutputLocks(),
+        }),
         (error) => {
           assert.equal(error.cause, fs.primary);
           assert.equal(error.report.cleanupComplete, !abortFails);
@@ -96,7 +101,8 @@ for (const abortFails of [true, false])
         assert.equal(fs.events.length, 0);
         const folder = [...fs.root.entries.values()][0];
         assert.ok(folder.entries.has(RESOURCE_EXPORT_MARKER));
-        assert.ok(folder.entries.get("data").entries.has("00-00000001.data"));
+        assert.equal([...fs.root.entries.keys()][0], "data");
+        assert.ok(folder.entries.has("00-00000001.data"));
       } else assert.equal(fs.root.entries.size, 0);
     } finally {
       if (prior) Object.defineProperty(globalThis, "isSecureContext", prior);

@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { exportRomfsResources } from "../resource-folder-export.mjs";
 import { exportLegacyDevicePack } from "../legacy-device-pack-export.mjs";
+import { resourceOutputLocks } from "./fixtures/resource-output-locks.mjs";
 import {
   createResourceWriteBuffer,
   RESOURCE_WRITE_BUFFER_BYTES as BATCH,
@@ -58,7 +59,7 @@ function fixture(kind, mode) {
         size = 0;
         return {
           async write(bytes) {
-            if (name === "000-test.bin" || name === "00-00000008.data") {
+            if (name === "0-test.bin" || name === "00-00000008.data") {
               calls.push(bytes.length);
               assert.ok(bytes.length <= BATCH);
               if (mode === "write-fail" && calls.length === 2) throw stop;
@@ -86,6 +87,7 @@ function fixture(kind, mode) {
   const run = () =>
     kind === "legacy"
       ? exportLegacyDevicePack({
+          locks: resourceOutputLocks(),
           outputDirectoryHandle: root,
           secureContext: true,
           signal: controller.signal,
@@ -95,12 +97,13 @@ function fixture(kind, mode) {
           },
         })
       : exportRomfsResources({
+          locks: resourceOutputLocks(),
           outputDirectoryHandle: root,
           signal: controller.signal,
           romfs: {
-            files: [{ path: "000-test.bin", size: BigInt(contents.length) }, ...native],
+            files: [{ path: "data/0-test.bin", size: BigInt(contents.length) }, ...native],
             getFile(path) {
-              if (path === "000-test.bin") return { size: BigInt(contents.length), readAt };
+              if (path === "data/0-test.bin") return { size: BigInt(contents.length), readAt };
               const entry = native.find((file) => file.path === path);
               return {
                 size: entry.size,

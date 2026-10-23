@@ -3,6 +3,8 @@
 import { createResourceWriteBuffer } from "./resource-write-buffer.mjs";
 import { indexFiles, safeRelativePath } from "./preflight.mjs";
 import { ROMFS_LIMITS } from "./romfs-tree.mjs";
+import { verifyResourceData } from "./resource-data-reuse.mjs";
+import { withResourceOutputLock } from "./resource-output-lock.mjs";
 
 /**
  * 原始已认证 RomFS 导出，与未签名 IPA 分离。不使用 ZIP、上传、整游戏缓冲区、原生资源更改或调用方提供的有效标志。romfs 必须来自 readAuthenticatedAssets(extracted, selection).romfs，且该提取会话仍有效。本模块不会认证调用方虚构的读取器；编排适配器负责强制验证来源。
@@ -131,22 +133,39 @@ export function validateResourceInventory(romfs) {
 }
 
 /**
- * 目录选择器及权限属于此前明确的用户手势。仅触及全新且不可预测的子目录。失败时只逐项删除已跟踪且句柄仍匹配的条目，绝不递归删除。不支持并发外部写入者（File System Access 没有独占创建原语）。保留未知新增项及替换项。onProgress 仅供参考，接收 BigInt 计数器，最多每 100ms 通知一次，另加文件/阶段切换通知。未编码 BigInt 前不要对其调用 JSON.stringify。
+ * 目录选择器及权限属于此前明确的用户手势。只创建 data 子目录；现有目录仅逐字节校验而不写入。失败时只逐项删除已跟踪且句柄仍匹配的自有条目，绝不递归删除。Web Lock 排除同源导出；不支持并发外部写入者。保留未知新增项及替换项。
  * The directory picker/permission belongs to a prior explicit user gesture.
- * Only a fresh unpredictable child is touched. On failure, removal is limited
+ * Create only data; an existing data directory is compared read-only. On failure, removal is limited
  * to individually tracked entries whose handles still match, never recursive.
- * A concurrent external writer is not supported (File System Access has no
+ * A Web Lock excludes same-origin exports. A concurrent external writer is not supported (File System Access has no
  * exclusive-create primitive). Unknown additions/replacements are preserved.
  *
  * onProgress is advisory and receives BigInt counters, at most every 100ms plus
  * file/stage transitions. Do not JSON.stringify it without encoding BigInts.
  */
-export async function exportRomfsResources({
-  romfs,
-  outputDirectoryHandle,
-  signal,
-  onProgress,
-} = {}) {
+export async function exportRomfsResources(options = {}) {
+  try {
+    return await withResourceOutputLock(
+      options.locks ?? globalThis.navigator?.locks,
+      options.signal,
+      () => exportResourceData(options),
+    );
+  } catch (cause) {
+    if (cause instanceof ResourceExportError) throw cause;
+    throw new ResourceExportError(cause, {
+      status: "incomplete",
+      directoryName: null,
+      cleanupComplete: true,
+      incompleteMarkerPresent: false,
+      cleanupCodes: [],
+      reason: ["RESOURCE_EXPORT_BUSY", "RESOURCE_EXPORT_LOCK_UNAVAILABLE"].includes(cause?.message)
+        ? cause.message
+        : undefined,
+    });
+  }
+}
+
+async function exportResourceData({ romfs, outputDirectoryHandle, signal, onProgress } = {}) {
   let directoryName = null,
     folder,
     marker,
@@ -157,7 +176,11 @@ export async function exportRomfsResources({
     totalBytes = 0n,
     totalFiles = 0;
   let markerPresent = false,
-    lastProgress = 0;
+    lastProgress = 0,
+    existingDataPreserved = false,
+    verifying = false,
+    filesVerified = 0,
+    bytesVerified = 0n;
   const owned = [],
     directories = new Map();
   const check = () => signal?.throwIfAborted();
@@ -171,9 +194,10 @@ export async function exportRomfsResources({
           stage,
           state: stage === "complete" ? "complete" : "running",
           directoryName,
-          filesWritten,
+          operation: verifying ? "verify" : "write",
+          filesWritten: verifying ? filesVerified : filesWritten,
           totalFiles,
-          bytesWritten,
+          bytesWritten: verifying ? bytesVerified : bytesWritten,
           totalBytes,
         }),
       );
@@ -240,9 +264,9 @@ export async function exportRomfsResources({
   async function writeMarker(status) {
     check();
     const record = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       status,
-      resourceLayout: "raw-romfs-relative-paths",
+      resourceLayout: "raw-data-directory",
       files: totalFiles,
       bytes: totalBytes.toString(),
       filesWritten,
@@ -265,9 +289,22 @@ export async function exportRomfsResources({
   }
   try {
     check();
-    const planned = inventory(romfs);
-    totalBytes = planned.totalBytes;
-    totalFiles = planned.entries.length;
+    const entries = inventory(romfs)
+      .entries.filter((entry) => entry.parts[0] === "data")
+      .map((entry) => ({
+        ...entry,
+        sourcePath: entry.path,
+        path: entry.parts.slice(1).join("/"),
+        parts: entry.parts.slice(1),
+      }));
+    requireValue(
+      entries.every(
+        (entry) => entry.parts.length && entry.parts[0].toLowerCase() !== RESOURCE_EXPORT_MARKER,
+      ),
+      "RESOURCE_MARKER_COLLISION",
+    );
+    totalBytes = entries.reduce((sum, entry) => sum + entry.size, 0n);
+    totalFiles = entries.length;
     requireValue(globalThis.isSecureContext === true, "RESOURCE_SECURE_CONTEXT_REQUIRED");
     requireValue(
       outputDirectoryHandle?.kind === "directory" &&
@@ -281,20 +318,64 @@ export async function exportRomfsResources({
       "RESOURCE_WRITE_PERMISSION_REQUIRED",
     );
     check();
-    requireValue(
-      typeof globalThis.crypto?.randomUUID === "function",
-      "RESOURCE_RANDOM_ID_UNAVAILABLE",
-    );
-    directoryName = `D2R-resources-${globalThis.crypto.randomUUID()}`;
+    directoryName = "data";
+    let existing;
+    try {
+      existing = await outputDirectoryHandle.getDirectoryHandle(directoryName);
+    } catch (cause) {
+      if (cause?.name !== "NotFoundError") {
+        existingDataPreserved = true;
+        fail("RESOURCE_EXISTING_DATA_UNVERIFIED");
+      }
+    }
+    if (existing) {
+      existingDataPreserved = verifying = true;
+      emit("resources", true);
+      try {
+        await verifyResourceData({
+          directory: existing,
+          entries,
+          romfs,
+          markerName: RESOURCE_EXPORT_MARKER,
+          signal,
+          onProgress: (counts) => {
+            filesVerified = counts.filesVerified;
+            bytesVerified = counts.bytesVerified;
+            emit("resources");
+          },
+        });
+        requireValue(
+          await existing.isSameEntry(await outputDirectoryHandle.getDirectoryHandle(directoryName)),
+          "RESOURCE_EXISTING_DATA_UNVERIFIED",
+        );
+        check();
+      } catch (cause) {
+        if (signal?.aborted) throw cause;
+        throw new Error("RESOURCE_EXISTING_DATA_UNVERIFIED", { cause });
+      }
+      writeBuffer.dispose();
+      emit("complete", true);
+      return Object.freeze({
+        status: "complete",
+        directoryName,
+        resourceFolder: directoryName,
+        reused: true,
+        filesWritten,
+        bytesWritten,
+        filesVerified,
+        bytesVerified,
+        totalBytes,
+      });
+    }
     folder = await create(outputDirectoryHandle, directoryName, "directory");
     directories.set("", folder.handle);
     marker = await create(folder.handle, RESOURCE_EXPORT_MARKER, "file");
     await writeMarker("incomplete");
     check();
     emit("resources", true);
-    for (const entry of planned.entries) {
+    for (const entry of entries) {
       check();
-      const source = romfs.getFile(entry.path);
+      const source = romfs.getFile(entry.sourcePath);
       requireValue(
         source && source.size === entry.size && typeof source.readAt === "function",
         "RESOURCE_READER_CHANGED",
@@ -410,6 +491,9 @@ export async function exportRomfsResources({
     }
     throw new ResourceExportError(cause, {
       status: "incomplete",
+      ...(existingDataPreserved
+        ? { existingDataPreserved: true, reason: "RESOURCE_EXISTING_DATA_UNVERIFIED" }
+        : {}),
       code: signal?.aborted ? "CANCELLED" : "RESOURCE_EXPORT_FAILED",
       directoryName,
       filesWritten,

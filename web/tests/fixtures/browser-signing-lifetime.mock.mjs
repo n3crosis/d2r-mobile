@@ -167,7 +167,7 @@ mock.module("../../packaging-job.mjs", {
 globalThis.isSecureContext = true;
 globalThis.Worker = class {};
 Object.defineProperty(globalThis, "navigator", {
-  value: { storage: { getDirectory() {}, estimate() {} } },
+  value: { locks: { request() {} }, storage: { getDirectory() {}, estimate() {} } },
   configurable: true,
 });
 const { prepareBrowserPackager } = await import("../../browser-packager.mjs");

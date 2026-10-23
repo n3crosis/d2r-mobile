@@ -96,7 +96,8 @@ test("cache help clearly separates manual private-cache cleanup from files the u
   for (const text of catalog.dmWebFaqCacheAnswer) {
     assert.match(text, /D2R-cache/);
     assert.match(text, /D2R-resources-\*/);
-    assert.match(text, /Legacy Device Pack-\*/);
+    assert.match(text, /Legacy Device Pack/);
+    assert.match(text, /data/);
   }
   assert.match(
     catalog.dmWebFaqCacheAnswer[0],

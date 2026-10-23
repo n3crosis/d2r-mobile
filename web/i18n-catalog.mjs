@@ -258,8 +258,8 @@ export const catalog = Object.freeze({
     "%s失败%s。%s没有可用的完整 IPA。"
   ],
   "dmWebOutputPossible": [
-    " Resources may have been saved in a D2R-resources subfolder inside the selected folder.",
-    " 资源可能已保存到所选文件夹内的 D2R-resources 子文件夹。"
+    " Resources may have been saved in the data folder inside the selected folder.",
+    " 资源可能已保存到所选文件夹内的 data 文件夹。"
   ],
   "dmWebOutputNone": [
     " No resources were exported by this attempt.",
@@ -1342,8 +1342,8 @@ export const catalog = Object.freeze({
     "重复生成遇到问题，如何处理缓存？"
   ],
   "dmWebFaqCacheAnswer": [
-    "First try Ignore saved build cache in Advanced. If cleanup is still needed, stop generation and close other packager tabs, then delete only the D2R-cache folder inside your selected game folder and retry. Do not delete D2R-resources-*, Legacy Device Pack-*, original game files, keys, or saves. Verified public runtime downloads in the browser are separate.",
-    "先尝试在“高级选项”中勾选“忽略已保存的生成缓存”。如仍需清理，请先停止生成并关闭其他打包页面，然后仅删除所选游戏文件夹内的 D2R-cache 文件夹，再重试。不要删除 D2R-resources-*、Legacy Device Pack-*、原始游戏文件、密钥或存档。此操作与浏览器中已验证的公开运行组件下载缓存无关。"
+    "First try Ignore saved build cache in Advanced. If cleanup is still needed, stop generation and close other packager tabs, then delete only the D2R-cache folder inside your selected game folder and retry. Do not delete data, older D2R-resources-* exports, Legacy Device Pack folders, original game files, keys, or saves. Verified public runtime downloads in the browser are separate.",
+    "先尝试在“高级选项”中勾选“忽略已保存的生成缓存”。如仍需清理，请先停止生成并关闭其他打包页面，然后仅删除所选游戏文件夹内的 D2R-cache 文件夹，再重试。不要删除 data、旧的 D2R-resources-* 导出目录、Legacy Device Pack 文件夹、原始游戏文件、密钥或存档。此操作与浏览器中已验证的公开运行组件下载缓存无关。"
   ],
   "dmWebCacheUnavailable": [
     "Saved build cache is unavailable; continuing without it.",
@@ -1360,5 +1360,21 @@ export const catalog = Object.freeze({
   "dmWebUnsignedFallbackHelp": [
     "Local signing did not finish. Retry signing above, or download this unsigned IPA to sign with another tool. It is not ready to install.",
     "本地签名尚未完成。请在上方重试签名，或下载此未签名 IPA 后使用其他工具签名。它尚不能直接安装。"
+  ],
+  "dmWebResourceVerifyProgress": [
+    "Checking existing resources: %s/%s files; %s/%s MB",
+    "正在检查已有资源：%s/%s 个文件；%s/%s MB"
+  ],
+  "dmWebExistingDataUnverified": [
+    " The existing data folder could not be verified against this input. Its files were not changed. Move it aside before exporting again, or select Skip resource export (already on device) if you already have a complete matching copy.",
+    " 现有 data 文件夹无法通过与本次输入的比对，其中的文件未被更改。请先将它移到其他位置再导出；如果已有完整匹配的资源，也可勾选“跳过资源导出（设备上已有）”。"
+  ],
+  "dmWebResourceExportBusy": [
+    " Another tab is exporting resources. This attempt did not change resource files; wait for that export to finish and retry.",
+    " 另一个标签页正在导出资源。本次没有改动资源文件，请等待该导出结束后重试。"
+  ],
+  "dmWebResourceExportLockUnavailable": [
+    " This browser cannot safely lock resource export, so resource files were not changed. Use a desktop Chromium browser with Web Locks support.",
+    " 当前浏览器无法安全锁定资源导出，因此没有改动资源文件。请使用支持 Web Locks 的桌面 Chromium 浏览器。"
   ]
 });

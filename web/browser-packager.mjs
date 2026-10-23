@@ -48,6 +48,7 @@ export function assertBrowserPackagerCapabilities(environment = globalThis) {
   if (
     !environment.isSecureContext ||
     typeof environment.navigator?.storage?.getDirectory !== "function" ||
+    typeof environment.navigator?.locks?.request !== "function" ||
     typeof environment.Worker !== "function" ||
     typeof environment.DecompressionStream !== "function" ||
     !environment.crypto?.subtle ||
@@ -334,9 +335,9 @@ export async function prepareBrowserPackager({
                 exportRomfsResources({
                   romfs,
                   // 仅根目录发现绝不遍历生成的资源文件夹。
-                  // 导出只写入新的 UUID 子目录，绝不写入源文件。
+                  // 仅新建 data；现有 data 逐字节校验后复用，绝不覆写源文件。
                   // Root-only discovery never traverses generated resource folders.
-                  // Export writes only to a fresh UUID child, never the source files.
+                  // Create data or verify/reuse it read-only, never overwrite source files.
                   outputDirectoryHandle: input,
                   signal,
                   onProgress: (progress) => {

@@ -10,7 +10,7 @@ function supported() {
   const unused = () => assert.fail("presence check must not invoke APIs");
   return {
     isSecureContext: true,
-    navigator: { storage: { getDirectory: unused, estimate: unused } },
+    navigator: { locks: { request: unused }, storage: { getDirectory: unused, estimate: unused } },
     Worker: unused,
     DecompressionStream: class {
       constructor(format) {
@@ -41,6 +41,7 @@ test("storage estimates are optional and never read by the capability check", ()
 test("missing or non-callable required methods use the existing unsupported code", () => {
   for (const path of [
     ["navigator", "storage", "getDirectory"],
+    ["navigator", "locks", "request"],
     ["Worker"],
     ["DecompressionStream"],
     ["crypto", "randomUUID"],

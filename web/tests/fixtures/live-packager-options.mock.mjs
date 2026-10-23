@@ -123,7 +123,7 @@ mock.module("../../packaging-job.mjs", {
 globalThis.isSecureContext = true;
 globalThis.Worker = class {};
 Object.defineProperty(globalThis, "navigator", {
-  value: { storage: { getDirectory: async () => ({ synthetic: true }) } },
+  value: { locks: { request() {} }, storage: { getDirectory: async () => ({ synthetic: true }) } },
   configurable: true,
 });
 globalThis.fetch = () => {

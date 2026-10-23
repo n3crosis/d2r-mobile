@@ -2,13 +2,13 @@
 // Verify export, cancellation and ownership with synthetic staged sources and filesystem doubles, not browser proof.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { resourceOutputLocks } from "./fixtures/resource-output-locks.mjs";
 import {
   exportLegacyDevicePack,
   LegacyPackExportError,
   LEGACY_PACK_EXPORT_MARKER as MARKER,
 } from "../legacy-device-pack-export.mjs";
-const uuid = "12345678-1234-4123-8123-123456789abc",
-  folderName = `Legacy Device Pack-${uuid}`;
+const folderName = "Legacy Device Pack";
 function fixture(faults = {}) {
   const events = [];
   function directory(path = "") {
@@ -100,7 +100,7 @@ function fixture(faults = {}) {
     finalizedPack,
     outputDirectoryHandle: root,
     secureContext: true,
-    randomUUID: () => uuid,
+    locks: resourceOutputLocks(),
   };
   return { root, events, content, pack, options };
 }
@@ -126,10 +126,9 @@ test("exports native manifest and archive to fresh renamed directory with commit
   assert.equal(progress.at(-1).state, "complete");
   assert.ok(fs.root.entries.has("unrelated"));
 });
-test("collision, invalid metadata/source/signal and denied permission never overwrite", async () => {
-  for (const mode of ["collision", "pack", "source", "signal", "permission"]) {
+test("invalid metadata/source/signal and denied permission never overwrite", async () => {
+  for (const mode of ["pack", "source", "signal", "permission"]) {
     const fs = fixture(mode === "permission" ? { permission: "denied" } : {});
-    if (mode === "collision") fs.root.entries.set(folderName, { kind: "directory" });
     if (mode === "pack") fs.options.finalizedPack.pack = { ...fs.pack, name: "../bad" };
     if (mode === "source") fs.options.finalizedPack.source.size++;
     if (mode === "signal") fs.options.signal = {};
@@ -143,6 +142,19 @@ test("collision, invalid metadata/source/signal and denied permission never over
     );
     assert.ok(fs.root.entries.has("unrelated"));
   }
+});
+test("simple numbered legacy folders preserve every earlier file and directory", async () => {
+  const fs = fixture();
+  const first = await exportLegacyDevicePack(fs.options);
+  const original = fs.root.entries.get(folderName);
+  const collision = { kind: "file", private: "untouched" };
+  fs.root.entries.set(`${folderName}-2`, collision);
+  const next = await exportLegacyDevicePack(fs.options);
+  assert.equal(first.directoryName, folderName);
+  assert.equal(next.directoryName, `${folderName}-3`);
+  assert.equal(fs.root.entries.get(folderName), original);
+  assert.equal(fs.root.entries.get(`${folderName}-2`), collision);
+  assert.equal(fs.events.filter(([operation]) => operation === "remove").length, 0);
 });
 test("read/write/close failures remove only owned output and report partial counts", async () => {
   for (const mode of ["read", "write", "close", "short"]) {

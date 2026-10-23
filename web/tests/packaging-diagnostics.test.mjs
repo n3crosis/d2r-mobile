@@ -446,3 +446,48 @@ test("shader progress exposes only a bounded actual compiler worker count", () =
     assert.equal(progress.compilerWorkers, undefined);
   }
 });
+test("direct data reuse has checking progress and non-destructive collision instructions", () => {
+  const progress = sanitizeResourceProgress({
+    operation: "verify",
+    filesWritten: 1,
+    totalFiles: 2,
+    bytesWritten: 3,
+    totalBytes: 4,
+  });
+  assert.match(
+    resourceProgressLabel({ stage: "resources", state: "running", resourceProgress: progress }),
+    /^Checking existing resources:/,
+  );
+  assert.deepEqual(sanitizeResourceOutcome({ status: "complete", directoryName: "data" }), {
+    status: "complete",
+    directoryName: "data",
+  });
+  const message = packagingFailureMessage({
+    stage: "output",
+    outputStarted: true,
+    resources: {
+      status: "incomplete",
+      directoryName: "data",
+      cleanupComplete: true,
+      incompleteMarkerPresent: false,
+      existingDataPreserved: true,
+      reason: "RESOURCE_EXISTING_DATA_UNVERIFIED",
+    },
+  });
+  assert.match(message, /existing data folder could not be verified/);
+  assert.match(message, /files were not changed/);
+  assert.match(message, /Skip resource export/);
+  assert.doesNotMatch(message, /export was removed|Complete game resources remain/);
+  assert.doesNotMatch(
+    JSON.stringify(
+      sanitizeResourceOutcome({
+        status: "incomplete",
+        directoryName: "data",
+        cleanupComplete: true,
+        incompleteMarkerPresent: false,
+        reason: "PRIVATE-PATH",
+      }),
+    ),
+    /PRIVATE/,
+  );
+});

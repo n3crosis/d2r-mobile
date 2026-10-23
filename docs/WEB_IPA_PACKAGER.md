@@ -32,15 +32,17 @@ Developer/native-reference tooling can still require Python and .NET.
 4. Conversion performs extraction, program rewriting, Guest.framework generation,
    native art/HUD and table generation, overlays and shader translation. The app
    template is prebuilt iOS build input, not a command-line shell or ready IPA.
-5. Bulk resources stream to a new `D2R-resources-<UUID>` child of the input folder.
+5. Bulk resources stream directly to `data` inside the input folder, without a wrapper.
+   Existing `data` is reused only after a complete bounded comparison with the
+   current input; mismatches stop export without changing that folder.
    The validated IPA is offered as a bounded Blob browser download, not saved
    directly into that folder. A visible download link supports retry; the browser
    controls the download destination. The IPA does not contain all resources.
 6. Sign and install the IPA separately, then copy the completed
-   `D2R-resources-<UUID>` folder into **On My iPhone / D2R Mobile** (or the
-   corresponding app folder on iPad) in Files, keeping its `data` child intact.
+   `data` folder into **On My iPhone / D2R Mobile** (or the
+   corresponding app folder on iPad) in Files, keeping its name and contents intact.
    The experimental **Older-GPU option** also generates a separate
-   `Legacy Device Pack-<UUID>` folder. When enabled, copy that completed folder
+   `Legacy Device Pack` folder (`-2`, `-3`, etc. if the name already exists). When enabled, copy that completed folder
    alongside the game-resource folder, keeping its `data` child and
    `manifest.json` intact; it must match the IPA generated in the same run.
    Neither resource set is bundled into the IPA. Do not copy incomplete outputs.
@@ -58,7 +60,7 @@ Developer/native-reference tooling can still require Python and .NET.
 | Program conversion   | [`web/runtime-sealing/program-worker.mjs`](../web/runtime-sealing/program-worker.mjs): JavaScript rewriter with Capstone/LZ4 WASM, not browser Python                                          |
 | Art and tables       | [`web/production-assets.mjs`](../web/production-assets.mjs), [`web/production-derived.mjs`](../web/production-derived.mjs): authenticated local assets and browser transforms                  |
 | Shaders              | [`web/production-shaders.mjs`](../web/production-shaders.mjs), [`web/sealed-runtime/dotnet-worker.mjs`](../web/sealed-runtime/dotnet-worker.mjs): retained .NET shader runtime and SPIRV-Cross |
-| Resources            | [`web/resource-folder-export.mjs`](../web/resource-folder-export.mjs): fresh child directory, streamed chunks and incomplete markers                                                           |
+| Resources            | [`web/resource-folder-export.mjs`](../web/resource-folder-export.mjs): direct data folder, bounded verified reuse and owned cleanup                                                            |
 | IPA                  | [`web/browser-blob-output.mjs`](../web/browser-blob-output.mjs), [`web/browser-staged-output.mjs`](../web/browser-staged-output.mjs): staged validation and bounded final Blob                 |
 | Public runtime build | [`web/runtime-build/README.md`](../web/runtime-build/README.md): developer assembly, pinned inventory and deployment artifacts                                                                 |
 

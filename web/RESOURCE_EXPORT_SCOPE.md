@@ -27,15 +27,29 @@ The production flow uses the single input directory, selected and granted
 read/write access by the user before packaging, as the resource parent. This
 module never opens a picker or asks for broader access. It never modifies
 existing NSPs or key files, and input discovery does not recurse into children.
-The exporter creates a fresh `D2R-resources-<UUID>` child and preserves every raw
-RomFS relative path beneath it, including `data/...`. It neither builds a ZIP32
-resource archive nor changes the native shell's layout. A collision is an error,
-never permission to reuse or overwrite an existing user entry.
+The exporter creates `data` directly inside that input folder and writes only
+RomFS `data/...` members into it, without a wrapper or UUID. The native locator
+accepts `Documents/data` directly. No ZIP32 resource archive or native layout
+change is involved.
+
+An existing `data` is never overwritten or cleaned up. Its full expected file
+set is checked against the current source in bounded 64 KiB byte comparisons.
+Only an exact match is reused, read-only; missing/extra files, wrong sizes,
+changed bytes or replaced handles stop export. Existing export markers are not
+proof and are not rewritten. The comparison reads the source again (including
+package decryption where required), but does not duplicate disk writes. This
+checks the local folder, not files on a device. If verification fails, preserve
+or move that folder aside, or explicitly skip export when you already have a
+complete matching resource set.
+
+Older `D2R-resources-<UUID>` exports remain untouched. You may move their inner
+`data` folder to the input folder yourself; it must pass the same full comparison
+before reuse. No automatic migration, deletion or trust in old markers occurs.
 
 Before creating output, metadata is bounded and the eighteen required full-size
 `data/*.data` archives must match the native source's exact file-size table.
 This rejects missing/wrong-version resource inventories early. All authenticated
-RomFS files are exported, including optional language archives, not just the
+RomFS data members are exported, including optional language archives, not just the
 eighteen required by the native validator. Source authentication and destination
 file-size checks are not claims of end-to-end on-device compatibility.
 
@@ -55,7 +69,7 @@ file-size checks are not claims of end-to-end on-device compatibility.
   counted as complete. There is no free-space reservation API for an arbitrary
   user-selected filesystem directory. Disk-full, revocation and browser I/O
   errors stop export and trigger owned cleanup.
-- `.d2rm-resource-export.json` begins with `status: "incomplete"`. Only after all
+- For a new export, `data/.d2rm-resource-export.json` begins with `status: "incomplete"`. Only after all
   bytes/files finish does its final transactional close publish
   `status: "complete"`, with exact decimal-string byte totals. That is the
   resource-export completion boundary; late cancellation does not relabel it.
@@ -71,15 +85,17 @@ The incomplete marker is retained when payload cleanup fails. The thrown
 `ResourceExportError.report` identifies the generated folder and whether cleanup
 completed; the UI must not report unqualified success or guaranteed rollback.
 
-The browser API has no exclusive directory creation operation. The implementation
-uses a cryptographically fresh UUID and explicit absence checks; concurrent
-external modifications to the new output subtree are unsupported. Process/browser
-termination can leave a partial folder and incomplete marker. There is no
-background deletion, automatic resume, or unknown-folder scavenging.
+The browser API has no exclusive directory creation operation. A required,
+origin-wide Web Lock covers creation, marker reservation, copy/verification and
+cleanup, preventing concurrent packager tabs from claiming the same output.
+Explicit absence checks remain mandatory. Arbitrary external modifications to
+the output subtree are unsupported; detected replacements are preserved and
+rejected. Process/browser termination can leave partial data and an incomplete
+marker. There is no background deletion or unknown-folder scavenging.
 
 To use the unchanged iOS shell after signing/installing separately, copy the
-completed resource folder into the app's Files/Documents location. Its `data`
-child remains within the native locator's supported nesting depth. This exporter
+completed `data` folder into the app's Files/Documents location, keeping its name
+and contents intact. No outer resource folder is needed. This exporter
 does not sign/install the IPA or copy resources onto an iPhone.
 
 No new test suites, fixtures, browser runs or CI were added for this module, per

@@ -10,8 +10,8 @@ const defaults = {
   version: "1.0",
   buildVersion: "1",
 };
-const resources = { status: "complete", directoryName: "D2R-resources-authored-unique-id" };
-const legacyPack = { status: "complete", directoryName: "Legacy Device Pack-authored-other-id" };
+const resources = { status: "complete", directoryName: "data" };
+const legacyPack = { status: "complete", directoryName: "Legacy Device Pack-3" };
 
 test("instructions preserve the actual produced folder names and custom app name", () => {
   const result = createPostGenerationGuide({ resources, legacyPack }, "My D2R");

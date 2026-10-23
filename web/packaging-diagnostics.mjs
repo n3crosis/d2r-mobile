@@ -85,7 +85,10 @@ export function sanitizeResourceProgress(value) {
     progress.bytesWritten > progress.totalBytes
   )
     return undefined;
-  return Object.freeze(progress);
+  return Object.freeze({
+    ...progress,
+    ...(value.operation === "verify" ? { operation: "verify" } : {}),
+  });
 }
 // 高频资源计数仅显示在现有状态行；活动日志保留阶段事件。
 // Frequent resource counters belong only in the existing status line; activity logs keep stage events.
@@ -94,7 +97,7 @@ export function resourceProgressLabel(event) {
   const progress = sanitizeResourceProgress(event.resourceProgress);
   if (!progress) return null;
   return t(
-    "dmWebResourceProgress",
+    progress.operation === "verify" ? "dmWebResourceVerifyProgress" : "dmWebResourceProgress",
     progress.filesWritten,
     progress.totalFiles,
     (progress.bytesWritten / 1_000_000).toFixed(1),
@@ -156,9 +159,10 @@ export function sanitizeResourceOutcome(outcome) {
   if (
     directoryName !== null &&
     (typeof directoryName !== "string" ||
-      !/^D2R-resources-[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(
-        directoryName,
-      ))
+      (directoryName !== "data" &&
+        !/^D2R-resources-[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(
+          directoryName,
+        )))
   )
     return undefined;
   if (outcome.status === "complete")
@@ -173,6 +177,16 @@ export function sanitizeResourceOutcome(outcome) {
     directoryName,
     cleanupComplete: outcome.cleanupComplete,
     incompleteMarkerPresent: outcome.incompleteMarkerPresent,
+    ...(outcome.existingDataPreserved === true && directoryName === "data"
+      ? { existingDataPreserved: true }
+      : {}),
+    ...([
+      "RESOURCE_EXISTING_DATA_UNVERIFIED",
+      "RESOURCE_EXPORT_BUSY",
+      "RESOURCE_EXPORT_LOCK_UNAVAILABLE",
+    ].includes(outcome.reason)
+      ? { reason: outcome.reason }
+      : {}),
   });
 }
 export function packagingFailureMessage(report) {
@@ -185,7 +199,12 @@ export function packagingFailureMessage(report) {
     report?.outputStarted === true && !resourcesSkipped
       ? t("dmWebOutputPossible")
       : t("dmWebOutputNone");
-  if (resources?.status === "complete") output = t("dmWebOutputComplete", resources.directoryName);
+  if (resources?.existingDataPreserved) output = t("dmWebExistingDataUnverified");
+  else if (resources?.reason === "RESOURCE_EXPORT_BUSY") output = t("dmWebResourceExportBusy");
+  else if (resources?.reason === "RESOURCE_EXPORT_LOCK_UNAVAILABLE")
+    output = t("dmWebResourceExportLockUnavailable");
+  else if (resources?.status === "complete")
+    output = t("dmWebOutputComplete", resources.directoryName);
   else if (resources?.cleanupComplete === true) output = t("dmWebOutputRemoved");
   else if (resources?.directoryName)
     output = t(
