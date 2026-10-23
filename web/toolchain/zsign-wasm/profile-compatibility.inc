@@ -1,7 +1,8 @@
 // 离线兼容性门禁，不验证 Apple 信任链、撤销状态或设备安装资格。
 // Offline compatibility gate, not Apple trust-chain, revocation or device-install verification.
 // 包含于 openssl.cpp；openssl.h 声明 ValidateProfileForBundle(const string&, bool* = nullptr)。
-// Include in openssl.cpp; declare ValidateProfileForBundle(const string&, bool* = nullptr) in openssl.h.
+// Include in openssl.cpp; declare ValidateProfileForBundle(const string&, bool* = nullptr) in
+// openssl.h.
 #include <ctime>
 
 namespace {
@@ -253,7 +254,7 @@ bool D2RProfileEntitlements(const jvalue &profile, X509 *cert, const string &bun
 } // namespace
 
 bool ZSignAsset::ValidateProfileForBundle(const string &bundleId,
-                                         bool *applicationIdentifierTooLong) {
+                                          bool *applicationIdentifierTooLong) {
     if (applicationIdentifierTooLong)
         *applicationIdentifierTooLong = false;
     if (m_bAdhoc || !m_x509Cert || m_strProvData.empty() ||

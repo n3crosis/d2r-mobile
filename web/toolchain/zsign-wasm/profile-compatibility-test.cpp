@@ -171,7 +171,7 @@ int main(int argc, char **argv) {
             const string bundle = "com." + string(length - 4, 'a');
             bool tooLong = true;
             const bool accepted = D2RProfileEntitlements(boundary, metadata, bundle, expanded,
-                                                        application, team, &tooLong);
+                                                         application, team, &tooLong);
             assert(accepted == (length == supported));
             assert(tooLong == (length > supported));
             assert(application.size() == prefix.size() + 1 + length);
