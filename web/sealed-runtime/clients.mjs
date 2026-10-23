@@ -1049,6 +1049,8 @@ export async function prepareSealedRuntime({
     // 它们不包含私有任务输入，并在此会话关闭时丢弃。
     // Public inventory bytes remain available by copy, never via a loader/fetch callback.
     // They contain no private job inputs and are discarded when this session closes.
+    // 生产流程可明确选择在着色器退休后提前丢弃独占 WASM 原件。
+    // Production may explicitly opt to discard dedicated WASM originals after shader retirement.
     function readPublicAsset(path) {
       if (closed) fail("Runtime session closed");
       if (!safePath(path)) fail("Invalid public asset path");
@@ -1502,11 +1504,31 @@ export async function prepareSealedRuntime({
     }
     const retireProgramWorker = () => retireComponents(["program"]);
     const retireAssetWorkers = () => retireComponents(["assets", "texture"]);
-    const retireShaderWorkers = () => {
+    const retireShaderWorkers = ({ releasePublicWasm = false } = {}) => {
+      if (typeof releasePublicWasm !== "boolean") fail("Invalid shader retirement option");
       if (compilerLeases || compilerActive) return false;
       if (!retireComponents(["translator", "spirvCross"])) return false;
       compilerRetired = true;
       compilerClient?.close();
+      if (releasePublicWasm) {
+        // 仅删除已认证且独占完整底层缓冲区的两个 WASM 原件引用；不清零、转移或触碰共享载荷。
+        // Drop only the two authenticated WASM originals owning a whole unaliased buffer; never wipe, transfer or touch shared payloads.
+        for (const path of [
+          airCompilerComponent?.wasm,
+          "toolchain/spirv-cross-spike/wwwroot/spirv-cross.wasm",
+        ]) {
+          const value = assets.get(path);
+          if (!value || value.byteOffset !== 0 || value.byteLength !== value.buffer.byteLength)
+            continue;
+          if (
+            [...assets].some(
+              ([otherPath, other]) => otherPath !== path && other.buffer === value.buffer,
+            )
+          )
+            continue;
+          assets.delete(path);
+        }
+      }
       return true;
     };
     let extractionTaken = false;

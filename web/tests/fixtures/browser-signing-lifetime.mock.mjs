@@ -36,7 +36,8 @@ mock.module("../../sealed-runtime/clients.mjs", {
           state.assetRetirements = (state.assetRetirements ?? 0) + 1;
           return !state.stageSibling;
         },
-        retireShaderWorkers() {
+        retireShaderWorkers(options) {
+          assert.deepEqual(options, { releasePublicWasm: true });
           assert.equal(state.shadersCompleted, true);
           assert.equal(state.runtimeClosed, false);
           state.shaderRetirements = (state.shaderRetirements ?? 0) + 1;

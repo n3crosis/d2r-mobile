@@ -238,8 +238,8 @@ renamed or accepted under aliases. The bounded compilation budget includes
 the four liveness variants: 31 API calls total. Each added shader is source-only, excluded from the public runtime
 payload, and included by the existing tracked compiler-directory source copy.
 Source-only tests check fixture wiring and copy closure but do not execute the
-compiler. The authenticated 20475da artifact includes `0109` and passes the
-existing canary. Neither `0108` nor `0109` adds a demonstrated natural-MSL
+compiler. The authenticated 440eb1a artifact includes `0110` and passes all
+31 calls: 23 metallib outputs and eight LLVM-text outputs. Neither `0108` nor `0109` adds a demonstrated natural-MSL
 reproducer for its narrow inverse case; their native fixtures remain unexecuted.
 
 ## Authored storage/interface regressions
@@ -254,7 +254,9 @@ unbound pointers and by-value records. No extra workflow or runner is needed.
 This native runner has not been executed for these corrections. Source-only
 checks authenticate the localized guard delta and fixture inventory; they do
 not establish compilation, metadata correctness or GPU execution. The two
-positives additionally use the existing strict real-WASM CI canary path.
+positives additionally use the existing strict real-WASM CI canary path. The
+sealed 440eb1a validation also confirms all 15 expected rejections through the
+actual WASM API; that does not execute the separate native runner.
 
 ## Authored ordinary-buffer reflection regressions
 
@@ -275,15 +277,17 @@ The baseline float3 probe also has a distinct storage mismatch: its final LLVM
 type occupies 112 bytes, versus its 80-byte source ABI. Reflection alone cannot
 repair that. The separate AIR64 DataLayout correction addresses the traced
 cause before record lowering and optimization, rather than rewriting metadata
-or deleting padding late. Fresh compiler output must still establish size 80,
-alignment 16, field offsets 0/16/32/64 and a 16-byte array stride. Neither successful
-compilation nor corrected reflection proves these memory semantics.
+or deleting padding late. The authenticated 440eb1a canary verifies emitted size
+80, alignment 16, field bases 0/16/32/64 and a 16-byte array stride; its actual
+accessed GEP offsets are 0/16/48/64. These bounded IR checks do not establish GPU
+memory behavior; successful compilation or reflection alone would not suffice.
 
 The DataLayout change removes an inherited low-alignment AIR optimization
-assumption, so the next artifact needs a broader regression sweep: stage and
-argument-buffer paths, scalar/vector operations, nested aggregates, arrays,
-matrices, helper calls, three-lane vectors and two/four-lane controls, plus the
-unchanged corpus. No compiled reference or private corpus source is included.
+assumption, requiring broader regression checks beyond metadata. The sealed
+440eb1a targeted checks and unchanged-input corpus sweep provide compiler-only
+evidence, not exhaustive coverage of stage/argument-buffer paths, aggregates,
+arrays, matrices, helpers or every vector shape. No compiled reference or private
+corpus source is included.
 
 ## Authored fragment-input liveness regression
 
@@ -315,17 +319,27 @@ would not establish writer execution.
 
 Source-only checker tests do not execute the API; standalone `clang -cc1` cannot
 exercise the wrapper hook. The existing real-WASM canary covers all four liveness
-combinations and their binary reflection; broader embedded-AIR/corpus equivalence
-and stage-linkage or device effects are separate, unestablished claims.
+combinations and their binary reflection. The sealed corpus and ABI checks below
+do not establish numerical equivalence, stage-linkage or device effects.
 
 ## Evidence and verification boundary
 
 These corrections respond to authenticated CI artifacts. The sealed compiler-only
-acceptance for revision `20475dad74fea1d29f066a06ffe13ff204de05e1`, including `0109`,
-passes all 7,212 original shaders and preserves the bitcode of all 7,211 previously
-accepted shaders. The same existing strict canary passes. This establishes the
-previously failing kernel's compilation recovery, not browser, GPU or device
-acceptance, correct memory accesses, or rendering equivalence.
+acceptance for revision `440eb1a7eedbde6f8c95e037260aed1006365d99`, including `0110`,
+passes all 7,212 original shaders, 55 targeted original-corpus compile checks, the strict 31-call
+canary (23 metallib and eight LLVM-text outputs), and all 15 expected
+storage/interface rejections. Those 55 targets are included in the 7,212 original
+inputs; authored canary and negative phases are separate. The emitted outputs
+remove 417 signed and 469
+unsigned i1 conversion calls. All 445 changed libraries passed the separate ABI
+review. This establishes bounded compiler/output evidence, not Chrome, Apple/GPU
+or device acceptance, numerical behavior, correct runtime memory accesses,
+full-game equivalence or complete MSL support.
+
+The earlier sealed `20475dad74fea1d29f066a06ffe13ff204de05e1` result, including
+`0109`, already compiled all 7,212 originals while preserving the bitcode of the
+7,211 previously accepted shaders. That historical result established the last
+kernel's compilation recovery; it did not include `0110`.
 
 The earlier 75e6bd1 rejection identified a GEP input but did not reveal its exact
 type, destination, indices or inbounds flag. The new successful compilation does
@@ -336,10 +350,10 @@ is added. Other pointer graph shapes remain unsupported. The conservative maximu
 diagnostic length is 278 characters, including the invalid-opcode fallback;
 subreasons cannot reveal source names, values, paths or IR.
 
-The separate `0110` scalar-i1 hardening remains unvalidated by an emitted artifact.
-Its next authenticated compiler run must verify disappearance of the 417 old
-signed-i1 conversion calls and complete unchanged-source nonregression. Neither
-call removal nor full-pipeline preservation is claimed by these source checks.
+The separate `0110` scalar-i1 hardening now has authenticated emitted-output and
+unchanged-input corpus validation in 440eb1a, including the call-removal and ABI
+results above. That actual artifact evidence is distinct from source-only checks
+and does not turn authored symbolic fixtures into executed native regressions.
 
 The source-only verification procedure is:
 
@@ -356,9 +370,9 @@ checks exact patch inventory, patch digests, modified-source path coverage and
 runtime source identity. None of these steps builds or invokes LLVM, Clang or
 WASM, and no private corpus source is included in this package.
 
-A new CI-built artifact and full-pipeline/corpus validation are still required for
-`0110`; the sealed 20475da artifact does not contain that scalar-i1 correction.
-Native authored regressions remain unexecuted. The complete manifest hash
+The sealed 440eb1a artifact supplies compiler-only validation for `0110`;
+20475da remains its historical pre-correction baseline. Native authored
+regressions remain unexecuted. The complete manifest hash
 and all patch hashes already participate in runtime source identity, so old
 receipts must become stale rather than being relabeled or bypassed. No source
 identity, metallib entry/stage, container-integrity or bitcode-hash check is
@@ -401,8 +415,9 @@ This removes a dependency on `air.convert.*.i1` at that helper. The absence of
 `air.convert.f.f32.s.i1` from the inspected reference libraries is not proof that
 the symbol is invalid or that the existing emitted code is a miscompile. This
 hardening does not establish frontend cast correctness, device acceptance or
-rendering equivalence. Later compiler passes may still simplify or restructure
-the result; full-pipeline preservation and emitted-call removal remain untested.
+rendering equivalence. Later compiler passes may simplify or restructure the
+result. The authenticated 440eb1a outputs establish the observed call removal and
+bounded ABI review, not general numerical or full-game equivalence.
 
 `fixtures/scalar-i1-conversions.ll`, its `.expected.ll` counterpart and
 `scalar-i1-conversions.json` contain 25 authored symbolic input/expected-shape
@@ -415,7 +430,8 @@ fixture identities, case inventory and runtime-payload exclusion are tested.
 
 This source-only addition does not alter the existing 31-call real-WASM canary,
 API, object-cache workflow or acceptance gates, and adds no natural-MSL probe.
-Fresh authenticated artifact/full-pipeline validation must verify removal of the
-417 old signed-i1 calls plus full nonregression before claiming emitted-code
-improvement. The sealed 20475da compiler-only result remains the baseline; browser,
-GPU/device behavior and rendering equivalence are separate unestablished claims.
+The sealed 440eb1a artifact removes all 417 signed and 469 unsigned i1 calls
+observed in the historical baseline, passes the complete unchanged-input corpus,
+and passes ABI review for all 445 changed libraries. These compiler-only results
+do not establish Chrome, Apple/GPU/device behavior, numerical or full-game
+equivalence, and do not execute the 25 symbolic cases.

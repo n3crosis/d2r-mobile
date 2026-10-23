@@ -350,7 +350,7 @@ export async function prepareBrowserPackager({
             });
             // 完整着色器输出已独立持有，不再依赖翻译器或 Cross 线程。
             // Completed shader outputs are independently owned and no longer need translator/Cross workers.
-            runtime.retireShaderWorkers();
+            runtime.retireShaderWorkers({ releasePublicWasm: true });
             return entries;
           },
           async loadShell({ signal }) {

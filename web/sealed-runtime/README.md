@@ -110,6 +110,17 @@ no network request. The inventory stays in memory until `close()`, which clears
 it and revokes the session's identity. Private job bytes are never added to this
 inventory.
 
+The one-shot production packager explicitly calls
+`retireShaderWorkers({ releasePublicWasm: true })` after owning completed shader
+outputs. Only successful retirement may drop the authenticated AIR and
+SPIRV-Cross WASM public entries, and only when each spans a whole backing buffer
+with no other inventory alias. Those entries then become unavailable through
+`readPublicAsset`; previously returned copies remain valid. Shared packed buffers,
+translator assets, other components and worker URLs stay untouched. No buffer is
+wiped or detached. Calling retirement without this opt-in preserves the default
+public-read-until-close contract. This removes retained references, not a promise
+of immediate garbage collection or a measured browser memory reduction.
+
 Adapters can import `assertSealedRuntime(value)` from `clients.mjs`. Its private
 WeakSet accepts only live sessions returned after successful initialization by
 this module, not lookalike objects or readiness booleans. This is an application
