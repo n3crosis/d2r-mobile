@@ -1,3 +1,4 @@
+// 仅为测试数据，不是编译器产物、真实发布锁定或执行证据。为真的验证标志只模拟已接受元数据，未执行冒烟测试。
 // TEST DATA ONLY. No compiler artifact, real release pin, or execution evidence.
 // True verification flags model accepted metadata; no smoke test was executed.
 import { Buffer } from "node:buffer";
@@ -27,6 +28,7 @@ export function fixtureHeaderDigest(lock) {
   );
 }
 
+// 变更钩子允许拒绝测试重算外层摘要，以证明模式检查拒绝错误元数据，而非仅发现旧校验和。
 // Mutation hooks let rejection tests recompute enclosing digests, proving schema
 // checks reject bad metadata rather than merely noticing an old outer checksum.
 export function createFreshAirReleaseFixture({
@@ -247,6 +249,7 @@ export function createFreshAirReleaseFixture({
       ...fixtureRecord(bytes),
     };
   }
+  // 原样保留公开 GPL 文本，以测试固定的官方源码摘要。
   // Public GPL text is retained exactly to exercise the fixed official-source digest.
   const gpl = readFileSync(new URL("GPL-2.0.txt", import.meta.url));
   runtimeFiles.set("licenses/GPL-2.0.txt", gpl);
@@ -267,6 +270,7 @@ export function createFreshAirReleaseFixture({
         .join(""),
     ),
   );
+  // 字节占位符只用于认证元数据测试；归档/加载器测试可将其替换为由 runtimeFiles/sourceFiles 构造的惰性 tar/zip。
   // Byte placeholders authenticate metadata tests only. Archive/loader tests can
   // replace these with an inert tar/zip assembled from runtimeFiles/sourceFiles.
   const assetBytes = {

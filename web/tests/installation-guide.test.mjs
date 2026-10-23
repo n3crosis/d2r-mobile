@@ -1,3 +1,4 @@
+// 只检查静态指南及声明，不执行浏览器、编译器、游戏或设备。
 // Static guide and notice checks only; no browser, compiler, game or device execution.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -186,7 +187,13 @@ test("removed community component and license remain absent from source and noti
   assert.match(provenance, /Overall generation Progress/);
   const directory = await mkdtemp(resolve(tmpdir(), "guide-notices-"));
   try {
-    await writeFrontendNotices(directory);
+    await writeFrontendNotices(directory, {
+      outputs: {
+        "test.js": {
+          inputs: { "node_modules/lucide-react/dist/cjs/lucide-react.js": { bytesInOutput: 1 } },
+        },
+      },
+    });
     const notices = await readFile(resolve(directory, "third-party-notices.txt"), "utf8");
     assert.doesNotMatch(notices, /ReUI|Keenthemes/);
     for (const path of ["../SHADCN_LICENSE.md", "../node_modules/lucide-react/LICENSE"])

@@ -1376,5 +1376,17 @@ export const catalog = Object.freeze({
   "dmWebResourceExportLockUnavailable": [
     " This browser cannot safely lock resource export, so resource files were not changed. Use a desktop Chromium browser with Web Locks support.",
     " 当前浏览器无法安全锁定资源导出，因此没有改动资源文件。请使用支持 Web Locks 的桌面 Chromium 浏览器。"
+  ],
+  "dmWebLanguageLabel": [
+    "Language",
+    "语言"
+  ],
+  "dmWebLanguageEnglish": [
+    "English",
+    "英语"
+  ],
+  "dmWebLanguageChinese": [
+    "Simplified Chinese",
+    "简体中文"
   ]
 });

@@ -1,4 +1,5 @@
-"""Extract original mercenary composition, excluding codec and filesystem I/O."""
+"""提取原始佣兵合成，排除编解码及文件系统 I/O。
+Extract original mercenary composition, excluding codec and filesystem I/O."""
 
 import ast
 import hashlib
@@ -16,7 +17,9 @@ tree = ast.parse(raw)
 constants = []
 body = None
 for node in tree.body:
-    if isinstance(node, ast.Assign) and not any(isinstance(n, ast.Call) for n in ast.walk(node)):
+    if isinstance(node, ast.Assign) and not any(
+        isinstance(n, ast.Call) for n in ast.walk(node)
+    ):
         constants.append(node)
     if isinstance(node, ast.FunctionDef) and node.name == "main":
         body = []

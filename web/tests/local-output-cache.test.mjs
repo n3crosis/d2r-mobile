@@ -1,3 +1,4 @@
+// 仅使用合成存储，不执行浏览器、私有输入、编译器或 WASM。
 // Synthetic storage only: no browser, private input, compiler, or WASM execution.
 import test from "node:test";
 import assert from "node:assert/strict";

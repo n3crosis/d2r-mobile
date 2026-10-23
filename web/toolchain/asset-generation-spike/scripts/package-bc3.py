@@ -1,4 +1,5 @@
-"""Reuse the exact source-pinned texture encoder in the sealed asset runtime."""
+"""在封闭资源运行时中复用固定源码的精确纹理编码器。
+Reuse the exact source-pinned texture encoder in the sealed asset runtime."""
 
 import os
 from pathlib import Path

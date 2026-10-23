@@ -1,4 +1,5 @@
-"""Tests for the diagnostic evidence tool, not production compatibility."""
+"""诊断证据工具测试，不代表生产兼容性。
+Tests for the diagnostic evidence tool, not production compatibility."""
 
 import importlib.util
 from pathlib import Path

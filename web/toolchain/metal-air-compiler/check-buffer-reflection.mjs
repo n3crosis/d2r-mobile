@@ -1,3 +1,4 @@
+// 检查真实编译器输出的 AIR LLVM 文本，不合成 AIR。
 // Inspect real compiler-emitted AIR LLVM text. This does not synthesize AIR.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -68,6 +69,7 @@ export function checkReflection(ir, fixture) {
   });
 }
 
+// 刻意只覆盖自编 PaddedVectorLayout 探针，不是通用 LLVM 解析器。检查输出存储类型和实际源 GEP，不仅信任反射或 dereferenceable(80)：后两者原本已为 80 字节，而旧输出类型在最终 DataLayout 下占 112 字节。
 // Deliberately bounded to the authored PaddedVectorLayout probe, not a general
 // LLVM parser. Check emitted storage types and the actual source GEPs, rather
 // than trusting reflection or dereferenceable(80), which were already 80 bytes

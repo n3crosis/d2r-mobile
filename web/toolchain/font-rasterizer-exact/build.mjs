@@ -1,3 +1,5 @@
+// 构建精确字体栅格化 WASM 模块；依据 web/toolchain/font-rasterizer-exact 的模块与调用约定。
+// Build the exact font-rasterization WASM module using the module and calling contracts in web/toolchain/font-rasterizer-exact.
 import process from "node:process";
 import { Buffer } from "node:buffer";
 // 仅用于构建：复用现有 CI 的 emsdk 4.0.20，不新增 CI 作业。

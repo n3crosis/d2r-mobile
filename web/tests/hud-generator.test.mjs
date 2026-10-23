@@ -1,3 +1,5 @@
+// 验证 hud-generator 的约定与边界；依据 ../hud-generator.mjs、./helpers/memory-output-cache.mjs 及本文件的测试断言。
+// Verify hud-generator contracts and boundaries against ../hud-generator.mjs、./helpers/memory-output-cache.mjs and this file's assertions.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";

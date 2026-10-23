@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Build-only: ship exact original bc3 function, never its filesystem/ctypes entrypoints."""
+"""仅供构建：交付精确原始 bc3 函数，不交付文件系统/ctypes 入口。
+Build-only: ship exact original bc3 function, never its filesystem/ctypes entrypoints."""
 
 import ast
 import hashlib
@@ -15,7 +16,9 @@ data = SOURCE.read_bytes()
 if hashlib.sha256(data).hexdigest() != PIN:
     raise SystemExit("gen_widestash_art.py source drift; review and revalidate encoder")
 module = ast.parse(data)
-node = next(n for n in module.body if isinstance(n, ast.FunctionDef) and n.name == "bc3")
+node = next(
+    n for n in module.body if isinstance(n, ast.FunctionDef) and n.name == "bc3"
+)
 source = ast.get_source_segment(data.decode(), node)
 # 上游只改了本机库加载；编码函数必须保持逐字节不变。
 # Upstream changed only native library loading; the encoder function stays byte-identical.

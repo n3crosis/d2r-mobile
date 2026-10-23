@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# 构建 SPIRV-Cross 浏览器桥接；依据 web/toolchain/spirv-cross-spike 的模块与调用约定。
+# Build the SPIRV-Cross browser bridge using the module and calling contracts in web/toolchain/spirv-cross-spike.
 set -euo pipefail
 cd "$(dirname "$0")"
 mode=${1:?Usage: build.sh native|wasm upstream-source build-directory}

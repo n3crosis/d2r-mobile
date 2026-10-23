@@ -1,4 +1,5 @@
-"""Package only audited pure functions, never import/execute native CLI modules."""
+"""仅打包已审计的纯函数，绝不导入或执行原生命令行模块。
+Package only audited pure functions, never import/execute native CLI modules."""
 
 import ast
 import hashlib
@@ -15,7 +16,9 @@ SOURCES = {
     "dm/ios/tools/shell_stubs.py": ["unq", "paths", "parse", "data"],
 }
 manifest = json.loads((HERE / "source-provenance.json").read_text())
-parts = ["import csv, io, os, re, struct, sys\nimport numpy as np\nfrom PIL import Image\n"]
+parts = [
+    "import csv, io, os, re, struct, sys\nimport numpy as np\nfrom PIL import Image\n"
+]
 for path, names in SOURCES.items():
     raw = (ROOT / path).read_bytes()
     digest = hashlib.sha256(raw).hexdigest()
@@ -25,7 +28,11 @@ for path, names in SOURCES.items():
         )
     tree = ast.parse(raw)
     for name in names:
-        matches = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == name]
+        matches = [
+            n
+            for n in ast.walk(tree)
+            if isinstance(n, ast.FunctionDef) and n.name == name
+        ]
         if len(matches) != 1:
             raise SystemExit(f"Expected one {name} in {path}")
         node = matches[0]
@@ -42,7 +49,9 @@ for path, names in SOURCES.items():
             ]
             if len(matches) != 1:
                 raise SystemExit(f"Expected one {name}")
-            ast.literal_eval(matches[0].value)  # Fail if a future assignment grows side effects.
+            ast.literal_eval(
+                matches[0].value
+            )  # 若将来的赋值增加副作用则失败。 | Fail if a future assignment grows side effects.
             parts.append(ast.unparse(matches[0]))
     if path.endswith("shell_stubs.py"):
         constant = next(

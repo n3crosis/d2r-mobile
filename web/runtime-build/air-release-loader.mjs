@@ -1,3 +1,4 @@
+// 新增的构建时校验器，本模块不安装或执行编译器。
 // Additive, build-time verifier. This module never installs or executes a compiler.
 import { lstat, mkdir, mkdtemp, writeFile, rename, rm } from "node:fs/promises";
 import { join, dirname } from "node:path";
@@ -205,6 +206,7 @@ export function verifyFreshAirRuntimeFiles(files, release, buildInputs) {
 }
 export async function loadFreshAirRelease({ download = false } = {}) {
   const metadata = await readFreshAirReleaseMetadata({ download });
+  // 即使直接调用导入器，完整且经过认证的源码也是前提。
   // Complete authenticated source is a prerequisite even for direct importer callers.
   const source = await readFreshAirReleaseAsset(metadata, "correspondingSource", { download });
   const runtime = await readFreshAirReleaseAsset(metadata, "runtime", { download });
@@ -215,6 +217,7 @@ export async function loadFreshAirRelease({ download = false } = {}) {
     ...unpackFreshAirRuntime(runtime.bytes, metadata.release, metadata.buildInputs),
   };
 }
+// 源码不变量检查实际构建的精确输入，不检查补丁文本或未固定的分支。
 // Source invariants inspect exact built inputs, never patch text or an unpinned branch.
 export async function readFreshAirForkSource(path) {
   const metadata = await readFreshAirReleaseMetadata({ download: true });

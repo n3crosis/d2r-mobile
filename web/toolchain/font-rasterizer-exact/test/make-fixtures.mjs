@@ -1,5 +1,8 @@
+// 验证 make-fixtures 的约定与边界；依据 web/toolchain/font-rasterizer-exact/test 及本文件的测试断言。
+// Verify make-fixtures contracts and boundaries against web/toolchain/font-rasterizer-exact/test and this file's assertions.
 import process from "node:process";
 import { Buffer } from "node:buffer";
+// 使用实际打包的 Pillow/FreeType WASM 作为窄范围参考，不使用浏览器或网络。提供本地 TTF 及 CFF/OTF 路径，绝不打包或下载游戏字体。
 // Narrow actual bundled Pillow/FreeType WASM oracle; no browser or network.
 // Supply local TTF and CFF/OTF paths. Never package or download game fonts.
 import { readFileSync, copyFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";

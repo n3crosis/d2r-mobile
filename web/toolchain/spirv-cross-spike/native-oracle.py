@@ -1,4 +1,5 @@
-"""Load only pure reflection definitions by AST, never run native build top-level.
+"""通过 AST 只加载纯反射定义，绝不运行原生构建顶层代码。刻意使用未修改原生实现，而非 JS 移植。
+Load only pure reflection definitions by AST, never run native build top-level.
 This deliberately uses the unchanged native implementation, not the JS port.
 """
 
@@ -19,10 +20,19 @@ nodes = [
     if isinstance(n, ast.FunctionDef)
     and n.name in names
     or isinstance(n, ast.Assign)
-    and any(isinstance(x, ast.Name) and x.id in assigns for t in n.targets for x in ast.walk(t))
+    and any(
+        isinstance(x, ast.Name) and x.id in assigns
+        for t in n.targets
+        for x in ast.walk(t)
+    )
 ]
 ns = {"re": re}
-exec(compile(ast.Module(body=nodes, type_ignores=[]), "<native-pure-reflection>", "exec"), ns)
+exec(
+    compile(
+        ast.Module(body=nodes, type_ignores=[]), "<native-pure-reflection>", "exec"
+    ),
+    ns,
+)
 assert ns["RULES"] == [], "Native MSL rewrite rules changed; port before proceeding"
 assert ns["XC"] == [
     "--msl",

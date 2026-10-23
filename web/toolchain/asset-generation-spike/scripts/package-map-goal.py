@@ -1,4 +1,5 @@
-"""Extract pinned map-goal rendering with explicit legacy/upstream inventory branches."""
+"""提取固定的地图目标渲染，显式区分旧版/上游清单分支。
+Extract pinned map-goal rendering with explicit legacy/upstream inventory branches."""
 
 import ast
 import hashlib
@@ -13,6 +14,7 @@ raw = (ROOT / path).read_bytes()
 if hashlib.sha256(raw).hexdigest() != pins[path]:
     raise SystemExit("Map-goal source drift")
 tree = ast.parse(raw)
+# 默认保留已验证的旧清单。固定源码的 v2 main 仅新增一处韩语赋值、保存及清单项，对这些变化显式设门槛。
 # Keep the proven legacy inventory by default. The source-pinned v2 main adds
 # exactly one Korean assignment, save, and manifest entry; gate those explicitly.
 main = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "main")
@@ -27,7 +29,9 @@ class KoreanBranch(ast.NodeTransformer):
         if any(isinstance(t, ast.Name) and t.id == "ko" for t in node.targets):
             self.changes += 1
             return ast.If(
-                test=ast.Name(id="_include_korean", ctx=ast.Load()), body=[node], orelse=[]
+                test=ast.Name(id="_include_korean", ctx=ast.Load()),
+                body=[node],
+                orelse=[],
             )
         return self.generic_visit(node)
 
@@ -36,7 +40,9 @@ class KoreanBranch(ast.NodeTransformer):
         if text.startswith("label(ko,"):
             self.changes += 1
             return ast.If(
-                test=ast.Name(id="_include_korean", ctx=ast.Load()), body=[node], orelse=[]
+                test=ast.Name(id="_include_korean", ctx=ast.Load()),
+                body=[node],
+                orelse=[],
             )
         return self.generic_visit(node)
 
@@ -65,7 +71,10 @@ for node in tree.body:
         keep.append(node)
     elif isinstance(node, ast.Assign):
         names = {
-            n.id for target in node.targets for n in ast.walk(target) if isinstance(n, ast.Name)
+            n.id
+            for target in node.targets
+            for n in ast.walk(target)
+            if isinstance(n, ast.Name)
         }
         if names & {"NPC", "OBJ", "LABELS", "TEXT_PX", "PAD_X", "PAD_Y", "BOX_A"}:
             keep.append(node)

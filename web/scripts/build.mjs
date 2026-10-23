@@ -1,3 +1,5 @@
+// 使用 Bun 构建静态前端并校验发布输出；依据 bun-plugin-tailwind、./build-policy.mjs 的模块与调用约定。
+// Build the static frontend with Bun and validate release output using the module and calling contracts in bun-plugin-tailwind、./build-policy.mjs.
 import { rm, mkdir, readFile, readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { resolve, dirname } from "node:path";
@@ -21,13 +23,14 @@ export async function build() {
     target: "browser",
     format: "esm",
     minify: true,
+    metafile: true,
     sourcemap: "none",
     env: "disable",
     define: { "process.env.NODE_ENV": JSON.stringify("production") },
     plugins: [tailwind],
   });
   if (!result.success) throw new AggregateError(result.logs, "Frontend bundling failed");
-  await writeFrontendNotices(outputDirectory);
+  await writeFrontendNotices(outputDirectory, result.metafile, process.cwd());
   const htmlPath = resolve(outputDirectory, "index.html");
   const html = await readFile(htmlPath, "utf8");
   const files = await readdir(outputDirectory);

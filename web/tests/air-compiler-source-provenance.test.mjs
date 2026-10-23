@@ -1,3 +1,5 @@
+// 验证 air-compiler-source-provenance 的约定与边界；依据 ./fixtures/air-fork-source/fork-source.mjs、./check-buffer-reflection.mjs 及本文件的测试断言。
+// Verify air-compiler-source-provenance contracts and boundaries against ./fixtures/air-fork-source/fork-source.mjs、./check-buffer-reflection.mjs and this file's assertions.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
@@ -44,6 +46,7 @@ test(
   },
 );
 
+// 只检查源码来源，不加载或执行编译器产物。
 // Source-only provenance checks: no compiler artifact is loaded or executed.
 test(
   "fresh fork source lock authenticates all 50 inputs without claiming API byte equivalence",

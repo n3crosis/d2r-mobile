@@ -164,6 +164,7 @@ export function createProductionShaderAdapter({
             sourceSetDigest: trustedShell.trustedRecipe.shaderDigest,
             sourceSha256,
           };
+          // 每次缓存命中仍执行翻译、反射及完整源集合证明；完整运行时锁定也涵盖编译器包装器及校验代码的版本。
           // Translation/reflection and the full source-set proof still run on every hit.
           // The complete runtime pin also versions compiler wrapper and validation code.
           if (outputCache && /^[a-f0-9]{64}$/.test(cacheContext?.runtimeManifestSha256 ?? "")) {
@@ -203,7 +204,7 @@ export function createProductionShaderAdapter({
                 }
               }
             } catch {
-              check(); // Storage/old validation failures are misses, cancellation is not.
+              check(); // 存储或旧校验失败算未命中，取消不算。 | Storage/old validation failures are misses, cancellation is not.
             }
           }
           check();

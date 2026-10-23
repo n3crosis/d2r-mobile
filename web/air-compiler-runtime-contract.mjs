@@ -196,6 +196,7 @@ function validateFreshReceipt(report) {
     throw new Error("Invalid fresh AIR compiler build receipt");
   return report;
 }
+// 仅允许这两个保持字节不变的别名，绝不重写构建收据。
 // Only these two byte-preserving aliases are permitted. Never rewrite a build receipt.
 export function airCompilerReceiptOutput(report, localName) {
   if (!AIR_COMPILER_OUTPUT_NAMES.includes(localName))

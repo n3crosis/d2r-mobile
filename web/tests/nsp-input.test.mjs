@@ -1,3 +1,5 @@
+// 验证 nsp-input 的约定与边界；依据 ../nsp-input.mjs 及本文件的测试断言。
+// Verify nsp-input contracts and boundaries against ../nsp-input.mjs and this file's assertions.
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -681,6 +683,7 @@ test("key read buffers are cleared best-effort on both success and error", async
     try {
       await inspectKeyFile(file, "prod");
     } catch {
+      /* 预期无效的样例。 */
       /* Expected invalid fixture. */
     }
     assert.ok(owned.every((byte) => byte === 0));

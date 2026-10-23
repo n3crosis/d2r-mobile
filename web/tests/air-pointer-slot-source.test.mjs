@@ -1,3 +1,5 @@
+// 验证 air-pointer-slot-source 的约定与边界；依据 ./fixtures/air-fork-source/fork-source.mjs 及本文件的测试断言。
+// Verify air-pointer-slot-source contracts and boundaries against ./fixtures/air-fork-source/fork-source.mjs and this file's assertions.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -12,6 +14,7 @@ const root = new URL("../toolchain/metal-air-compiler/", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
 const hash = (source) => createHash("sha256").update(source).digest("hex");
 
+// 仅检查源码身份/覆盖范围，不运行原生 opt、校验器或编译器。
 // Source identity/coverage checks only: no native opt, verifier or compiler is run.
 test(
   "typed pointer-slot correction retains its authenticated fork source boundary",

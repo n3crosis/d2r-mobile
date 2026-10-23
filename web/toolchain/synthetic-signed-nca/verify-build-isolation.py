@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Fail unless the two prepared upstream source trees differ only in one public root."""
+"""除一个公开根外，两棵准备好的上游源码树有任何差异均失败。
+Fail unless the two prepared upstream source trees differ only in one public root."""
 
 from pathlib import Path
 import sys
@@ -17,8 +18,13 @@ def source(name):
 
 
 prod, test = source("prod-build"), source("test-build")
+# 比较所有被跟踪的上游源文件，而不只比较安全敏感文件。
 # Compare all tracked upstream source files, rather than just security-sensitive ones.
-tracked = subprocess.check_output(["git", "-C", str(prod), "ls-files", "-z"]).decode().split("\0")
+tracked = (
+    subprocess.check_output(["git", "-C", str(prod), "ls-files", "-z"])
+    .decode()
+    .split("\0")
+)
 for name in filter(None, tracked):
     if name == "pki.c":
         continue

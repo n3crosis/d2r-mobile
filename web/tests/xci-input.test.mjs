@@ -1,9 +1,12 @@
+// 验证 xci-input 的约定与边界；依据 ../xci-input.mjs、../nsp-input.mjs 及本文件的测试断言。
+// Verify xci-input contracts and boundaries against ../xci-input.mjs、../nsp-input.mjs and this file's assertions.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { inspectXci, XCI_INPUT_LIMITS, XciInputError } from "../xci-input.mjs";
 import { preflightNspFolder } from "../nsp-input.mjs";
 
+// 仅使用自编合成 HEAD/HFS0 映像，不含游戏内容、密钥或复制的样例。
 // Authored synthetic HEAD/HFS0 images only. No game content, keys, or copied fixtures.
 const digest = (bytes) => createHash("sha256").update(bytes).digest();
 const payload = (name, length = 32) => ({ name, contents: Buffer.alloc(length, 0x5a) });
@@ -191,6 +194,7 @@ test("sparse files above 4 GiB retain exact absolute offsets and do not read who
 test("large metadata indexes and declared hash prefixes are read in 64 KiB chunks", async () => {
   const definitions = Array.from({ length: 1100 }, (_, i) => payload(`data-${i}.nca`, 0));
   definitions[0] = { ...payload("program.nca", 160000), hashSize: 150001 };
+  // 允许不相关的空成员，使用空前缀的 SHA-256。
   // Empty irrelevant members are allowed, with the SHA-256 of the empty prefix.
   for (let i = 1; i < definitions.length; i++) definitions[i].name = `data-${i}.cert`;
   const secure = hfs(definitions);
@@ -481,6 +485,7 @@ test("caps aggregate index bytes across root and partition before reading the in
     secureMembers: [{ ...payload("program.nca"), size: BigInt(XCI_INPUT_LIMITS.indexBytes) }],
   });
   const secure = image.root.entries[0].contents;
+  // 分区索引本身虽未超限，但根索引耗尽了剩余预算。
   // The partition index alone would fit the limit; the root index exhausts the remainder.
   secure.bytes.writeUInt32LE(XCI_INPUT_LIMITS.indexBytes - 16 - 64, 8);
   image.resealPartitions();

@@ -1,3 +1,5 @@
+// 验证 extraction-worker-client 的约定与边界；依据 ../extraction-worker-client.mjs、./helpers/extraction-worker.mjs 及本文件的测试断言。
+// Verify extraction-worker-client contracts and boundaries against ../extraction-worker-client.mjs、./helpers/extraction-worker.mjs and this file's assertions.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createExtractionWorkerClient } from "../extraction-worker-client.mjs";
@@ -138,7 +140,7 @@ test("trusted per-operation overrides are snapshotted and include queued time", 
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const operationTimeoutMs = { openRomfs: 1000000, readRomfs: 100 };
   const { worker, client } = make({ operationTimeoutMs });
-  operationTimeoutMs.readRomfs = 1000000; // Cannot prolong already configured leases.
+  operationTimeoutMs.readRomfs = 1000000; // 不能延长已配置的租约。 | Cannot prolong already configured leases.
   const opening = client.openRomfs("exefs"),
     queued = read(client);
   const checked = Promise.all([

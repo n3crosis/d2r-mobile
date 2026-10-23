@@ -44,6 +44,7 @@ function disableNetwork() {
     Object.defineProperty(scope, name, { value: blocked, configurable: false, writable: false });
 }
 function heapBytes() {
+  // 每次编译器调用或内存增长后，重新获取当前公开视图。
   // Reacquire the current public view after every compiler call or memory growth.
   const bytes = module?.HEAPU8;
   if (!(bytes instanceof Uint8Array) || bytes.byteLength > limits.maxObservedHeapBytes)
@@ -64,6 +65,7 @@ async function initialize(data) {
       !(data.wasmModule instanceof WebAssembly.Module)
     )
       fail("AIR_ASSET_INVALID");
+    // 模块来源是父线程对已验证不可变字节的编译，而不是用户模块。
     // Module provenance is the parent's verified immutable-byte compilation, not a user module.
     const actual = hex(new Uint8Array(await crypto.subtle.digest("SHA-256", data.factoryBytes)));
     if (actual !== identity.factorySha256) fail("AIR_ASSET_MISMATCH");

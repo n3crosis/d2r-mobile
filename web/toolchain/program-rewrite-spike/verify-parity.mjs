@@ -1,3 +1,5 @@
+// 比较程序改写实现的输出一致性；依据 ./verify-adapter.mjs、playwright 的模块与调用约定。
+// Compare output parity between program-rewrite implementations using the module and calling contracts in ./verify-adapter.mjs、playwright.
 import { verifyGuestAdapter } from "./verify-adapter.mjs";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";

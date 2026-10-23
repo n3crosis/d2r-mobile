@@ -1,3 +1,5 @@
+// 根据生成状态显示阶段进度与结果；依据 @/components/ui/progress、../../i18n.mjs 的模块与调用约定。
+// Render stage progress and results from generation state using the module and calling contracts in @/components/ui/progress、../../i18n.mjs.
 import { useId } from "react";
 import { Progress } from "@/components/ui/progress";
 import { t } from "../../i18n.mjs";

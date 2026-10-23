@@ -1,3 +1,4 @@
+// 仅测试静态树及隔离回调，不使用浏览器、运行时或用户文件。
 // Static tree and isolated callbacks only. No browser, runtime or user-provided files.
 import test from "node:test";
 import assert from "node:assert/strict";

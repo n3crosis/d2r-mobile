@@ -1,4 +1,5 @@
-"""Package source-pinned pure CASC functions only; no native filesystem emulation."""
+"""仅打包固定源码的纯 CASC 函数，不模拟原生文件系统。
+Package source-pinned pure CASC functions only; no native filesystem emulation."""
 
 import ast
 import hashlib
@@ -27,11 +28,14 @@ names = {
     "encode_by_espec",
     "ekey_for",
 }
-nodes = [n for n in ast.parse(raw).body if isinstance(n, ast.FunctionDef) and n.name in names]
+nodes = [
+    n for n in ast.parse(raw).body if isinstance(n, ast.FunctionDef) and n.name in names
+]
 if {n.name for n in nodes} != names:
     raise SystemExit("Missing CASC pure function")
 out = HERE / "public/generated"
 out.mkdir(parents=True, exist_ok=True)
+# 使用精确源码片段，不重新实现编码器。
 # Exact source segments, not reimplemented encoders.
 (out / "casc_overlay_original.py").write_text(
     "import hashlib, struct, zlib\n\n"

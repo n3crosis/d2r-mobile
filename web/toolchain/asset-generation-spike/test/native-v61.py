@@ -1,4 +1,5 @@
-"""Real native NVN swizzle/BC decode + independent scalar image-transform oracle."""
+"""真实原生 NVN 重排/BC 解码及独立标量图像转换参考。
+Real native NVN swizzle/BC decode + independent scalar image-transform oracle."""
 
 import ctypes as C
 from pathlib import Path
@@ -15,7 +16,9 @@ if "--verify" in sys.argv:
     with Image.open(OUT / "browser.png") as image:
         assert image.size == (16, 16)
         assert image.convert("RGBA").tobytes() == (OUT / "expected.rgba").read_bytes()
-    print("v61 NVN/BC worker -> Pyodide -> packaging adapter: exact native pixel parity")
+    print(
+        "v61 NVN/BC worker -> Pyodide -> packaging adapter: exact native pixel parity"
+    )
     sys.exit(0)
 
 native = runpy.run_path(str(HERE.parent / "texture-spike/native-fixtures.py"))
@@ -52,6 +55,7 @@ for y in range(h):
 (OUT / "expected.rgba").write_bytes(expected)
 print("Authored two-frame v61 fixture and independent native pixel oracle prepared")
 
+# 整图集证明：填充帧不是连续的帧宽裁剪。
 # Whole-atlas proof: padded frames are not contiguous frame-width crops.
 w, h, fw, frames = 136, 65, 65, 2
 desc = Desc(1, 0x44, 0, 0, w, h, 1, 1, 0, 2)

@@ -1,4 +1,5 @@
-"""Narrow pixel equivalence fixtures, no game assets and no font backend involved."""
+"""窄范围像素一致性样例，不涉及游戏资源或字体后端。
+Narrow pixel equivalence fixtures, no game assets and no font backend involved."""
 
 import base64
 import hashlib
@@ -32,7 +33,10 @@ def add(op, src, result, args=None, **extra):
             src=encoded(src),
             args=args or [],
             expected=encoded(result) if isinstance(result, Image.Image) else result,
-            **{k: encoded(v) if isinstance(v, Image.Image) else v for k, v in extra.items()},
+            **{
+                k: encoded(v) if isinstance(v, Image.Image) else v
+                for k, v in extra.items()
+            },
         )
     )
 
@@ -53,12 +57,16 @@ for mode in ["L", "RGB", "RGBA"]:
             "flip",
             src,
             src.transpose(
-                Image.Transpose.FLIP_LEFT_RIGHT if axis == 0 else Image.Transpose.FLIP_TOP_BOTTOM
+                Image.Transpose.FLIP_LEFT_RIGHT
+                if axis == 0
+                else Image.Transpose.FLIP_TOP_BOTTOM
             ),
             [axis],
         )
     for target in [1, 3, 4]:
-        add("convert", src, src.convert({1: "L", 3: "RGB", 4: "RGBA"}[target]), [target])
+        add(
+            "convert", src, src.convert({1: "L", 3: "RGB", 4: "RGBA"}[target]), [target]
+        )
     for c in range(len(mode)):
         add("channel", src, src.getchannel(c), [c])
     for x, y in [(-3, -2), (0, 0), (4, 5), (20, 22), (-20, -23)]:
@@ -67,7 +75,14 @@ for mode in ["L", "RGB", "RGBA"]:
             mask = sample("L", 11, 9) if kind == "L" else None
             result = dst.copy()
             result.paste(src, (x, y), src if kind == "source-alpha" else mask)
-            add("paste", src, result, [x, y], dst=dst, mask=mask if kind == "L" else kind)
+            add(
+                "paste",
+                src,
+                result,
+                [x, y],
+                dst=dst,
+                mask=mask if kind == "L" else kind,
+            )
     for wh in [
         (1, 1),
         (1, 9),
@@ -94,7 +109,10 @@ for mode in ["L", "RGB", "RGBA"]:
     ]:
         src2 = sample(mode, w, h)
         add(
-            "resizeLanczos", src2, src2.resize((outw, outh), Image.Resampling.LANCZOS), [outw, outh]
+            "resizeLanczos",
+            src2,
+            src2.resize((outw, outh), Image.Resampling.LANCZOS),
+            [outw, outh],
         )
 for w, h in [(1, 1), (3, 2), (7, 9), (23, 17)]:
     src = sample("L", w, h)
@@ -115,6 +133,7 @@ for i in range(12):
     result = src.copy()
     result.putalpha(mask)
     add("putAlpha", src, result, mask=mask)
+# 覆盖每个源/目标 alpha 对，独立变化隐藏值及颜色值。
 # Every source/destination alpha pair, independently varying hidden/color values.
 a = bytearray(rng.randbytes(256 * 256 * 4))
 b = bytearray(rng.randbytes(256 * 256 * 4))
@@ -128,7 +147,9 @@ add("alphaComposite", src, Image.alpha_composite(dst, src), [0, 0], dst=dst)
 for mode in ["L", "RGB", "RGBA"]:
     for i in range(3):
         src = Image.new(mode, (7, 9))
-        src.putpixel((2, 3), tuple([100] * len(mode)) if len(mode) > 1 else 100) if i else None
+        src.putpixel(
+            (2, 3), tuple([100] * len(mode)) if len(mode) > 1 else 100
+        ) if i else None
         if mode == "RGBA" and i == 2:
             src.putpixel((2, 3), (100, 99, 23, 0))
         for alpha in [True, False]:
@@ -138,7 +159,11 @@ raw = json.dumps(cases, separators=(",", ":")).encode()
 (root / "fixtures.json").write_bytes(raw)
 (root / "fixtures-meta.json").write_text(
     json.dumps(
-        dict(pillow=Image.__version__, cases=len(cases), sha256=hashlib.sha256(raw).hexdigest()),
+        dict(
+            pillow=Image.__version__,
+            cases=len(cases),
+            sha256=hashlib.sha256(raw).hexdigest(),
+        ),
         indent=2,
     )
     + "\n"

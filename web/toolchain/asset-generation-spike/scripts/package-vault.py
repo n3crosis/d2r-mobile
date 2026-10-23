@@ -1,4 +1,5 @@
-"""Extract original vault table functions and literal constants from pinned source."""
+"""从固定源码提取原始储藏库表函数及字面常量。
+Extract original vault table functions and literal constants from pinned source."""
 
 import ast
 import hashlib

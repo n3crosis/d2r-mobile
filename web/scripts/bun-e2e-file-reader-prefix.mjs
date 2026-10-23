@@ -1,3 +1,5 @@
+// 为 Bun 端到端测试提供文件读取兼容层；依据 web/scripts 的模块与调用约定。
+// Provide file-reader compatibility for Bun end-to-end tests using the module and calling contracts in web/scripts.
 import { openSync, readSync, closeSync } from "node:fs";
 
 const originalSlice = Blob.prototype.slice;

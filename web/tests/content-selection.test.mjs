@@ -1,3 +1,5 @@
+// 验证 content-selection 的约定与边界；依据 ../content-selection.mjs 及本文件的测试断言。
+// Verify content-selection contracts and boundaries against ../content-selection.mjs and this file's assertions.
 import test from "node:test";
 import assert from "node:assert/strict";
 import {

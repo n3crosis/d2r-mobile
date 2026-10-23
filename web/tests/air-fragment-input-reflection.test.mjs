@@ -1,3 +1,4 @@
+// 完全使用合成数据，测试校验器而非编译器或 Metal。
 // Wholly synthetic data. Tests the checker, not a compiler or Metal.
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -6,6 +7,7 @@ import {
   inspectFragmentReflection,
 } from "../toolchain/metal-air-compiler/check-fragment-input-reflection.mjs";
 
+// 依据字段布局独立编写的最小前向模式样例。容器刻意省略有效 bitcode/哈希；使用此补充语义检查前，必须另行执行生产编译着色器边界校验。
 // Minimal forward-written schema fixture, independently authored from field layout.
 // Container omits bitcode/hash validity intentionally: always run the production
 // compiled-shader boundary separately before using this supplemental semantic check.

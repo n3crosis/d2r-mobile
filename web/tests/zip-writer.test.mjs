@@ -1,3 +1,5 @@
+// 验证 zip-writer 的约定与边界；依据 ../zip-writer.mjs 及本文件的测试断言。
+// Verify zip-writer contracts and boundaries against ../zip-writer.mjs and this file's assertions.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -248,6 +250,7 @@ test("close failure aborts and does not resolve successfully", async () => {
 });
 
 test("failures at every record write abort before close", async () => {
+  // 一个空文件：本地头、描述符、中央记录及 EOCD。
   // One empty file: local header, descriptor, central record, EOCD.
   for (let failureAt = 1; failureAt <= 4; failureAt++) {
     const out = sink();
@@ -286,6 +289,6 @@ test("cancellation during input and after final record prevents commit", async (
     out = sink();
   out.write = async () => {
     atEnd.abort();
-  }; // Empty ZIP has just its final record.
+  }; // 空 ZIP 只有最终记录。 | Empty ZIP has just its final record.
   await fails([], /abort/i, out, { signal: atEnd.signal });
 });

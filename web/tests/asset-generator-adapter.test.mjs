@@ -1,3 +1,5 @@
+// 验证 asset-generator-adapter 的约定与边界；依据 ../asset-generator-adapter.mjs 及本文件的测试断言。
+// Verify asset-generator-adapter contracts and boundaries against ../asset-generator-adapter.mjs and this file's assertions.
 import test from "node:test";
 import assert from "node:assert/strict";
 import {

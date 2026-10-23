@@ -1,3 +1,5 @@
+// 验证 air-compiler-adapter 的约定与边界；依据 ../air-compiler-adapter.mjs 及本文件的测试断言。
+// Verify air-compiler-adapter contracts and boundaries against ../air-compiler-adapter.mjs and this file's assertions.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createAirCompilerAdapter } from "../air-compiler-adapter.mjs";

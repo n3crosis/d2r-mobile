@@ -1,3 +1,5 @@
+// 验证 d2r-expansion-policy 的约定与边界；依据 ../d2r-expansion-policy.mjs 及本文件的测试断言。
+// Verify d2r-expansion-policy contracts and boundaries against ../d2r-expansion-policy.mjs and this file's assertions.
 import test from "node:test";
 import assert from "node:assert/strict";
 import {

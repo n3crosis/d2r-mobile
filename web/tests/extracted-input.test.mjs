@@ -1,3 +1,5 @@
+// 验证 extracted-input 的约定与边界；依据 ./helpers/assert-isolated-run.mjs、../extracted-input.mjs 及本文件的测试断言。
+// Verify extracted-input contracts and boundaries against ./helpers/assert-isolated-run.mjs、../extracted-input.mjs and this file's assertions.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";

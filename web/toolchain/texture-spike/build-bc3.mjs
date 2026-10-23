@@ -1,3 +1,5 @@
+// 构建 BC3 纹理编解码模块；依据 web/toolchain/texture-spike 的模块与调用约定。
+// Build the BC3 texture codec module using the module and calling contracts in web/toolchain/texture-spike.
 import { execFileSync } from "node:child_process";
 import { mkdirSync, copyFileSync, statSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

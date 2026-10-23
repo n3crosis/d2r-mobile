@@ -1,3 +1,4 @@
+// 镜像经过认证的完整 fork 源码及已安装 SDK 运行时源码；此处不重建输入、不打补丁、不重新编译，也不执行这些输入。
 // Mirror the exact authenticated full fork source and installed SDK runtime sources.
 // Never reconstruct, patch, rebuild or execute compiler inputs here.
 import { Buffer } from "node:buffer";

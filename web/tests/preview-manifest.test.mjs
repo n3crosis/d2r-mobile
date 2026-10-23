@@ -1,3 +1,5 @@
+// 验证 preview-manifest 的约定与边界；依据 ../verification/preview-manifest.mjs 及本文件的测试断言。
+// Verify preview-manifest contracts and boundaries against ../verification/preview-manifest.mjs and this file's assertions.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile, rm, symlink } from "node:fs/promises";

@@ -1,3 +1,5 @@
+// 验证 casc-overlay-fixture 的约定与边界；依据 web/tests/helpers 及本文件的测试断言。
+// Verify casc-overlay-fixture contracts and boundaries against web/tests/helpers and this file's assertions.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 const base = new URL("../../toolchain/asset-generation-spike/", import.meta.url);

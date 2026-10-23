@@ -1,3 +1,4 @@
+// 仅测试界面状态/选项及固定排障文字，不访问运行时或私有文件。
 // UI state/options and fixed troubleshooting text only; no runtime or private file access.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -135,6 +136,7 @@ test("cache unavailability is a fixed localized notice and never an overall prog
   const handler = nodes.find(
     (node) => ts.isJsxAttribute(node) && node.name.getText(parsed) === "onProgress",
   );
+  // 会话进度是对象回调，不是 DOM 处理器。
   // Session progress is an object callback, not a DOM handler.
   assert.equal(handler, undefined);
   const callback = nodes.find(

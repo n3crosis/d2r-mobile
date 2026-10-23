@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# 本地与 CI 配方共用执行语义；命令保持普通 Bash 形式。
 # Shared execution semantics for local/CI recipes. Commands stay in plain Bash.
 set -euo pipefail
 : "${VERIFY_ROOT:?Use web/verification/verify.mjs}"

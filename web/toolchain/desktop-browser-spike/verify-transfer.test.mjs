@@ -1,3 +1,5 @@
+// 验证 verify-transfer 的约定与边界；依据 web/toolchain/desktop-browser-spike 及本文件的测试断言。
+// Verify verify-transfer contracts and boundaries against web/toolchain/desktop-browser-spike and this file's assertions.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";

@@ -1,4 +1,5 @@
-"""Bounded in-memory original vault generation; no game paths or executable inputs."""
+"""有界内存原始储藏库生成，不接收游戏路径或可执行输入。
+Bounded in-memory original vault generation; no game paths or executable inputs."""
 
 import base64
 import contextlib
@@ -56,6 +57,7 @@ def generate(payload, options):
             require(isinstance(rows, list) and len(rows) <= 100000, "VAULT_JSON_ROWS")
         assets[name] = raw
     require(sum(map(len, assets.values())) <= 12 * 1024 * 1024, "VAULT_TOTAL_LIMIT")
+    # 原始存在性查找只关心条目的清单路径。
     # Only the item's manifest path matters to the original existence lookup.
     for line in manifest.splitlines():
         fields = line.split("|")
@@ -80,7 +82,9 @@ def generate(payload, options):
         result = bytes(output.buffer)
         return {
             "files": {"dm_vault_tab.h": result},
-            "sourceSha256": {name: hashlib.sha256(raw).hexdigest() for name, raw in assets.items()},
+            "sourceSha256": {
+                name: hashlib.sha256(raw).hexdigest() for name, raw in assets.items()
+            },
             "manifestSha256": hashlib.sha256(manifest.encode()).hexdigest(),
         }
     except SystemExit as exc:

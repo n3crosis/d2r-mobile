@@ -1,3 +1,4 @@
+// 只使用模块模拟及合成字节，不执行编译器或私有输入。
 // Only module mocks and synthetic bytes. No compiler or private inputs execute.
 import test from "node:test";
 import assert from "node:assert/strict";

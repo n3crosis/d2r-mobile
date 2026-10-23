@@ -1,3 +1,5 @@
+// 验证纹理编码请求并包装编码器；依据 ./browser-texture.mjs 的模块与调用约定。
+// Validate texture-encoding requests and wrap the encoder using the module and calling contracts in ./browser-texture.mjs.
 import { createTextureDecoder, TextureError } from "./browser-texture.mjs";
 export function validateEncodeRequest(header, width, height) {
   if (
@@ -42,7 +44,9 @@ export function validateEncodeRequest(header, width, height) {
     pkg_block_h: header[23] + 1,
   };
 }
-/** encodeRGBA implements the source-pinned BC3 algorithm (production: bounded Rust/WASM). */
+/**
+ * encodeRGBA 实现固定源码的 BC3 算法，生产使用有界 Rust/WASM。
+ * encodeRGBA implements the source-pinned BC3 algorithm (production: bounded Rust/WASM). */
 export async function createTextureEncoder(createModule, encodeRGBA, options = {}) {
   const module = await createModule(options);
   const decoder = await createTextureDecoder(async () => module);

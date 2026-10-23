@@ -1,3 +1,5 @@
+// 依次运行本地构建、测试及格式检查；依据 web/scripts 的模块与调用约定。
+// Run local build, test and formatting checks in order using the module and calling contracts in web/scripts.
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 

@@ -1,3 +1,5 @@
+// 验证 encoder 的约定与边界；依据 ./dist/texture.mjs、./browser-texture-encoder.mjs 及本文件的测试断言。
+// Verify encoder contracts and boundaries against ./dist/texture.mjs、./browser-texture-encoder.mjs and this file's assertions.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";

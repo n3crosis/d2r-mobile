@@ -1,3 +1,4 @@
+/* 仅使用仓库精确发布输入或生成的合成样例。 */
 /* Exact repository release inputs or generated synthetic fixtures only. */
 import createNative from "./capstone-lz4.mjs";
 import { createProgramRewriter } from "./rewrite-core.mjs";

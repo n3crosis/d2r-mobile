@@ -1,3 +1,4 @@
+// 指引只描述已提交输出，不描述请求的选项或部分导出路径。
 // Instructions describe committed outputs only, never requested options or partial export paths.
 const completeDirectory = (outcome) =>
   outcome?.status === "complete" &&

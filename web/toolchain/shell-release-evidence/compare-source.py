@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Read committed public source only; never authorize a production recipe.
+"""只读取已提交的公开源码，不授权生产配方。可从任意目录运行，可选 --archive 验证已下载模板。不执行或修改原生源码、工具锁定或头文件，不使用游戏输入。
+Read committed public source only; never authorize a production recipe.
 
 Run from any directory. Optional --archive verifies the already-downloaded shell.
 No native source/tool lock/header is executed or changed. No game inputs used.
@@ -51,7 +52,9 @@ def inspect(ref):
         hashes[path] = hashlib.sha256(data).hexdigest()
     h.update(options.encode())
     header = (
-        re.search(rb'#define DMSH_CHAIN "([a-f0-9]+)"', blob(ref, "dm/gfx/nvn/dmsh_chain.h"))
+        re.search(
+            rb'#define DMSH_CHAIN "([a-f0-9]+)"', blob(ref, "dm/gfx/nvn/dmsh_chain.h")
+        )
         .group(1)
         .decode()
     )
@@ -62,7 +65,9 @@ def inspect(ref):
         "headerChain": header,
         "headerMatchesCommittedInputs": header == h.hexdigest()[:12],
         "chainInputSha256": hashes,
-        "spirvCrossFlags": literal_assignment(blob(ref, "dm/gfx/tools/dmsh_build.py"), "XC"),
+        "spirvCrossFlags": literal_assignment(
+            blob(ref, "dm/gfx/tools/dmsh_build.py"), "XC"
+        ),
         "product": blob(ref, "dm/PRODUCT").decode().splitlines()[0],
         "committedToolLock": dict(
             line.split("\t", 1)
@@ -82,7 +87,8 @@ def report(archive=None):
         "release": release,
         "syncedMain": synced,
         "observedShellInfo": shell,
-        "chainInputsIdentical": release["chainInputSha256"] == synced["chainInputSha256"],
+        "chainInputsIdentical": release["chainInputSha256"]
+        == synced["chainInputSha256"],
         "releaseComputedChainMatchesShell": release["computedChain"] == shell["CHAIN"],
         "releaseHeaderMatchesShell": release["headerChain"] == shell["CHAIN"],
         "changedNativePaths": git("diff", "--name-only", RELEASE, SYNCED, "--", "dm")
@@ -106,7 +112,9 @@ def report(archive=None):
     if archive:
         data = Path(archive).read_bytes()
         if hashlib.sha256(data).hexdigest() != evidence["sha256"]:
-            raise ValueError("Shell archive SHA-256 differs from pinned publisher evidence")
+            raise ValueError(
+                "Shell archive SHA-256 differs from pinned publisher evidence"
+            )
         with zipfile.ZipFile(archive) as z:
             raw = z.read("Payload/DmIOS.app/dm/shell_info.txt").decode()
             info = dict(line.split("=", 1) for line in raw.splitlines() if "=" in line)

@@ -1,3 +1,5 @@
+// 验证 generate 的约定与边界；依据 ../../content-selection.mjs、../../romfs-tree.mjs 及本文件的测试断言。
+// Verify generate contracts and boundaries against ../../content-selection.mjs、../../romfs-tree.mjs and this file's assertions.
 import process from "node:process";
 import test from "node:test";
 import assert from "node:assert/strict";

@@ -1,3 +1,5 @@
+// 验证 dotnet-worker-startup 的约定与边界；依据 web/toolchain/offline-runtime-spike/test 及本文件的测试断言。
+// Verify dotnet-worker-startup contracts and boundaries against web/toolchain/offline-runtime-spike/test and this file's assertions.
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
@@ -6,6 +8,7 @@ const source = await readFile(new URL("../dotnet-worker.mjs", import.meta.url), 
 const upstream = JSON.parse(
   await readFile(new URL("./dotnet-sidecar-source.json", import.meta.url), "utf8"),
 );
+// 使用 MIT 许可的 .NET 10.0.13 精确源码片段，完整源码 SHA-256 记录在样例中。仅移除 TS 的 export/as-any 语法并暴露声明供 VM 观察。
 // Exact MIT-licensed .NET10.0.13 source excerpts, full source SHA-256 recorded in fixture.
 // Strip only TS export/as-any syntax and expose declarations for VM observation.
 const classification = upstream.classification

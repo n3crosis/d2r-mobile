@@ -1,9 +1,12 @@
+// 验证 casc-logical-reader 的约定与边界；依据 ../casc-logical-reader.mjs 及本文件的测试断言。
+// Verify casc-logical-reader contracts and boundaries against ../casc-logical-reader.mjs and this file's assertions.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { createCascLogicalAssets, CASC_LIMITS } from "../casc-logical-reader.mjs";
 
+// 以真实 dmx.py 为查找/解码参考，样例为合成内容，不含游戏字节；稀疏归档测试超过 4 GiB 的原生 40 位定位值。
 // Actual dmx.py is the lookup/decode oracle. Fixtures are synthetic and contain no
 // game bytes. A sparse archive exercises the native 40-bit locator above 4 GiB.
 const fixture = JSON.parse(
@@ -100,7 +103,7 @@ test("logical reads match original dmx lookup, duplicate resolution and all enco
   for (const [i, query] of fixture.queries.entries()) {
     const result = await assets.read(query, { maxBytes: 100000 });
     assert.equal(Buffer.from(result).toString("hex"), fixture.answers[i]);
-    result.fill(0); // Consumer mutation must not affect future reads or other assets.
+    result.fill(0); // 调用方修改不能影响后续读取或其他资源。 | Consumer mutation must not affect future reads or other assets.
   }
   assert.equal(
     Buffer.from(await assets.read(fixture.queries[0])).toString("hex"),

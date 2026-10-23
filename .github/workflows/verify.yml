@@ -113,6 +113,7 @@ jobs:
           source "$RUNNER_TEMP/browser-emsdk/emsdk_env.sh"
           emcc --version | grep -E '^emcc .* 4[.]0[.]20([[:space:]]|$)'
           node web/runtime-build/build-air-compiler.mjs
+          # 仅在来源与回执认证及编译 canary 均通过后写入。
           # Written only after source/receipt authentication and the compile canary pass.
           printf 'air_compiler_verified=true\n' >> "$GITHUB_OUTPUT"
           rustup toolchain install 1.99.1 --profile minimal --target wasm32-unknown-unknown --component rustfmt --component clippy

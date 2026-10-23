@@ -1,3 +1,4 @@
+// 窄范围生产操作组合一致性，不使用浏览器或完整游戏输入。
 // Narrow production operation composition parity. No browser/full game inputs.
 import process from "node:process";
 import assert from "node:assert/strict";
@@ -48,6 +49,7 @@ try {
   const pixels = await createImageKernels(
     readFileSync(new URL("../../image-kernels-rust/dist/image-kernels.wasm", import.meta.url)),
   );
+  // 默认验证 JS 配方/像素正确性；--wasm 另证明新 PNG 编解码器。默认两侧使用同一固定 PNG 参考。
   // Default run isolates JS recipe/pixel correctness. --wasm additionally proves
   // the new PNG codec; default uses the same pinned PNG oracle for both sides.
   const png = process.argv.includes("--wasm")

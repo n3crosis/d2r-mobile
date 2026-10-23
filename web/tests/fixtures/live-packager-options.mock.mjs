@@ -171,6 +171,7 @@ test("generation uses changed target, hash policy, legacy choice and preset from
             signal: controller.signal,
           };
           const generating = packager.generate(options);
+          // 调用方修改不能改变正在运行的解构任务快照。
           // Caller changes cannot alter an in-flight destructured job snapshot.
           options.legacyAstc = !legacyAstc;
           options.skipContentHashes = !skipContentHashes;
@@ -214,6 +215,7 @@ for (const action of ["cancel", "close"])
     await state.profileReplacementEntered.promise;
     if (action === "close") await packager.close();
     else controller.abort();
+    // 模拟经过验证的内存加载器在操作结束后才返回。
     // Simulate a verified in-memory loader returning after the operation ended.
     state.profileReplacementPause.resolve();
     await assert.rejects(

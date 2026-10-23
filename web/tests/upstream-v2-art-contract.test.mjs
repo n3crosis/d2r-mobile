@@ -1,3 +1,4 @@
+// 只覆盖惰性合成约定，不使用原生代码、WASM、浏览器、字体或私有输入。
 // Inert synthetic contract coverage only. No native, WASM, browser, font or private input.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -12,6 +13,7 @@ import { vitalCharacters } from "../toolchain/hud-recipes-js/support.mjs";
 
 const codec = {
   encodeRgba(rgba, width, height) {
+    // 确定性的替身，不是 PNG 编码器或像素一致性参考。
     // A deterministic stand-in, not a PNG encoder or pixel-parity oracle.
     return new Uint8Array([...new TextEncoder().encode(`${width}x${height}:`), ...rgba]);
   },
@@ -90,6 +92,7 @@ test("v2 HUD reads the actual shared source table, including Korean", () => {
 
 test("legacy HUD defaults preserve the exact pre-v2 vital character sequence", () => {
   const table = readFileSync(new URL("../../dm/i18n/ui_text.tsv", import.meta.url), "utf8");
+  // 仅从功能分支基点 75ce76f 的公开 TSV 派生，不进行渲染。
   // Derived only from the public TSV at feature base 75ce76f, without rendering.
   assert.equal(vitalCharacters(table), "生命法力:/ 0123456789LMVadefináЖМазинь");
 });

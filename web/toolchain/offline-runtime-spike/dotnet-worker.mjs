@@ -1,3 +1,5 @@
+// 在工作线程内加载并调用 .NET 运行时；依据 web/toolchain/offline-runtime-spike 的模块与调用约定。
+// Load and invoke the .NET runtime inside a worker using the module and calling contracts in web/toolchain/offline-runtime-spike.
 let initialized = false;
 let started = false;
 let phase = "new";

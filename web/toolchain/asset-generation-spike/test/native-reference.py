@@ -1,4 +1,5 @@
-"""Independent native oracle: original table CLI body + scalar image reference.
+"""独立原生参考：原始表命令行主体及标量图像参考。仅用自编合成输入，不导入浏览器 core 或已打包函数。
+Independent native oracle: original table CLI body + scalar image reference.
 Only authored synthetic inputs. Does not import browser core or packaged functions.
 """
 
@@ -45,7 +46,9 @@ for y in range(h):
         expected.extend((r, g, b, a))
 (OUT / "frame.rgba").write_bytes(expected)
 (OUT / "frame.sprite").write_bytes(
-    b"SpA1" + struct.pack("<HHIIIIIIII", 31, fw, fw, h, 0, 1, 0, 0, len(expected), 4) + expected
+    b"SpA1"
+    + struct.pack("<HHIIIIIIII", 31, fw, fw, h, 0, 1, 0, 0, len(expected), 4)
+    + expected
 )
 table = "Level\tAmazon\tOther\nignored\t0\t0\n" + "".join(
     f"{i}\t{i * i * 123}\t{999 - i}\n" for i in range(101)
@@ -79,6 +82,9 @@ targets = [
 ]
 (OUT / "paths.json").write_text(json.dumps(paths))
 (OUT / "overlay-paths.json").write_text(
-    json.dumps([{"source": p, "target": t} for p, t in zip(paths, targets)], separators=(",", ":"))
+    json.dumps(
+        [{"source": p, "target": t} for p, t in zip(paths, targets)],
+        separators=(",", ":"),
+    )
 )
 print("Authored fixtures and independent native references ready")

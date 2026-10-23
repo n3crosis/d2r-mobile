@@ -1,3 +1,4 @@
+// 仅用于构建时传输，不执行编译器或安装到目标目录。
 // Build-time transport only. No compiler execution or destination installation.
 import { Buffer } from "node:buffer";
 import { lstat, readFile } from "node:fs/promises";

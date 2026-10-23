@@ -36,7 +36,9 @@ const fail = (code) => {
 };
 const prepared = new WeakMap();
 const keys = ["displayName", "bundleIdentifier", "version", "buildVersion", "icon"];
-/** Blank fields retain pinned shell metadata. No paths, entitlements or executable options. */
+/**
+ * 空字段保留固定模板元数据；不接受路径、权限或可执行文件选项。
+ * Blank fields retain pinned shell metadata. No paths, entitlements or executable options. */
 export function normalizeAppCustomization(value = {}) {
   if (
     !value ||
@@ -85,7 +87,9 @@ export function normalizeAppCustomization(value = {}) {
   }
   return Object.freeze(result);
 }
-/** Preflight before consuming a packaging job; the returned object can be passed to generate(). */
+/**
+ * 消耗打包任务前先预检；返回对象可传给 generate()。
+ * Preflight before consuming a packaging job; the returned object can be passed to generate(). */
 export async function prepareAppCustomization(value, { signal } = {}) {
   signal?.throwIfAborted();
   if (value && prepared.has(value)) return value;
@@ -101,7 +105,9 @@ const validBundle = (value) =>
   value.length > 0 &&
   value.length <= 255 &&
   /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*$/.test(value);
-/** Uses bounded canonical ZIP validation and immutable Blob slices, never whole-IPA arrayBuffer(). */
+/**
+ * 使用有界规范 ZIP 校验及不可变 Blob 切片，不对整个 IPA 调用 arrayBuffer()。
+ * Uses bounded canonical ZIP validation and immutable Blob slices, never whole-IPA arrayBuffer(). */
 export async function customizeUnsignedIpa(blob, options, { signal } = {}) {
   if (!options || !prepared.has(options)) fail("APP_CUSTOMIZATION_INVALID");
   if (Object.keys(options).length === 0) return Object.freeze({ blob, changed: false });

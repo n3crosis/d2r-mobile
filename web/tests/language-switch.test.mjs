@@ -1,3 +1,4 @@
+// 仅测试惰性偏好存储及源码接线，不使用浏览器、运行时或私有文件。
 // Inert preference-store and source-wiring tests only; no browser, runtime, or private files.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -163,9 +164,13 @@ test("top selector rerenders the mounted App and html language without remountin
   assert.equal(change.getText(parsed), "(event) => setBrowserLanguage(event.target.value)");
   assert.match(app, /useSyncExternalStore\(subscribeLanguage, browserLanguage, browserLanguage\)/);
   assert.ok(selector.pos < app.indexOf("<InstallationGuide"));
-  assert.match(app, /Language \/ 语言/);
-  assert.match(app, />\s*English\s*<\/NativeSelectOption>/);
-  assert.match(app, />\s*简体中文\s*<\/NativeSelectOption>/);
+  assert.match(app, /catalog\.dmWebLanguageLabel\[0\]/);
+  assert.match(app, /catalog\.dmWebLanguageLabel\[1\]/);
+  assert.deepEqual(catalog.dmWebLanguageLabel, ["Language", "语言"]);
+  assert.match(app, /catalog\.dmWebLanguageEnglish\[0\]/);
+  assert.deepEqual(catalog.dmWebLanguageEnglish, ["English", "英语"]);
+  assert.match(app, /catalog\.dmWebLanguageChinese\[1\]/);
+  assert.deepEqual(catalog.dmWebLanguageChinese, ["Simplified Chinese", "简体中文"]);
   const effects = nodes.filter(
     (node) => ts.isCallExpression(node) && node.expression.getText(parsed) === "useEffect",
   );

@@ -20,6 +20,7 @@ function report(callback, phase) {
   try {
     Promise.resolve(callback?.(Object.freeze({ phase }))).catch(() => {});
   } catch {
+    /* 同步抛错、拒绝的 Promise 和 thenable 都不能破坏所有权约定。 */
     /* Synchronous throws, rejected promises and thenables cannot break ownership. */
   }
 }
@@ -348,6 +349,7 @@ async function createCompilerClients(
     factoryBytes = snapshot(assets.factoryBytes, limits.factoryBytes);
     wasmBytes = snapshot(assets.wasmBytes, limits.wasmBytes);
     report(onProgress, "verifying");
+    // 准备阶段不含私有输入；取消会放弃结果，但 WebAssembly.compile 本身不可取消。
     // Preparation has no private input. Abort abandons its result; WebAssembly.compile itself is not cancellable.
     const preparation = (async () => {
       if (
@@ -360,6 +362,7 @@ async function createCompilerClients(
       report(onProgress, "preparing");
       return await WebAssembly.compile(wasmBytes);
     })();
+    // 保留 WASM 字节，直到异步编译确实结束。
     // Keep WASM bytes intact until its asynchronous compilation has actually settled.
     const inputBytes = wasmBytes;
     preparation.finally(() => inputBytes.fill(0)).catch(() => {});

@@ -146,6 +146,7 @@ test("production reuses one owner per pack and releases owners and code on prepa
         return { msl: "synthetic", replay: { entry: "synthetic_main", msl_entry_kind: "kernel" }, resources: { notes: [] } };
       }, dispose() {} };
     } } });
+    // 只测试所有权，此模拟不验证或伪造真实已编译库。
     // Only ownership is exercised; this mock does not validate or fabricate a real compiled library.
     mock.module("./compiled-shader-boundary.mjs", { namedExports: {
       async acceptCompiledShaderOutput({ binary, compiler, expected, signal }) {

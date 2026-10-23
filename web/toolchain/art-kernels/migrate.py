@@ -1,4 +1,5 @@
-"""Replace audited generated NumPy recipes after upstream hash checks.
+"""通过上游哈希检查后，替换已审计的生成 NumPy 配方。这是显式 AST 移植，不是 numpy 垫片；每个替换语句范围均锚定原始源码，缺少锚点则拒绝。
+Replace audited generated NumPy recipes after upstream hash checks.
 
 This is an explicit AST port, not a numpy shim. Every replaced statement range is
 anchored by its original source and missing anchors fail closed.
@@ -51,7 +52,9 @@ def migrate():
             replace_function(tree, "vault_cover", "return art_pixels.vault_cover(im)")
         if name == "trove_original":
             replace_function(tree, "_stats", "return art_pixels.stats(im, boxes)")
-            replace_function(tree, "_stone", "return art_pixels.stone(csh, w, h, target, ox, oy)")
+            replace_function(
+                tree, "_stone", "return art_pixels.stone(csh, w, h, target, ox, oy)"
+            )
             replace_function(tree, "_feather", "return art_pixels.feather(sz, n)")
         if name == "hud_design_original":
             replace_function(

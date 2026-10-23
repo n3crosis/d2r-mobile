@@ -1,4 +1,5 @@
-"""Bounded map-goal boundary; source-revision-gated inventory, current names only."""
+"""有界地图目标边界，按源码版本设定清单门槛，仅使用当前名称。
+Bounded map-goal boundary; source-revision-gated inventory, current names only."""
 
 import base64
 import io
@@ -27,7 +28,8 @@ def require(condition, code):
 def generate(payload, options):
     require(len(payload) <= 20 * 1024 * 1024, "MAP_GOAL_INPUT_LIMIT")
     require(
-        set(options) in ({"names"}, {"names", "revision"}) and options.get("names") == "current",
+        set(options) in ({"names"}, {"names", "revision"})
+        and options.get("names") == "current",
         "MAP_GOAL_CURRENT_NAMES_REQUIRED",
     )
     revision = options.get("revision", LEGACY_REVISION)
@@ -36,7 +38,9 @@ def generate(payload, options):
         "OVERLAY_RECIPE_REVISION",
     )
     upstream = revision != LEGACY_REVISION
-    languages = ("zhCN", "enUS", "esES", "esMX", "ruRU") + (("koKR",) if upstream else ())
+    languages = ("zhCN", "enUS", "esES", "esMX", "ruRU") + (
+        ("koKR",) if upstream else ()
+    )
     bundle = json.loads(payload.decode())
     require(set(bundle) == {"images", "font", "strings"}, "MAP_GOAL_INPUT_SET")
     require(set(bundle["images"]) == set(IMAGE_PATHS), "MAP_GOAL_IMAGE_SET")
@@ -45,14 +49,16 @@ def generate(payload, options):
     strings = {}
     for name, text in bundle["strings"].items():
         require(
-            isinstance(text, str) and len(text.encode()) <= 2 * 1024 * 1024, "MAP_GOAL_STRING_LIMIT"
+            isinstance(text, str) and len(text.encode()) <= 2 * 1024 * 1024,
+            "MAP_GOAL_STRING_LIMIT",
         )
         rows = json.loads(text.lstrip("\ufeff"))
         require(isinstance(rows, list) and len(rows) <= 20000, "MAP_GOAL_STRING_ROWS")
         indexed = {}
         for row in rows:
             require(
-                isinstance(row, dict) and isinstance(row.get("Key"), str), "MAP_GOAL_STRING_ROW"
+                isinstance(row, dict) and isinstance(row.get("Key"), str),
+                "MAP_GOAL_STRING_ROW",
             )
             require(row["Key"] not in indexed, "MAP_GOAL_DUPLICATE_KEY")
             indexed[row["Key"]] = row
@@ -75,10 +81,13 @@ def generate(payload, options):
             w, h = value["size"]
             fw, frames = value["frameWidth"], value["frames"]
             require(
-                all(type(v) is int and v > 0 for v in (w, h, fw, frames)), "MAP_GOAL_DIMENSIONS"
+                all(type(v) is int and v > 0 for v in (w, h, fw, frames)),
+                "MAP_GOAL_DIMENSIONS",
             )
             require(
-                frames == (7 if name == "symbols" else 8) and w % frames == 0 and fw <= w // frames,
+                frames == (7 if name == "symbols" else 8)
+                and w % frames == 0
+                and fw <= w // frames,
                 "MAP_GOAL_FRAME_LAYOUT",
             )
             pixels += w * h
@@ -93,6 +102,7 @@ def generate(payload, options):
             )
         font = base64.b64decode(bundle["font"], validate=True)
         require(0 < len(font) <= 9 * 1024 * 1024, "MAP_GOAL_FONT_LIMIT")
+        # 进入未修改的原始渲染器前验证分配几何。
         # Validate allocation geometry before entering the unchanged original renderer.
         measured_font = ImageFont.truetype(io.BytesIO(font), original.TEXT_PX)
         for text in strings.values():
@@ -101,11 +111,16 @@ def generate(payload, options):
                 if key in rows:
                     for lang in languages:
                         width = measured_font.getlength(rows[key][lang])
-                        require(0 <= width <= 8192 - 2 * original.PAD_X, "MAP_GOAL_RENDER_WIDTH")
+                        require(
+                            0 <= width <= 8192 - 2 * original.PAD_X,
+                            "MAP_GOAL_RENDER_WIDTH",
+                        )
         with tempfile.TemporaryDirectory(prefix="map-goal-") as tmp:
             root = Path(tmp)
             original.OUT = str(root / "out")
-            original.HERE = str(root)  # No optional private annot/oldnames.tsv.
+            original.HERE = str(
+                root
+            )  # 不使用可选的私有 annot/oldnames.tsv。 | No optional private annot/oldnames.tsv.
             original.ROMFS = None
             original.romfs_art = types.SimpleNamespace(
                 read=lambda _, p: strings[
@@ -122,11 +137,14 @@ def generate(payload, options):
             finally:
                 original.sprite_png = old_sprite
                 del original.romfs_art, original.OUT, original.HERE, original.ROMFS
-            expected = {"mapgoal.json", "cross.png"} | {f"sym_{i}.png" for i in range(7)}
+            expected = {"mapgoal.json", "cross.png"} | {
+                f"sym_{i}.png" for i in range(7)
+            }
             expected |= {
                 f"label_{i}{suffix}.png"
                 for i in range(len(original.LABELS))
-                for suffix in ("", "_en", "_es", "_mx", "_ru") + (("_ko",) if upstream else ())
+                for suffix in ("", "_en", "_es", "_mx", "_ru")
+                + (("_ko",) if upstream else ())
             }
             paths = {p.name: p for p in (root / "out").iterdir() if p.is_file()}
             require(

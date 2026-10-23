@@ -1,3 +1,5 @@
+// 提供程序二进制的有界读取、摘要及原生绑定；依据 ../../../program-release-catalog.mjs 的模块与调用约定。
+// Provide bounded program-binary access, hashing and native bindings using the module and calling contracts in ../../../program-release-catalog.mjs.
 import { PROGRAM_REWRITE_LIMITS } from "../../../program-release-catalog.mjs";
 export function check(value, message = "Program rewrite invariant failed") {
   if (!value) throw new Error(message);

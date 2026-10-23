@@ -1,4 +1,7 @@
+// 运行 AIR 编译器的固定输入用例；依据 web/toolchain/metal-air-compiler 的模块与调用约定。
+// Run fixed-input cases for the AIR compiler using the module and calling contracts in web/toolchain/metal-air-compiler.
 import process from "node:process";
+// 仅为原生引导检查，不是浏览器运行时或 iOS 验收。
 // Native bootstrap checks only. This is not the browser runtime or iOS acceptance.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -32,6 +35,7 @@ const positive = compile(join(root, "fixtures/buffer-bindings.metal"));
 writeFileSync(join(out, "positive.stderr"), positive.stderr || String(positive.error || ""));
 assert.equal(positive.status, 0, "compiler rejected positive fixture");
 writeFileSync(join(out, "positive.ll"), positive.stdout);
+// 检查每个参数的精确元数据，而非只确认索引在某处存在。
 // Check exact per-parameter metadata, not merely that indices exist somewhere.
 const definitions = positive.stdout.split("\n").filter((s) => /^!\d+ = !\{/.test(s));
 for (const [name, index] of [

@@ -104,7 +104,9 @@ for (const candidate of Object.values(candidates)) {
     throw new Error("SHELL_V2_EVIDENCE_BINDING");
 }
 
-/** Evidence access only. This does not opt a candidate into any production path. */
+/**
+ * 仅访问信息证据，不会将候选项加入任何生产路径。
+ * Evidence access only. This does not opt a candidate into any production path. */
 export function resolveV2ShellEvidence(id) {
   if (typeof id !== "string" || !Object.hasOwn(candidates, id))
     throw new Error("SHELL_V2_EVIDENCE_UNKNOWN");

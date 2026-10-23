@@ -140,6 +140,7 @@ export function openAuthenticatedAstcRecord(token, { signal } = {}) {
 }
 
 async function finishExtracted(programModules, romfs, selection, check, signal) {
+  // 在任何异步初始化前，只捕获内部签发的来源凭据。
   // Capture only internally issued provenance before any asynchronous initialization.
   const selectionKey = canonical(selection);
   const inputContentPolicy = Object.freeze(

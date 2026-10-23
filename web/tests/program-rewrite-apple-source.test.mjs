@@ -1,3 +1,4 @@
+// 只解析源码和自编合成字节记录，不执行原生代码或 WASM。
 // Source parsing and authored synthetic byte records only; no native/WASM execution.
 import test from "node:test";
 import assert from "node:assert/strict";

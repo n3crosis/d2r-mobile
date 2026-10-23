@@ -1,3 +1,5 @@
+// 包装纹理解码器及其错误边界；依据 web/toolchain/texture-spike 的模块与调用约定。
+// Wrap the texture decoder and its error boundary using the module and calling contracts in web/toolchain/texture-spike.
 const CAP = 64 * 1024 * 1024;
 const fields = [
   "target",
@@ -37,7 +39,9 @@ function descriptor(value) {
     throw new TextureError(-1);
   return new Uint32Array(words);
 }
-/** Instantiate once per dedicated worker; no files, keys, network or DOM are used. */
+/**
+ * 每个专用线程实例化一次，不使用文件、密钥、网络或 DOM。
+ * Instantiate once per dedicated worker; no files, keys, network or DOM are used. */
 export async function createTextureDecoder(createModule, options = {}) {
   const module = await createModule(options);
   function allocation(size) {

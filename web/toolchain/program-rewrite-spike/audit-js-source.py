@@ -1,4 +1,5 @@
-"""Extract/audit JS rule tables from the pinned Python AST. Build-time only, no game input.
+"""从固定 Python AST 提取/审计 JS 规则表，仅在构建时执行，不使用游戏输入。默认运行 audit-js-source.py 时拒绝源码或生成数据漂移；--write 重新生成后须应用仓库格式化器。不执行 patch_nso.py，不替换解码器，也不改变生产输入。
+Extract/audit JS rule tables from the pinned Python AST. Build-time only, no game input.
 
     python3 audit-js-source.py          # fail closed on source or generated-data drift
     python3 audit-js-source.py --write  # regenerate, then apply the repository formatter
@@ -19,7 +20,11 @@ OUTPUT = HERE / "js/rule-data.mjs"
 
 
 def named_call(node, name):
-    return isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == name
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == name
+    )
 
 
 def append_call(node, name):
@@ -44,14 +49,19 @@ def extract():
             isinstance(node, ast.Assign)
             and len(node.targets) == 1
             and isinstance(node.targets[0], ast.Name)
-            and node.targets[0].id in ("RULE_BUILD", "CUTS", "OBS", "PARAMS", "run_words")
+            and node.targets[0].id
+            in ("RULE_BUILD", "CUTS", "OBS", "PARAMS", "run_words")
         ):
             tables[node.targets[0].id.upper()] = ast.literal_eval(node.value)
     tables["PRIVATE_OBS"] = [
-        ast.literal_eval(node.args[0]) for node in ast.walk(tree) if append_call(node, "obs")
+        ast.literal_eval(node.args[0])
+        for node in ast.walk(tree)
+        if append_call(node, "obs")
     ]
     tables["RUN_REASONS"] = [
-        ast.literal_eval(node.args[-1]) for node in ast.walk(tree) if named_call(node, "run_branch")
+        ast.literal_eval(node.args[-1])
+        for node in ast.walk(tree)
+        if named_call(node, "run_branch")
     ]
     branches = []
     for block in tree.body:
@@ -76,6 +86,7 @@ def extract():
         assert len(gates) == 1
         values = list(ast.literal_eval(assignment.value))
         if len(values) == 2:
+            # 原始视觉门控将目标写为字面 B 参数。
             # The original visual gate writes its target as a literal B argument.
             target = next(
                 node.args[1]
@@ -83,20 +94,33 @@ def extract():
                 if named_call(node, "B") and isinstance(node.args[1], ast.Constant)
             )
             values.append(ast.literal_eval(target))
-        why = next(node.args[0].elts[3] for node in ast.walk(block) if append_call(node, "cuts"))
-        kind = next(node.args[0] for node in ast.walk(block) if named_call(node, "stat"))
+        why = next(
+            node.args[0].elts[3]
+            for node in ast.walk(block)
+            if append_call(node, "cuts")
+        )
+        kind = next(
+            node.args[0] for node in ast.walk(block) if named_call(node, "stat")
+        )
         branches.append(
             values
-            + [ast.literal_eval(gates[0].elts[2]), ast.literal_eval(kind), ast.literal_eval(why)]
+            + [
+                ast.literal_eval(gates[0].elts[2]),
+                ast.literal_eval(kind),
+                ast.literal_eval(why),
+            ]
         )
     tables["PRIVATE_BRANCHES"] = branches
+    # 将 Python 元组规范化为 JavaScript 使用的 JSON 数组。
     # Canonicalize Python tuples to the JSON arrays used in JavaScript.
     return json.loads(json.dumps(tables, ensure_ascii=False))
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--write", action="store_true", help="regenerate the JS literal tables")
+    parser.add_argument(
+        "--write", action="store_true", help="regenerate the JS literal tables"
+    )
     options = parser.parse_args()
     expected = extract()
     if options.write:

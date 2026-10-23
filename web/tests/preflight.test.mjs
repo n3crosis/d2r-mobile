@@ -1,3 +1,5 @@
+// 验证 preflight 的约定与边界；依据 ../preflight.mjs 及本文件的测试断言。
+// Verify preflight contracts and boundaries against ../preflight.mjs and this file's assertions.
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";

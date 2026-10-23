@@ -1,3 +1,5 @@
+// 验证 SPIRV-Cross 桥接的固定输入行为；依据 ./wwwroot/convert.mjs、./wwwroot/replay-reflection.mjs 的模块与调用约定。
+// Verify fixed-input behavior of the SPIRV-Cross bridge using the module and calling contracts in ./wwwroot/convert.mjs、./wwwroot/replay-reflection.mjs.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync, readdirSync } from "node:fs";

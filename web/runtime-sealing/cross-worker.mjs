@@ -1,3 +1,5 @@
+// 封装跨工作线程的运行时请求；依据 ../toolchain/spirv-cross-spike/wwwroot/spirv-cross.mjs、../toolchain/spirv-cross-spike/wwwroot/convert.mjs 的模块与调用约定。
+// Wrap cross-worker runtime requests using the module and calling contracts in ../toolchain/spirv-cross-spike/wwwroot/spirv-cross.mjs、../toolchain/spirv-cross-spike/wwwroot/convert.mjs.
 import factory from "../toolchain/spirv-cross-spike/wwwroot/spirv-cross.mjs";
 import { convertSpirv } from "../toolchain/spirv-cross-spike/wwwroot/convert.mjs";
 import { byteFactory, initializationWasm } from "./wasm-factory.mjs";

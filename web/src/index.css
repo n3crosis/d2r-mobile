@@ -1,5 +1,6 @@
 @import "tailwindcss" source("./");
 
+/* 使用柔和青绿色强调色的 Shadcn 主题令牌；组件与布局样式均使用工具类。 */
 /* Shadcn theme tokens with a soft teal accent; all component/layout styling is utilities. */
 @theme inline {
   --color-background: var(--background);

@@ -1,3 +1,5 @@
+// 验证 native-art-png-digests 的约定与边界；依据 ../native-art-png-digests.mjs 及本文件的测试断言。
+// Verify native-art-png-digests contracts and boundaries against ../native-art-png-digests.mjs and this file's assertions.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { acceptsNativeArtPngDigest } from "../native-art-png-digests.mjs";

@@ -1,3 +1,5 @@
+// 验证 nso-validation 的约定与边界；依据 ../nso-validation.mjs、../preflight.mjs 及本文件的测试断言。
+// Verify nso-validation contracts and boundaries against ../nso-validation.mjs、../preflight.mjs and this file's assertions.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { decodeLz4Block, validateNsoSegments } from "../nso-validation.mjs";
@@ -41,6 +43,7 @@ function fixture(flags = 0x38, content = [text("abc"), text("abc"), text("abc")]
 }
 
 test("independent liblz4 1.10.0 vectors decode overlapping offsets 1 and 3", async () => {
+  // 由系统 liblz4 的 LZ4_compress_default 生成，不是本实现生成。
   // Produced with system liblz4 LZ4_compress_default, not this implementation.
   assert.deepEqual(await decodeLz4Block(hex("1f61010007506161616161"), 32), text("a".repeat(32)));
   assert.deepEqual(
@@ -221,6 +224,7 @@ test("compressed declared expansion is budgeted before payload allocation/read",
 });
 
 test("many short LZ4 sequences yield by accumulated work, not per sequence", async (t) => {
+  // 一千个字面量 a、偏移 1、长度四字节的匹配，随后十二个尾部字面量；刻意使用短序列的有效手写块，未使用编码器。
   // 1,000 literal-a / offset-1 / four-byte matches, then 12 final literals.
   // A valid handcrafted block with deliberately short sequences, no encoder.
   const sequences = 1000;

@@ -1,3 +1,4 @@
+/* 有界二维桥接，原始 NVN/bcdec 源码保持不变。 */
 /* Bounded 2D bridge; original NVN/bcdec sources remain unmodified. */
 #include "nvn_tex.h"
 #include "nvn_deswizzle.h"
@@ -9,6 +10,7 @@
 #define LIMIT (64u * 1024u * 1024u)
 _Static_assert(sizeof(nvn_texdesc) == 40, "NVN descriptor ABI changed");
 _Static_assert(offsetof(nvn_texdesc, pkg_block_h) == 36, "NVN descriptor ABI changed");
+/* 结果字依次为存储字节数、紧凑压缩字节数、宽、高、Metal 像素格式、每像素字节数、压缩行字节数及压缩行数。 */
 /* Result words: storage bytes, tight compressed bytes, width, height,
  * Metal pixel format, bytes/pixel, compressed row bytes, compressed rows. */
 int texture_info(const nvn_texdesc *d, unsigned level, unsigned layer, uint32_t *out) {
@@ -52,6 +54,7 @@ int texture_info(const nvn_texdesc *d, unsigned level, unsigned layer, uint32_t 
     return 0;
 }
 
+/* Pillow 10.2 DDS/DXT5 先扩展 565 端点，再截断插值的 8 位通道；bcdec 在 565 域内插值，有效块也会得到不同 RGB 字节。原生美术固定 PNG 需要 Pillow 的结果。 */
 /* Pillow 10.2 DDS/DXT5 expands 565 endpoints first, then truncates interpolated
  * 8-bit channels. bcdec interpolates in the 565 domain, giving different RGB
  * bytes for valid blocks. Native-art's pinned PNGs require Pillow's result. */
@@ -150,6 +153,7 @@ int texture_decode_pillow_bc3(const nvn_texdesc *d, unsigned level, unsigned lay
     return texture_decode_impl(d, level, layer, src, src_size, dst, dst_size, 1);
 }
 
+/* 编码边界刻意只支持完整单层 BC3 二维纹理。 */
 /* Encoding boundary intentionally supports only complete single-level BC3 2D. */
 int texture_pack_bc3(const nvn_texdesc *d, const uint8_t *linear, uint32_t linear_size,
                      uint8_t *dst, uint32_t dst_size) {
@@ -163,6 +167,7 @@ int texture_pack_bc3(const nvn_texdesc *d, const uint8_t *linear, uint32_t linea
         return -4;
     if (!linear || !dst || linear_size != m[1] || dst_size != m[0])
         return -5;
+    /* 原生打包使用新建清零的 ctypes 缓冲区，未使用的 GOB 字节必须匹配。 */
     /* Native pack uses a fresh zeroed ctypes buffer; unused GOB bytes must match. */
     memset(dst, 0, dst_size);
     return nvn_swizzle(d, 0, 0, linear, m[6], dst);

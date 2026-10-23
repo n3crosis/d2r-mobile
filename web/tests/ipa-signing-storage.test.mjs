@@ -1,3 +1,5 @@
+// 验证 ipa-signing-storage 的约定与边界；依据 ../ipa-signing-zip.mjs、../ipa-signing-fs.mjs 及本文件的测试断言。
+// Verify ipa-signing-storage contracts and boundaries against ../ipa-signing-zip.mjs、../ipa-signing-fs.mjs and this file's assertions.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { inspectUnsignedSigningArchive, createSignedSigningArchive } from "../ipa-signing-zip.mjs";

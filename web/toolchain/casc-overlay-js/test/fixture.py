@@ -37,7 +37,11 @@ print(
     json.dumps(
         {
             "payload": base64.b64encode(b"".join(parts)).decode(),
-            "options": {"parts": list(map(len, parts)), "jobs": jobs, "location": [0, 2]},
+            "options": {
+                "parts": list(map(len, parts)),
+                "jobs": jobs,
+                "location": [0, 2],
+            },
         }
     )
 )

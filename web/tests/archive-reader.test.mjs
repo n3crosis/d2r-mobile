@@ -1,3 +1,5 @@
+// 验证 archive-reader 的约定与边界；依据 ../archive-reader.mjs 及本文件的测试断言。
+// Verify archive-reader contracts and boundaries against ../archive-reader.mjs and this file's assertions.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -6,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { archiveLocator, ARCHIVE_LIMITS, decodeArchiveRecord } from "../archive-reader.mjs";
 
+// Python 标准库构造样例，然后由真实原生 dmx.py 用内存归档独立解码；不以复制的 JS 解码器作为参考。
 // Python stdlib constructs fixtures, then actual native dmx.py independently decodes
 // them using an in-memory archive. No copied JS decoder serves as the oracle.
 const fixtures = JSON.parse(
@@ -258,6 +261,7 @@ test("abort during decompression cancels stream and never returns partial bytes"
   const original = globalThis.DecompressionStream;
   const controller = new AbortController();
   let transformed = false;
+  // 确定性的流调度接缝；真实 zlib 正确性已在上文覆盖。
   // Deterministic stream scheduling seam; actual zlib correctness is covered above.
   globalThis.DecompressionStream = class {
     constructor(format) {
@@ -402,6 +406,7 @@ test("abort while a write is pending cancels reader, aborts writer and settles p
   }
 });
 test("high-expansion zlib record is rejected after bounded input submission", async () => {
+  // 生成 128 MiB 逻辑输出而不整体分配：Python 仅保留一个 64 KiB 合成块和约 128 KiB 压缩样例，解码器只声明 1 字节。
   // Generate 128 MiB logical output without allocating it: Python keeps one 64 KiB
   // synthetic chunk and the ~128 KiB compressed fixture. Decoder declares only 1 byte.
   const bytes = execFileSync("python3", [

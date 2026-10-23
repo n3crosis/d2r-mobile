@@ -1,3 +1,5 @@
+// 验证 zip64-writer 的约定与边界；依据 ../zip64-writer.mjs 及本文件的测试断言。
+// Verify zip64-writer contracts and boundaries against ../zip64-writer.mjs and this file's assertions.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -270,6 +272,7 @@ test(
   "opt-in real >4GiB stream with bounded repeated source and discard/count sink",
   { skip: process.env.ZIP64_LARGE_STREAM_TEST !== "1" },
   async () => {
+    // 所有字节经过生产 CRC 循环，不伪造块长度或 CRC。
     // All bytes pass through the production CRC loop. No fake chunk lengths/CRC.
     const chunk = new Uint8Array(ZIP64_LIMITS.maxChunkBytes),
       repeats = 1025;

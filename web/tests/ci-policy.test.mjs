@@ -1,3 +1,5 @@
+// 验证 ci-policy 的约定与边界；依据 ../verification/verify.mjs 及本文件的测试断言。
+// Verify ci-policy contracts and boundaries against ../verification/verify.mjs and this file's assertions.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readdir, readFile, mkdtemp, rm } from "node:fs/promises";
@@ -44,6 +46,7 @@ test("one GitHub workflow builds once and only adds a trusted-branch Pages deplo
     artifacts.get("air-compiler-diagnostic-unvalidated"),
     /if: \$\{\{ !cancelled\(\) && steps\.air_failure_bundle\.outcome == 'success' \}\}/,
   );
+  // 没有显式条件时采用 GitHub 默认 success() 防护，而非失败时保留。
   // No explicit condition means GitHub's default success() guard, never failure retention.
   for (const name of ["air-compiler-source", "web-preview"])
     assert.doesNotMatch(artifacts.get(name), /\n {8}if:/);
@@ -228,6 +231,7 @@ test("AIR release cache is exact and the consumer cannot fall back to a compiler
   assert.match(build, /importPinnedAirCompiler/);
   assert.match(build, /compileCanary: await verifyAirCompilerCanary\(\)/);
   assert.doesNotMatch(build, /spawn|runToolchain|build-host-tools|build-wasm|emsdk.*install/);
+  // 现有非 AIR 构建仍需要固定版本的 SDK。
   // Existing non-AIR builds still need the pinned SDK.
   assert(text.includes('source "$RUNNER_TEMP/browser-emsdk/emsdk_env.sh"'));
   assert(text.includes('"$RUNNER_TEMP/browser-emsdk/emsdk" install 4.0.20'));

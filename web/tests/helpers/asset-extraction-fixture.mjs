@@ -1,7 +1,10 @@
+// 验证 asset-extraction-fixture 的约定与边界；依据 ./extraction-adapter-fixture.mjs、./casc-overlay-fixture.mjs 及本文件的测试断言。
+// Verify asset-extraction-fixture contracts and boundaries against ./extraction-adapter-fixture.mjs、./casc-overlay-fixture.mjs and this file's assertions.
 import { createHash } from "node:crypto";
 import { fixture, open, selection } from "./extraction-adapter-fixture.mjs";
 import { fixture as casc } from "./casc-overlay-fixture.mjs";
 import { MAP_GOAL_IMAGE_PATHS, MAP_GOAL_TABLES, MAP_GOAL_FONT } from "../../map-goal-generator.mjs";
+// 自编扁平 data/ RomFS 映像，通过真实提取适配器的有界线程协议提供；没有生产解析器覆盖或注册接缝。
 // Authored flat data/ RomFS image, served through the real extraction adapter's
 // bounded worker protocol. No production resolver override or registration seam.
 function romfs(files) {

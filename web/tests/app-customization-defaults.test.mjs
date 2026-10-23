@@ -91,6 +91,7 @@ test("editing a field sends only that override and never rewrites other shell me
 
 test("profile changes refresh only untouched fields and preserve deliberate edits and custom icon", () => {
   const first = resolveAppCustomizationDefaults(BUNDLED_SHELL_PROFILE_IDS[0]);
+  // 不同的自编默认值验证此约定，即使目前两个模板具有相同身份。
   // Distinct authored defaults prove this contract even though today's two shells share identity.
   const next = { ...first, displayName: "Another shell", version: "3.0" };
   const icon = new Blob(["inert icon selection"], { type: "image/png" });

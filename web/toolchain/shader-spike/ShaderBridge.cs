@@ -1,3 +1,4 @@
+// 仅为原型，从 dm/gfx/tools/dmsh_xlate/Program.cs 改编；一致性门槛见 README。
 // Spike only: adapted from dm/gfx/tools/dmsh_xlate/Program.cs. See README for parity gate.
 using Ryujinx.Common.Memory;
 using Ryujinx.Graphics.Shader;
@@ -108,6 +109,7 @@ public static partial class ShaderBridge
             throw new ArgumentException("Tessellation requires explicit unverified-source-port opt-in.");
         if (stage != "cs")
         {
+            // 图形输入以完整 0x50 字节 SPH 开始，不能让 ShaderHeader 的零阶段回退静默重新解释任务。
             // Graphics input begins with the complete 0x50-byte SPH. Do not allow
             // ShaderHeader's stage-zero fallback to silently reinterpret a job.
             if (code.Length < 0x60)
@@ -115,6 +117,7 @@ public static partial class ShaderBridge
             int headerStage = (int)((BitConverter.ToUInt32(code, 0) >> 10) & 15);
             if (headerStage != (stage switch { "vs" => 1, "hs" => 2, "ds" => 3, _ => 5 }))
                 throw new ArgumentException("Declared graphics stage does not match SPH stage bits 10..13.");
+            // 原始翻译器从这个精确 SPH 字段取得 hs OutputVertices；缺失则拒绝，绝不从无关阶段猜测补丁数量。
             // Original translator derives hs OutputVertices from this exact SPH field.
             // Reject absent data, never guess a patch count from an unrelated stage.
             if (stage == "hs" && (BitConverter.ToUInt32(code, 8) >> 24) == 0)

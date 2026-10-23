@@ -1,3 +1,5 @@
+// 在工作线程中验证并执行纹理编码请求；依据 ./dist/texture.mjs、./browser-texture-encoder.mjs 的模块与调用约定。
+// Validate and execute texture-encoding requests inside a worker using the module and calling contracts in ./dist/texture.mjs、./browser-texture-encoder.mjs.
 import createModule from "./dist/texture.mjs";
 import { createTextureEncoder, validateEncodeRequest } from "./browser-texture-encoder.mjs";
 let runtime;

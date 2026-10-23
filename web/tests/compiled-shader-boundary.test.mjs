@@ -1,3 +1,5 @@
+// 验证 compiled-shader-boundary 的约定与边界；依据 ../compiled-shader-boundary.mjs 及本文件的测试断言。
+// Verify compiled-shader-boundary contracts and boundaries against ../compiled-shader-boundary.mjs and this file's assertions.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
@@ -82,6 +84,7 @@ function input(binary = fixture()) {
     },
   };
 }
+// 自编 a2flo 段/根向量封装，不是真实编译器输出或反射语义。
 // Authored a2flo section/root-vector envelope, not real compiler output or reflection semantics.
 function declaredTailFixture() {
   const original = fixture(),
@@ -93,6 +96,7 @@ function declaredTailFixture() {
   const dynamic = concat(tag("NAME", enc.encode("shader.metallib\0")), enc.encode("ENDT"));
   const dynamicStart = original.length + shift,
     reflectionStart = dynamicStart + dynamic.length;
+  // AIRR 根包含版本 0.4.0 及两个元素大小为四字节的空向量。
   // AIRR root: version 0.4.0 and two empty four-byte-element vectors.
   const airr = concat(
     u32(20),
@@ -174,6 +178,7 @@ test("accepts only declared non-debug HDYN/RLST envelopes and binds the entire o
   assert.equal(inspected.functions[0].bitcodeSha256, legacy.functions[0].bitcodeSha256);
   assert.equal(first.receipt.outputSha256, hash(f.binary));
   assert.equal(first.receipt.sourceSha256, request.expected.sourceSha256);
+  // 有效的仅尾部修改保留 bitcode 哈希，但会改变整个输出的收据。
   // A valid tail-only change retains the bitcode hash but changes the complete output receipt.
   f.binary[f.dynamic + 6] = "S".charCodeAt(0);
   const second = await acceptCompiledShaderOutput(input(f.binary));

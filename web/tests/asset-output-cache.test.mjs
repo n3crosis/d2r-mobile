@@ -1,3 +1,5 @@
+// 验证 asset-output-cache 的约定与边界；依据 ../asset-output-cache.mjs 及本文件的测试断言。
+// Verify asset-output-cache contracts and boundaries against ../asset-output-cache.mjs and this file's assertions.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { runCachedAssetOperation } from "../asset-output-cache.mjs";

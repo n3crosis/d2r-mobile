@@ -1,3 +1,5 @@
+// 为 HUD 配方提供布局、补丁和文字辅助函数；依据 ./python-values.mjs 的模块与调用约定。
+// Provide layout, patch and text helpers for HUD recipes using the module and calling contracts in ./python-values.mjs.
 import { ordered, put, keys, parsePython, roundEven, float } from "./python-values.mjs";
 export function requireValue(condition, code) {
   if (!condition) throw new Error(code);

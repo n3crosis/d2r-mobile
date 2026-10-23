@@ -1,3 +1,5 @@
+// 生成并验证运行时传输清单与负载；依据 ../runtime-asset-groups.mjs、../air-compiler-runtime-contract.mjs 的模块与调用约定。
+// Create and validate runtime transport manifests and payloads using the module and calling contracts in ../runtime-asset-groups.mjs、../air-compiler-runtime-contract.mjs.
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import { gzipSync, gunzipSync } from "node:zlib";

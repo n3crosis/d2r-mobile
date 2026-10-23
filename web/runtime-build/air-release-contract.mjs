@@ -1,3 +1,4 @@
+// 仅接受新的 fork 构建，绝不重贴或重写历史收据。
 // Fresh fork builds only. Historical receipts are never relabelled or rewritten.
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
@@ -74,6 +75,7 @@ export function parseAirReleaseJson(bytes, maximum = 1024 ** 2) {
   requireValue(bytes.byteLength > 0 && bytes.byteLength <= maximum, "AIR release JSON exceeds cap");
   const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   const result = JSON.parse(text);
+  // JSON.parse 本身会静默接受重复键，因此拒绝含糊的已签名元数据。
   // JSON.parse alone silently accepts duplicate keys. Reject ambiguous signed metadata.
   let at = 0;
   const space = () => {

@@ -408,6 +408,7 @@ for (const action of ["cancel", "close"])
     if (action === "close") await runtime.close();
     else controller.abort();
     assert.equal(state.initializationSignal.aborted, true);
+    // 模拟初始化器不顾取消而延迟返回。
     // Simulate an initializer returning late despite cancellation.
     state.initializationPause.resolve();
     await assert.rejects(initializing, { name: "AbortError" });

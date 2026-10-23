@@ -37,6 +37,8 @@ const wipe = (files) => {
 };
 
 /**
+ * outputCache 是可信应用基础设施，使用独立锚定的摘要账本。不能仅凭目录清单授予信任；缓存命中和新结果接受相同校验。只保留单个生成器已限定大小的输出集，不另建合并归档或 base64 副本。
+ *
  * outputCache is trusted application plumbing with an independently anchored digest ledger.
  * Never accept a folder manifest alone as authority. Validation is identical for hits and fresh results.
  * Only one generator's already-bounded output set is held, without a combined archive/base64 copy.
@@ -65,6 +67,7 @@ export async function runCachedAssetOperation({
     typeof cacheContext?.profileId === "string"
   ) {
     try {
+      // 在工作线程转移输入之前计算哈希；载荷包括本次操作使用的每张图像、字体、字符串、布局及先前生成的依赖。
       // Hash before a worker can transfer the input. The payload includes every image, font,
       // string, layout and preceding generated dependency used by this exact operation.
       const inputSha256 = await digest(payload);
@@ -77,6 +80,7 @@ export async function runCachedAssetOperation({
         inputSha256,
       });
     } catch {
+      // 可选缓存的身份或存储失败不能阻止正常生成。
       // Optional cache identity/storage failures cannot disable normal generation.
       check(signal);
     }
@@ -141,6 +145,7 @@ export async function runCachedAssetOperation({
     } catch {
       wipe(files);
       check(signal);
+      // 缺失、格式错误或过期的缓存只算未命中，不能降低输出边界要求。
       // Missing, malformed or stale cache output is a miss, never a weaker output boundary.
     } finally {
       indexBytes?.fill(0);
@@ -157,6 +162,7 @@ export async function runCachedAssetOperation({
       let indexBytes;
       try {
         const { files, ...metadata } = result;
+        // 将来新增的线程诊断或原始中间产物不能静默加入持久存储。
         // Future worker diagnostics/raw intermediates are not silently added to persistent storage.
         if (Object.keys(metadata).some((name) => !METADATA[operation].includes(name)))
           return result;
@@ -176,6 +182,7 @@ export async function runCachedAssetOperation({
           records.push({ path, size: bytes.length, sha256: await digest(bytes) });
           check(signal);
         }
+        // 只序列化有界元数据；编码后的输出文件独立保存并依次写入。
         // Serialize bounded metadata only. Encoded output files stay separate and are written serially.
         indexBytes = utf8.encode(
           JSON.stringify({ schemaVersion: 1, operation, metadata, files: records }),
@@ -183,6 +190,7 @@ export async function runCachedAssetOperation({
         if (indexBytes.length > INDEX_BYTES) return result;
         for (const record of records) {
           check(signal);
+          // 绑定内容的文件键让部分刷新期间先前完整的索引仍然有效。
           // Content-bound file keys keep an earlier complete index valid during partial refreshes.
           const fileKey = await cacheKeyFor({ key, ...record });
           const written = await outputCache.write({
@@ -194,6 +202,7 @@ export async function runCachedAssetOperation({
           check(signal);
           if (!written) return result;
         }
+        // 只有全部已接受输出文件成功关闭后，才发布完整索引。
         // Publish the complete index only after every accepted output file has closed successfully.
         await outputCache.write({ kind: "asset-index", key, bytes: indexBytes, signal });
         check(signal);
@@ -205,6 +214,7 @@ export async function runCachedAssetOperation({
     }
     return result;
   } catch (error) {
+    // 返回之前，本操作仍拥有晚到或已取消的线程结果。
     // Until return, the operation owns even late/cancelled worker results.
     wipe(result?.files);
     throw error;

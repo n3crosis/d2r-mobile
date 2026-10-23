@@ -1,3 +1,5 @@
+// 验证 casc-overlay-writer 的约定与边界；依据 ../casc-overlay-writer.mjs、./helpers/casc-overlay-fixture.mjs 及本文件的测试断言。
+// Verify casc-overlay-writer contracts and boundaries against ../casc-overlay-writer.mjs、./helpers/casc-overlay-fixture.mjs and this file's assertions.
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
@@ -14,6 +16,7 @@ test("real config, TVFS and n/z/multiblock BLTE archive equal independent origin
     assert.deepEqual(Buffer.from(result.files[path]), Buffer.from(b64, "base64"));
   const archiveReads = romfs.reads.filter((r) => r.path.endsWith(".data"));
   assert.ok(archiveReads.length > 0);
+  // 旧资源数据位于两条 TVFS 记录之前，绝不能读取。
   // Old asset data comes before both TVFS records and must never be fetched.
   assert.ok(archiveReads.every((r) => r.start > 0n));
   assert.ok(romfs.reads.every((r) => r.count <= 64 * 1024));

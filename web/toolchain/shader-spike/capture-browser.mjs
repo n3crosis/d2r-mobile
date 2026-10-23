@@ -29,6 +29,7 @@ async function discover(directory, depth = 0) {
       candidates.push(await realpath(directory));
     } catch {
       /* 这不是可部署的完整资源包。 */
+      /* 不是完整的可部署包。 */
       /* Not a complete deployable bundle. */
     }
   }

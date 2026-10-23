@@ -1,9 +1,11 @@
-"""Static proof of the reviewed Apple-only upstream rewriter specialization.
+"""对已审阅的仅 Apple 上游重写特化进行静态证明。只解析源码，不导入/执行 patch_nso.py，不加载原生/WASM 绑定。基线绑定整个 v2 前 AST；比较时唯一排除的输出新增项是经过明确审阅的 fixups.tsv 中 TARGET0 行。
+Static proof of the reviewed Apple-only upstream rewriter specialization.
 
 Parse source only. Do not import/execute patch_nso.py or load native/WASM bindings.
 The baseline binds the entire pre-v2 AST. The only output addition excluded from
 that comparison is the explicitly reviewed TARGET0 line in fixups.tsv.
 """
+
 import ast
 import copy
 import hashlib
@@ -13,17 +15,31 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 SOURCE = HERE.parents[2] / "dm/tools/patch_nso.py"
 BASELINE = HERE / "apple-source-baseline.json"
-HELPERS = {"MRS_TPIDR", "emit_tp", "STR_PRE", "LDR_POST", "stash", "unstash", "uses_sp", "sp_frame"}
+HELPERS = {
+    "MRS_TPIDR",
+    "emit_tp",
+    "STR_PRE",
+    "LDR_POST",
+    "stash",
+    "unstash",
+    "uses_sp",
+    "sp_frame",
+}
 ADDED_GLOBALS = {"TARGET", "OHOS_TSD_OFF", "NOREDZONE", "SPOP"}
 
 
 def canonical(node):
     if isinstance(node, ast.AST):
+        # Python 3.12 新增空 type_params，不影响这些函数。
         # Python 3.12 added empty type_params; it does not affect these functions.
-        return {"node": type(node).__name__, **{
-            key: canonical(value) for key, value in ast.iter_fields(node)
-            if key != "type_params" or value
-        }}
+        return {
+            "node": type(node).__name__,
+            **{
+                key: canonical(value)
+                for key, value in ast.iter_fields(node)
+                if key != "type_params" or value
+            },
+        }
     if isinstance(node, bytes):
         return {"bytes": node.hex()}
     if isinstance(node, list):
@@ -32,14 +48,20 @@ def canonical(node):
 
 
 def digest(node):
-    raw = json.dumps(canonical(node), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    raw = json.dumps(
+        canonical(node), sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    )
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def added_key(node):
     if isinstance(node, ast.FunctionDef) and node.name in HELPERS:
         return "function:" + node.name
-    if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+    if (
+        isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Name)
+    ):
         if node.targets[0].id in ADDED_GLOBALS:
             return "global:" + node.targets[0].id
     if isinstance(node, ast.Assert) and isinstance(node.test, ast.Compare):
@@ -49,7 +71,9 @@ def added_key(node):
 
 
 class Apple(ast.NodeTransformer):
-    """Fold only the reviewed, side-effect-free Apple branches and wrappers."""
+    """只折叠已审阅且无副作用的 Apple 分支及包装器。
+    Fold only the reviewed, side-effect-free Apple branches and wrappers."""
+
     function = None
     reordered = None
 
@@ -58,10 +82,15 @@ class Apple(ast.NodeTransformer):
         self.function = node.name
         node = self.generic_visit(node)
         if node.name == "site_tpidr_write":
+            # 上游在首次 emit 前计算这个纯临时值；pick({N},1) 返回 0..15，因此 16/17 中总有一个可用。赋值及 emit 都不读写对方状态。
             # Upstream computes this pure temporary before the first emit.
             # pick({N},1) returns0..15; therefore one of16/17 always exists.
             # Neither the assignment nor emit reads/modifies the other's state.
-            if ast.unparse(node.body[3]) != "tmp = next((x for x in (16, 17) if x not in (N, T)))" or ast.unparse(node.body[4]) != "emit(4162781184 | 31 << 5 | T)":
+            if (
+                ast.unparse(node.body[3])
+                != "tmp = next((x for x in (16, 17) if x not in (N, T)))"
+                or ast.unparse(node.body[4]) != "emit(4162781184 | 31 << 5 | T)"
+            ):
                 raise ValueError("Unexpected Apple temporary motion")
             self.reordered = digest(node.body[3:5])
             node.body[3], node.body[4] = node.body[4], node.body[3]
@@ -79,9 +108,14 @@ class Apple(ast.NodeTransformer):
         return node
 
     def visit_BoolOp(self, node):
+        # 仅折叠开头的 false 操作数，其余操作数永不执行。
         # Only fold a leading false operand: the remaining operands never run.
         node = self.generic_visit(node)
-        if isinstance(node.op, ast.And) and isinstance(node.values[0], ast.Constant) and not node.values[0].value:
+        if (
+            isinstance(node.op, ast.And)
+            and isinstance(node.values[0], ast.Constant)
+            and not node.values[0].value
+        ):
             return node.values[0]
         return node
 
@@ -99,9 +133,19 @@ class Apple(ast.NodeTransformer):
 
     def visit_Assign(self, node):
         node = self.generic_visit(node)
-        expected = {"site_plain": ("fr", None), "site_window": ("nrz", False)}.get(self.function)
-        if expected and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name) and node.targets[0].id == expected[0]:
-            if not isinstance(node.value, ast.Constant) or node.value.value is not expected[1]:
+        expected = {"site_plain": ("fr", None), "site_window": ("nrz", False)}.get(
+            self.function
+        )
+        if (
+            expected
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id == expected[0]
+        ):
+            if (
+                not isinstance(node.value, ast.Constant)
+                or node.value.value is not expected[1]
+            ):
                 raise ValueError("Apple local specialization changed")
             return None
         return node
@@ -118,13 +162,33 @@ class Apple(ast.NodeTransformer):
         if name == "emit_tp":
             if len(node.args) != 1:
                 raise ValueError("Unexpected emit_tp arguments")
-            instruction = ast.Call(func=ast.Name(id="MRS_TPIDRRO", ctx=ast.Load()), args=node.args, keywords=[])
+            instruction = ast.Call(
+                func=ast.Name(id="MRS_TPIDRRO", ctx=ast.Load()),
+                args=node.args,
+                keywords=[],
+            )
         else:
-            if len(node.args) not in (2, 3) or len(node.args) == 3 and not (isinstance(node.args[2], ast.Constant) and node.args[2].value is False):
+            if (
+                len(node.args) not in (2, 3)
+                or len(node.args) == 3
+                and not (
+                    isinstance(node.args[2], ast.Constant)
+                    and node.args[2].value is False
+                )
+            ):
                 raise ValueError("Unexpected Apple stack wrapper arguments")
-            instruction = ast.Call(func=ast.Name(id="STP" if name == "stash" else "LDP", ctx=ast.Load()),
-                                   args=[*node.args[:2], ast.Constant(value=31), ast.UnaryOp(op=ast.USub(), operand=ast.Constant(value=16))], keywords=[])
-        return ast.Call(func=ast.Name(id="emit", ctx=ast.Load()), args=[instruction], keywords=[])
+            instruction = ast.Call(
+                func=ast.Name(id="STP" if name == "stash" else "LDP", ctx=ast.Load()),
+                args=[
+                    *node.args[:2],
+                    ast.Constant(value=31),
+                    ast.UnaryOp(op=ast.USub(), operand=ast.Constant(value=16)),
+                ],
+                keywords=[],
+            )
+        return ast.Call(
+            func=ast.Name(id="emit", ctx=ast.Load()), args=[instruction], keywords=[]
+        )
 
 
 def specialize(tree):
@@ -140,9 +204,14 @@ def specialize(tree):
         else:
             retained.append(node)
     tree.body = retained
+    # 仅移除首个元数据写入，不删除任意带 TARGET 的代码。
     # Remove exactly the first metadata write, not arbitrary TARGET-bearing code.
-    matches = [node for node in tree.body if isinstance(node, ast.With)
-               and ast.unparse(node.items[0].context_expr) == "open(P('fixups.tsv'), 'w')"]
+    matches = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.With)
+        and ast.unparse(node.items[0].context_expr) == "open(P('fixups.tsv'), 'w')"
+    ]
     if len(matches) != 1 or not matches[0].body:
         raise ValueError("Missing fixups writer")
     removed["output:TARGET"] = digest(matches[0].body.pop(0))
@@ -167,4 +236,6 @@ def verify(source=SOURCE, baseline=BASELINE):
 
 if __name__ == "__main__":
     result = verify()
-    print("Apple-only AST matches pre-v2 script; explicit TARGET0 metadata is the sole output-format addition; no source executed")
+    print(
+        "Apple-only AST matches pre-v2 script; explicit TARGET0 metadata is the sole output-format addition; no source executed"
+    )

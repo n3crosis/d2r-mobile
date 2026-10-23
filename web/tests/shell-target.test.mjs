@@ -1,3 +1,5 @@
+// 验证 shell-target 的约定与边界；依据 ../shell-target.mjs 及本文件的测试断言。
+// Verify shell-target contracts and boundaries against ../shell-target.mjs and this file's assertions.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { inspectMachOTarget, createShellTargetInspector } from "../shell-target.mjs";

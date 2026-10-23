@@ -66,6 +66,7 @@ static bool operationConvergent(const std::string &ir, const std::string &symbol
         std::regex_search(attributes, std::regex("\\b(readnone|readonly|speculatable)\\b"))) return false;
     ++count;
   }
+  // 调用点及其声明/定义必须同时存在。
   // Require both a call site and its declaration/definition.
   return count >= 2;
 }
@@ -218,6 +219,7 @@ static int checkMissingOperations() {
       "__atomic_detail::global_min(counter,i[0],0u,2u,true)" + atomicFragmentSuffix,
       1, AIR_INVALID_IR, failures, "Unsupported shader stage");
   for (const auto *operation : {"local_add", "local_min", "local_max"}) {
+    // 使用现有可信声明，将阶段检查与片元 threadgroup 存储的无关前端限制隔离。
     // Use the existing trusted declaration to isolate the stage check from
     // unrelated frontend restrictions on fragment threadgroup storage.
     operationIR("fragment local atomics remain rejected", atomicFragmentPrefix +

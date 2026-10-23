@@ -1,3 +1,4 @@
+/* 仅通用 1.2.13 构建。本文件及 zlib 对象以 Z_PREFIX 编译，使 Pillow 1.3.1 与 CPython 1.2.13 约定共存于一个 WASM。 */
 /* Generic-only 1.2.13 build. Compile this file and its zlib objects with
  * Z_PREFIX so the Pillow1.3.1 and CPython1.2.13 contracts share one WASM. */
 #include <stdint.h>
@@ -12,6 +13,7 @@ static int fail(int code) {
     (void)code;
     return -1;
 }
+/* CASC 的通用 zlib 流遵循 CPython zlib.compress(data,9)：method=DEFLATED、windowBits=15、memLevel=8、strategy=DEFAULT。块边界不刷新，只有末块使用 Z_FINISH；不支持字典/自定义模式。 */
 /* Generic zlib stream for CASC: CPython zlib.compress(data,9) parameters are
  * method=DEFLATED, windowBits=15, memLevel=8, strategy=DEFAULT. Chunk boundaries
  * do not flush; only the final piece uses Z_FINISH. No dictionary/custom mode. */

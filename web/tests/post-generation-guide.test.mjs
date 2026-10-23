@@ -1,3 +1,4 @@
+// 仅测试已提交输出模型及源码接线，不生成产物，不使用浏览器或私有数据。
 // Committed-output models and source wiring only; no generation, browser or private data.
 import test from "node:test";
 import assert from "node:assert/strict";

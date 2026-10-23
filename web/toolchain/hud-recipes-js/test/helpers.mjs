@@ -1,3 +1,5 @@
+// 验证 helpers 的约定与边界；依据 ../python-values.mjs、../support.mjs 及本文件的测试断言。
+// Verify helpers contracts and boundaries against ../python-values.mjs、../support.mjs and this file's assertions.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";

@@ -1,4 +1,5 @@
-"""Whole original HUD script oracle using authored images/layout/TrueType outlines."""
+"""以自编图像、布局及 TrueType 轮廓为输入，运行完整原始 HUD 脚本参考。
+Whole original HUD script oracle using authored images/layout/TrueType outlines."""
 
 import base64
 import hashlib
@@ -47,6 +48,7 @@ for name in (
 ):
     shutil.copyfile(ROOT / "dm/ios/tools" / name, TOOLS / name)
 shutil.copyfile(ROOT / "dm/i18n/ui_text.tsv", OUT / "native/i18n/ui_text.tsv")
+# 字体几何为新编内容，不是重命名的已安装或专有字体。
 # The font is newly authored geometry, not a renamed installed/proprietary font.
 font = FontBuilder(1000, isTTF=True)
 font.setupGlyphOrder([".notdef", "space", "authored"])
@@ -58,9 +60,13 @@ pen.lineTo((440, 700))
 pen.lineTo((60, 700))
 pen.closePath()
 font.setupGlyf({".notdef": empty, "space": empty, "authored": pen.glyph()})
-font.setupHorizontalMetrics({".notdef": (500, 0), "space": (250, 0), "authored": (500, 60)})
+font.setupHorizontalMetrics(
+    {".notdef": (500, 0), "space": (250, 0), "authored": (500, 60)}
+)
 font.setupHorizontalHeader(ascent=800, descent=-200)
-codepoints = set(range(33, 127)) | set(range(160, 1024)) | set(range(0x4E00, 0xA000)) | {0xB7}
+codepoints = (
+    set(range(33, 127)) | set(range(160, 1024)) | set(range(0x4E00, 0xA000)) | {0xB7}
+)
 font.setupCharacterMap({32: "space", **{c: "authored" for c in codepoints}})
 font.setupNameTable(
     {
@@ -78,6 +84,7 @@ font_path = OUT / "authored-fixture.ttf"
 font.save(font_path)
 font_bytes = font_path.read_bytes()
 (OUT / "backend.json").write_text(json.dumps(backend, indent=2))
+# 只构造原始补丁要求的结构字段，所有值均为合成。
 # Construct only the structural fields requested by the original patch. Values are synthetic.
 patch = json.loads((TOOLS / "touchrectv1_patch.json").read_text())
 
@@ -90,7 +97,10 @@ def skeleton(p):
     if "dict" in p:
         return {k: skeleton(p["dict"][k]) if k in p["dict"] else 0 for k in p["order"]}
     if "list" in p:
-        result = [{} for _ in range(1 + max((x.get("base", -1) for x in p["list"]), default=-1))]
+        result = [
+            {}
+            for _ in range(1 + max((x.get("base", -1) for x in p["list"]), default=-1))
+        ]
         for x in p["list"]:
             if "base" in x:
                 result[x["base"]] = skeleton(x["patch"])
@@ -182,9 +192,13 @@ bundle = {
     "metadata": metadata,
     "layout": layout_text,
     "fonts": {
-        n: b64(font_bytes) for n in ("blizzardglobal-v5_81.ttf", "exocetblizzardot-medium.otf")
+        n: b64(font_bytes)
+        for n in ("blizzardglobal-v5_81.ttf", "exocetblizzardot-medium.otf")
     },
-    "images": {n: {"size": list(im.size), "rgba": b64(im.tobytes())} for n, im in images.items()},
+    "images": {
+        n: {"size": list(im.size), "rgba": b64(im.tobytes())}
+        for n, im in images.items()
+    },
     "atlases": {a["asset"]: b64((ART / a["asset"]).read_bytes()) for a in assets},
 }
 (OUT / "bundle.json").write_text(json.dumps(bundle, ensure_ascii=False))
@@ -199,7 +213,9 @@ bundle = {
     )
 )
 files = sorted(
-    str(p.relative_to(OUT / "expected")) for p in (OUT / "expected").rglob("*") if p.is_file()
+    str(p.relative_to(OUT / "expected"))
+    for p in (OUT / "expected").rglob("*")
+    if p.is_file()
 )
 (OUT / "files.json").write_text(json.dumps(files))
 print(

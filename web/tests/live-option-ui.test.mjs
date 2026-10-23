@@ -23,6 +23,7 @@ function callback(anchor) {
   );
   assert.ok(attribute, anchor);
   const expression = attribute.initializer.expression;
+  // 仅保留参数名称及函数体，类型只解析，不编译或执行。
   // Parameter names + body only: types are parsed, never compiled or executed.
   return {
     code: `(${expression.parameters.map((parameter) => parameter.name.getText(parsed)).join(",")}) => ${expression.body.getText(parsed)}`,

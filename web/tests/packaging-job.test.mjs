@@ -1,3 +1,5 @@
+// 验证 packaging-job 的约定与边界；依据 ../packaging-job.mjs 及本文件的测试断言。
+// Verify packaging-job contracts and boundaries against ../packaging-job.mjs and this file's assertions.
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -6,6 +8,7 @@ import {
   PackagingJobError,
 } from "../packaging-job.mjs";
 
+// 仅为合成编排样例，不证明解密、转换、签名或 IPA 兼容性。
 // Synthetic orchestration fixtures ONLY. Not decryption, conversion, signing or IPA compatibility proof.
 function fixture() {
   const calls = [],

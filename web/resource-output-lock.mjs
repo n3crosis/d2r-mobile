@@ -1,3 +1,4 @@
+// 串行处理同源标签页的浏览器打包导出。文件系统 API 没有独占 mkdir，不支持任意外部文件系统写入者并发操作。
 // Serialize browser packager exports across same-origin tabs. Filesystem APIs
 // have no exclusive mkdir; arbitrary external filesystem writers remain unsupported.
 const NAME = "d2r-resource-output-v1";
@@ -11,6 +12,7 @@ export async function withResourceOutputLock(locks, signal, run) {
   });
 }
 
+// 只能持有导出锁时调用，并在释放锁前创建并预留目录；此处不复用已有文件或目录。
 // Call only while holding the export lock, then create and reserve the directory
 // before releasing it. Existing files and directories are never reused here.
 export async function unusedOutputDirectory(parent, baseName, check) {

@@ -1,3 +1,5 @@
+// 验证 v61-asset-worker 的约定与边界；依据 ../v61-asset-worker.mjs、../asset-generator-adapter.mjs 及本文件的测试断言。
+// Verify v61-asset-worker contracts and boundaries against ../v61-asset-worker.mjs、../asset-generator-adapter.mjs and this file's assertions.
 import test from "node:test";
 import assert from "node:assert/strict";
 import {

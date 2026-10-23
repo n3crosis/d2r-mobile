@@ -1,5 +1,7 @@
 /** 小型真实 Chromium OPFS 验证，并非系统保存选择器或多 GB 耐久测试。 */
-/** Tiny real Chromium OPFS proof, NOT an OS save-picker or multi-GB endurance test. */
+/**
+ * 小型真实 Chromium OPFS 验证，不是操作系统保存选择器或多 GB 耐久测试。
+ * Tiny real Chromium OPFS proof, NOT an OS save-picker or multi-GB endurance test. */
 import assert from "node:assert/strict";
 import http from "node:http";
 import { readFile } from "node:fs/promises";

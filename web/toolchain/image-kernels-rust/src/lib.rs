@@ -1,3 +1,4 @@
+//! 对生产 Pillow 10.2.0 整数图像操作的有界直接移植。不替代 Pillow，不含编解码、字体或通用形状 API。每个实例由单个工作线程拥有，固定缓冲区不可重入。
 //! Bounded direct ports of the production Pillow 10.2.0 integer image operations.
 //! Not a Pillow replacement: no codec, font, or general shape API.
 //! A single worker owns each instance; the fixed buffers are not reentrant.
@@ -42,6 +43,7 @@ fn geometry(width: u32, height: u32, channels: u32) -> Option<usize> {
     let pixels = width as usize * height as usize;
     (pixels <= MAX_PIXELS).then_some(pixels * channels as usize)
 }
+// 使用 Pillow 的 SHIFTFORDIV255，不使用浮点混合或预乘 Canvas。
 // Pillow's SHIFTFORDIV255, not floating point blending or premultiplied Canvas.
 fn shift_div255(n: u32) -> u32 {
     ((n >> 8) + n) >> 8
@@ -52,6 +54,7 @@ fn blend(dst: u8, src: u8, alpha: u8) -> u8 {
     ) as u8
 }
 
+/// 整数裁剪，源范围外全部置零，包括隐藏 RGB。
 /// Integer crop. Areas outside the source are zero, including hidden RGB.
 #[no_mangle]
 pub extern "C" fn image_crop(
@@ -90,6 +93,7 @@ pub extern "C" fn image_crop(
     len as i32
 }
 
+/// Pillow 的左右翻转（轴 0）或上下翻转（轴 1）。
 /// Pillow FLIP_LEFT_RIGHT (axis 0) or FLIP_TOP_BOTTOM (axis 1).
 #[no_mangle]
 pub extern "C" fn image_flip(w: u32, h: u32, channels: u32, axis: u32) -> i32 {
@@ -116,6 +120,7 @@ pub extern "C" fn image_flip(w: u32, h: u32, channels: u32, axis: u32) -> i32 {
     len as i32
 }
 
+/// 将 INPUT 粘贴到 DESTINATION；遮罩 0 表示无，1 使用 L MASK，2 使用源 alpha。带遮罩粘贴还会混合 alpha 本身，与源覆盖合成不同。
 /// Paste source INPUT over DESTINATION; mask 0 none, 1 L MASK, 2 source alpha.
 /// Alpha is itself blended for masked paste, unlike source-over compositing.
 #[no_mangle]
@@ -168,6 +173,7 @@ pub extern "C" fn image_paste(
     len as i32
 }
 
+/// RGBA 源覆盖目标，使用 Pillow 精确的 7 位系数。
 /// RGBA source over destination, using Pillow's exact 7-bit coefficients.
 #[no_mangle]
 pub extern "C" fn image_alpha_composite(
@@ -218,6 +224,7 @@ pub extern "C" fn image_alpha_composite(
     len as i32
 }
 
+/// 美术内核使用的 L/RGB/RGBA 转换；丢弃 alpha，不做合成。
 /// L/RGB/RGBA conversions used by art kernels. Alpha is discarded, not composited.
 #[no_mangle]
 pub extern "C" fn image_convert(w: u32, h: u32, from_channels: u32, to_channels: u32) -> i32 {
@@ -254,6 +261,7 @@ pub extern "C" fn image_convert(w: u32, h: u32, from_channels: u32, to_channels:
     len as i32
 }
 
+/// 提取一个通道，或将 MASK[0..256] 作为 L 查找表（通道 4）。
 /// Extract one channel, or apply MASK[0..256] as an L lookup table (channel 4).
 #[no_mangle]
 pub extern "C" fn image_channel(w: u32, h: u32, channels: u32, channel: u32) -> i32 {
@@ -295,6 +303,7 @@ pub extern "C" fn image_put_alpha(w: u32, h: u32) -> i32 {
     len as i32
 }
 
+/// RGBA 仅按 alpha 求边界（Pillow 10.2 默认）；其他模式按非零 L 或 RGB。空集返回 0，有结果返回 1，无效返回 -1；右/下界为排他边界。
 /// Alpha-only RGBA bbox (the Pillow 10.2 default); nonzero L or RGB bbox otherwise.
 /// Returns 0 for empty, 1 for present, -1 for invalid. Result is exclusive right/bottom.
 #[no_mangle]
@@ -329,6 +338,7 @@ pub extern "C" fn image_bbox(w: u32, h: u32, channels: u32, alpha_only: u32) -> 
     i32::from(bbox[2] != 0)
 }
 
+/// 生产只用 L MaxFilter(5)，边缘扩展与 Pillow RankFilter 一致。
 /// Production uses only L MaxFilter(5). Edge extension matches Pillow RankFilter.
 #[no_mangle]
 pub extern "C" fn image_max_filter(w: u32, h: u32, size: u32) -> i32 {
@@ -359,6 +369,7 @@ pub extern "C" fn image_max_filter(w: u32, h: u32, size: u32) -> i32 {
     len as i32
 }
 
+// 边界遵循 Pillow Resample.c，每次只计算一个轴，不动态分配。
 // Bounds follow Pillow Resample.c. One axis is computed at a time: no dynamic allocation.
 const MAX_COEFFS: usize = MAX_SIDE as usize * 9;
 static mut COEFFS: [i32; MAX_COEFFS] = [0; MAX_COEFFS];
@@ -393,6 +404,7 @@ fn coefficients(input: u32, output: u32) -> bool {
         );
         for (x, bound) in bounds.iter_mut().enumerate() {
             let center = (x as f64 + 0.5) * scale;
+            // C 类型转换向零截断，包括负的左边界。
             // C casts truncate toward zero, including negative left edges.
             let min = ((center - support + 0.5) as i32).max(0) as usize;
             let max = ((center + support + 0.5) as u32).min(input) as usize;
@@ -426,6 +438,7 @@ fn coefficients(input: u32, output: u32) -> bool {
     true
 }
 
+/// 仅支持整图 Lanczos，不支持小数框或 reducing_gap。RGBA 使用 Pillow RGBa 转换及分别取整的两次 22 位处理，而非通用浮点滤波。验证后将 INPUT 作为临时存储改写为预乘 RGBA。
 /// Full-image Lanczos only; no fractional box/reducing_gap. RGBA uses Pillow RGBa
 /// conversion and two separately rounded 22-bit passes, not generic float filtering.
 /// INPUT is scratch-mutated to premultiplied RGBA after validation.

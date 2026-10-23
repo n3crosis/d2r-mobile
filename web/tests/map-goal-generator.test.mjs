@@ -1,3 +1,5 @@
+// 验证 map-goal-generator 的约定与边界；依据 ../map-goal-generator.mjs、../toolchain/art-recipes-js/revision.mjs 及本文件的测试断言。
+// Verify map-goal-generator contracts and boundaries against ../map-goal-generator.mjs、../toolchain/art-recipes-js/revision.mjs and this file's assertions.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {

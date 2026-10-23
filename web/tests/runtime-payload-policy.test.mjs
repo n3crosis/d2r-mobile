@@ -169,6 +169,7 @@ test("frontend imports the shared client at build time, not through runtime byte
   );
 });
 
+// 其他输入模块属于已打包的前端/线程闭包，不属于原始公开载荷。
 // Alternate input modules belong to bundled frontend/worker closures, not raw public payloads.
 test("alternate input source stays bundled and synthetic smoke server has complete imports", async () => {
   for (const path of [

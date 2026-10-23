@@ -1,4 +1,5 @@
-"""Synthetic original-native oracle, no copyrighted game or key input.
+"""合成的原始原生参考，不使用受版权保护的游戏或密钥输入。仅使用 Python 标准库运行，输出供 JS 边界测试使用的 JSON 样例。
+Synthetic original-native oracle, no copyrighted game or key input.
 Run with Python stdlib only; output JSON fixture consumed by the JS boundary test.
 """
 
@@ -68,7 +69,10 @@ def fixture():
     old = [b"old raw", b"old zlib", b"old blte"]
     keys = [append(raw, mode) for raw, mode in zip(old, ("n", "z", "b:256K*=z"))]
     vfs = tvfs(
-        [(key, size, i, len(raw)) for i, ((key, size), raw) in enumerate(zip(keys, old))],
+        [
+            (key, size, i, len(raw))
+            for i, ((key, size), raw) in enumerate(zip(keys, old))
+        ],
         ["n", "z", "b:256K*=z"],
     )
     vk, ve = append(vfs, "b:256K*=z")
@@ -151,6 +155,7 @@ def run():
             native.make_overlay(source, temp / "out", reps)
         for path, raw in result["files"].items():
             assert (temp / "out" / path).read_bytes() == raw, path
+    # 检查 CKey/配置不一致、尾部载荷、重复任务及恶意大小。
     # CKey/config inconsistency, trailing payload, duplicate job, malicious sizes.
     for payload, opt in [
         (b"".join(parts) + b"x", options),
@@ -189,8 +194,12 @@ def run():
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "serialize":
         request = json.load(sys.stdin)
-        result = bounded.generate(base64.b64decode(request["payload"]), request["options"])
-        result["files"] = {k: base64.b64encode(v).decode() for k, v in result["files"].items()}
+        result = bounded.generate(
+            base64.b64decode(request["payload"]), request["options"]
+        )
+        result["files"] = {
+            k: base64.b64encode(v).decode() for k, v in result["files"].items()
+        }
         print(json.dumps(result))
     else:
         run()

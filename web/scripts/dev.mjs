@@ -1,3 +1,5 @@
+// 启动本地前端开发构建与服务；依据 ./build.mjs、./serve.mjs 的模块与调用约定。
+// Start the local frontend development build and server using the module and calling contracts in ./build.mjs、./serve.mjs.
 import { watch } from "node:fs";
 import { build, root } from "./build.mjs";
 import { serve } from "./serve.mjs";

@@ -1,3 +1,5 @@
+// 构建 Rust 图像处理内核的 WASM 模块；依据 web/toolchain/image-kernels-rust 的模块与调用约定。
+// Build the Rust image-kernel WASM module using the module and calling contracts in web/toolchain/image-kernels-rust.
 import process from "node:process";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, copyFileSync, readFileSync, writeFileSync } from "node:fs";

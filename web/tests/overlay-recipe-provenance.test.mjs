@@ -1,3 +1,5 @@
+// 验证 overlay-recipe-provenance 的约定与边界；依据 web/tests 及本文件的测试断言。
+// Verify overlay-recipe-provenance contracts and boundaries against web/tests and this file's assertions.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";

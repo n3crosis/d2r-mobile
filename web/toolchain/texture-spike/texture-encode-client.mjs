@@ -1,6 +1,10 @@
+// 管理纹理编码工作线程的请求生命周期；依据 ./browser-texture-encoder.mjs 的模块与调用约定。
+// Manage request lifetimes for the texture-encoding worker using the module and calling contracts in ./browser-texture-encoder.mjs.
 import { validateEncodeRequest } from "./browser-texture-encoder.mjs";
 /** 同时仅处理一个请求；取消会终止两个编解码运行时，后续调用重新启动它们。 */
-/** One in-flight request. Cancellation terminates both codec runtimes; later calls restart. */
+/**
+ * 最多一个运行中请求；取消会终止两个编解码运行时，后续调用重新启动。
+ * One in-flight request. Cancellation terminates both codec runtimes; later calls restart. */
 export class TextureEncodeClient {
   #worker;
   #pending;

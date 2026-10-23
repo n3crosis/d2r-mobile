@@ -1,3 +1,4 @@
+// 仅检查静态 JSX/CSS，不渲染应用，不执行浏览器或打包运行时。
 // Static JSX/CSS checks only: no application rendering, browser or packaging runtime.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -158,7 +159,13 @@ test("existing Tailwind pipeline emits file, focus, closed-content and numbered-
 test("generated frontend notices preserve full upstream texts and are included in artifact inventory", async () => {
   const directory = await mkdtemp(resolve(tmpdir(), "frontend-notices-"));
   try {
-    await writeFrontendNotices(directory);
+    await writeFrontendNotices(directory, {
+      outputs: {
+        "test.js": {
+          inputs: { "node_modules/lucide-react/dist/cjs/lucide-react.js": { bytesInOutput: 1 } },
+        },
+      },
+    });
     const notices = await readFile(resolve(directory, FRONTEND_NOTICES_FILE), "utf8");
     for (const path of ["../SHADCN_LICENSE.md", "../node_modules/lucide-react/LICENSE"]) {
       assert.ok(notices.includes(await readFile(new URL(path, import.meta.url), "utf8")));

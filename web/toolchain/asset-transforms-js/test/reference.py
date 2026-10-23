@@ -46,7 +46,9 @@ for path, names, constants in [
 ]:
     values = functions(path, names, constants)
     for name in names | set(constants):
-        setattr(native, "native_experience_main" if name == "main" else name, values[name])
+        setattr(
+            native, "native_experience_main" if name == "main" else name, values[name]
+        )
     if "main" in names:
         experience_globals = values
     if "parse" in names:
@@ -61,7 +63,9 @@ sys.path.insert(0, str(SOURCE))
 derived = importlib.import_module("derived").generate
 vault = importlib.import_module("vault").generate
 
-core = functions("web/toolchain/asset-generation-spike/src/core.py", {"execute"})["execute"]
+core = functions("web/toolchain/asset-generation-spike/src/core.py", {"execute"})[
+    "execute"
+]
 core.__globals__["native"] = native
 
 for line in sys.stdin:
@@ -70,7 +74,9 @@ for line in sys.stdin:
     try:
         operation = request["operation"]
         if operation == "experience-table":
-            experience_globals["romfs_art"] = types.SimpleNamespace(read=lambda *_: payload)
+            experience_globals["romfs_art"] = types.SimpleNamespace(
+                read=lambda *_: payload
+            )
         if operation == "derived-tables":
             # 保留原始函数的共享 globals 字典，允许适配器替换 open。 | Keep original shared globals while the adapter installs its open boundary.
             native.parse = lambda *args: derived_globals["parse"](*args)
@@ -105,8 +111,11 @@ for line in sys.stdin:
         else:
             result = core(operation, payload, request.get("options", {}))
         result["files"] = {
-            name: base64.b64encode(data).decode() for name, data in result["files"].items()
+            name: base64.b64encode(data).decode()
+            for name, data in result["files"].items()
         }
         print(json.dumps({"ok": True, "result": result}))
     except Exception as error:
-        print(json.dumps({"ok": False, "error": type(error).__name__ + ":" + str(error)}))
+        print(
+            json.dumps({"ok": False, "error": type(error).__name__ + ":" + str(error)})
+        )

@@ -1,3 +1,4 @@
+// 窄范围真实 Capstone 5 ARM64 绑定，不重写指令解码器。
 // Narrow, real Capstone 5 ARM64 binding. No instruction decoder is reimplemented.
 #include <capstone/capstone.h>
 #include <stdio.h>
@@ -77,6 +78,7 @@ const char *decode_word(uint32_t word, uint32_t address) {
             add(",");
         add("{\"reg\":");
         quoted(op->type == ARM64_OP_REG ? cs_reg_name(handle, op->reg) : "");
+        // 使用十进制字符串跨越 JS 边界，保留有符号 64 位立即数。
         // Decimal string preserves signed 64-bit immediates across the JS boundary.
         add(",\"imm\":\"%lld\"}", op->type == ARM64_OP_IMM ? (long long)op->imm : 0LL);
     }

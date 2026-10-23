@@ -1,3 +1,5 @@
+// 验证 browser 的约定与边界；依据 playwright 及本文件的测试断言。
+// Verify browser contracts and boundaries against playwright and this file's assertions.
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { readFile, writeFile, mkdir } from "node:fs/promises";

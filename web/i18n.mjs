@@ -5,7 +5,9 @@ import { catalog } from "./i18n-catalog.mjs";
 const LANGUAGE_PREFERENCE_KEY = "d2r-ui-language";
 const isSupportedLanguage = (value) => value === "en" || value === "zh-CN";
 
-/** A small external store: only an explicit, supported UI-language choice is persisted. */
+/**
+ * 小型外部状态存储，仅持久保存用户明确选择且受支持的界面语言。
+ * A small external store: only an explicit, supported UI-language choice is persisted. */
 export function createLanguagePreference(environment = globalThis) {
   let initialized = false;
   let preference;
@@ -17,6 +19,7 @@ export function createLanguagePreference(environment = globalThis) {
         const stored = environment.localStorage?.getItem(LANGUAGE_PREFERENCE_KEY);
         if (isSupportedLanguage(stored)) preference = stored;
       } catch {
+        // 存储被拒绝不影响浏览器默认语言或内存中的选择。
         // Denied storage does not prevent browser defaults or an in-memory choice.
       }
     }
@@ -31,6 +34,7 @@ export function createLanguagePreference(environment = globalThis) {
     try {
       environment.localStorage?.setItem(LANGUAGE_PREFERENCE_KEY, value);
     } catch {
+      // 即使无法持久化，也保留本页面内的选择。
       // Keep the choice for this page even when persistence is unavailable.
     }
     if (value !== previous) for (const listener of listeners) listener();

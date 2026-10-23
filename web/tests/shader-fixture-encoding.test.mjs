@@ -1,3 +1,5 @@
+// 验证 shader-fixture-encoding 的约定与边界；依据 ../toolchain/shader-spike/synthetic-fixture.mjs 及本文件的测试断言。
+// Verify shader-fixture-encoding contracts and boundaries against ../toolchain/shader-spike/synthetic-fixture.mjs and this file's assertions.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { code, job } from "../toolchain/shader-spike/synthetic-fixture.mjs";

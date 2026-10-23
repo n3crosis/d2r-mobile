@@ -20,6 +20,7 @@
 #define PIXELS (4u * 1024u * 1024u)
 #define TEXT_LIMIT 2048u
 #define SIDE 8192
+/* 必须保留 Pillow 的算术右移及中点向正方向取整规则。 */
 /* Must retain Pillow's arithmetic right shift and ties-toward-positive rule. */
 #define PIXEL(x) ((((x) + 32) & -64) >> 6)
 
@@ -38,6 +39,7 @@ typedef struct {
 } Glyph;
 static unsigned char font_bytes[FONT_LIMIT], mask[PIXELS], canvas[PIXELS * 4];
 static uint32_t text[TEXT_LIMIT];
+/* 宽、高、X 偏移、Y 偏移、26.6 格式步进、上升及下降量。 */
 /* width, height, offsetX, offsetY, advance26_6, ascent, descent */
 static int32_t info[7];
 static Glyph glyphs[TEXT_LIMIT];
@@ -121,6 +123,7 @@ void font_close(void) {
 int font_open(uint32_t length, float size) {
     int error;
     FT_Size_RequestRec req;
+    /* 写入不同字体前先关闭，字体对象借用 font_input。 */
     /* Close before writing a different font; its face borrows font_input. */
     if (face || library || !length || length > FONT_LIMIT || !isfinite(size) || size < 1 ||
         size > 256)
@@ -145,6 +148,7 @@ int font_open(uint32_t length, float size) {
     }
     return OK;
 }
+/* 只支持生产锚点：默认 la，以及 ls、mb、mm。 */
 /* Only production anchors: default la, ls, mb, mm. */
 static int valid(uint32_t count, int anchor, int stroke) {
     if (!face)
@@ -174,6 +178,7 @@ static int layout(uint32_t count) {
             if (!FT_Get_Kerning(face, previous, glyphs[i].index, ft_kerning_default, &delta)) {
                 if (delta.x < -(1 << 20) || delta.x > (1 << 20))
                     return fail(BOUNDS);
+                /* 刻意保留 Pillow BASIC 的特殊行为：这里不是 delta.x。 */
                 /* Intentional Pillow BASIC quirk: this is NOT delta.x. */
                 int kern = (int)PIXEL(delta.x);
                 glyphs[i - 1].advance += kern;
@@ -399,6 +404,7 @@ static void draw_mask(int width, int height, int channels, int dx, int dy, uint3
                 continue;
             unsigned char *out = canvas + ((size_t)yy * width + xx) * channels;
             for (int c = 0; c < channels; c++) {
+                /* Pillow Paste.c 的 fill_mask_L：透明 RGB 接收完整墨色。 */
                 /* Pillow Paste.c fill_mask_L: transparent RGB receives full ink. */
                 unsigned int channel_mask = channels == 4 && c != 3 && out[3] == 0 ? 255 : a;
                 unsigned int v = (ink >> (8 * c)) & 255;
@@ -407,6 +413,7 @@ static void draw_mask(int width, int height, int channels, int dx, int dy, uint3
         }
     }
 }
+/* 画布由调用方初始化；浮点起点遵循 ImageDraw 的 modf 转 C float。stroke 非零时，即使墨色相同，也分别绘制描边遮罩及无描边前景，ImageDraw 不合并两种遮罩。 */
 /* Canvas is caller-initialized. Float starts match ImageDraw's modf -> C float.
  * stroke != 0 always draws both stroke mask and unstroked foreground, even if
  * their inks are identical. ImageDraw does NOT merge those two masks. */

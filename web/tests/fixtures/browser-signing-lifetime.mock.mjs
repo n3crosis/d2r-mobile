@@ -1,3 +1,4 @@
+// 合成编排测试，不会签名 IPA，也不执行浏览器/WASM 代码。
 // Synthetic orchestration tests; these never sign an IPA or execute browser/WASM code.
 import test, { mock } from "node:test";
 import assert from "node:assert/strict";

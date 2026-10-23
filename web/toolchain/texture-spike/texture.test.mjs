@@ -1,3 +1,5 @@
+// 验证 texture 的约定与边界；依据 ./dist/texture.mjs、./conformance.mjs 及本文件的测试断言。
+// Verify texture contracts and boundaries against ./dist/texture.mjs、./conformance.mjs and this file's assertions.
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 import createModule from "./dist/texture.mjs";

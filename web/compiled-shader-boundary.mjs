@@ -51,6 +51,7 @@ function inspectReflectionEnvelope(bytes, start, length) {
   range(vtable, 4);
   const tableSize = view.getUint16(vtable, true),
     inlineSize = view.getUint16(vtable + 2, true);
+  // 固定写入器的 Reflection 根表从版本 0.4.0 起最多有 15 个字段。
   // The pinned writer's Reflection root has at most 15 fields, beginning with version 0.4.0.
   if (
     tableSize < 6 ||
@@ -83,6 +84,7 @@ function inspectReflectionEnvelope(bytes, start, length) {
     range(vector, 4);
     const count = view.getUint32(vector, true);
     range(vector + 4, count * 4);
+    // 节点及局部分配是向前表偏移的向量，其他向量保存节点 ID；此处刻意不把嵌套节点模式解读为语义证明。
     // Nodes and local allocations are vectors of forward table offsets. Other vectors carry node IDs.
     // Nested node schemas are deliberately not interpreted as semantic proof here.
     if (field === 1 || field === 10) {
@@ -263,6 +265,7 @@ function inspect(bytes, expected) {
   }
   if (cursor !== functions.end) fail("function list size mismatch");
   if (declaredTail) {
+    // 只接受固定非调试写入器声明的完整布局，不接受任意尾部字节。
     // Only the pinned non-debug writer's complete declared layout is accepted, never arbitrary tail bytes.
     if (
       programTags.size !== 3 ||
@@ -327,6 +330,7 @@ function inspect(bytes, expected) {
       relative += size;
     }
     if (relative !== reflection.size) fail("unaccounted reflection tail");
+    // 上游不提供反射专用哈希，现有 bitcode 哈希仍为必需；下方整个输出的 SHA256/收据也覆盖完整声明尾部。
     // Upstream supplies no reflection-specific hash. Existing bitcode hashes stay mandatory;
     // the full-output SHA256/receipt below covers the complete declared tail as well.
   }

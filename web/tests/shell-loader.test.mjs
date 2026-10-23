@@ -1,3 +1,5 @@
+// 验证 shell-loader 的约定与边界；依据 ../shell-loader.mjs、../shell-contract.mjs 及本文件的测试断言。
+// Verify shell-loader contracts and boundaries against ../shell-loader.mjs、../shell-contract.mjs and this file's assertions.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import test from "node:test";
@@ -73,6 +75,7 @@ function configuration(kind = "zip") {
       assert.equal(context.trustedRecipe, undefined);
       const plist = new TextDecoder().decode(await context.readEntry(base + "Info.plist"));
       const executable = new TextDecoder().decode(await context.readEntry(base + "Demo"));
+      // 仅为合成解析器，不是生产 Mach-O/plist 实现。
       // Synthetic parser only, not a production Mach-O/plist implementation.
       assert.equal(plist, "synthetic-plist:ios:16.0");
       assert.equal(executable, "synthetic-executable:ios:16.0");

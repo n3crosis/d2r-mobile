@@ -24,9 +24,12 @@ void nsp_clear_parser(void) { nsp_zero(nsp_parser_line, sizeof nsp_parser_line);
 static int get_kv(FILE *f, char **key, char **value) {""",
 )
 replace_once(
-    "    static char line[1024];", "    char *line = nsp_parser_line;\n    nsp_clear_parser();"
+    "    static char line[1024];",
+    "    char *line = nsp_parser_line;\n    nsp_clear_parser();",
 )
-replace_once("fgets(line, (int)sizeof(line), f)", "fgets(line, (int)sizeof(nsp_parser_line), f)")
+replace_once(
+    "fgets(line, (int)sizeof(line), f)", "fgets(line, (int)sizeof(nsp_parser_line), f)"
+)
 replace_once(
     "    if (errno != 0)\n        return -2;",
     """    if (errno != 0)

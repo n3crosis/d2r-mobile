@@ -1,4 +1,5 @@
-"""Bounded serializer using original CASC functions, no filesystem/network access.
+"""使用原始 CASC 函数的有界序列化器，不访问文件系统或网络。JS 在调用此纯操作前解析异步认证记录；载荷依次连接配置、解码的 VFS1/根及有序替换项。选项指定精确连续段，不允许稀疏或补零输入。
+Bounded serializer using original CASC functions, no filesystem/network access.
 
 JS resolves asynchronous authenticated records before calling this pure operation.
 Payload is concatenated config, decoded VFS1/root, then ordered replacements.
@@ -32,17 +33,28 @@ def table(raw):
         or struct.unpack_from(">I", raw, 8)[0] != 10
     ):
         fail()
+    # 只支持原始单字节编码规范索引及固定 25 字节 CFT 布局。
     # Only original one-byte encoding-spec index / fixed 25-byte CFT layout.
     path, path_len, vfs, vfs_len, cft, cft_len = struct.unpack_from(">6I", raw, 12)
     est, est_len = struct.unpack_from(">2I", raw, 38)
-    for start, size in ((path, path_len), (vfs, vfs_len), (cft, cft_len), (est, est_len)):
+    for start, size in (
+        (path, path_len),
+        (vfs, vfs_len),
+        (cft, cft_len),
+        (est, est_len),
+    ):
         if start < 46 or start + size > len(raw):
             fail()
     if not 0 < est_len <= 255 or cft_len % 25:
         fail()
     spans = sorted(
         (start, start + size)
-        for start, size in ((path, path_len), (vfs, vfs_len), (cft, cft_len), (est, est_len))
+        for start, size in (
+            (path, path_len),
+            (vfs, vfs_len),
+            (cft, cft_len),
+            (est, est_len),
+        )
         if size
     )
     if any(a[1] > b[0] for a, b in zip(spans, spans[1:])):
@@ -56,7 +68,11 @@ def table(raw):
 
 
 def path_checked(path):
-    if not isinstance(path, str) or len(path.encode()) > 4096 or original.norm_path(path) != path:
+    if (
+        not isinstance(path, str)
+        or len(path.encode()) > 4096
+        or original.norm_path(path) != path
+    ):
         fail()
     if any(x in ("", ".", "..") for x in path.split("/")) or any(
         ord(c) < 32 or c in ":\\" for c in path
@@ -66,7 +82,11 @@ def path_checked(path):
 
 
 def generate(payload, options):
-    if not isinstance(payload, bytes) or len(payload) > MAX_INPUT or not isinstance(options, dict):
+    if (
+        not isinstance(payload, bytes)
+        or len(payload) > MAX_INPUT
+        or not isinstance(options, dict)
+    ):
         fail()
     parts = options.get("parts")
     jobs = options.get("jobs")
@@ -87,8 +107,14 @@ def generate(payload, options):
         fail()
     slices, cursor = [], 0
     for index, length in enumerate(parts):
-        limit = 1024 * 1024 if index == 0 else MAX_TABLE if index < 3 else MAX_REPLACEMENT
-        if type(length) is not int or not 0 <= length <= limit or cursor + length > len(payload):
+        limit = (
+            1024 * 1024 if index == 0 else MAX_TABLE if index < 3 else MAX_REPLACEMENT
+        )
+        if (
+            type(length) is not int
+            or not 0 <= length <= limit
+            or cursor + length > len(payload)
+        ):
             fail()
         slices.append(payload[cursor : cursor + length])
         cursor += length
@@ -107,9 +133,9 @@ def generate(payload, options):
             fail()
         if not re.fullmatch(r"[0-9]+ [0-9]+", values.get(name + "-size", "")):
             fail()
-        if hashlib.md5(raw).hexdigest() != values[name].split()[0].lower() or len(raw) != int(
-            values[name + "-size"].split()[0]
-        ):
+        if hashlib.md5(raw).hexdigest() != values[name].split()[0].lower() or len(
+            raw
+        ) != int(values[name + "-size"].split()[0]):
             fail()
     vfs, root = bytearray(slices[1]), bytearray(slices[2])
     cft, end, specs = table(vfs)
@@ -119,6 +145,7 @@ def generate(payload, options):
     seen = set()
 
     def append(content, spec="b:256K*=z"):
+        # 先压缩有界条目再保留，防护累计输出大小。
         # Compress a bounded item before retaining it; guard cumulative output.
         encoded = original.encode_by_espec(bytes(content), spec)
         if len(new_data) + len(encoded) > MAX_OUTPUT:
@@ -128,6 +155,7 @@ def generate(payload, options):
         return ekey, len(content), len(encoded)
 
     additions = {}
+    # 与原生 rewrite_tvfs 一样精确保留调用方顺序；即使输入交错，新增项也在替换项之后，其 CFT 顺序由原生代码排序。
     # Preserve caller order exactly, as native rewrite_tvfs does. Additions follow
     # replacements even if interleaved in input; their CFT order is sorted natively.
     for want_add in (False, True):
@@ -143,11 +171,15 @@ def generate(payload, options):
             if want_add:
                 if job.get("oldEkey") is not None:
                     fail()
-                spec_index = next((i for i, spec in enumerate(specs) if spec == b"z"), 0)
+                spec_index = next(
+                    (i for i, spec in enumerate(specs) if spec == b"z"), 0
+                )
                 pos = None
             else:
                 old = job.get("oldEkey", "")
-                if not isinstance(old, str) or not re.fullmatch(r"[0-9a-fA-F]{32}", old):
+                if not isinstance(old, str) or not re.fullmatch(
+                    r"[0-9a-fA-F]{32}", old
+                ):
                     fail()
                 row = [""] * 11
                 row[6] = old
@@ -171,6 +203,7 @@ def generate(payload, options):
                 }
             )
     if additions:
+        # 进入原始递归路径遍历前限制深度；拒绝无效目录范围，不依赖 Python 切片补零。
         # Bound recursion before original recursive path walking. Reject invalid
         # directory extents rather than relying on Python slice zero-extension.
         validate_path_tree(vfs)

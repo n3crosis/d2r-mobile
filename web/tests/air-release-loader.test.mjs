@@ -1,3 +1,5 @@
+// 验证 air-release-loader 的约定与边界；依据 ../runtime-build/air-release-transport.mjs、../runtime-build/air-release-loader.mjs 及本文件的测试断言。
+// Verify air-release-loader contracts and boundaries against ../runtime-build/air-release-transport.mjs、../runtime-build/air-release-loader.mjs and this file's assertions.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";

@@ -1,3 +1,5 @@
+// 生成预览构建的文件与步骤清单；依据 ../runtime-build/inventory.mjs、../scripts/build-policy.mjs 的模块与调用约定。
+// Generate file and step manifests for preview builds using the module and calling contracts in ../runtime-build/inventory.mjs、../scripts/build-policy.mjs.
 import process from "node:process";
 import { readdir, readFile, writeFile, lstat } from "node:fs/promises";
 import { createHash } from "node:crypto";

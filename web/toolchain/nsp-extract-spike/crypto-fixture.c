@@ -1,3 +1,4 @@
+/* 使用公开 NIST SP 800-38A AES-128 CTR 合成向量及 XTS 往返测试。不读取用户密钥、包或游戏数据，链接未改动的上游 aes.c。 */
 /* Synthetic public NIST SP 800-38A AES-128 CTR vector + XTS round-trip.
  * No user keys, packages, or game data are read. Links upstream aes.c unchanged.
  */

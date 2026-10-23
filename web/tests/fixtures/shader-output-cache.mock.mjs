@@ -1,3 +1,4 @@
+// 仅供测试的合成生产循环依赖，不是真实源码/编译器证明。
 // Test-only synthetic production-loop dependencies, not real source/compiler proof.
 import assert from "node:assert/strict";
 import { mock } from "node:test";
@@ -176,6 +177,7 @@ assert.equal(writes, 2);
 await run();
 assert.equal(compiled, 2);
 assert.equal(translated, 4);
+// 键绑定编译器、头文件、工厂、ABI、配置、选项及规范化源码/运行时。
 // Key binds compiler/header/factory/ABI/profile/options and normalized source/runtime.
 for (const field of ["assetSha256", "factorySha256", "headerSha256"]) {
   identity[field] = "9".repeat(64);
@@ -213,6 +215,7 @@ before = compiled;
 await run();
 assert.equal(compiled, before + 2);
 badHit = false;
+// 缺少可信上下文时绕过缓存，而非弱化缓存键。
 // Missing trusted context bypasses caching rather than weakening its key.
 before = compiled;
 const oldWrites = writes;
@@ -231,6 +234,7 @@ proofFails = true;
 await run();
 assert.equal(compiled, before);
 assert.equal(proofs, 2);
+// 持久化步骤被取消时，擦除已接受缓冲区，不能发布输出。
 // A cancelled persistence step erases accepted buffers and cannot publish output.
 full = false;
 forceHit = false;

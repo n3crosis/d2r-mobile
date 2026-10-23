@@ -1,3 +1,5 @@
+// 拒绝静态发布输出中的不合规路径与资产；依据 web/scripts 的模块与调用约定。
+// Reject disallowed paths and assets in static build output using the module and calling contracts in web/scripts.
 export function validateStaticBuild(html, assets) {
   const references = [...html.matchAll(/\b(?:src|href)="([^"]+)"/g)].map((match) => match[1]);
   if (

@@ -1,3 +1,4 @@
+// 仅为合成模拟：模拟缓存字节所有权约定，而非文件系统或账本真实性。
 // Synthetic only: emulate the cache byte ownership contract, not filesystem/ledger authenticity.
 export function memoryOutputCache() {
   const files = new Map();

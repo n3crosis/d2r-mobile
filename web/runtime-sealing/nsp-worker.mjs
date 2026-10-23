@@ -1,3 +1,5 @@
+// 封装 NSP 提取工作线程的运行时边界；依据 ../extraction-errors.mjs、../toolchain/nsp-extract-spike/dist/hactool-boundary.mjs 的模块与调用约定。
+// Wrap the NSP extraction worker runtime boundary using the module and calling contracts in ../extraction-errors.mjs、../toolchain/nsp-extract-spike/dist/hactool-boundary.mjs.
 import { extractionWorkerErrorCode } from "../extraction-errors.mjs";
 import factory from "../toolchain/nsp-extract-spike/dist/hactool-boundary.mjs";
 import { byteFactory, initializationWasm } from "./wasm-factory.mjs";
@@ -78,6 +80,7 @@ self.onmessage = async ({ data }) => {
     try {
       await (await ready).execute("dispose");
     } catch {
+      /* 无论如何都终止。 */
       /* terminate regardless */
     }
     reject(id, error);

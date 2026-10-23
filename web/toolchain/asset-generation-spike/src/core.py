@@ -1,4 +1,5 @@
-"""Bounded browser transforms. Bytes in / bytes out; no directory, font or network API."""
+"""有界浏览器转换，输入/输出均为字节，不提供目录、字体或网络 API。
+Bounded browser transforms. Bytes in / bytes out; no directory, font or network API."""
 
 import contextlib
 import io
@@ -31,6 +32,7 @@ def sprite_v31(data):
 
 
 def encode_v31(im):
+    # 使用 gen_romfs_overlay.py 的精确头表达式，只支持 RGBA v31。
     # Exact header expression in gen_romfs_overlay.py; only RGBA v31 supported.
     w, h = im.size
     if w > 65535:
@@ -96,6 +98,7 @@ def execute(operation, payload, options):
         index = options.get("frame", 0)
         if type(index) is not int or not 0 <= index < im.width // fw:
             raise ValueError("Frame index out of range")
+        # 原始 romfs_art.frame 裁剪，然后使用未改动的 gen_hud_v4.dflt。
         # Original romfs_art.frame crop, then unmodified gen_hud_v4.dflt.
         im = native.dflt(im.crop((index * fw, 0, (index + 1) * fw, im.height)))
         png = io.BytesIO()
@@ -111,6 +114,7 @@ def execute(operation, payload, options):
             "versions": {"pillow": Image.__version__},
         }
     if operation == "experience-table":
+        # 以有界内存读取器运行原始 main 主体，不导入原生命令行模块。
         # Run the original main body with a bounded in-memory reader, not native CLI imports.
         native.romfs_art = types.SimpleNamespace(read=lambda root, path: payload)
         output = io.StringIO()
@@ -140,5 +144,9 @@ def execute(operation, payload, options):
                 raise ValueError("Unsafe logical path")
             path = path.lower()
             result.append({"source": path, "target": native.touch_path(path)})
-        return {"files": {"overlay-paths.json": json.dumps(result, separators=(",", ":")).encode()}}
+        return {
+            "files": {
+                "overlay-paths.json": json.dumps(result, separators=(",", ":")).encode()
+            }
+        }
     raise ValueError("Unsupported asset operation")

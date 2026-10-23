@@ -1,3 +1,4 @@
+// 可丢弃的本地输出缓存。目录字节只有与本源的独立账本一致才可信；账本在调用方验证新生成输出后填充。
 // Disposable local output cache. Folder bytes are trusted only against this origin's
 // independent ledger, populated after a caller has validated a freshly generated output.
 const ROOT = "D2R-cache";
@@ -16,6 +17,7 @@ const hash = async (bytes) =>
     n.toString(16).padStart(2, "0"),
   ).join("");
 
+// 不接受含糊的 undefined、特殊对象、循环引用或无界元数据。
 // No ambiguous undefined values, exotic objects, cycles, or unbounded metadata.
 export async function cacheKeyFor(value) {
   let nodes = 0,
@@ -63,6 +65,8 @@ export async function cacheKeyFor(value) {
 }
 
 /**
+ * 可选的纯本地存储，不应包含凭据或原始输入。read 返回自有快照或 null；write 只接受已经验证的新输出。忽略缓存只跳过读取，仍更新新缓存。存储失败只禁用本实例，不终止生成任务；取消仍会终止操作。最后提交账本，未完成文件不能命中。
+ *
  * Optional, local-only storage. No credentials or raw inputs belong here.
  * read returns an owned snapshot, or null. write must only receive an already
  * accepted fresh output. Ignore cache skips reads, not fresh cache refreshes.
@@ -118,6 +122,7 @@ export async function createLocalOutputCache({
     promise.then(settled, settled);
     return promise;
   };
+  // 文件系统和浏览器存储的 Promise 不总能取消；及时停止等待，观察晚到结果并释放晚到的自有资源。
   // File-system and browser-storage promises are not always cancellable. Stop
   // waiting promptly, observe late outcomes, and dispose late owned results.
   const io = async (action, requestSignal, onLate) => {
@@ -134,6 +139,7 @@ export async function createLocalOutputCache({
       try {
         track(Promise.resolve(onLate(value))).catch(() => {});
       } catch {
+        /* 尽力处理。 */
         /* best effort */
       }
     };
@@ -185,6 +191,7 @@ export async function createLocalOutputCache({
         }),
       ]);
     } catch {
+      /* 清理不能阻塞生成或取消。 */
       /* Cleanup cannot block generation or cancellation. */
     } finally {
       clearTimeout(timer);
@@ -203,6 +210,7 @@ export async function createLocalOutputCache({
     try {
       Promise.resolve(onWarning?.({ phase: "cache", status: "unavailable" })).catch(() => {});
     } catch {
+      /* 仅作建议参考。 */
       /* Advisory only. */
     }
   };
@@ -262,6 +270,7 @@ export async function createLocalOutputCache({
       !directory?.getDirectoryHandle
     )
       throw new Error("CACHE_STORAGE_UNAVAILABLE");
+    // 每个源最多一个可选缓存写入会话；其他标签页仍正常生成，无需等待，也不争用账本大小统计或标记写入。
     // One optional cache writer session per origin. Other tabs still generate
     // normally, without waiting or racing ledger size/accounting and marker writes.
     const locked = await io(
@@ -429,6 +438,7 @@ export async function createLocalOutputCache({
         const id = environment.crypto.randomUUID();
         if (!UUID.test(id)) throw new Error("CACHE_ENTRY_INVALID");
         const record = parse(`${origin}${PREFIX}${kind}/${key}/${sha256}/${snapshot.length}/${id}`);
+        // 随机且不可变的叶文件避免修改现有缓存读取器正在使用的文件。
         // Random immutable leaves avoid mutating an existing cache reader's file.
         try {
           await io(() => parent.getFileHandle(record.file), requestSignal);
@@ -462,6 +472,7 @@ export async function createLocalOutputCache({
         writer = undefined;
         check(requestSignal);
         if (closed) return false;
+        // 完成凭据是可信源记录，不是目录内的任何内容。
         // The trusted-origin record, not anything in the folder, is completion authority.
         publishedUrl = record.url;
         await io(
@@ -476,6 +487,7 @@ export async function createLocalOutputCache({
         totalBytes += record.size;
         entryCount++;
         check(requestSignal);
+        // 只删除自有可信账本指明的过期叶文件，绝不递归删除。
         // Remove only a superseded leaf named by our own trusted ledger. Never recurse.
         if (previous) {
           try {

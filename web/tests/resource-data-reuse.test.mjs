@@ -1,3 +1,4 @@
+// 只使用合成字节，证明有界只读复用，而非游戏/设备兼容性。
 // Synthetic bytes only: these tests establish bounded, read-only reuse, not game/device compatibility.
 import test from "node:test";
 import assert from "node:assert/strict";

@@ -1,3 +1,4 @@
+//! 移植自 dm/ios/tools/gen_widestash_art.py::bc3。固定缓冲区，无分配器或宿主导入，每个线程拥有一个实例。
 //! Port of dm/ios/tools/gen_widestash_art.py::bc3.
 //! Fixed buffers, no allocator or host imports. One worker owns one instance.
 const MAX_PIXELS: usize = 4 * 1024 * 1024;

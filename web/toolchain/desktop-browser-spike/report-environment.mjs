@@ -1,3 +1,5 @@
+// 记录浏览器验证所用的环境信息；依据 web/toolchain/desktop-browser-spike 的模块与调用约定。
+// Record environment information for browser verification using the module and calling contracts in web/toolchain/desktop-browser-spike.
 import { appendFile } from "node:fs/promises";
 import os from "node:os";
 import process from "node:process";

@@ -1,3 +1,4 @@
+// 使用实际打包的 WASM Pillow 编码器作为参考，不使用浏览器、网络或游戏输入。
 // Actual bundled WASM Pillow encoder oracle. No browser, network, or game input.
 import { readFileSync, copyFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -8,6 +9,7 @@ const source = new URL("../../asset-generation-spike/public/vendor/pyodide/", im
 const manifest = JSON.parse(readFileSync(new URL("vendor-manifest.json", source)));
 const dir = mkdtempSync(join(tmpdir(), "d2r-png-oracle-"));
 try {
+  // 复制到仓库 type:module 范围外，使 Emscripten 的 .js Node 加载器以 CommonJS 运行；内容不变且经过供应方哈希验证。
   // Copy outside the repository's type:module scope so Emscripten's .js Node
   // loader runs as CommonJS. Contents are unchanged and vendor-hash verified.
   for (const [name, sha256] of Object.entries(manifest.sha256)) {

@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-/** Narrow CPython-vs-handwritten-JS oracle. Authored synthetic game-like inputs,
+/**
+ * CPython 与手写 JS 的窄范围参考对比，使用自编类似游戏的合成输入，不是真实游戏证据。Python 仅用于测试，不是生产载荷。仓库不含源文本，因此触控检查使用刻意带哈希的样例哨兵；篡改文本仍以真实 SHA-1 校验并拒绝。
+ * Narrow CPython-vs-handwritten-JS oracle. Authored synthetic game-like inputs,
  * not real title evidence. Python is test-only and never a production payload.
  * Source text is unavailable in this repository, so touch checks use deliberate
  * hash-bearing fixture sentinels; tampered text still uses real SHA-1 and fails.
@@ -125,7 +127,9 @@ export const fixtureSha1 = async (bytes) => {
     ? text.split(":")[1] + "0".repeat(32)
     : createHash("sha1").update(bytes).digest("hex");
 };
-/** Reusable inputs for a larger synthetic native-oracle corpus. initialReplacements
+/**
+ * 供更大合成原生参考语料复用的输入。initialReplacements 只含未修改的前序物品名称替换，用于测试 CRLF；带哈希的合成源字符串必须由调用方使用 fixtureSha1。
+ * Reusable inputs for a larger synthetic native-oracle corpus. initialReplacements
  * contains only an untouched earlier-stage item-name replacement (CRLF exercise).
  * The caller must use fixtureSha1 for the synthetic hash-bearing source strings.
  */
@@ -183,6 +187,7 @@ async function main() {
   compare(notes.replacements, expected.notes, "annotations");
   assert.deepEqual(notes.stat, expected.stat);
   assert.deepEqual(notes.textbox, decode(expected.textbox));
+  // 来源及冲突防护必须安全拒绝，绝不应用未经检查的修改。
   // Source and collision guards must fail closed, never apply unchecked changes.
   await assert.rejects(
     createAnnotations({ readAsset: (p) => assets.get(p), sha1: realSha1 }).buildTouchStrings(),

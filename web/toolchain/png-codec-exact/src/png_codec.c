@@ -1,3 +1,4 @@
+/* 窄范围 PNG8/RGBA 编解码器，行过滤/流处理直接移植自 Pillow 10.2.0 ZipEncode.c，见 reference/LICENSE 和 LICENSE-zlib。不使用 CPython/libpng；每个实例由单个线程拥有，固定缓冲区不可重入。 */
 /* Narrow PNG8/RGBA codec. Row filtering/streaming are direct ports of Pillow
  * 10.2.0 ZipEncode.c. See reference/LICENSE and LICENSE-zlib. No CPython/libpng.
  * One worker owns each instance. Fixed buffers are non-reentrant. */
@@ -59,6 +60,7 @@ static uint8_t predictor(int a, int b, int c) {
     int pa = abs(b - c), pb = abs(a - c), pc = abs(a + b - 2 * c);
     return (uint8_t)(pa <= pb && pa <= pc ? a : pb <= pc ? b : c);
 }
+/* optimize=False 时过滤优先级为 NONE、UP、SUB、PAETH，只有严格改善才胜出；Pillow 此处刻意不考虑 AVERAGE。 */
 /* optimize=False: filter precedence NONE, UP, SUB, PAETH; only strict
  * improvements win. Pillow deliberately does not consider AVERAGE here. */
 static uint8_t *choose_filter(uint8_t *row, const uint8_t *previous, uint32_t bytes) {
@@ -105,6 +107,7 @@ static uint8_t *choose_filter(uint8_t *row, const uint8_t *previous, uint32_t by
     return best;
 }
 
+/* 精确的生产保存约定：RGBA8，无元数据，默认 optimize=False、compress_level=-1、compress_type=-1，即 Z_FILTERED、window=15、memLevel=9。 */
 /* Exact production save contract: RGBA8, no metadata, defaults optimize=False,
  * compress_level=-1, compress_type=-1 => Z_FILTERED, window=15, memLevel=9. */
 int png_encode(uint32_t w, uint32_t h) {
@@ -165,6 +168,7 @@ int png_encode(uint32_t w, uint32_t h) {
         }
         if (status < 0)
             break;
+        /* _idat.write 保留每个编码器结果，包括末尾零值。 */
         /* _idat.write preserves every encoder result, including a final zero. */
         if (!chunk(&used, "IDAT", compressed, BLOCK - stream.avail_out)) {
             status = Z_MEM_ERROR;
@@ -181,6 +185,7 @@ int png_encode(uint32_t w, uint32_t h) {
     return (int)used;
 }
 
+/* 严格且经过认证的生产子集：非交错 RGBA8、有界 IDAT、有效 CRC、连续 IDAT 段，无未知关键块或尾部载荷。忽略附属元数据，绝不将其用于色彩管理。 */
 /* Strict authenticated production subset: noninterlaced RGBA8, bounded IDATs,
  * valid CRCs, contiguous IDAT run, no unknown critical chunks/trailing payload.
  * Ancillary metadata is ignored, never applied as color management. */

@@ -1,3 +1,5 @@
+// 约束 AIR 编译请求、诊断与编译器身份；依据 ./shader-diagnostics.mjs 的模块与调用约定。
+// Constrain AIR compile requests, diagnostics and compiler identity using the module and calling contracts in ./shader-diagnostics.mjs.
 import { shaderFailureDiagnostic } from "./shader-diagnostics.mjs";
 // 固定生产编译配置和有界消息协议；结构验证不等于 Apple GPU 验收。
 // Fixed compilation profile and bounded protocol; structural validation is not Apple GPU acceptance.
@@ -10,6 +12,7 @@ export const AIR_COMPILER_LIMITS = Object.freeze({
   batchCompilations: 128,
   batchSourceBytes: 32 * 1024 * 1024,
   recycleHeapBytes: 256 * 1024 * 1024,
+  // 调用后的防护，不声称拦截同步 WASM 内存增长；经认证的构建另外强制执行 2 GiB 线性内存上限。
   // A post-call guard, not a claim to intercept synchronous WASM memory growth.
   // The authenticated build separately enforces its 2 GiB linear-memory maximum.
   maxObservedHeapBytes: 512 * 1024 * 1024,

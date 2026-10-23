@@ -1,3 +1,4 @@
+// 检查真实 API 输出的 LLVM 文本；合成测试只验证本校验器。此样例专用读取器不是通用 LLVM 解析器或活跃性证明。
 // Checks actual API-emitted LLVM text. Synthetic tests validate only this checker.
 // This fixture-specific reader is not a general LLVM parser or liveness proof.
 import assert from "node:assert/strict";
@@ -90,6 +91,7 @@ export function checkFragmentInputLiveness(
       `buffer argument ${i} type/address space`,
     );
 
+  // 受限样例检查：以非调试函数体内的局部值标记判断各保留参数是否有文本使用。生产终结器使用 LLVM Argument::use_empty()，不是此解析器。
   // Constrained fixture check: local-value tokens in this non-debug function
   // body establish whether each preserved parameter has any textual use.
   // The production finalizer uses LLVM Argument::use_empty(), not this parser.

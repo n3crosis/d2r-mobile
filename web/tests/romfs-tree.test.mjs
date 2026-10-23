@@ -1,3 +1,5 @@
+// 验证 romfs-tree 的约定与边界；依据 ../romfs-tree.mjs 及本文件的测试断言。
+// Verify romfs-tree contracts and boundaries against ../romfs-tree.mjs and this file's assertions.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { indexRomfs, ROMFS_LIMITS } from "../romfs-tree.mjs";
@@ -246,6 +248,7 @@ test("rejects duplicate/case-colliding paths and overlapping nonempty payloads",
   for (const secondName of ["hello.bin", "HELLO.BIN"])
     await assert.rejects(indexRomfs(multipleFiles({ secondName })), /duplicate path/);
   await assert.rejects(indexRomfs(multipleFiles({ secondOffset: 7n })), /file data overlap/);
+  // 根级同名文件和目录共用一个命名空间。
   // Root-level file and directory with the same name share one namespace.
   const f = fixture({ directory: "hello.bin", name: "hello.bin" });
   f.set32(f.dirStart + 12, 0);

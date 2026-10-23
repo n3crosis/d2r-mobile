@@ -1,4 +1,6 @@
-/** Build-owned initialization only. Job payloads never choose native exports or code. */
+/**
+ * 仅允许构建方控制初始化，任务载荷不能选择原生导出或代码。
+ * Build-owned initialization only. Job payloads never choose native exports or code. */
 export function byteFactory(factory, buffer, maxBytes = 64 * 1024 * 1024) {
   if (
     typeof factory !== "function" ||

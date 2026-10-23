@@ -1,5 +1,8 @@
+// 校验可复用资源目录的索引与数据；依据 ./romfs-tree.mjs 的模块与调用约定。
+// Verify indexes and data in reusable resource directories using the module and calling contracts in ./romfs-tree.mjs.
 import { ROMFS_LIMITS } from "./romfs-tree.mjs";
 
+// 标记、调用方哈希、大小或时间戳均不能授权复用；只读地将目标每个字节与当前实时源能力逐一比对。
 // No marker, caller hash, size or timestamp can authorize reuse. Compare every
 // destination byte with the current live source capability without writing.
 export async function verifyResourceData({
@@ -46,6 +49,7 @@ export async function verifyResourceData({
         typeof handle?.isSameEntry !== "function"
       )
         fail();
+      // 既不解析也不修改旧收据，其内容不构成证明。
       // The old receipt is neither parsed nor modified. Its contents are not proof.
       if (path === markerName && handle.kind === "file") continue;
       const item = { parent: node.handle, name, handle, path };
@@ -103,6 +107,7 @@ export async function verifyResourceData({
     filesVerified++;
     onProgress?.({ filesVerified, bytesVerified });
   }
+  // 除字节差异外，还检测句柄替换及普通并发编辑；这不是针对任意外部文件系统写入者的原子快照。
   // Detect replaced handles and ordinary concurrent edits as well as byte mismatches.
   // This is not an atomic snapshot against arbitrary external filesystem writers.
   for (const item of [...directories, ...files.values()]) {

@@ -12,11 +12,17 @@ import numpy as np
 source = Path(__file__).resolve().parents[3] / "dm/tools/astc_pack.py"
 names = {"bc3_decode", "blocks_to_image"}
 tree = ast.parse(source.read_text())
-functions = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in names]
+functions = [
+    node
+    for node in tree.body
+    if isinstance(node, ast.FunctionDef) and node.name in names
+]
 if len(functions) != len(names):
     raise RuntimeError("Native pure reference functions missing")
 namespace = {"np": np, "ROW_BLOCKS": 1024}
-exec(compile(ast.Module(body=functions, type_ignores=[]), str(source), "exec"), namespace)
+exec(
+    compile(ast.Module(body=functions, type_ignores=[]), str(source), "exec"), namespace
+)
 request = json.loads(sys.stdin.read(2_000_000))
 raw = base64.b64decode(request["bc3"], validate=True)
 if not raw or len(raw) % 16 or len(raw) > 65536 * 16:

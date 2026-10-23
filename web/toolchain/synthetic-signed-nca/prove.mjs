@@ -1,7 +1,11 @@
+// 验证合成签名 NCA 的认证提取路径；依据 ../../content-selection.mjs、../../romfs-tree.mjs 的模块与调用约定。
+// Verify the authenticated extraction path using synthetic signed NCAs using the module and calling contracts in ../../content-selection.mjs、../../romfs-tree.mjs.
 import process from "node:process";
 import { Buffer } from "node:buffer";
 /** 分别使用生产根与隔离测试根，对真实编译的生产边界进行两次测试。 */
-/** Tests real compiled production boundary twice, with production vs isolated test root. */
+/**
+ * 分别使用生产根及隔离测试根，两次测试真实编译的生产边界。
+ * Tests real compiled production boundary twice, with production vs isolated test root. */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";

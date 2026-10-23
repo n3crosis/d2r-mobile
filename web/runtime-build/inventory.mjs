@@ -1,3 +1,5 @@
+// 校验运行时清单、资产大小及完整性；依据 ./transport.mjs、../runtime-asset-groups.mjs 的模块与调用约定。
+// Verify runtime manifests, asset sizes and integrity using the module and calling contracts in ./transport.mjs、../runtime-asset-groups.mjs.
 import { validateRuntimeTransport, verifyTransportPayload } from "./transport.mjs";
 import { validateRuntimeAssetGroups } from "../runtime-asset-groups.mjs";
 import { Buffer } from "node:buffer";

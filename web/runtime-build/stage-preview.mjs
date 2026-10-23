@@ -1,3 +1,5 @@
+// 暂存发布预览所需的前端与已校验运行时；依据 ./inventory.mjs、../verification/preview-manifest.mjs 的模块与调用约定。
+// Stage frontend files and verified runtimes for the release preview using the module and calling contracts in ./inventory.mjs、../verification/preview-manifest.mjs.
 import process from "node:process";
 import { mkdir, copyFile, rm, readFile, writeFile } from "node:fs/promises";
 import { verifyRuntimeInventory } from "./inventory.mjs";

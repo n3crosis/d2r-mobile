@@ -1,7 +1,11 @@
+// 生成仅供测试的合成签名 NCA 输入；依据 web/toolchain/synthetic-signed-nca 的模块与调用约定。
+// Generate synthetic signed NCA inputs solely for tests using the module and calling contracts in web/toolchain/synthetic-signed-nca.
 import process from "node:process";
 import { Buffer } from "node:buffer";
 /** 仅使用自行编写的简单内容；临时签名私钥始终留在内存中。 */
-/** Authored toy content only. The ephemeral private signing key never leaves memory. */
+/**
+ * 仅为自编玩具内容，临时私有签名密钥不离开内存。
+ * Authored toy content only. The ephemeral private signing key never leaves memory. */
 import { generateKeyPairSync, createHash, sign, constants, verify } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";

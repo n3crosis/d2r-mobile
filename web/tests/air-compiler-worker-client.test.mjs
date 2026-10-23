@@ -38,6 +38,7 @@ class ProtocolWorker extends EventTarget {
 }
 
 async function setup(t, onProgress) {
+  // 显式替换编译操作：这些三字节样例不是 WASM 模块。
   // Explicitly replace compilation: these three-byte fixtures are not a WASM module.
   t.mock.method(WebAssembly, "compile", async () => ({ synthetic: true }));
   const workers = [];

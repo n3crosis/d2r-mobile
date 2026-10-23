@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-/** CPython-vs-native-JS touch layout parity, using only authored synthetic input.
+/**
+ * CPython 与原生 JS 触控布局一致性比较，仅用自编合成输入，不含游戏数据。Python 是独立固定的测试参考，从不成为运行时依赖；导入本文件只定义辅助函数。
+ * CPython-vs-native-JS touch layout parity, using only authored synthetic input.
  * The corpus contains no title data. Python is an independent, pinned test oracle
  * and is never a runtime dependency. Importing this file only defines helpers.
  */
@@ -22,7 +24,9 @@ const legend = (name = "FixtureLegend") =>
   widget(name, rect() + ', "fitToParent": true', "ButtonLegendWidget");
 const panel = (...names) => layout(names.map((name) => widget(name)));
 
-/** Fresh plain rel -> text map; callers may safely modify their own copy. */
+/**
+ * 新建普通相对路径到文本映射，调用方可安全修改自己的副本。
+ * Fresh plain rel -> text map; callers may safely modify their own copy. */
 export function createTouchCorpus() {
   const corpus = {};
   const put = (rel, text) => {
@@ -47,6 +51,7 @@ export function createTouchCorpus() {
     );
   }
 
+  // 所有游戏内原生源控件均为自编，不复制游戏布局。
   // All in-game native source widgets are invented, not copied title layouts.
   const baseWidgets = new Map();
   for (const [rel, [base, items]] of Object.entries(data.INGAME)) {
@@ -225,6 +230,7 @@ export function createTouchCorpus() {
   put("youdiedmodalhd.json", panel("SubText"));
   put("controller/controlleroverlayhd.json", layout([legend()]));
   put("controller/console/switch/playerinventoryexpansionlayouthd.json", layout([legend()]));
+  // 此文件既是 PRESENT 的输入，也是技能按钮的原生来源。
   // This file is both an input to PRESENT and a native source for skill buttons.
   const invRel = "controller/playerinventoryexpansionlayouthd.json";
   put(invRel, corpus[invRel].replace('"children": [', '"children": [\n' + legend() + ","));
@@ -350,7 +356,9 @@ export function createTouchCorpus() {
   return corpus;
 }
 
-/** Merge the independent inventory fixtures for the full overlay-recipe test.
+/**
+ * 为完整覆盖配方测试合并独立背包样例；输入为 inventoryFixtures()，克隆全部字符串，不修改任何样例。
+ * Merge the independent inventory fixtures for the full overlay-recipe test.
  * Input is inventoryFixtures(); all strings are cloned and no fixture is mutated.
  */
 export function touchFixtures(inventory = null) {
@@ -371,6 +379,7 @@ export function touchFixtures(inventory = null) {
     };
     corpus["controller/playerinventoryoriginallayouthd.json"] = inventory.player;
     corpus["controller/hirelinginventorypanelhd.json"] = inventory.mercenary;
+    // 背包隔离测试已有触控后控件；完整流水线必须从触控插入之前开始，所以只删除那些行。
     // Inventory's isolated test already has these post-touch widgets. A complete
     // pipeline must start before touch inserts them, so remove only those lines.
     const bank = inventory.bank

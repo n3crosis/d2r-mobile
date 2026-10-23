@@ -1,3 +1,5 @@
+// 验证 deflate-boundary 的约定与边界；依据 ../deflate-boundary.mjs 及本文件的测试断言。
+// Verify deflate-boundary contracts and boundaries against ../deflate-boundary.mjs and this file's assertions.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import test from "node:test";

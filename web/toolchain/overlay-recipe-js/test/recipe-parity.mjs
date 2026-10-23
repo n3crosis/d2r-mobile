@@ -1,4 +1,6 @@
-/** Complete bounded recipe parity using authored synthetic data, no game files.
+/**
+ * 使用自编合成数据验证完整有界配方一致性，不使用游戏文件。SHA1 样例哨兵仅用于测试，生产来源检查保持严格。
+ * Complete bounded recipe parity using authored synthetic data, no game files.
  * The SHA1 fixture sentinels are test-only. Production source checks stay strict.
  */
 import process from "node:process";
@@ -62,6 +64,7 @@ const images = python(imageProgram);
 const annotation = buildAnnotationFixture();
 const inventory = inventoryFixtures();
 const layouts = touchFixtures(inventory);
+// 真实控制器模态层继承对应根层；测试纯控件样例未覆盖的跨文件重定位约定。
 // The real controller modal layers inherit their root counterparts. Exercise
 // that cross-file relocation contract, absent from pure widget fixtures.
 for (const name of ["confirmationmodalhd.json", "dismissablemodalhd.json"]) {
@@ -129,6 +132,7 @@ const bundle = {
   generated,
 };
 const expected = python(nativeProgram, JSON.stringify(bundle));
+// 默认隔离布局/字符串/二进制编排；--wasm 还验证生产 PNG 解码器，原生 PNG 样例始终具有已知像素。
 // Default isolates all layout/string/binary orchestration. --wasm also verifies
 // the production PNG decoder; the native PNG fixture always has known pixels.
 const png = process.argv.includes("--wasm")

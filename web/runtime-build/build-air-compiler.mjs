@@ -1,3 +1,4 @@
+// 导入一个经认证的发布版本并运行未改动的严格公开编译探针；此处绝不克隆 LLVM、应用补丁、安装编译器 SDK 或重建编译器。
 // Import one authenticated release and run the unchanged strict public compile canary.
 // Never clone LLVM, apply patches, install a compiler SDK, or rebuild the compiler here.
 import process from "node:process";
@@ -49,6 +50,7 @@ if (args[0] === "--fingerprint") {
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
+  // 损坏或过期的缓存应失败，不能静默替换，也不能通过重建绕过失败的检查。
   // Corrupt/stale caches fail; never silently replace them or rebuild around failed checks.
   const report =
     cached || process.env.D2R_AIR_COMPILER_ASSET_DIR || process.env.D2R_AIR_COMPILER_RECEIPT_SHA256

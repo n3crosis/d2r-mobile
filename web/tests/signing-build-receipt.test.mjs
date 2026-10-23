@@ -1,3 +1,4 @@
+// 合成收据检查不能证明浏览器签名或设备安装成功。
 // Synthetic receipt checks are not browser signing or device installation proof.
 import test from "node:test";
 import assert from "node:assert/strict";

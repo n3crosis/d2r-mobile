@@ -1,4 +1,5 @@
-"""Record, never change or replace, the native source-chain contract."""
+"""记录原生源码链约定，绝不修改或替换它。
+Record, never change or replace, the native source-chain contract."""
 
 import hashlib
 import importlib.util
@@ -10,7 +11,9 @@ import sys
 sys.dont_write_bytecode = True
 
 root = Path(__file__).resolve().parents[3]
-spec = importlib.util.spec_from_file_location("native_chain", root / "dm/gfx/tools/dmsh_chain.py")
+spec = importlib.util.spec_from_file_location(
+    "native_chain", root / "dm/gfx/tools/dmsh_chain.py"
+)
 chain = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(chain)
 version = chain.version()

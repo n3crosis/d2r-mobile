@@ -1,3 +1,5 @@
+// 验证 synthetic-export 的约定与边界；依据 ../synthetic-export.mjs、../guest-framework.mjs 及本文件的测试断言。
+// Verify synthetic-export contracts and boundaries against ../synthetic-export.mjs、../guest-framework.mjs and this file's assertions.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { webcrypto } from "node:crypto";
@@ -25,6 +27,7 @@ function sink() {
     },
   };
 }
+// 解析中央目录及本地载荷，不访问磁盘或用户文件。
 // Parse central directory and local payloads without disk or user file access.
 function unpack(parts) {
   const bytes = Buffer.concat(parts),

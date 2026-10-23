@@ -1,3 +1,5 @@
+// 封装程序改写工作线程的运行时边界；依据 ../toolchain/program-rewrite-spike/dist/capstone-lz4.mjs、../toolchain/program-rewrite-spike/rewrite-core.mjs 的模块与调用约定。
+// Wrap the program-rewrite worker runtime boundary using the module and calling contracts in ../toolchain/program-rewrite-spike/dist/capstone-lz4.mjs、../toolchain/program-rewrite-spike/rewrite-core.mjs.
 import createNative from "../toolchain/program-rewrite-spike/dist/capstone-lz4.mjs";
 import { createProgramRewriter } from "../toolchain/program-rewrite-spike/rewrite-core.mjs";
 import { PROGRAM_REWRITER_SOURCE } from "../program-release-catalog.mjs";

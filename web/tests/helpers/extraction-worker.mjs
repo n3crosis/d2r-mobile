@@ -1,3 +1,5 @@
+// 验证 extraction-worker 的约定与边界；依据 web/tests/helpers 及本文件的测试断言。
+// Verify extraction-worker contracts and boundaries against web/tests/helpers and this file's assertions.
 export class MockWorker {
   listeners = new Map();
   requests = [];

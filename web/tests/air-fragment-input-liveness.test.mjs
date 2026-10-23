@@ -1,3 +1,4 @@
+// 仅检查源码/校验器，不执行编译器，也不证明 AIR 可被接受。
 // Source/checker tests only. These do not execute a compiler or prove AIR acceptance.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -184,4 +185,5 @@ test("authored fixture keeps identical live/dead interfaces and out-of-scope res
   assert.match(source, /#elif LIVENESS_KEEP_POSITION\s+color \+= input.position;/);
 });
 
+// 探针接线仍由 air-header-operations.test.mjs 覆盖。
 // Canary wiring remains covered by air-header-operations.test.mjs.

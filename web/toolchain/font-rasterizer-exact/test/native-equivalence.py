@@ -1,4 +1,5 @@
-"""Narrow native-ABI check against actual bundled WASM Pillow fixture pixels.
+"""针对实际打包 WASM Pillow 样例像素的窄范围原生 ABI 检查，验证移植语义，不验证尚未构建的 WASM 产物或游戏字体。
+Narrow native-ABI check against actual bundled WASM Pillow fixture pixels.
 This validates the port's semantics, NOT the unbuilt WASM artifact or game fonts.
 """
 
@@ -50,7 +51,9 @@ def packed(value):
 def equal(actual, expected, label):
     if actual != expected:
         if isinstance(actual, bytes):
-            n = next((i for i, (a, b) in enumerate(zip(actual, expected)) if a != b), -1)
+            n = next(
+                (i for i, (a, b) in enumerate(zip(actual, expected)) if a != b), -1
+            )
             raise AssertionError(
                 (
                     index,
@@ -61,7 +64,11 @@ def equal(actual, expected, label):
                     len(expected),
                     actual[n : n + 16],
                     expected[n : n + 16],
-                    {k: v for k, v in case.items() if k not in ("mask", "pixels", "before")},
+                    {
+                        k: v
+                        for k, v in case.items()
+                        if k not in ("mask", "pixels", "before")
+                    },
                 )
             )
         raise AssertionError((index, label, actual, expected))
@@ -91,7 +98,11 @@ for index, case in enumerate(fixture["cases"]):
         w, h, x, y = lib.font_info()[:4]
         equal([w, h], case["maskSize"], "mask size")
         equal([x, y], case["offset"], "mask offset")
-        equal(C.string_at(lib.font_mask(), w * h), base64.b64decode(case["mask"]), "mask bytes")
+        equal(
+            C.string_at(lib.font_mask(), w * h),
+            base64.b64decode(case["mask"]),
+            "mask bytes",
+        )
     else:
         raw = base64.b64decode(case["before"])
         C.memmove(lib.font_canvas(), raw, len(raw))
@@ -107,9 +118,12 @@ for index, case in enumerate(fixture["cases"]):
             )
         )
         equal(
-            C.string_at(lib.font_canvas(), len(raw)), base64.b64decode(case["pixels"]), "draw bytes"
+            C.string_at(lib.font_canvas(), len(raw)),
+            base64.b64decode(case["pixels"]),
+            "draw bytes",
         )
 lib.font_close()
+# 小范围拒绝检查，不是通用字体模糊测试。
 # Small rejection checks, not a general font fuzzing campaign.
 assert lib.font_measure(0, 0, 0) == 2
 assert lib.font_open(0, 30) == 1

@@ -1,3 +1,5 @@
+// 验证 air-compiler-diagnostic 的约定与边界；依据 ./prepare-air-compiler-diagnostic.mjs 及本文件的测试断言。
+// Verify air-compiler-diagnostic contracts and boundaries against ./prepare-air-compiler-diagnostic.mjs and this file's assertions.
 import test from "node:test";
 import { Buffer } from "node:buffer";
 import assert from "node:assert/strict";

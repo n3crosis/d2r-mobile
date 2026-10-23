@@ -1,3 +1,5 @@
+// 验证 shader-feature-inventory 的约定与边界；依据 ../shader-feature-inventory.mjs 及本文件的测试断言。
+// Verify shader-feature-inventory contracts and boundaries against ../shader-feature-inventory.mjs and this file's assertions.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createShaderFeatureInventory } from "../shader-feature-inventory.mjs";

@@ -1,4 +1,7 @@
+// 运行 AIR 编译器的 MSL 用例；依据 ./check-buffer-reflection.mjs 的模块与调用约定。
+// Run MSL cases for the AIR compiler using the module and calling contracts in ./check-buffer-reflection.mjs.
 import process from "node:process";
+// 原生引导检查，不声称浏览器、iOS 或完整游戏已完成验收。
 // Native bootstrap checks; not a browser/iOS/full-game completion claim.
 import { spawnSync } from "node:child_process";
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
@@ -76,6 +79,7 @@ for (const [stage, define, values] of [
   );
 }
 
+// 将存储/接口回归保留在现有原生 MSL 运行器中；运行器在匹配构建上实际执行前，这些检查仅算自编覆盖。
 // Keep storage/interface regressions in the existing native MSL runner. These
 // checks are authored coverage until this runner executes on a matching build.
 const storageFixtures = JSON.parse(readFileSync(join(root, "fixtures/stage-storage.json"), "utf8"));

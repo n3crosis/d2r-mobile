@@ -1,4 +1,5 @@
-"""Complete runtime table extraction through unchanged shell_stubs functions.
+"""通过未修改的 shell_stubs 函数提取完整运行时表。样例模式检查独立预期；生成模式绑定源码哈希并派生计数。生成收据只证明来源，不是独立一致性或模板兼容性证据。只有已审计解析器将输入 C 视为文本，不编译或执行内容。
+Complete runtime table extraction through unchanged shell_stubs functions.
 
 Fixture mode checks independent expectations; generated mode binds source hashes and derives counts.
 Generated receipts are provenance, not independent parity or shell compatibility evidence.
@@ -23,7 +24,8 @@ def require(condition, code):
 
 
 class BoundedOutput(io.TextIOBase):
-    """Append-only UTF-8 sink; reject overflow before retaining each bounded chunk."""
+    """仅追加的 UTF-8 接收端，在保留每个有界块之前拒绝溢出。
+    Append-only UTF-8 sink; reject overflow before retaining each bounded chunk."""
 
     def __init__(self, limit=OUTPUT_LIMIT):
         super().__init__()
@@ -67,7 +69,9 @@ def generate(payload, options):
             "DERIVED_COUNTS_RANGE",
         )
         require(
-            expected["EXP"] == 100 and expected["VTPART"] <= 256 and expected["VTSET"] <= 32768,
+            expected["EXP"] == 100
+            and expected["VTPART"] <= 256
+            and expected["VTSET"] <= 32768,
             "DERIVED_COUNTS_RANGE",
         )
     for name in SOURCE_NAMES:
@@ -77,7 +81,9 @@ def generate(payload, options):
         actual_hash = hashlib.sha256(encoded).hexdigest()
         require(hashes[name] == actual_hash, "DERIVED_SOURCE_HASH")
 
-    source_paths = dict(zip(native.paths("/input"), (sources[name] for name in SOURCE_NAMES)))
+    source_paths = dict(
+        zip(native.paths("/input"), (sources[name] for name in SOURCE_NAMES))
+    )
     output = BoundedOutput()
 
     def memory_open(path, mode="r", **_kwargs):
@@ -87,6 +93,7 @@ def generate(payload, options):
             return output
         raise ValueError("DERIVED_IO_BOUNDARY")
 
+    # 本模块只用于串行线程队列，不猴子补丁修改 builtins。
     # This module is used only by the serial worker queue. No builtins monkeypatch.
     native.open = memory_open
     try:
@@ -116,7 +123,9 @@ def generate(payload, options):
         )
         require(
             all(
-                0 <= r[0] <= 0xFFFFFFFF and -1 <= r[1] <= 0x7FFFFFFF and -1 <= r[2] <= 0x7FFFFFFF
+                0 <= r[0] <= 0xFFFFFFFF
+                and -1 <= r[1] <= 0x7FFFFFFF
+                and -1 <= r[2] <= 0x7FFFFFFF
                 for r in trows
             ),
             "DERIVED_SKILL_RANGE",

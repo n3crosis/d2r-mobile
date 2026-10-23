@@ -134,6 +134,7 @@ test("full validator rejects a syntactically valid mixed payload and incomplete 
 
 test("shared signing and ASTC bytes cannot drag an unselected optional payload into downloads", () => {
   const { assets, contents } = fixture();
+  // 将一个仅可选内容记录与签名许可证共用，不与公共字节共用。
   // Share one optional-only content record with a signing license, not with common bytes.
   const shared = contents.get(runtimeContentKey(assets[4]));
   OPTIONAL_RUNTIME_ASSET_GROUPS["ipa-signing"].forEach((path, i) => {

@@ -1,3 +1,5 @@
+// 验证 extraction-adapter-fixture 的约定与边界；依据 ../../extraction-job-adapter.mjs、./extraction-worker.mjs 及本文件的测试断言。
+// Verify extraction-adapter-fixture contracts and boundaries against ../../extraction-job-adapter.mjs、./extraction-worker.mjs and this file's assertions.
 import assert from "node:assert/strict";
 import { createExtractionJobAdapter } from "../../extraction-job-adapter.mjs";
 import { MockWorker } from "./extraction-worker.mjs";
@@ -7,6 +9,7 @@ import {
   D2R_WARLOCK_ID as warlock,
   resolveD2rExpansionSelection,
 } from "../../d2r-expansion-policy.mjs";
+// 一个根目录，以及仅含合成 CASC 清单的 data 目录。
 // One root directory and a data directory containing only a synthetic CASC manifest.
 function romfsFixture() {
   const name = new TextEncoder().encode("build_manifest.psv");

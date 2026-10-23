@@ -1,3 +1,5 @@
+// 验证 staged-zip-validator 的约定与边界；依据 ../zip-writer.mjs、../zip64-writer.mjs 及本文件的测试断言。
+// Verify staged-zip-validator contracts and boundaries against ../zip-writer.mjs、../zip64-writer.mjs and this file's assertions.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";

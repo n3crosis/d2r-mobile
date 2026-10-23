@@ -1,3 +1,5 @@
+// 从显式资产路径引导 Pyodide 运行时；依据 web/toolchain/offline-runtime-spike 的模块与调用约定。
+// Bootstrap Pyodide from explicit asset paths using the module and calling contracts in web/toolchain/offline-runtime-spike.
 const OPERATION_LIMITS = Object.freeze({
   "image-default-frame": [20, 4096],
   "experience-table": [20, 4096],

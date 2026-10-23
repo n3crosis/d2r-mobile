@@ -1,3 +1,5 @@
+// 准备并完成程序改写规则；依据 ./binary.mjs、./arm64.mjs 的模块与调用约定。
+// Prepare and finalize program-rewrite rules using the module and calling contracts in ./binary.mjs、./arm64.mjs.
 import { check, hash, hex, hexAddress, put32, u32, unhex, wordHex } from "./binary.mjs";
 import {
   B,
@@ -23,7 +25,9 @@ import {
   RUN_WORDS,
 } from "./rule-data.mjs";
 
-/** Apply pre-scan cuts, retaining their exact source ordering and audit text. */
+/**
+ * 应用预扫描裁剪，保留精确源码顺序及审计文本。
+ * Apply pre-scan cuts, retaining their exact source ordering and audit text. */
 export async function prepareRules({
   image,
   buildId,
@@ -34,6 +38,7 @@ export async function prepareRules({
   check(ruleset === "native" || ruleset === "touch-run-v4", `未知规则域 ${ruleset}`);
   const ruleRun = ruleset === "touch-run-v4" && moduleName === "main";
   if (ruleRun) check(buildId === RULE_BUILD, `Run规则构建号不符 ${buildId}`);
+  // Python 参考对解压后的映像及其追加的 16 KiB 一起计算哈希。
   // The Python oracle hashes the decompressed image including its appended 16 KiB.
   const originalHash = ruleRun ? await hash(image) : null;
   const privateAim = ruleRun && privateGates;
@@ -117,7 +122,9 @@ export async function prepareRules({
   };
 }
 
-/** Emit post-scan gates, parameter slots and native rule trampolines in oracle order. */
+/**
+ * 按参考顺序生成扫描后门控、参数槽及原生规则跳板。
+ * Emit post-scan gates, parameter slots and native rule trampolines in oracle order. */
 export function finishRules(context, rules) {
   const {
     image,
@@ -165,6 +172,7 @@ export function finishRules(context, rules) {
   }
   if (rules.ruleRun && rules.privateGates) privateBranch(PRIVATE_BRANCHES[0]);
   else if (rules.ruleRun) {
+    // 精确保留原私有视觉门控的占用空间，不写可执行 NOP。
     // Reserve exactly the former private visual gate footprint, not executable NOPs.
     for (let i = 0; i < 0x80 / 4; i++) emit(0);
     stat("private_gates_reserved");

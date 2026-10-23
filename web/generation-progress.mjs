@@ -78,6 +78,7 @@ export function createGenerationProgress(options = {}) {
       detail,
       completedStages: completed.size,
       totalStages: plan.length,
+      // 即使以后阶段数量变化，也绝不将未完成任务向上取整到 100。
       // Never round an incomplete job up to 100, even if future stage counts change.
       percent:
         status === "complete"
@@ -97,6 +98,7 @@ export function createGenerationProgress(options = {}) {
       if (status !== "running" || generated || !Object.hasOwn(stages, event?.stage)) return;
       const mapped = stages[event.stage];
       if (!plan.includes(mapped) || completed.has(mapped)) return;
+      // 阶段失败会终止遥测；取消由调用方单独分类。
       // A stage failure is terminal for telemetry. The caller classifies cancellation separately.
       if (event.state === "failed") {
         status = "failed";
@@ -155,6 +157,7 @@ export function createGenerationProgress(options = {}) {
       }
     },
     generated(result) {
+      // 仅有提交事件不够，自定义、导出和返回 Blob 都必须成功。
       // A commit event alone is insufficient: customization, exports and the returned Blob must succeed.
       if (
         !["running", "cancelling"].includes(status) ||
@@ -209,6 +212,7 @@ export function createGenerationProgress(options = {}) {
       detail = null;
     },
     downloadPrepared(available) {
+      // 未签名回退或恢复的原始 IPA 不能满足已请求的签名输出。
       // An unsigned fallback or recovered original IPA must never satisfy the requested output.
       if (
         !generated ||

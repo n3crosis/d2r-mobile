@@ -1,3 +1,5 @@
+// 验证 shell-contract 的约定与边界；依据 ../toolchain/shell-release-evidence/v1.0.18.json、../shell-contract.mjs 及本文件的测试断言。
+// Verify shell-contract contracts and boundaries against ../toolchain/shell-release-evidence/v1.0.18.json、../shell-contract.mjs and this file's assertions.
 import test from "node:test";
 import assert from "node:assert/strict";
 import releaseEvidence from "../toolchain/shell-release-evidence/v1.0.18.json" with { type: "json" };

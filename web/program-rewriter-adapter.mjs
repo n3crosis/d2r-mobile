@@ -125,6 +125,7 @@ function layout(bytes, imageSize) {
     if (!match || Object.hasOwn(values, match[1])) fail("PROGRAM_INVALID_FIXUPS");
     values[match[1]] = Number(match[2]);
   }
+  // 早期 Apple 输出省略 TARGET；显式 Android/HarmonyOS 输出绝不能作为 iOS 输入。
   // Older Apple outputs omitted TARGET. Explicit Android/HarmonyOS output is never an iOS input.
   if (Object.hasOwn(values, "TARGET") && values.TARGET !== 0) fail("PROGRAM_INVALID_FIXUPS");
   for (const key of [

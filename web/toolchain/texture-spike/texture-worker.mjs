@@ -1,3 +1,5 @@
+// 在工作线程中验证并执行纹理解码请求；依据 ./dist/texture.mjs、./browser-texture.mjs 的模块与调用约定。
+// Validate and execute texture-decoding requests inside a worker using the module and calling contracts in ./dist/texture.mjs、./browser-texture.mjs.
 import createModule from "./dist/texture.mjs";
 import { createTextureDecoder } from "./browser-texture.mjs";
 const decoder = createTextureDecoder(createModule);

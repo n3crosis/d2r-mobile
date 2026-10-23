@@ -1,3 +1,5 @@
+// 为 Bun 测试适配 Node 工作线程；依据 web/scripts 的模块与调用约定。
+// Adapt Node workers for Bun tests using the module and calling contracts in web/scripts.
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 

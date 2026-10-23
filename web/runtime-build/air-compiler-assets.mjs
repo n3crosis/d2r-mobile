@@ -1,3 +1,4 @@
+// 构建时导入经认证的发布版本，不在本地构建编译器或重贴来源标签。
 // Build-time authenticated release import. No local compiler build or provenance relabelling.
 import process from "node:process";
 import { createHash } from "node:crypto";
@@ -79,6 +80,7 @@ export async function verifyAirCompilerAssets(directory = cache, expectedDigest)
 export async function importAirCompilerAssets({ directory, expectedDigest }) {
   if (!directory || !/^[a-f0-9]{64}$/.test(expectedDigest ?? ""))
     throw Error("AIR compiler import requires an input directory and trusted receipt SHA-256");
+  // 缺少版本锁定或源码时，在修改编译器目录、锚点或 dist 之前失败。
   // Missing pin/source fails before any compiler directory, anchor or dist mutation.
   const metadata = await readFreshAirReleaseMetadata({ download: true });
   await readFreshAirReleaseAsset(metadata, "correspondingSource", { download: true });

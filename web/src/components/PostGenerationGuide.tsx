@@ -1,3 +1,4 @@
+// 使用已提交结果确定输出名称及复制指引，而不是请求的选项。
 // Use the committed result, not requested options, for output names and copy instructions.
 import { t } from "../../i18n.mjs";
 import { createPostGenerationGuide } from "../../post-generation-guide.mjs";

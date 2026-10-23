@@ -5,7 +5,7 @@
   "dm/ios/tools/gen_vault_cover.py": "5a22420e14479c4c6625e79404a5fd8839c7610ed562e7dc038ac29a5d6be4a9",
   "dm/ios/tools/gen_pouch_art.py": "5870fea04d7cb8a7bab64a2975ab9c0ab451d2e174c15c5c29eb4df0bb17d40b",
   "dm/ios/tools/gen_fe_rightpanel.py": "c68ea1e6d5c720eca576b298708cd637d8d2d898d192e34a92c41121a52db424",
-  "web/toolchain/asset-generation-spike/src/remaining_art.py": "6ffce475275a2f8c8ff2a30b292af9bc286f415e1923273a96bf084d42020725",
-  "web/toolchain/asset-generation-spike/src/mercenary.py": "a78d5f4937adabad03becfd25eac21b3eeae7deaeb5dffa51bd56ac4719b29f8",
+  "web/toolchain/asset-generation-spike/src/remaining_art.py": "cb828158b3976ea2c4976bf8fddeebceaf1d0d1e53cfe923cf1769688b185d88",
+  "web/toolchain/asset-generation-spike/src/mercenary.py": "9af174fb83f85feffc43be208cc5fa96c8e05a3d3eb99226ee91d4021bc367ca",
   "web/toolchain/art-kernels/kernels.mjs": "87ec9ca1f11fb7ff6e4ae61fdec92e17dd7367b98eba80ad8264fc4c8d2b7b9c"
 }

@@ -1,4 +1,7 @@
+// 验证 wasm-equivalence 的约定与边界；依据 ../font.mjs 及本文件的测试断言。
+// Verify wasm-equivalence contracts and boundaries against ../font.mjs and this file's assertions.
 import { Buffer } from "node:buffer";
+// 仅在实际产物用固定 emsdk 构建完成后运行。
 // Run only after the actual artifact is built with the pinned emsdk.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

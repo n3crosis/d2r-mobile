@@ -29,6 +29,7 @@ int main(){
  run("helper derivative rejected","using namespace metal;__attribute__((noinline)) float helper(float x){return dfdx(x);}kernel void k(device float *o[[buffer(0)]]){o[0]=helper(o[0]);}",false);
  auto integerShuffle=run("uint shuffle preserves payload","using namespace metal; kernel void k(device uint *o[[buffer(0)]]){o[0]=simd_shuffle(o[0],(ushort)0);}",true);
  if(!convergent(integerShuffle,"air.simd_shuffle.f32") || std::regex_search(integerShuffle,std::regex("uitofp|sitofp|fptoui|fptosi|air\\.convert\\.f\\.")))++errors;
+ // 两个有限浮点数包携带精确的低/高 16 位载荷。
  // Two finite float packets carry the exact low and high 16-bit payloads.
  if(integerShuffle.find("65535")==std::string::npos || integerShuffle.find("1065353216")==std::string::npos)++errors;
  run("unsupported half shuffle","using namespace metal; kernel void k(device half *o[[buffer(0)]]){o[0]=simd_shuffle(o[0],(ushort)0);}",false);

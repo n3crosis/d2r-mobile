@@ -1,3 +1,4 @@
+// 将模块模拟与所有真实实现测试隔离。
 // Isolate module mocks from all actual implementation tests.
 import test from "node:test";
 import { assertIsolatedRun } from "./helpers/assert-isolated-run.mjs";

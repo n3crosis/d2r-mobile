@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# 运行 quick 验证配方；依据同目录验证调度器的步骤约定。
+# Run the quick verification recipe under the sibling verification scheduler's step contract.
 set -euo pipefail
 cd "$VERIFY_ROOT/web"
 # 在安装依赖或构建运行时前检查共享文字表及其派生数据来源。

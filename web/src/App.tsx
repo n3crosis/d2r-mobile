@@ -1,5 +1,6 @@
 // 浏览器本地打包界面：依据打包进度协议与共享多语文字表。
 // Local browser packaging UI based on the packaging progress protocol and shared multilingual table.
+import { catalog } from "../i18n-catalog.mjs";
 import { t, browserLanguage, setBrowserLanguage, subscribeLanguage } from "../i18n.mjs";
 import { FolderOpenIcon, PackageIcon, ShieldCheckIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -160,6 +161,7 @@ export default function App() {
       return { options: undefined, error };
     }
   }, [appCustomization, appCustomizationDefaults]);
+  // 在渲染期间翻译当前校验结果，不在缓存的规范化过程中翻译。
   // Translate the current validation result during render, not inside the cached normalization.
   const customizationValidation = {
     options: customizationDraftValidation.options,
@@ -938,17 +940,19 @@ export default function App() {
       <Card className="w-full gap-5 overflow-hidden border-primary/15 pt-0 shadow-sm">
         <CardHeader className="gap-3 border-b border-primary/10 bg-linear-to-br from-primary/10 via-card to-card py-6">
           <Field orientation="horizontal" className="ml-auto w-fit gap-2">
-            <FieldLabel htmlFor="ui-language">Language / 语言</FieldLabel>
+            <FieldLabel htmlFor="ui-language">
+              {catalog.dmWebLanguageLabel[0]} / {catalog.dmWebLanguageLabel[1]}
+            </FieldLabel>
             <NativeSelect
               id="ui-language"
               value={language}
               onChange={(event) => setBrowserLanguage(event.target.value)}
             >
               <NativeSelectOption value="en" lang="en">
-                English
+                {catalog.dmWebLanguageEnglish[0]}
               </NativeSelectOption>
               <NativeSelectOption value="zh-CN" lang="zh-CN">
-                简体中文
+                {catalog.dmWebLanguageChinese[1]}
               </NativeSelectOption>
             </NativeSelect>
           </Field>

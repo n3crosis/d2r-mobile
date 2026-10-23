@@ -1,3 +1,5 @@
+// 检查纹理实现与参考输入的一致性；依据 ./browser-texture.mjs 的模块与调用约定。
+// Check texture implementation conformance against reference inputs using the module and calling contracts in ./browser-texture.mjs.
 import { createTextureDecoder } from "./browser-texture.mjs";
 function expect(condition, message) {
   if (!condition) throw new Error(message);

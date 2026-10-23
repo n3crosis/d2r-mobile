@@ -1,4 +1,5 @@
-"""Complete Switch-mode HUD with explicit decoded images and archive font bytes."""
+"""完整 Switch 模式 HUD，使用显式解码图像及归档字体字节。
+Complete Switch-mode HUD with explicit decoded images and archive font bytes."""
 
 import base64
 import hashlib
@@ -41,13 +42,18 @@ def generate(payload, options):
     require(set(pins) == set(metadata), "HUD_TRUST_REQUIRED")
     for name, text in metadata.items():
         require(
-            isinstance(text, str) and len(text.encode()) <= 2 * 1024 * 1024, "HUD_METADATA_LIMIT"
+            isinstance(text, str) and len(text.encode()) <= 2 * 1024 * 1024,
+            "HUD_METADATA_LIMIT",
         )
-        require(hashlib.sha256(text.encode()).hexdigest() == pins[name], "HUD_METADATA_HASH")
+        require(
+            hashlib.sha256(text.encode()).hexdigest() == pins[name], "HUD_METADATA_HASH"
+        )
     require(set(bundle["images"]) == set(IMAGE_NAMES), "HUD_IMAGE_SET")
     require(set(bundle["fonts"]) == set(FONTS), "HUD_FONT_SET")
     manifest = json.loads(metadata["manifest"])
-    atlases = [a for a in manifest["assets"] if a["asset"].startswith("dm_native_skill_")]
+    atlases = [
+        a for a in manifest["assets"] if a["asset"].startswith("dm_native_skill_")
+    ]
     require(
         {a["asset"] for a in atlases} == {f"dm_native_skill_{i}.png" for i in range(9)}
         and len(atlases) == 9,
@@ -68,7 +74,10 @@ def generate(payload, options):
         fonts[name] = base64.b64decode(value, validate=True)
         require(0 < len(fonts[name]) <= 16 * 1024 * 1024, "HUD_FONT_LIMIT")
     layout = bundle["layout"]
-    require(isinstance(layout, str) and len(layout.encode()) <= 2 * 1024 * 1024, "HUD_LAYOUT_LIMIT")
+    require(
+        isinstance(layout, str) and len(layout.encode()) <= 2 * 1024 * 1024,
+        "HUD_LAYOUT_LIMIT",
+    )
 
     class Source:
         pc = None
@@ -93,7 +102,10 @@ def generate(payload, options):
         (art / "native_art_manifest.json").write_text(metadata["manifest"])
         for a in atlases:
             raw = base64.b64decode(bundle["atlases"][a["asset"]], validate=True)
-            require(hashlib.sha256(raw).hexdigest() == a["decoded_png_sha256"], "HUD_ATLAS_HASH")
+            require(
+                hashlib.sha256(raw).hexdigest() == a["decoded_png_sha256"],
+                "HUD_ATLAS_HASH",
+            )
             with Image.open(io.BytesIO(raw)) as image:
                 require(list(image.size) == a["atlas_px"], "HUD_ATLAS_DIMENSIONS")
                 pixels += image.width * image.height
@@ -113,11 +125,16 @@ def generate(payload, options):
         support.TABLE = str(tools / "ui_text.tsv")
         try:
             original.generate(None, str(out), str(tools), Source())
-            files = {str(p.relative_to(out)): p.read_bytes() for p in out.rglob("*") if p.is_file()}
+            files = {
+                str(p.relative_to(out)): p.read_bytes()
+                for p in out.rglob("*")
+                if p.is_file()
+            }
             require(
                 len(files) <= 512 and sum(map(len, files.values())) <= 32 * 1024 * 1024,
                 "HUD_OUTPUT_LIMIT",
             )
+            # 每个渲染声明且有墨迹的字形都必须存在，不静默跳过任何输出。
             # Every render-declared glyph with ink must exist, and no output is silently skipped.
             ui = json.loads(files["hud_v4_ui/ui.json"])
             expected = {
@@ -132,11 +149,14 @@ def generate(payload, options):
             expected.update(f"hud_v4_ui/diff_{i}.png" for i in range(1, 9))
             expected.update("hud_v4_ui/sil_" + a["asset"] for a in atlases)
             expected.update(
-                "hud_v4_ui/lbl_" + n + ".png" for n in ["main"] + [f"f{i}" for i in range(1, 9)]
+                "hud_v4_ui/lbl_" + n + ".png"
+                for n in ["main"] + [f"f{i}" for i in range(1, 9)]
             )
             for key in ("lv", "badge", "vital"):
                 expected.update(
-                    "hud_v4_ui/" + g["file"] for g in ui[key]["glyphs"].values() if g["file"]
+                    "hud_v4_ui/" + g["file"]
+                    for g in ui[key]["glyphs"].values()
+                    if g["file"]
                 )
             require(set(files) == expected, "HUD_OUTPUT_SET")
             return {

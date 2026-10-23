@@ -1,4 +1,6 @@
-/** Literal rule data from dm/tools/patch_nso.py. Do not alter independently of the pinned source. */
+/**
+ * 来自 dm/tools/patch_nso.py 的字面规则数据，不可脱离固定源码独立修改。
+ * Literal rule data from dm/tools/patch_nso.py. Do not alter independently of the pinned source. */
 
 export const SOURCE_SHA256 = "f23802979ceeeab8267b724b2d7f1a568b900777eb8718a0471a41317dc744ee";
 

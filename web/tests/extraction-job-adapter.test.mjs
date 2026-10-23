@@ -1,3 +1,5 @@
+// 验证 extraction-job-adapter 的约定与边界；依据 ./helpers/extraction-worker.mjs、../extraction-job-adapter.mjs 及本文件的测试断言。
+// Verify extraction-job-adapter contracts and boundaries against ./helpers/extraction-worker.mjs、../extraction-job-adapter.mjs and this file's assertions.
 import test from "node:test";
 import { MockWorker } from "./helpers/extraction-worker.mjs";
 import assert from "node:assert/strict";
@@ -144,7 +146,7 @@ test("per-read cancellation terminates an in-flight bounded RomFS read", async (
     session = await open(f);
   const extracted = await f.adapter.extractSelected({ session, selection });
   const member = extracted.romfs.getFile("data/build_manifest.psv");
-  f.worker.handler = undefined; // A native request that does not return.
+  f.worker.handler = undefined; // 不返回的原生请求。 | A native request that does not return.
   const controller = new AbortController();
   const pending = member.readAt(0n, 1, { signal: controller.signal });
   controller.abort("PRIVATE-CANARY");

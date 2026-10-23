@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# 运行 zip64 验证配方；依据同目录验证调度器的步骤约定。
+# Run the zip64 verification recipe under the sibling verification scheduler's step contract.
 
 set -euo pipefail
 

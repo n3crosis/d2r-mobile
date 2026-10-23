@@ -1,3 +1,5 @@
+// 驱动离线运行时的浏览器验证；依据 web/toolchain/offline-runtime-spike 的模块与调用约定。
+// Drive browser verification of offline runtimes using the module and calling contracts in web/toolchain/offline-runtime-spike.
 import { Buffer } from "node:buffer";
 import assert from "node:assert/strict";
 import http from "node:http";

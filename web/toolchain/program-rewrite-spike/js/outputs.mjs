@@ -1,3 +1,5 @@
+// 组装程序改写流程的输出文件；依据 ../../../program-release-catalog.mjs、./binary.mjs 的模块与调用约定。
+// Assemble output files from the program-rewrite pipeline using the module and calling contracts in ../../../program-release-catalog.mjs、./binary.mjs.
 import { PROGRAM_REWRITE_LIMITS } from "../../../program-release-catalog.mjs";
 import { check, hash, hexAddress, unhex } from "./binary.mjs";
 import { SOURCE_SHA256 } from "./rule-data.mjs";
@@ -5,7 +7,9 @@ import { SOURCE_SHA256 } from "./rule-data.mjs";
 const utf8 = new TextEncoder();
 const line = (values) => `${values.join("\t")}\n`;
 
-/** Fresh output maps have the same stale-manifest semantics as clean /result runs. */
+/**
+ * 新输出映射具有与干净 /result 运行相同的过期清单语义。
+ * Fresh output maps have the same stale-manifest semantics as clean /result runs. */
 export async function buildOutputs(context, rules, keyIndex, bootlist = null) {
   const {
     image,

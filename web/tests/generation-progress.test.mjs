@@ -184,7 +184,7 @@ test("signing fallback and cancellation keep the requested signed output incompl
     const tracker = createGenerationProgress({ signing: true });
     tracker.generated(result());
     const total = tracker.snapshot().totalStages;
-    tracker.downloadPrepared(true); // Unsigned link is usable, not the requested signed output.
+    tracker.downloadPrepared(true); // 未签名链接虽可用，但不是请求的签名输出。 | Unsigned link is usable, not the requested signed output.
     assert.ok(tracker.snapshot().percent < 100);
     tracker.startSigning();
     for (const stage of ["inspect", "sign", "package", "verify"])
@@ -214,7 +214,7 @@ test("cancellation and recovered-original failures reject late stage completion"
     tracker.observe({ stage: "shaders", state: "complete" });
     assert.deepEqual(tracker.snapshot(), stopping);
     tracker.fail(cancelled);
-    tracker.generated(result()); // A separately recovered original is not a successful requested generation.
+    tracker.generated(result()); // 另行恢复的原始文件不代表所请求的生成成功。 | A separately recovered original is not a successful requested generation.
     tracker.downloadPrepared(true);
     assert.equal(tracker.snapshot().status, cancelled ? "cancelled" : "failed");
     assert.ok(tracker.snapshot().percent < 100);

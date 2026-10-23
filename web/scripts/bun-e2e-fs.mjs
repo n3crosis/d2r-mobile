@@ -1,3 +1,5 @@
+// 为 Bun 测试提供基于磁盘的文件与目录句柄；依据 web/scripts 的模块与调用约定。
+// Provide disk-backed file and directory handles for Bun tests using the module and calling contracts in web/scripts.
 import {
   mkdir,
   readdir,

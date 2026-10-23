@@ -1,3 +1,5 @@
+// 验证 equivalence 的约定与边界；依据 ../kernels.mjs 及本文件的测试断言。
+// Verify equivalence contracts and boundaries against ../kernels.mjs and this file's assertions.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createImageKernels } from "../kernels.mjs";

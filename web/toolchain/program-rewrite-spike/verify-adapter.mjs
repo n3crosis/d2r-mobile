@@ -1,3 +1,5 @@
+// 校验来宾程序适配器的边界约定；依据 web/toolchain/program-rewrite-spike 的模块与调用约定。
+// Verify the guest-program adapter boundary contract using the module and calling contracts in web/toolchain/program-rewrite-spike.
 import { Buffer } from "node:buffer";
 /* Node/浏览器一致性辅助工具；仅配合本地合成夹具服务器调用。
  * Node/browser parity helper; called only with a local synthetic fixture server. */

@@ -1,3 +1,5 @@
+// 验证 checksum-verifier 的约定与边界；依据 ../vendor/spark-md5-3.0.2/spark-md5.mjs、../checksum-verifier.mjs 及本文件的测试断言。
+// Verify checksum-verifier contracts and boundaries against ../vendor/spark-md5-3.0.2/spark-md5.mjs、../checksum-verifier.mjs and this file's assertions.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
@@ -10,6 +12,7 @@ import { decodeArchiveRecord } from "../archive-reader.mjs";
 const digest = (bytes) => createHash("md5").update(bytes).digest("hex");
 const encode = (text) => new TextEncoder().encode(text);
 
+// RFC 1321 第 A.5 节测试集，使用公开的合成算法测试向量。
 // RFC 1321 section A.5 test suite. Synthetic, public algorithm test vectors.
 const vectors = [
   ["", "d41d8cd98f00b204e9800998ecf8427e"],

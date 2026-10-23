@@ -1,3 +1,5 @@
+// 连接浏览器与隔离的 .NET 运行时工作线程；依据 ../shader-spike/wwwroot/synthetic-fixture.mjs 的模块与调用约定。
+// Connect the browser to an isolated .NET runtime worker using the module and calling contracts in ../shader-spike/wwwroot/synthetic-fixture.mjs.
 import { Buffer } from "node:buffer";
 import assert from "node:assert/strict";
 import http from "node:http";

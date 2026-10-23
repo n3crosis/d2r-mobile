@@ -1,3 +1,5 @@
+// 验证 air-release-contract 的约定与边界；依据 ../runtime-build/air-release-contract.mjs、./fixtures/air-release-generic/fixture.mjs 及本文件的测试断言。
+// Verify air-release-contract contracts and boundaries against ../runtime-build/air-release-contract.mjs、./fixtures/air-release-generic/fixture.mjs and this file's assertions.
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import test from "node:test";
@@ -28,6 +30,7 @@ import {
   fixtureHeaderDigest,
 } from "./fixtures/air-release-generic/fixture.mjs";
 
+// 解析/哈希固定元数据和合成字节，不运行编译器或 WASM。
 // These tests parse/hash pinned metadata and synthetic bytes. No compiler or WASM runs.
 const checkManifest = (fixture) => verifyFreshAirManifest(fixture.manifestBytes, fixture.pin);
 const checkInputs = (fixture) => verifyFreshAirBuildInputs(fixture.inputsBytes, fixture.manifest);

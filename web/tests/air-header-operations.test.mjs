@@ -1,3 +1,5 @@
+// 验证 air-header-operations 的约定与边界；依据 ./fixtures/air-fork-source/fork-source.mjs、./check-buffer-reflection.mjs 及本文件的测试断言。
+// Verify air-header-operations contracts and boundaries against ./fixtures/air-fork-source/fork-source.mjs、./check-buffer-reflection.mjs and this file's assertions.
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
@@ -23,6 +25,7 @@ const read = (path) => {
 };
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 
+// 仅检查源码约定；有编译器构建时，由自编头文件冒烟用例检查真实前端/IR 行为。
 // These are source-contract checks only. Actual frontend/IR behavior is checked
 // by the authored header smoke cases when a compiler build is available.
 test(
@@ -208,6 +211,7 @@ test(
     assert(stdlib.indexOf(activation) < stdlib.indexOf("namespace metal"));
     assert(stdlib.indexOf(activation) < stdlib.indexOf("AIR_VECTOR_TYPES(half)"));
     assert.doesNotMatch(stdlib, /#pragma OPENCL EXTENSION (?!cl_khr_fp16\s*: enable)/);
+    // CreateASTConsumer 时机过早，Metal 的 C++20 模块读取器随后在 Sema::Initialize 中覆盖 OpenCLFeatures，不能恢复那个钩子。
     // CreateASTConsumer is too early: Metal's C++20 module reader subsequently
     // overwrites OpenCLFeatures during Sema::Initialize. Do not restore that hook.
     assert.doesNotMatch(apiSource, /getOpenCLFeatures\(\)\.enable/);
@@ -321,6 +325,7 @@ test("real-WASM CI canary includes all five live operations in a fourth authored
   );
   assert(fragmentFixture.includes("float4(previous == input[2] ? 1.0f : 0.0f)"));
 
+  // D2R 自有样例留在本地，发布源码归档另行镜像；不能声称通用编译器的源码归档包含这些探针。
   // D2R-owned fixtures stay local; the release archive is mirrored separately.
   // Do not claim that the generic compiler's source archive contains these probes.
   assert.equal(
@@ -415,6 +420,7 @@ test("real-WASM canaries retain named entries and public compiler regression inp
   assert(directPointer.includes("int seed = words[0][lane]"));
   assert(directPointer.includes("return float4(float(selected.x ^ seed)"));
 
+  // 保留证明 select/PHI 失败的精确公开输入。哈希认证自编样例字节，不代表编译成功，也不是私有数据证明。
   // Keep the exact public inputs that demonstrated select/PHI failures. Hashes
   // authenticate authored fixture bytes, not compiler success or private data.
   for (const [filename, entry, expectedHash] of [
@@ -436,6 +442,7 @@ test("real-WASM canaries retain named entries and public compiler regression inp
     assert(source.includes("constant VectorStorage* second [[id(1)]]"));
   }
 
+  // 所有 D2R 自编样例路径保持本地可读；这不会执行或导入 WASM 探针。
   // All D2R-authored fixture paths remain local and readable; this does not
   // execute or import the WASM canary.
   for (const entry of cases) {

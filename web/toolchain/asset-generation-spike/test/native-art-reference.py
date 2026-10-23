@@ -1,4 +1,5 @@
-"""Original native-art main on wholly authored assets; exact complete-output oracle."""
+"""在完全自编资源上运行原始原生美术 main，作为精确完整输出参考。
+Original native-art main on wholly authored assets; exact complete-output oracle."""
 
 import base64
 import hashlib
@@ -36,6 +37,7 @@ for i in range(10):
     image = Image.frombytes("RGBA", (w, h), pixels)
     png = io.BytesIO()
     image.save(png, "PNG")
+    # 自编字节仅替代已测试的纹理解码器边界。
     # Authored bytes substitute only the already-tested texture decoder boundary.
     raw[path] = b"authored-atlas-" + bytes([i])
     images[path] = image
@@ -61,7 +63,9 @@ manifest = {
         for name in ("skills.txt", "skilldesc.txt")
     ],
     "descriptor_index_sha256": sha(
-        json.dumps([[12, 0, 0], [21, -1, -1], [357, 8, 20]], separators=(",", ":")).encode()
+        json.dumps(
+            [[12, 0, 0], [21, -1, -1], [357, 8, 20]], separators=(",", ":")
+        ).encode()
     ),
 }
 metadata = {

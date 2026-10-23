@@ -1,3 +1,5 @@
+// 校验覆盖层配方的源文件与静态数据摘要；依据 web/toolchain/overlay-recipe-js/scripts 的模块与调用约定。
+// Verify source and static-data digests for overlay recipes using the module and calling contracts in web/toolchain/overlay-recipe-js/scripts.
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 const pins = JSON.parse(readFileSync(new URL("../source-provenance.json", import.meta.url)));

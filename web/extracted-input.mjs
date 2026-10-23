@@ -59,7 +59,9 @@ function records(value, budget) {
   }
   return new Map(value.map(({ path, file }) => [path, file]));
 }
-/** Snapshot local Blob references and measure executable bytes before issuing a session.
+/**
+ * 签发会话前快照本地 Blob 引用并测量可执行文件字节。不接受调用方提供的哈希、清单、内容 ID、DLC 标志或可信布尔值。本地 RomFS 没有 NCA 外层封装，现有 CASC 校验和可信目录仍须执行。
+ * Snapshot local Blob references and measure executable bytes before issuing a session.
  * No caller-supplied hashes, manifests, content IDs, DLC flags or trusted booleans are accepted.
  * Local RomFS lacks the NCA envelope; existing CASC checks and trusted catalogs still apply.
  */

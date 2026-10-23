@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
+# 校验来源并构建程序改写 WASM 桥接；依据 web/toolchain/program-rewrite-spike 的模块与调用约定。
+# Verify sources and build the program-rewrite WASM bridge using the module and calling contracts in web/toolchain/program-rewrite-spike.
 set -euo pipefail
 cd "$(dirname "$0")"
 mkdir -p deps dist/licenses dist/js
+# 在下载任何依赖或编译前拒绝来源漂移。
 # Reject source drift before any dependency download or compilation.
 (cd ../../.. && sha256sum -c web/toolchain/program-rewrite-spike/upstream-source.sha256)
 python3 audit-apple-source.py

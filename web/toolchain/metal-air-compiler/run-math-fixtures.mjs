@@ -1,3 +1,5 @@
+// 运行 AIR 编译器的数学运算用例；依据 web/toolchain/metal-air-compiler 的模块与调用约定。
+// Run mathematical-operation cases for the AIR compiler using the module and calling contracts in web/toolchain/metal-air-compiler.
 import assert from "node:assert/strict";
 import process from "node:process";
 import { spawnSync } from "node:child_process";

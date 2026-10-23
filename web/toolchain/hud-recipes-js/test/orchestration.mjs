@@ -1,3 +1,4 @@
+// 聚焦完整 HUD 的合成对比；下方字体及 PNG 适配器使用实际打包的 Pillow 参考，不验证独立字体/PNG WASM。
 // Focused whole-HUD synthetic comparison. Font and PNG adapters below use the
 // actual bundled Pillow oracle. This does NOT verify standalone font/PNG WASM.
 import process from "node:process";

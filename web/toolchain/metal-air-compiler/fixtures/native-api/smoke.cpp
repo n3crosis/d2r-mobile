@@ -16,6 +16,7 @@ static void require(bool ok, const char *message) {
 static Result compile(const char *s, uint32_t output = AIR_METALLIB) {
   return Result(air_compile_v1(reinterpret_cast<const uint8_t *>(s), std::strlen(s), 18, output));
 }
+// 从样例输出的单入口库读取首个 NAME 标签。
 // Read the first NAME tag from the single-entry library emitted by fixtures.
 static bool hasEntryName(const air_result *r, const char *expected) {
   const auto *data = air_result_data(r);
@@ -70,6 +71,7 @@ int main() {
   require(air_result_status(fragment.p) == AIR_OK && air_result_size(fragment.p) > 88, "authored fragment shader compiles");
   if (air_result_status(fragment.p) != AIR_OK) std::fprintf(stderr, "%s", air_result_diagnostics(fragment.p));
   require(hasEntryName(fragment.p, "main0"), "fragment exports source entry name");
+  // 每次调用创建并销毁独立 LLVMContext；依赖运行时的操作数防止常量折叠掩盖转换降低过程。
   // Each call creates and destroys its own LLVMContext. Runtime-dependent
   // operands prevent constant folding from hiding the conversion lowering.
   const char *conversionSource = "[[compute_kernel, kernel_dim(3)]] void convert0(__attribute__((global_as)) float *f [[buffer(0)]], __attribute__((global_as)) int *i [[buffer(1)]]) { i[0] = (int)f[0]; f[1] = (float)i[1]; }";

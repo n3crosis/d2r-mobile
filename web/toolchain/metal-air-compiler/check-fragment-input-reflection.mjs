@@ -1,3 +1,4 @@
+// fragment_input_liveness 探针的补充专用 AIRR 读取器，不替代容器/哈希校验，不执行 Metal，不证明 LLVM 使用计数，也不代表 Apple 运行时接受。
 // Supplemental fixture-specific AIRR reader for the
 // fragment_input_liveness canary. This does not replace container/hash checking,
 // execute Metal, prove LLVM use counts, or establish Apple runtime acceptance.
@@ -100,6 +101,7 @@ class Reader {
     requireValue(!bytes.includes(0), "embedded string terminator");
     return decoder.decode(bytes);
   }
+  // 每次 FlatBuffer 读取均限制在本 AIRR 子数组中，不访问整个 MTLB。
   // Every FlatBuffer read is confined to this AIRR subarray, never whole MTLB.
   table(root) {
     requireValue(root >= 8 && root % 4 === 0, "unaligned table root");
@@ -381,6 +383,7 @@ export function checkFragmentInputReflection(
   const expectedUnused = [false, !keepVarying, !keepPosition, false, false];
   for (let i = 0; i < 5; ++i) {
     const unused = args[i].unused;
+    // 严格遵循写入器约定：活跃或范围外字段应缺席，而非显式 false；死字段必须存在且为 true，忽略 air.arg_unused 不能通过。
     // Strict writer contract: live/out-of-scope fields are absent, not explicit false.
     // For dead fields require presence AND true; ignoring air.arg_unused cannot pass.
     requireValue(

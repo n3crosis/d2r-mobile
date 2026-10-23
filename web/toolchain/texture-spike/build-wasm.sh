@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# 构建纹理转换 WASM 桥接；依据 web/toolchain/texture-spike 的模块与调用约定。
+# Build the texture-conversion WASM bridge using the module and calling contracts in web/toolchain/texture-spike.
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../../.." && pwd)
@@ -18,6 +20,7 @@ cp "$ROOT/LICENSE" "$OUT/licenses/repository-LICENSE.txt"
 cp "$ROOT/dm/third_party/bcdec/LICENSE" "$OUT/licenses/bcdec-LICENSE.txt"
 cp "$ROOT/dm/third_party/bcdec/bcdec.h" "$OUT/licenses/bcdec-source-notices.txt"
 cp "$ROOT/dm/gfx/nvn/nvn_tex.c" "$OUT/licenses/nvn-layout-attribution.txt"
+# 此桥接保留 deko3d 的 zlib 声明及原始来源署名。
 # deko3d's zlib notice is retained with this bridge, alongside original source attribution.
 cp "$HERE/deko3d-LICENSE.txt" "$OUT/licenses/deko3d-LICENSE.txt"
 python3 "$HERE/package-encoder.py"

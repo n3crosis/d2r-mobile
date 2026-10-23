@@ -1,3 +1,5 @@
+// 验证 shader-pipeline 的约定与边界；依据 ../shader-pipeline.mjs、../toolchain/spirv-cross-spike/wwwroot/convert.mjs 及本文件的测试断言。
+// Verify shader-pipeline contracts and boundaries against ../shader-pipeline.mjs、../toolchain/spirv-cross-spike/wwwroot/convert.mjs and this file's assertions.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
@@ -206,6 +208,7 @@ test("trusted shell mismatch, missing catalog and off-origin assets fail before 
     () => createShaderPipeline({ ...options, trustedShell: invalid }),
     /CHAIN mismatch/,
   );
+  // 过旧的编译器和未经验证的未来编译器都应安全拒绝，即使模板与应用配方相互一致。
   // Both an obsolete compiler and an unverified future compiler fail closed,
   // even when the shell and application recipe agree with one another.
   for (const version of ["1.4.357.0", "1.4.999.0"]) {

@@ -1,3 +1,5 @@
+// 编码 ARM64 指令并处理寄存器替换；依据 ./binary.mjs 的模块与调用约定。
+// Encode ARM64 instructions and handle register substitution using the module and calling contracts in ./binary.mjs.
 import { check } from "./binary.mjs";
 export function B(from, to) {
   const off = to - from;

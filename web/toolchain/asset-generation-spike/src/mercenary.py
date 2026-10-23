@@ -1,4 +1,5 @@
-"""Bounded original mercenary composition over three supplied decoded atlases."""
+"""对三个提供的解码图集执行有界原始佣兵合成。
+Bounded original mercenary composition over three supplied decoded atlases."""
 
 import base64
 import io

@@ -1,4 +1,5 @@
-"""Original iOS overlay recipe on bounded in-memory inputs, no native processes."""
+"""在有界内存输入上运行原始 iOS 覆盖配方，不运行原生进程。
+Original iOS overlay recipe on bounded in-memory inputs, no native processes."""
 
 import base64
 import builtins
@@ -70,7 +71,10 @@ def decode_map(value, limit):
     require(isinstance(value, dict) and len(value) <= 8192, "OVERLAY_FILE_COUNT")
     result, size = {}, 0
     for key, encoded in value.items():
-        require(isinstance(encoded, str) and len(encoded) <= 24 * 1024 * 1024, "OVERLAY_FILE_LIMIT")
+        require(
+            isinstance(encoded, str) and len(encoded) <= 24 * 1024 * 1024,
+            "OVERLAY_FILE_LIMIT",
+        )
         data = base64.b64decode(encoded, validate=True)
         size += len(data)
         require(size <= limit and len(data) <= 16 * 1024 * 1024, "OVERLAY_BYTES_LIMIT")
@@ -138,6 +142,7 @@ def generate(payload, options):
             )
             sys.modules["gen_merc_art"] = types.SimpleNamespace(
                 ART=str(gen / "NativeHUD/mercslots"),
+                # 固定的 gen_merc_art.py（0d65f6f3...b7b179），merc_slots.rects 也以它在生成图像上定位槽位。
                 # Pinned gen_merc_art.py (0d65f6f3...b7b179), also used by
                 # merc_slots.rects to place slots over the generated image.
                 DX=63,
@@ -146,7 +151,9 @@ def generate(payload, options):
 
             def read(path):
                 key = logical(
-                    path if str(path).lower().startswith("data/") else "data/" + str(path)
+                    path
+                    if str(path).lower().startswith("data/")
+                    else "data/" + str(path)
                 )
                 require(key in assets, "OVERLAY_MISSING_AUTHENTICATED_ASSET:" + key)
                 return assets[key]
@@ -156,7 +163,9 @@ def generate(payload, options):
 
             def entry(_, row):
                 data = read(logical(row[9]))
-                require(hashlib.md5(data).hexdigest() == row[4], "OVERLAY_CKEY_MISMATCH")
+                require(
+                    hashlib.md5(data).hexdigest() == row[4], "OVERLAY_CKEY_MISMATCH"
+                )
                 return data
 
             def layout(_, rel, suffix=None):
@@ -178,7 +187,10 @@ def generate(payload, options):
                     if dst == out
                     else dst.relative_to(root / "romfs_overlay_variants").as_posix()
                 )
-                require(name in ("base", "item_notes") and len(variants) < 2, "OVERLAY_VARIANT")
+                require(
+                    name in ("base", "item_notes") and len(variants) < 2,
+                    "OVERLAY_VARIANT",
+                )
                 inventory = []
                 known = {logical(f[9]) for f in rows}
                 require(len(replacements) <= 4096, "OVERLAY_REPLACEMENT_COUNT")
@@ -198,25 +210,40 @@ def generate(payload, options):
                     require(output_size <= MAX_OUTPUT, "OVERLAY_OUTPUT_LIMIT")
                     key = f"file-{len(files)}"
                     files[key] = data
-                    inventory.append({"path": path, "file": key, "add": path not in known})
+                    inventory.append(
+                        {"path": path, "file": key, "add": path not in known}
+                    )
+                # 精确的原生附属文件表达式，这些文件不进入 CASC。
                 # Exact native sidecar expression; these files do not enter CASC.
                 (dst / "touch_strings.tsv").write_text(
                     "".join(
                         "%s\t%s\t%s\n"
-                        % (k, o, v.replace("\\", "\\\\").replace("\n", "\\n").replace("\t", "\\t"))
+                        % (
+                            k,
+                            o,
+                            v.replace("\\", "\\\\")
+                            .replace("\n", "\\n")
+                            .replace("\t", "\\t"),
+                        )
                         for k, o, v in strings
                     )
                 )
                 (dst / "ctrl_touch").write_text(
                     "触屏版布局在 layouts/xtouch_lay、ztouch_console_lay、0touch_console_switch_lay（dm_padmode.c 见到本文件才改写前缀）\n"
                 )
-                (dst / "xbox_glyphs").write_text("ztouch_controller_buttons_ui/switchx*.sprite\n")
-                (dst / "ps_glyphs").write_text("ztouch_controller_buttons_ui/switchp*.sprite\n")
-                variants.append({"name": name, "replacements": inventory, "sidecars": []})
+                (dst / "xbox_glyphs").write_text(
+                    "ztouch_controller_buttons_ui/switchx*.sprite\n"
+                )
+                (dst / "ps_glyphs").write_text(
+                    "ztouch_controller_buttons_ui/switchp*.sprite\n"
+                )
+                variants.append(
+                    {"name": name, "replacements": inventory, "sidecars": []}
+                )
                 return (
                     "browser-casc-pending",
                     0,
-                )  # Internal native logging only, never a packaged filename.
+                )  # 仅用于内部原生日志，绝不是打包文件名。 | Internal native logging only, never a packaged filename.
 
             namespace = {
                 "__name__": "__overlay_recipe__",
@@ -230,10 +257,15 @@ def generate(payload, options):
                 contextlib.redirect_stderr(io.StringIO()),
             ):
                 exec(compile(RECIPE, namespace["__file__"], "exec"), namespace)
-            require([v["name"] for v in variants] == ["base", "item_notes"], "OVERLAY_VARIANT_SET")
+            require(
+                [v["name"] for v in variants] == ["base", "item_notes"],
+                "OVERLAY_VARIANT_SET",
+            )
             for variant in variants:
                 directory = (
-                    out if variant["name"] == "base" else root / "romfs_overlay_variants/item_notes"
+                    out
+                    if variant["name"] == "base"
+                    else root / "romfs_overlay_variants/item_notes"
                 )
                 for p in sorted(directory.iterdir()):
                     require(

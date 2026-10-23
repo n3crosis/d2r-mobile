@@ -1,4 +1,5 @@
-"""Narrow native build check against the actual bundled WASM Pillow PNG oracle."""
+"""针对实际打包的 WASM Pillow PNG 参考进行窄范围原生构建检查。
+Narrow native build check against the actual bundled WASM Pillow PNG oracle."""
 
 import base64
 import ctypes
@@ -26,15 +27,27 @@ for i, case in enumerate(fixture["cases"]):
     n = lib.png_encode(case["width"], case["height"])
     assert n > 0, (i, lib.png_error())
     actual = ctypes.string_at(lib.png_output(), n)
-    assert actual == png, (i, case["kind"], case["width"], case["height"], len(actual), len(png))
+    assert actual == png, (
+        i,
+        case["kind"],
+        case["width"],
+        case["height"],
+        len(actual),
+        len(png),
+    )
     ctypes.memmove(lib.png_input(), png, len(png))
     n = lib.png_decode(len(png))
-    assert n == len(raw) and ctypes.string_at(lib.png_output(), n) == raw, (i, lib.png_error())
+    assert n == len(raw) and ctypes.string_at(lib.png_output(), n) == raw, (
+        i,
+        lib.png_error(),
+    )
     assert (lib.png_width(), lib.png_height()) == (case["width"], case["height"])
+# 实际自编关闭按钮是配方解码的唯一固定源 PNG。
 # Actual authored close button is the only fixed source PNG decoded by recipe.
 close = (root.parents[2] / "dm/ios/NativeHUD/touch/close.png").read_bytes()
 ctypes.memmove(lib.png_input(), close, len(close))
 assert lib.png_decode(len(close)) == 24 * 33 * 4
+# 检查无效签名、校验和、尾部字节、截断块及超大 IHDR。
 # Invalid signature, checksum, trailing bytes, truncated chunk and oversized IHDR.
 base = base64.b64decode(fixture["cases"][2]["png"])
 bad = bytearray(base)

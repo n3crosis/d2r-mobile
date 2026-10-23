@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Synthetic only. Compile unchanged native functions and compare bounded bridge."""
+"""仅用合成内容，编译未修改原生函数并与有界桥接比较。
+Synthetic only. Compile unchanged native functions and compare bounded bridge."""
 
 import base64
 import ctypes as C
@@ -37,7 +38,12 @@ lib = C.CDLL(str(BUILD / "native.so"))
 
 class Desc(C.Structure):
     _fields_ = [
-        (n, C.c_int if n in ("target", "format", "flags", "samples", "pkg_block_h") else C.c_uint32)
+        (
+            n,
+            C.c_int
+            if n in ("target", "format", "flags", "samples", "pkg_block_h")
+            else C.c_uint32,
+        )
         for n in (
             "target",
             "format",
@@ -66,7 +72,14 @@ class Layout(C.Structure):
 
 
 lib.nvn_tex_layout.argtypes = [C.POINTER(Desc), C.POINTER(Layout)]
-lib.nvn_swizzle.argtypes = [C.POINTER(Desc), C.c_uint, C.c_uint, C.c_void_p, C.c_size_t, C.c_void_p]
+lib.nvn_swizzle.argtypes = [
+    C.POINTER(Desc),
+    C.c_uint,
+    C.c_uint,
+    C.c_void_p,
+    C.c_size_t,
+    C.c_void_p,
+]
 lib.nvn_deswizzle.argtypes = [
     C.POINTER(Desc),
     C.c_uint,
@@ -120,22 +133,34 @@ for fmt in range(0x41, 0x51):
         for level in range(levels):
             lw, lh = max(1, w >> level), max(1, h >> level)
             pitch, rows = ((lw + 3) // 4) * layout.bpb, (lh + 3) // 4
-            raw = bytes(((i * 31 + fmt * 7 + level * 13) & 255) for i in range(pitch * rows))
+            raw = bytes(
+                ((i * 31 + fmt * 7 + level * 13) & 255) for i in range(pitch * rows)
+            )
             linear = C.create_string_buffer(raw, len(raw))
             if flags:
                 alignment = 128 if flags & 0x40 else 32
                 stride = d.stride or ((pitch + alignment - 1) & ~(alignment - 1))
                 for y in range(rows):
                     C.memmove(
-                        C.addressof(storage) + y * stride, raw[y * pitch : (y + 1) * pitch], pitch
+                        C.addressof(storage) + y * stride,
+                        raw[y * pitch : (y + 1) * pitch],
+                        pitch,
                     )
             else:
-                assert lib.nvn_swizzle(C.byref(d), level, 0, linear, pitch, storage) == 0
+                assert (
+                    lib.nvn_swizzle(C.byref(d), level, 0, linear, pitch, storage) == 0
+                )
                 recovered = C.create_string_buffer(len(raw))
-                assert lib.nvn_deswizzle(C.byref(d), level, 0, storage, recovered, pitch) == 0
+                assert (
+                    lib.nvn_deswizzle(C.byref(d), level, 0, storage, recovered, pitch)
+                    == 0
+                )
                 assert recovered.raw == raw
             pixels = C.create_string_buffer(lw * lh * bpp.value)
-            assert lib.nvn_bc_decode(fmt, linear, pitch, lw, lh, pixels, lw * bpp.value) == 0
+            assert (
+                lib.nvn_bc_decode(fmt, linear, pitch, lw, lh, pixels, lw * bpp.value)
+                == 0
+            )
             expected.append(pixels.raw)
         for level, pixels in enumerate(expected):
             info = (C.c_uint32 * 8)()
@@ -143,7 +168,9 @@ for fmt in range(0x41, 0x51):
             assert info[0] == layout.size
             result = C.create_string_buffer(len(pixels))
             assert (
-                lib.texture_decode(C.byref(d), level, 0, storage, layout.size, result, len(pixels))
+                lib.texture_decode(
+                    C.byref(d), level, 0, storage, layout.size, result, len(pixels)
+                )
                 == 0
             )
             assert result.raw == pixels
@@ -162,6 +189,7 @@ for fmt in range(0x41, 0x51):
                     "pixels": base64.b64encode(pixels).decode(),
                 }
             )
+# 独立的已知值 BC1 参考，不仅与同一库比较一致性。
 # Independent known-value BC1 oracle, not only parity against the same library.
 red = C.create_string_buffer(bytes.fromhex("00f8000000000000"), 8)
 pixels = C.create_string_buffer(64)

@@ -1,3 +1,5 @@
+// 解析验证配置并调度所需步骤；依据 web/verification 的模块与调用约定。
+// Parse verification profiles and schedule their steps using the module and calling contracts in web/verification.
 import process from "node:process";
 import { readFileSync, appendFileSync, mkdtempSync, mkdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";

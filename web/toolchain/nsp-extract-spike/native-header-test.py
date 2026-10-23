@@ -17,7 +17,9 @@ with tempfile.TemporaryDirectory(prefix="d2r-synthetic-header-") as directory:
     work = Path(directory)
     for name in ["extkeys.c", "utils.h", "nca.c"]:
         shutil.copyfile(source / name, work / name)
-    subprocess.run([sys.executable, str(here / "prepare-source.py"), str(work)], check=True)
+    subprocess.run(
+        [sys.executable, str(here / "prepare-source.py"), str(work)], check=True
+    )
     (work / "fixture.c").write_text(r"""
 #include <assert.h>
 #include "nca.h"
@@ -91,6 +93,7 @@ int main(void) {
     puts("PASS synthetic native NCA format rejection and initialized NCA2 section detection");
 }
 """)
+    # 对支持自动清零的编译器，让原先的未初始化输出缺陷确定重现；回归同时按普通方式运行。
     # Make the former uninitialized-output bug deterministic on compilers that
     # support automatic zero initialization; the regression also runs normally.
     for automatic_init in [[], ["-ftrivial-auto-var-init=zero"]]:

@@ -1,4 +1,5 @@
-"""Bounded decoded-image boundary for pinned native stash, vault and pouch art."""
+"""固定原生仓库、储藏库及袋子美术的有界解码图像边界。
+Bounded decoded-image boundary for pinned native stash, vault and pouch art."""
 
 import base64
 import io
@@ -34,7 +35,12 @@ def generate(payload, options):
             if not isinstance(entry, dict) or set(entry) != {"width", "height", "rgba"}:
                 raise ValueError("REMAINING_ART_FIELDS")
             w, h = entry["width"], entry["height"]
-            if type(w) is not int or type(h) is not int or not 1 <= w <= 1640 or not 1 <= h <= 1024:
+            if (
+                type(w) is not int
+                or type(h) is not int
+                or not 1 <= w <= 1640
+                or not 1 <= h <= 1024
+            ):
                 raise ValueError("REMAINING_ART_GEOMETRY")
             raw = base64.b64decode(entry["rgba"], validate=True)
             if len(raw) != w * h * 4:
@@ -42,7 +48,11 @@ def generate(payload, options):
             images[key] = Image.frombytes("RGBA", (w, h), raw)
         image = images.get("image")
         if kind == "stash":
-            if name not in original.SPEC or image.width != 652 or images["personal"].width != 652:
+            if (
+                name not in original.SPEC
+                or image.width != 652
+                or images["personal"].width != 652
+            ):
                 raise ValueError("REMAINING_ART_STASH_GEOMETRY")
             if image.height < 644 or images["personal"].height < 644:
                 raise ValueError("REMAINING_ART_STASH_HEIGHT")
@@ -73,7 +83,11 @@ def generate(payload, options):
                 raise ValueError("REMAINING_ART_VAULT_GEOMETRY")
             result = original.vault_cover(image)
         elif kind == "pouch":
-            if name != "PouchBox" or image.width not in {507, 508} or image.height != 700:
+            if (
+                name != "PouchBox"
+                or image.width not in {507, 508}
+                or image.height != 700
+            ):
                 raise ValueError("REMAINING_ART_POUCH_GEOMETRY")
             result = original.pouch_box(image)
         files = {"image.rgba": result.tobytes()}

@@ -1,4 +1,5 @@
-"""Package the unchanged native-art generator and its audited non-code metadata."""
+"""打包未修改的原生美术生成器及已审计的非代码元数据。
+Package the unchanged native-art generator and its audited non-code metadata."""
 
 import ast
 import hashlib
@@ -37,6 +38,9 @@ out.mkdir(parents=True, exist_ok=True)
 (out / "native-art-metadata.json").write_text(json.dumps(content, ensure_ascii=False))
 
 (out / "native-art-metadata-sha256.json").write_text(
-    json.dumps({k: hashlib.sha256(v.encode()).hexdigest() for k, v in content.items()}, indent=2)
+    json.dumps(
+        {k: hashlib.sha256(v.encode()).hexdigest() for k, v in content.items()},
+        indent=2,
+    )
     + "\n"
 )

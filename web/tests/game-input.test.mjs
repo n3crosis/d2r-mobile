@@ -1,3 +1,5 @@
+// 验证 game-input 的约定与边界；依据 ../game-input.mjs、../nsp-input.mjs 及本文件的测试断言。
+// Verify game-input contracts and boundaries against ../game-input.mjs、../nsp-input.mjs and this file's assertions.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { discoverGameFolder, discoverGameFiles } from "../game-input.mjs";

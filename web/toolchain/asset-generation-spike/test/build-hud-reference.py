@@ -1,4 +1,5 @@
-"""Build a distinct native BASIC backend matching Pyodide's pinned Pillow/FreeType.
+"""构建与 Pyodide 固定 Pillow/FreeType 匹配的独立原生 BASIC 后端，不替代或证明与保留 RAQM 参考的一致性。官方源码下载只在 CI 中进行，终端用户不需要工具链。
+Build a distinct native BASIC backend matching Pyodide's pinned Pillow/FreeType.
 
 This does NOT replace or establish parity with the preserved RAQM reference.
 Official source downloads occur only in CI; no end-user toolchain is required.
@@ -57,6 +58,7 @@ assignments = {
     if isinstance(t, ast.Name)
 }
 sources = ast.literal_eval(assignments["srcs"])
+# 使用相同移植配置及 C 源文件列表，以原生编译器替代 Emscripten。
 # Identical port configuration and C source list, native compiler instead of Emscripten.
 (root / "include/ftconfig.h").write_text(ast.literal_eval(assignments["ftconf_h"]))
 lib = PREFIX / "lib"
@@ -90,8 +92,10 @@ pillow = fetch(
     "pillow.tar.gz",
     "sha256",
     "e87f0b2c78157e12d7686b27d63c070fd65d994e8ddae6f328e0dcf4a0cd007e",
-    limit=46_212_712,  # Exact PyPI 10.2.0 sdist size; test-image corpus exceeds 32 MiB.
+    limit=46_212_712,  # PyPI 10.2.0 源分发包的精确大小；测试图像语料超过 32 MiB。 | Exact PyPI 10.2.0 sdist size; test-image corpus exceeds 32 MiB.
 )
 with tarfile.open(pillow) as source:
     source.extractall(PREFIX, filter="data")
-print("Pinned native FreeType2.6.0 built; Pillow10.2.0 source verified, BASIC contract only")
+print(
+    "Pinned native FreeType2.6.0 built; Pillow10.2.0 source verified, BASIC contract only"
+)

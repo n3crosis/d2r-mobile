@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Exercise the patched pinned hactool key parser with synthetic data only.
+"""只用合成数据测试补丁后的固定 hactool 密钥解析器。用法：python3 native-key-parser-test.py /path/to/unmodified/pinned/hactool。需要本地 C 编译器，不下载源码，不读取任何密钥文件。
+Exercise the patched pinned hactool key parser with synthetic data only.
 
 Usage: python3 native-key-parser-test.py /path/to/unmodified/pinned/hactool
 Requires a local C compiler. Does not download sources or read any key files.
@@ -17,7 +18,9 @@ with tempfile.TemporaryDirectory(prefix="d2r-synthetic-key-parser-") as director
     work = Path(directory)
     for name in ["extkeys.c", "utils.h", "nca.c"]:
         shutil.copyfile(source / name, work / name)
-    subprocess.run([sys.executable, str(here / "prepare-source.py"), str(work)], check=True)
+    subprocess.run(
+        [sys.executable, str(here / "prepare-source.py"), str(work)], check=True
+    )
     (work / "fixture.c").write_text(r"""
 #include <assert.h>
 #include "extkeys.c"

@@ -1,3 +1,5 @@
+// 运行浏览器纹理解码冒烟验证；依据 web/toolchain/texture-spike 的模块与调用约定。
+// Run browser texture-decoding smoke checks using the module and calling contracts in web/toolchain/texture-spike.
 import assert from "node:assert/strict";
 import process from "node:process";
 import http from "node:http";

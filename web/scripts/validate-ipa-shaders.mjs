@@ -21,6 +21,7 @@ const safe = (value) => {
 const view = (bytes) => new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 const counts = () => ({ total: 0, compiled: 0, sourceText: 0, invalid: 0 });
 
+// 只派生有界清单；现有独立校验器随后针对清单检查每条本地/中央记录、数据描述符、CRC 及归档字节。
 // Derive only the bounded manifest. The existing independent validator subsequently checks
 // every local/central record, data descriptor, CRC and archive byte against that manifest.
 async function readManifest(source, signal) {
@@ -96,6 +97,7 @@ async function readManifest(source, signal) {
   return { manifest, archiveFormat: zip64 ? "zip64" : "zip32" };
 }
 
+// 这些字段只是自述的结构预期，不是可信编译器来源；下方独立检查所有偏移、标签、元数据段及内嵌哈希。
 // These fields are self-described structural expectations, not trusted compiler provenance.
 // All offsets, tags, metadata sections and embedded hashes are independently checked below.
 function declaredMetalIdentity(bytes) {
@@ -148,6 +150,7 @@ function declaredMetalIdentity(bytes) {
 function looksLikeSource(bytes) {
   if (!bytes.length) return false;
   try {
+    // 解码有界前缀，允许末尾 UTF-8 字符不完整。
     // Decode a bounded prefix, allowing a partial trailing UTF-8 character.
     const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(0, 4096), {
       stream: true,

@@ -1,9 +1,12 @@
+// 验证 zip-reader 的约定与边界；依据 ../zip-reader.mjs 及本文件的测试断言。
+// Verify zip-reader contracts and boundaries against ../zip-reader.mjs and this file's assertions.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import test from "node:test";
 import { createHash } from "node:crypto";
 import { openShellZip, ZIP_LIMITS } from "../zip-reader.mjs";
 
+// 独立 Python zipfile 写入器，仅使用合成公开文本，不下载模板。
 // Independent Python zipfile writer: synthetic public text only, no downloaded shell.
 const fixtures = JSON.parse(
   execFileSync(
@@ -320,6 +323,7 @@ test("trailing junk rejection does not depend on native DEFLATE strictness", asy
   const Native = globalThis.DecompressionStream;
   globalThis.DecompressionStream = class {
     constructor() {
+      // 刻意宽松的运行时忽略全部编码字节，即使存在压缩垃圾，也返回匹配的解码字节/CRC。
       // Deliberately permissive runtime: ignores every encoded byte and would
       // return matching decoded bytes/CRC even when compressed junk is present.
       return new TransformStream({

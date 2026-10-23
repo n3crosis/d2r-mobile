@@ -1,3 +1,5 @@
+// 应用已校验规则并生成改写后的 NSO；依据 ../../../program-release-catalog.mjs、./binary.mjs 的模块与调用约定。
+// Apply validated rules and produce rewritten NSO output using the module and calling contracts in ../../../program-release-catalog.mjs、./binary.mjs.
 import {
   PROGRAM_REWRITE_LIMITS,
   PROGRAM_REWRITER_SOURCE,
@@ -170,7 +172,9 @@ function scan(context) {
   return { starts, kinds, done, windows, jumps };
 }
 
-/** Low-level port for explicit development use. Shipping callers must use the trusted factory below. */
+/**
+ * 供明确开发用途的底层移植，交付调用方必须使用下方可信工厂。
+ * Low-level port for explicit development use. Shipping callers must use the trusted factory below. */
 export async function rewriteNso({
   bytes,
   moduleName = "main",
@@ -240,7 +244,9 @@ export async function rewriteNso({
   return { files, stats: context.stats };
 }
 
-/** Drop-in candidate adapter. The production Python path remains separate until equivalence is verified. */
+/**
+ * 可直接替换的候选适配器；验证等价性前，生产 Python 路径保持独立。
+ * Drop-in candidate adapter. The production Python path remains separate until equivalence is verified. */
 export function createJavaScriptProgramRewriter(initialize) {
   if (typeof initialize !== "function") throw new TypeError("Missing trusted runtime initializer");
   return async function rewriteProgram({ bytes, caseName, releaseId, moduleName = "main" }) {

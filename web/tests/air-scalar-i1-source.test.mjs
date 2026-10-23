@@ -1,3 +1,5 @@
+// 验证 air-scalar-i1-source 的约定与边界；依据 ./fixtures/air-fork-source/fork-source.mjs 及本文件的测试断言。
+// Verify air-scalar-i1-source contracts and boundaries against ./fixtures/air-fork-source/fork-source.mjs and this file's assertions.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -12,6 +14,7 @@ const root = new URL("../toolchain/metal-air-compiler/", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
 const hash = (data) => createHash("sha256").update(data).digest("hex");
 
+// 仅断言源码，不运行编译器、LLVM 解析/校验器或生成的着色器。
 // Source-only assertions: no compiler, LLVM parser/verifier or generated shader runs.
 test(
   "scalar i1 conversion hardening retains its exact authenticated fork source boundary",

@@ -11,6 +11,8 @@ const identityKeys = Object.freeze({
 });
 
 /**
+ * 这些是检查所得的 plist 值，而非发布标签或当前原生构建设置。
+ *
  * These are inspected plist values, not the release tag or current native build settings.
  * @returns {Readonly<{ displayName: string, bundleIdentifier: string, version: string, buildVersion: string }>}
  */
@@ -28,7 +30,9 @@ export function resolveAppCustomizationDefaults(profileId) {
   });
 }
 
-/** Keep explicit edits separate so switching shells updates untouched fields, not user edits. */
+/**
+ * 单独记录显式编辑，使切换模板只更新未编辑字段，不覆盖用户修改。
+ * Keep explicit edits separate so switching shells updates untouched fields, not user edits. */
 export function updateAppCustomizationDraft(draft, defaults, field, value) {
   if (!Object.hasOwn(identityKeys, field) || typeof value !== "string")
     throw new Error("APP_CUSTOMIZATION_INVALID");
@@ -39,6 +43,8 @@ export function updateAppCustomizationDraft(draft, defaults, field, value) {
 }
 
 /**
+ * 与默认值完全相同的值不算覆盖；尤其不能拒绝固定模板的版本“1.0”，也不能为满足更严格的自定义版本约定而改写它。
+ *
  * Exact defaults are not overrides. In particular, the pinned shell's version "1.0"
  * must not be rejected by or rewritten to fit the stricter custom-version contract.
  */

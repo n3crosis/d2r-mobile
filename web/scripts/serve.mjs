@@ -1,3 +1,5 @@
+// 解析静态资产路径并提供本地预览服务；依据 web/scripts 的模块与调用约定。
+// Resolve static asset paths and serve the local preview using the module and calling contracts in web/scripts.
 import { resolve, sep, extname } from "node:path";
 import { stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";

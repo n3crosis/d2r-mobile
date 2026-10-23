@@ -1,3 +1,5 @@
+// 验证 air-compiler-runtime-contract 的约定与边界；依据 ../air-compiler-contract.mjs、../air-compiler-runtime-contract.mjs 及本文件的测试断言。
+// Verify air-compiler-runtime-contract contracts and boundaries against ../air-compiler-contract.mjs、../air-compiler-runtime-contract.mjs and this file's assertions.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { airCompilerIdentity, AIR_COMPILER_SOURCE_LANGUAGE } from "../air-compiler-contract.mjs";
@@ -11,6 +13,7 @@ import {
   validateAirCompilerRuntimeComponent,
 } from "../air-compiler-runtime-contract.mjs";
 
+// 仅使用自编元数据样例，不执行编译器，也不提供着色器输出证据。
 // Authored metadata fixtures only: no compiler execution or shader output evidence.
 const digest = "a".repeat(64);
 function receipt() {

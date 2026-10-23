@@ -1,3 +1,5 @@
+// 在工作线程中调度受限资源生成；依据 ./vendor/pyodide/pyodide.mjs、./generated/art-kernels.mjs 的模块与调用约定。
+// Dispatch bounded asset generation in a worker using the module and calling contracts in ./vendor/pyodide/pyodide.mjs、./generated/art-kernels.mjs.
 import { loadPyodide } from "./vendor/pyodide/pyodide.mjs";
 import * as kernels from "./generated/art-kernels.mjs";
 import { hasAssetTransform, executeAssetTransform } from "../../asset-transforms-js/transforms.mjs";

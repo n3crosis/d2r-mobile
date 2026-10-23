@@ -1,3 +1,5 @@
+// 验证 asset-text-validation 的约定与边界；依据 ../toolchain/art-recipes-js/util.mjs、../toolchain/asset-transforms-js/transforms.mjs 及本文件的测试断言。
+// Verify asset-text-validation contracts and boundaries against ../toolchain/art-recipes-js/util.mjs、../toolchain/asset-transforms-js/transforms.mjs and this file's assertions.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { utf8 } from "../toolchain/art-recipes-js/util.mjs";

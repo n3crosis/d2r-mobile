@@ -1,5 +1,7 @@
 /* global window */
-/** Actual Pyodide Worker + lazy JS reader + independent original-native oracle. */
+/**
+ * 真实 Pyodide 工作线程、惰性 JS 读取器及独立原生参考实现。
+ * Actual Pyodide Worker + lazy JS reader + independent original-native oracle. */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createServer } from "node:http";

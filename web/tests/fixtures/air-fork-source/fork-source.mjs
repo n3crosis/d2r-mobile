@@ -1,3 +1,4 @@
+// 仅供测试的源码读取器。显式离线审查认证的是所审阅的源码字节，不是公开发布、编译器构建或设备结果。生产代码没有源码目录覆盖选项，也不导入此文件。
 // Test-only source reader. Explicit offline review authenticates reviewed
 // source bytes, not a published release, compiler build, or device result.
 // Production code has no source-directory override and never imports this file.

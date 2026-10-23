@@ -1,3 +1,4 @@
+// 仅测试合成元数据解析，不执行编译器，也不提供 AIR 证据。
 // Synthetic metadata parser checks only, not compiler execution or AIR evidence.
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -69,6 +70,7 @@ test("reflection parser rejects missing stage, entry, unique buffer and referenc
     assert.throws(() => readReflection(invalid, fixture));
 });
 
+// 手写的解析输入，不是编译器结果或已编译参考产物。
 // Hand-authored parser input, not a compiler result or a compiled reference.
 const storage = `target datalayout = "e-p:64:64:64-i8:8:8-i32:32:32-f32:32:32-v96:128:128"
 %struct.PaddedVectorLayout = type { i32, <3 x float>, [2 x <3 x float>], i32, [12 x i8] }

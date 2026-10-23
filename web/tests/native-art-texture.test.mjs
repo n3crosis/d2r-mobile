@@ -1,3 +1,5 @@
+// 验证 native-art-texture 的约定与边界；依据 ../native-art-texture.mjs 及本文件的测试断言。
+// Verify native-art-texture contracts and boundaries against ../native-art-texture.mjs and this file's assertions.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { nativeArtAtlasDescriptor, NativeArtTextureClient } from "../native-art-texture.mjs";
