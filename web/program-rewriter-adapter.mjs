@@ -6,7 +6,8 @@ import { resolveShellProfile } from "./shell-profiles.mjs";
 import {
   PROGRAM_REWRITER_SOURCE,
   REGISTERED_PROGRAM_CATALOG,
-  REGISTERED_PROGRAM_RELEASE,
+  REGISTERED_PROGRAM_MODULE_NAMES,
+  diagnoseRegisteredProgramDigests,
   PROGRAM_REWRITE_LIMITS,
 } from "./program-release-catalog.mjs";
 export { PROGRAM_REWRITER_SOURCE } from "./program-release-catalog.mjs";
@@ -66,9 +67,7 @@ function snapshot(bytes, maxBytes = MAX_BYTES) {
 }
 function catalogFor(value) {
   if (value === REGISTERED_PROGRAM_CATALOG)
-    return new Map([
-      [REGISTERED_PROGRAM_RELEASE.id, { ...REGISTERED_PROGRAM_RELEASE, registered: true }],
-    ]);
+    return new Map(value.versions.map((release) => [release.id, { ...release, registered: true }]));
   if (
     !value ||
     ![1, 2].includes(value.schemaVersion) ||
@@ -285,49 +284,64 @@ export function createProgramRewriterAdapter({
     const race = (action) => Promise.race([Promise.resolve().then(action), interrupted]);
     try {
       const input = registered
-        ? {
-            versionId: REGISTERED_PROGRAM_RELEASE.id,
-            programModules: await race(() => verifyProvenance(extracted, selection, { signal })),
-          }
+        ? { programModules: await race(() => verifyProvenance(extracted, selection, { signal })) }
         : await race(() => resolveInput(extracted, selection, { signal, maxBytes: MAX_BYTES }));
       check(signal);
-      const version = versions.get(input?.versionId);
-      if (!version) fail("PROGRAM_UNSUPPORTED_VERSION");
+      let version = registered ? undefined : versions.get(input?.versionId);
+      if (!registered && !version) fail("PROGRAM_UNSUPPORTED_VERSION");
+      const moduleNames = registered
+        ? REGISTERED_PROGRAM_MODULE_NAMES
+        : version.modules.map((module) => module.name);
       const inputModules =
-        input.programModules ?? (version.modules.length === 1 ? { main: input.bytes } : null);
+        input.programModules ?? (moduleNames.length === 1 ? { main: input.bytes } : null);
       if (
         !inputModules ||
-        Object.keys(inputModules).sort().join(",") !==
-          version.modules
-            .map((module) => module.name)
-            .sort()
-            .join(",")
+        Object.keys(inputModules).sort().join(",") !== [...moduleNames].sort().join(",")
       )
         fail("PROGRAM_INVALID_MODULE_SET");
       let inputTotal = 0,
         outputTotal = 0;
-      const staged = [];
+      const staged = [],
+        digests = Object.create(null);
       // 同步快照两个借用数组。工作线程或异步
       // 哈希都不能观察到提取所拥有输入缓冲区的后续变更。
       // Snapshot both borrowed arrays synchronously. No worker or asynchronous
       // hashing can observe a later mutation of extraction-owned input buffers.
-      for (const module of version.modules) {
+      for (const name of moduleNames) {
         const bytes = own(
           snapshot(
-            inputModules[module.name],
+            inputModules[name],
             registered ? PROGRAM_REWRITE_LIMITS.moduleInputBytes : MAX_BYTES,
           ),
         );
         inputTotal += bytes.length;
         if (inputTotal > PROGRAM_REWRITE_LIMITS.totalInputBytes) fail("PROGRAM_INPUT_BUDGET");
-        staged.push({ module, bytes });
+        staged.push({ name, bytes });
       }
-      for (const { module, bytes } of staged) {
-        if ((await race(() => sha256(bytes))) !== module.inputSha256)
-          fail("PROGRAM_INPUT_DIGEST_MISMATCH");
+      for (const { name, bytes } of staged) {
+        digests[name] = await race(() => sha256(bytes));
+        check(signal);
+      }
+      if (registered) {
+        const detected = diagnoseRegisteredProgramDigests(digests);
+        if (detected.status !== "registered")
+          fail(
+            detected.status === "incompatible-modules"
+              ? "PROGRAM_MODULE_RELEASE_MISMATCH"
+              : "PROGRAM_UNSUPPORTED_VERSION",
+          );
+        version = versions.get(detected.releaseId);
+        if (!version) fail("PROGRAM_UNSUPPORTED_VERSION");
+        if (!shellProfile.programReleaseIds.includes(version.id))
+          fail("PROGRAM_SHELL_RELEASE_MISMATCH");
+      }
+      for (const entry of staged) {
+        const module = version.modules.find((candidate) => candidate.name === entry.name);
+        entry.module = module;
+        if (digests[entry.name] !== module.inputSha256) fail("PROGRAM_INPUT_DIGEST_MISMATCH");
         if (
           module.buildId &&
-          Array.from(bytes.subarray(0x40, 0x50), (x) => x.toString(16).padStart(2, "0")).join(
+          Array.from(entry.bytes.subarray(0x40, 0x50), (x) => x.toString(16).padStart(2, "0")).join(
             "",
           ) !== module.buildId
         )

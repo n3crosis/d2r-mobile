@@ -22,6 +22,11 @@ const server = http.createServer(async (req, res) => {
   }
   const shared = [
     "/nsp-input.mjs",
+    "/package-input.mjs",
+    "/xci-input.mjs",
+    "/extraction-errors.mjs",
+    "/i18n.mjs",
+    "/i18n-catalog.mjs",
     "/content-selection.mjs",
     "/d2r-expansion-policy.mjs",
     "/extraction-worker-client.mjs",

@@ -656,3 +656,125 @@ test("shader report exposes useful bounded diagnostics without original exceptio
     return true;
   });
 });
+
+// 程序阶段允许固定诊断；本地输入打开阶段仅允许版本及模块不匹配诊断。
+// Program generation admits fixed codes; local input opening admits only version/tuple failures.
+test("program compatibility reports enforce stage scope before extraction diagnostics", async () => {
+  const known = [
+    "PROGRAM_UNSUPPORTED_VERSION",
+    "PROGRAM_MODULE_RELEASE_MISMATCH",
+    "PROGRAM_SHELL_RELEASE_MISMATCH",
+    "PROGRAM_INVALID_MODULE_SET",
+    "PROGRAM_INPUT_DIGEST_MISMATCH",
+    "PROGRAM_BUILD_ID_MISMATCH",
+  ];
+  const stages = [
+    ["openSecretSession", "secrets"],
+    ["inspectContents", "inspection"],
+    ["selectContents", "selection"],
+    ["extractSelected", "extraction"],
+    ["generateProgram", "program"],
+    ["generateAssets", "assets"],
+    ["generateShaders", "shaders"],
+    ["loadShell", "shell"],
+    ["validateGenerated", "validation"],
+    ["createOutput", "output"],
+    ["validateArchive", "archive"],
+    ["cleanup", "cleanup"],
+  ];
+  for (const code of [...known, "PRIVATE-KEY", "PROGRAM_UNSUPPORTED_VERSION /PRIVATE-PATH", null]) {
+    for (const [method, stage] of stages) {
+      const f = fixture();
+      f.adapters[method] = async () => {
+        if (method === "cleanup") f.calls.push("cleanup");
+        throw Object.assign(new Error("PRIVATE-PATH PRIVATE-KEY"), {
+          code,
+          private: "PRIVATE-INPUT",
+        });
+      };
+      await assert.rejects(runPackagingJob(f), (error) => {
+        const allowed =
+          (stage === "program" && known.includes(code)) ||
+          (stage === "secrets" && known.slice(0, 2).includes(code));
+        assert.equal(error.report.stage, stage);
+        assert.equal(error.report.detailCode, allowed ? code : null, `${stage}: ${code}`);
+        assert.doesNotMatch(JSON.stringify(error.report), /PRIVATE/);
+        assert.equal(error.report.committed, false);
+        if (!["output", "archive", "cleanup"].includes(stage))
+          assert.equal(error.report.outputStarted, false);
+        return true;
+      });
+      assert.ok(f.calls.includes("cleanup"));
+      if (!["output", "archive", "cleanup"].includes(stage))
+        assert.equal(f.calls.includes("create"), false);
+    }
+  }
+});
+
+test("public diagnostic retains only the single checked error code value", async () => {
+  const f = fixture();
+  let reads = 0;
+  f.adapters.generateProgram = async () => {
+    throw Object.defineProperty(new Error("PRIVATE-CAUSE"), "code", {
+      get() {
+        return ++reads === 1 ? "PROGRAM_UNSUPPORTED_VERSION" : "PRIVATE-UNCHECKED-CODE";
+      },
+    });
+  };
+  await assert.rejects(runPackagingJob(f), (error) => {
+    assert.equal(error.report.detailCode, "PROGRAM_UNSUPPORTED_VERSION");
+    assert.doesNotMatch(JSON.stringify(error.report), /PRIVATE/);
+    return true;
+  });
+  assert.equal(reads, 1);
+});
+
+test("mixed package selection includes XCI names without reading excluded packages", async () => {
+  const f = fixture();
+  f.input.push({
+    name: "base.xci",
+    webkitRelativePath: "folder/base.xci",
+    size: 0,
+    slice() {
+      throw Error("metadata only");
+    },
+  });
+  const original = f.adapters.openSecretSession;
+  f.adapters.openSecretSession = async (context) => {
+    assert.deepEqual(
+      context.inputs.nsps.map((file) => file.name),
+      ["base.xci"],
+    );
+    return original(context);
+  };
+  await runPackagingJob({ ...f, selectedNspNames: ["base.xci"] });
+});
+test("extracted orchestration accepts a separate selection capability without fabricated CNMT", async () => {
+  const f = fixture();
+  const inputs = ["ExeFS/main", "ExeFS/sdk", "RomFS/data/build_manifest.psv"].map((path) =>
+    Object.assign(new Blob(["synthetic"]), {
+      name: path.split("/").at(-1),
+      webkitRelativePath: `root/${path}`,
+    }),
+  );
+  const selection = {
+    inputKind: "extracted",
+    dlcMetadata: "not-authenticated",
+    contentMode: "base-update-only",
+    dlc: [],
+  };
+  f.adapters.inspectContents = async () => ({ inputKind: "extracted" });
+  f.adapters.selectContents = async ({ inputs: discovered }) => {
+    assert.equal(discovered.inputMode, "extracted");
+    assert.equal(Object.hasOwn(discovered, "prodKeys"), false);
+    return selection;
+  };
+  f.adapters.extractSelected = async (context) => {
+    assert.equal(context.selection, selection);
+    return {};
+  };
+  await runPackagingJob({ ...f, input: inputs, inputMode: "extracted" });
+  await assert.rejects(
+    runPackagingJob({ ...fixture(), input: inputs, inputMode: "extracted", selectedNspNames: [] }),
+  );
+});

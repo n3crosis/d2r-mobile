@@ -1,11 +1,7 @@
 // 依据 NSP 输入校验、CNMT 选择与受信原生边界协调已认证内容读取。
 // Coordinate authenticated content reads based on NSP input validation, CNMT selection and a trusted native boundary.
-import {
-  inspectNsp,
-  inspectKeyBytes,
-  normalizeProdKeyBytes,
-  NSP_INPUT_LIMITS,
-} from "../../nsp-input.mjs";
+import { inspectKeyBytes, normalizeProdKeyBytes, NSP_INPUT_LIMITS } from "../../nsp-input.mjs";
+import { inspectGamePackage } from "../../package-input.mjs";
 import { extractionDiagnosticError } from "../../extraction-errors.mjs";
 import { parseCnmt } from "../../content-selection.mjs";
 import { D2R_WARLOCK_ID, resolveD2rExpansionSelection } from "../../d2r-expansion-policy.mjs";
@@ -270,7 +266,7 @@ export function createExtractionEngine(
             progress("package-index", index, payload.nsps.length);
             let catalog;
             try {
-              catalog = await inspectNsp(file);
+              catalog = await inspectGamePackage(file);
             } catch {
               diagnostic("PACKAGE_INDEX_INVALID");
             }

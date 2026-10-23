@@ -3,7 +3,8 @@
 import { isExtractionDiagnosticCode, extractionProgressLabel } from "./extraction-errors.mjs";
 import { shaderFailureDiagnostic } from "./shader-diagnostics.mjs";
 import { isAirCompilerDiagnosticCode } from "./air-compiler-contract.mjs";
-import { discoverNspFiles, discoverNspFolder } from "./nsp-input.mjs";
+import { isProgramCompatibilityDiagnosticCode } from "./program-compatibility.mjs";
+import { discoverGameFiles, discoverGameFolder } from "./game-input.mjs";
 import { resolveContentSelection } from "./content-selection.mjs";
 import { validateShellContract, validateAssemblyInventory } from "./shell-contract.mjs";
 import { writeZip } from "./zip-writer.mjs";
@@ -90,6 +91,7 @@ const labels = Object.freeze({
  * @property {PackagingAdapters} adapters
  * @property {AbortSignal} [signal]
  * @property {object} [selectionOptions]
+ * @property {"packages"|"extracted"} [inputMode]
  * @property {string[]} [selectedNspNames] 所选文件夹中要使用的包文件名。 | Package filenames to use from the selected folder.
  * @property {"extraction"|"archive"} [secretLifetime] 默认为 extraction；显式 archive 模式允许隔离的惰性明文读取器存活至写入结束。 | Default extraction; explicit archive mode permits isolated lazy plaintext readers until writing finishes.
  * @property {"zip32"|"zip64"} [archiveFormat] ZIP64 需显式选择，不代表 iOS 兼容性。 | ZIP64 is explicit opt-in, not an iOS compatibility claim.
@@ -108,6 +110,21 @@ const assertion = (condition) => {
   if (!condition) throw new Error("PACKAGING_CONTRACT");
 };
 const comparePaths = (a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+
+// 程序诊断先限定阶段，防止已提取输入的诊断白名单绕过阶段边界。
+// Scope program diagnostics before the extraction allowlist can admit local-input codes.
+function failureDetailCode(stage, code) {
+  if (isProgramCompatibilityDiagnosticCode(code))
+    return stage === "program" ||
+      (stage === "secrets" &&
+        ["PROGRAM_UNSUPPORTED_VERSION", "PROGRAM_MODULE_RELEASE_MISMATCH"].includes(code))
+      ? code
+      : null;
+  return isExtractionDiagnosticCode(code) ||
+    (stage === "shaders" && isAirCompilerDiagnosticCode(code))
+    ? code
+    : null;
+}
 
 /**
  * 不集成 UI，也不提供转换回退。仅在完整验证、临时资源清理和 sink.close 完成后兑现。原始错误作为 cause 供受信任调用方使用，绝不可用于 UI 或日志；只有 report 可安全展示给用户。
@@ -228,11 +245,12 @@ export async function runPackagingJob(options) {
     capabilitiesReady = true;
     const discovered = await step("discovery", () =>
       options.input?.kind === "directory"
-        ? discoverNspFolder(options.input, { signal })
-        : discoverNspFiles(options.input),
+        ? discoverGameFolder(options.input, { signal, inputMode: options.inputMode })
+        : discoverGameFiles(options.input, { inputMode: options.inputMode }),
     );
     let inputs = discovered;
     if (options.selectedNspNames !== undefined) {
+      assertion(discovered.inputMode === "packages");
       const names = options.selectedNspNames;
       assertion(
         Array.isArray(names) &&
@@ -257,7 +275,14 @@ export async function runPackagingJob(options) {
       adapters.inspectContents({ ...context, session }),
     );
     const selection = await step("selection", () =>
-      resolveContentSelection(inspected.records, inspected.inventory, options.selectionOptions),
+      typeof adapters.selectContents === "function"
+        ? adapters.selectContents({
+            ...context,
+            session,
+            inspected,
+            selectionOptions: options.selectionOptions,
+          })
+        : resolveContentSelection(inspected.records, inspected.inventory, options.selectionOptions),
     );
     const extracted = await step("extraction", () =>
       adapters.extractSelected({
@@ -416,11 +441,7 @@ export async function runPackagingJob(options) {
               ? "CANCELLED"
               : "STAGE_FAILED",
         stage: failedStage,
-        detailCode:
-          isExtractionDiagnosticCode(cause?.code) ||
-          (failedStage === "shaders" && isAirCompilerDiagnosticCode(cause?.code))
-            ? cause.code
-            : null,
+        detailCode: failureDetailCode(failedStage, cause?.code),
         ...(failedStage === "shaders" ? { shaderDiagnostic: shaderFailureDiagnostic(cause) } : {}),
         outputStarted,
         committed,

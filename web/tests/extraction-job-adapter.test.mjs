@@ -5,6 +5,7 @@ import {
   createExtractionJobAdapter,
   readAuthenticatedProgramModules,
   readAuthenticatedAssets,
+  readInputContentPolicy,
 } from "../extraction-job-adapter.mjs";
 import {
   D2R_WARLOCK_ID as warlock,
@@ -157,6 +158,20 @@ test("program provenance binds exact extracted identity, selection and live sess
     session = await open(f);
   const extracted = await f.adapter.extractSelected({ session, selection });
   const assets = readAuthenticatedAssets(extracted, selection);
+  assert.deepEqual(readInputContentPolicy(extracted, selection), {
+    contentMode: "warlock",
+    inputProvenance: "authenticated-package",
+    dlcMetadata: "authenticated",
+  });
+  assert.throws(
+    () =>
+      readInputContentPolicy(extracted, {
+        ...selection,
+        inputKind: "extracted",
+        dlcMetadata: "not-authenticated",
+      }),
+    /PROVENANCE/,
+  );
   assert.equal(assets.romfs, extracted.romfs);
   assert.equal(assets.logicalAssets, extracted.logicalAssets);
   assert.ok(Object.isFrozen(assets.romfs.files));

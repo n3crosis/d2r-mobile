@@ -1,12 +1,18 @@
 // 浏览器本地打包界面：依据打包进度协议与共享多语文字表。
 // Local browser packaging UI based on the packaging progress protocol and shared multilingual table.
 import { t, browserLanguage } from "../i18n.mjs";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  AppCustomizationFields,
+  type AppCustomizationDraft,
+} from "@/components/AppCustomizationFields";
+import { normalizeAppCustomization, prepareAppCustomization } from "../app-customization.mjs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { prepareBrowserPackager, takeCommittedDownload } from "../browser-packager.mjs";
 import { DEFAULT_SHELL_PROFILE_ID } from "../shell-profiles.mjs";
-import { discoverNspFolder } from "../nsp-input.mjs";
+import { discoverGameFolder } from "../game-input.mjs";
+import { PROGRAM_COMPATIBILITY } from "../program-compatibility.mjs";
 import { selectDefaultNspNames } from "../nsp-default-selection.mjs";
 import { createDownloadPreparation, attemptAutomaticDownload } from "../download-preparation.mjs";
 import { signWithLocalFiles } from "../signing-input.mjs";
@@ -21,6 +27,8 @@ import {
   committedCleanupWarning,
   resourceProgressLabel,
   shaderProgressLabel,
+  gameFolderFailureMessage,
+  appCustomizationFailureMessage,
 } from "../packaging-diagnostics.mjs";
 
 type LocalPickers = typeof globalThis & {
@@ -40,20 +48,24 @@ type LoadingProgress = {
   totalFiles: number;
   label: string;
 };
+type InputMode = "packages" | "extracted";
 type FolderProgress = {
+  extractedFileCount?: number;
   nspCount: number;
   prodKeysFound: boolean;
   titleKeysFound: boolean;
 };
 type ActivityEntry = { id: number; text: string };
 type RomfsProgress = { phase: "base" | "merged"; percent: number };
-const folderSummary = (progress: FolderProgress) =>
-  t(
-    "dmWebFolderSummary",
-    progress.nspCount,
-    t(progress.prodKeysFound ? "dmWebFound" : "dmWebMissing"),
-    t(progress.titleKeysFound ? "dmWebFoundOptional" : "dmWebNotProvided"),
-  );
+const folderSummary = (progress: FolderProgress, inputMode: InputMode) =>
+  inputMode === "extracted"
+    ? t("dmWebExtractedSummary", progress.extractedFileCount ?? 0)
+    : t(
+        "dmWebFolderSummary",
+        progress.nspCount,
+        t(progress.prodKeysFound ? "dmWebFound" : "dmWebMissing"),
+        t(progress.titleKeysFound ? "dmWebFoundOptional" : "dmWebNotProvided"),
+      );
 const megabytes = (bytes: number) => t("dmWebMegabytes", (bytes / 1_000_000).toFixed(1));
 const loadingLabel = (phase: string) =>
   t(phase === "download" ? "dmWebDownloading" : "dmWebPreparing");
@@ -86,6 +98,24 @@ export default function App() {
   const [resourceOutcome, setResourceOutcome] = useState("");
   const [storageAdvisory, setStorageAdvisory] = useState("");
   const profileId = target === "ios18" ? "v1.0.18-ios18" : DEFAULT_SHELL_PROFILE_ID;
+  const supportedVersions = PROGRAM_COMPATIBILITY.releases
+    .filter((release) =>
+      PROGRAM_COMPATIBILITY.shellProfiles
+        .find((profile) => profile.id === profileId)
+        ?.programReleaseIds.includes(release.id),
+    )
+    .map((release) => release.gameVersion)
+    .join(", ");
+  const [inputMode, setInputMode] = useState<InputMode>("packages");
+  const [appCustomization, setAppCustomization] = useState<AppCustomizationDraft>({});
+  const [customizationError, setCustomizationError] = useState("");
+  const customizationValidation = useMemo(() => {
+    try {
+      return { options: normalizeAppCustomization(appCustomization), error: "" };
+    } catch (error) {
+      return { options: undefined, error: appCustomizationFailureMessage(error) };
+    }
+  }, [appCustomization]);
   const [hasSelectedFolder, setHasSelectedFolder] = useState(false);
   useEffect(() => {
     document.documentElement.lang = browserLanguage();
@@ -118,6 +148,7 @@ export default function App() {
   const [finished, setFinished] = useState(false);
   const downloadPreparation = useRef(createDownloadPreparation());
   const [downloadPreparationFailed, setDownloadPreparationFailed] = useState(false);
+  const [originalIdentityDownload, setOriginalIdentityDownload] = useState(false);
   const mounted = useRef(true);
   const operationGate = useRef(createUiOperationGate());
   const flushActivity = useCallback(() => {
@@ -292,12 +323,13 @@ export default function App() {
       setNspNames([]);
       setSelectedNsps(new Set());
       setStatus(t("dmWebChecking", selected.name));
-      const files = await discoverNspFolder(selected, {
+      const files = await discoverGameFolder(selected, {
+        inputMode,
         signal: controller.signal,
         onProgress: (event: FolderProgress) => {
           if (controller.signal.aborted || !current()) return;
           progress = event;
-          setStatus(t("dmWebCheckingProgress", selected.name, folderSummary(event)));
+          setStatus(t("dmWebCheckingProgress", selected.name, folderSummary(event, inputMode)));
         },
       });
       controller.signal.throwIfAborted();
@@ -308,14 +340,22 @@ export default function App() {
       setSelectedNsps(new Set(selectedNames));
       setFolder(selected);
       appendActivity(
-        t(
-          "dmWebFolderChecked",
-          progress.nspCount,
-          t(progress.titleKeysFound ? "dmWebProvided" : "dmWebNotProvided"),
-        ),
+        inputMode === "extracted"
+          ? t("dmWebExtractedChecked")
+          : t(
+              "dmWebFolderChecked",
+              progress.nspCount,
+              t(progress.titleKeysFound ? "dmWebProvided" : "dmWebNotProvided"),
+            ),
         true,
       );
-      setStatus(t("dmWebReviewSelection", selected.name, folderSummary(progress)));
+      setStatus(
+        t(
+          inputMode === "extracted" ? "dmWebExtractedReady" : "dmWebReviewSelection",
+          selected.name,
+          folderSummary(progress, inputMode),
+        ),
+      );
     } catch (error) {
       if (!current()) return;
       if (
@@ -332,13 +372,12 @@ export default function App() {
         const permissionError =
           error instanceof DOMException &&
           ["NotAllowedError", "SecurityError"].includes(error.name);
-        const reason =
-          code === "MISSING_INPUT"
-            ? t("dmWebMissingInput")
-            : permissionError
-              ? t("dmWebFolderPermission")
-              : t("dmWebFolderUnreadable");
-        setStatus(`${selectedName ? `${selectedName}: ${folderSummary(progress)} ` : ""}${reason}`);
+        const reason = permissionError
+          ? t("dmWebFolderPermission")
+          : gameFolderFailureMessage(code);
+        setStatus(
+          `${selectedName ? `${selectedName}: ${folderSummary(progress, inputMode)} ` : ""}${reason}`,
+        );
       }
     } finally {
       // 显式取消后必须重载，立即关闭已预加载的运行时；仅关闭选取器仍允许重试。
@@ -358,7 +397,7 @@ export default function App() {
       operation.finish();
     }
   }
-  function prepareDownload(automatic = true) {
+  function prepareDownload(automatic = !originalIdentityDownload) {
     const prepared = downloadPreparation.current.prepare();
     if (prepared.status !== "ready") {
       setDownloadPreparationFailed(true);
@@ -470,7 +509,16 @@ export default function App() {
     }
   }
   async function generate() {
-    if (!ready || busy || !folder || !packager.current || !selectedNsps.size) return;
+    if (
+      !ready ||
+      busy ||
+      !folder ||
+      !packager.current ||
+      customizationValidation.error ||
+      customizationError ||
+      (inputMode === "packages" && !selectedNsps.size)
+    )
+      return;
     if (
       signing &&
       (!signingReady || !identityInput.current?.files?.[0] || !profileInput.current?.files?.[0])
@@ -484,6 +532,45 @@ export default function App() {
     cancellation.current = controller;
     setBusy(true);
     setGenerating(true);
+    setCustomizationError("");
+    let preparedCustomization;
+    try {
+      // 先检查本地选项；验证失败不消耗一次性打包器，允许更正后重试。
+      // Check local options first; invalid input does not consume the one-shot packager and can be corrected.
+      setStatus(t("dmWebCustomChecking"));
+      preparedCustomization = await prepareAppCustomization(customizationValidation.options, {
+        signal: controller.signal,
+      });
+      controller.signal.throwIfAborted();
+      if (!current()) {
+        operation.finish();
+        return;
+      }
+    } catch (error) {
+      if (current()) {
+        if (controller.signal.aborted) {
+          setReady(false);
+          setFinished(true);
+          setStatus(t("dmWebCancelledReload"));
+          if (signing) clearSigningInputs();
+          try {
+            await jobPackager.close();
+          } catch {
+            if (current()) appendActivity(t("dmWebCleanupWarning"), true);
+          }
+        } else {
+          setCustomizationError(appCustomizationFailureMessage(error));
+          setStatus(t("dmWebCustomCorrect"));
+        }
+        if (current()) {
+          setBusy(false);
+          setGenerating(false);
+          setCancelling(false);
+        }
+      }
+      operation.finish();
+      return;
+    }
     setResourceOutcome("");
     setCancelling(false);
     pendingRomfsProgress.current = undefined;
@@ -492,14 +579,20 @@ export default function App() {
     setStatus(t("dmWebStarting"));
     if (legacyAstc) setLegacyStatus(t("dmWebLegacyPreparing"));
     appendActivity(t("dmWebGenerationStarted"), true);
-    appendActivity(t(skipContentHashes ? "dmWebSkipHashActive" : "dmWebFastMode"), true);
+    if (inputMode === "packages")
+      appendActivity(t(skipContentHashes ? "dmWebSkipHashActive" : "dmWebFastMode"), true);
+    else appendActivity(t("dmWebExtractedChecked"), true);
     let acceptingProgress = true;
     let generationCompleted = false;
     let keepSigningFactory = false;
     try {
       const result = await jobPackager.generate({
         input: folder,
-        selectedNspNames: [...selectedNsps],
+        inputMode,
+        ...(Object.keys(preparedCustomization).length
+          ? { appCustomization: preparedCustomization }
+          : {}),
+        ...(inputMode === "packages" ? { selectedNspNames: [...selectedNsps] } : {}),
         exportResources: !skipResources,
         signal: controller.signal,
         onProgress: (event: {
@@ -634,10 +727,18 @@ export default function App() {
         if (report?.resources?.status === "complete")
           setResourceOutcome(t("dmWebResourcesSaved", report.resources.directoryName ?? ""));
         downloadPreparation.current.retain(recovered);
-        const warning = committedCleanupWarning();
+        // 生成成功返回前恢复的都是原始 IPA；清理也可能在自定义开始前失败。
+        // Every recovery before successful generation is the original IPA; cleanup can fail before customization starts.
+        const originalIdentity = Object.keys(preparedCustomization).length > 0;
+        setOriginalIdentityDownload(originalIdentity);
+        const warning = originalIdentity
+          ? `${report?.stage === "customization" ? "" : `${committedCleanupWarning()} `}${t("dmWebCustomOriginalRetained")}`
+          : committedCleanupWarning();
         appendActivity(warning, true);
         setStatus(warning);
-        prepareDownload();
+        // 自定义失败只提供明确标注的原始下载，不自动下载或签名。
+        // Customization failures offer a labeled original download, without automatic download or signing.
+        prepareDownload(!originalIdentity);
         return;
       }
       appendActivity(packagingFailureSummary(report), true);
@@ -677,12 +778,47 @@ export default function App() {
       <Card className="w-full">
         <CardHeader>
           <CardTitle>{t("dmWebTitle")}</CardTitle>
-          <CardDescription>{t("dmWebInstructions")}</CardDescription>
+          <CardDescription>
+            {t(inputMode === "extracted" ? "dmWebExtractedInstructions" : "dmWebInstructions")}
+          </CardDescription>
           <CardDescription>
             {t(target === "ios18" ? "dmWebCompatibility18" : "dmWebCompatibility")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <label htmlFor="input-mode" className="text-sm font-medium">
+              {t("dmWebInputMode")}
+            </label>
+            <select
+              id="input-mode"
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+              value={inputMode}
+              disabled={!ready || busy || finished || download !== null}
+              onChange={(event) => {
+                const next = event.target.value;
+                if (
+                  (next !== "packages" && next !== "extracted") ||
+                  next === inputMode ||
+                  operationGate.current.busy ||
+                  !ready ||
+                  busy ||
+                  finished ||
+                  download !== null
+                )
+                  return;
+                setInputMode(next);
+                setFolder(null);
+                setNspNames([]);
+                setSelectedNsps(new Set());
+                setSkipResources(false);
+                setStatus(t("dmWebReady"));
+              }}
+            >
+              <option value="packages">{t("dmWebInputPackages")}</option>
+              <option value="extracted">{t("dmWebInputExtracted")}</option>
+            </select>
+          </div>
           <div className="space-y-2">
             <label htmlFor="ios-target" className="text-sm font-medium">
               {t("dmWebTarget")}
@@ -719,35 +855,42 @@ export default function App() {
             <p id="ios-target-help" className="text-xs text-muted-foreground">
               {t("dmWebTargetReload")}
             </p>
+            <p className="text-xs text-muted-foreground">
+              {t("dmWebSupportedVersions", supportedVersions)}
+            </p>
           </div>
           <div className="space-y-2">
-            <label className="flex items-start gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="mt-1"
-                checked={!skipContentHashes}
-                aria-describedby="verify-content-hashes-help"
-                disabled={hasSelectedFolder || busy || generating || download !== null}
-                onChange={(event) => {
-                  if (
-                    operationGate.current.busy ||
-                    hasSelectedFolder ||
-                    busy ||
-                    generating ||
-                    download !== null
-                  )
-                    return;
-                  const url = new URL(window.location.href);
-                  if (event.target.checked) url.searchParams.set("skipContentHashes", "0");
-                  else url.searchParams.delete("skipContentHashes");
-                  window.location.assign(url.href);
-                }}
-              />
-              {t("dmWebVerifyHashOption")}
-            </label>
-            <p id="verify-content-hashes-help" className="text-xs text-muted-foreground">
-              {t("dmWebVerifyHashHelp")}
-            </p>
+            {inputMode === "packages" && (
+              <>
+                <label className="flex items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={!skipContentHashes}
+                    aria-describedby="verify-content-hashes-help"
+                    disabled={hasSelectedFolder || busy || generating || download !== null}
+                    onChange={(event) => {
+                      if (
+                        operationGate.current.busy ||
+                        hasSelectedFolder ||
+                        busy ||
+                        generating ||
+                        download !== null
+                      )
+                        return;
+                      const url = new URL(window.location.href);
+                      if (event.target.checked) url.searchParams.set("skipContentHashes", "0");
+                      else url.searchParams.delete("skipContentHashes");
+                      window.location.assign(url.href);
+                    }}
+                  />
+                  {t("dmWebVerifyHashOption")}
+                </label>
+                <p id="verify-content-hashes-help" className="text-xs text-muted-foreground">
+                  {t("dmWebVerifyHashHelp")}
+                </p>
+              </>
+            )}
             <label className="flex items-start gap-2 text-sm">
               <input
                 type="checkbox"
@@ -892,6 +1035,17 @@ export default function App() {
               </fieldset>
             )}
           </div>
+          <AppCustomizationFields
+            value={appCustomization}
+            disabled={!ready || busy || finished || download !== null}
+            error={customizationValidation.error || customizationError}
+            onChange={(value) => {
+              if (operationGate.current.busy || !ready || busy || finished || download !== null)
+                return;
+              setAppCustomization(value);
+              setCustomizationError("");
+            }}
+          />
           {storageAdvisory && <p className="text-xs text-muted-foreground">{storageAdvisory}</p>}
           <div className="flex flex-wrap gap-3">
             <Button variant="outline" onClick={() => void choose()} disabled={!ready || busy}>
@@ -902,7 +1056,8 @@ export default function App() {
               disabled={
                 !ready ||
                 !folder ||
-                !selectedNsps.size ||
+                Boolean(customizationValidation.error || customizationError) ||
+                (inputMode === "packages" && !selectedNsps.size) ||
                 busy ||
                 (signing && (!signingReady || !credentialsSelected))
               }
@@ -935,7 +1090,7 @@ export default function App() {
               </Button>
             )}
           </div>
-          {nspNames.length > 0 && (
+          {inputMode === "packages" && nspNames.length > 0 && (
             <fieldset className="space-y-2 rounded-md border p-3" disabled={!ready || busy}>
               <legend className="px-1 text-sm font-medium">{t("dmWebPackages")}</legend>
               <p id="package-selection-help" className="text-xs text-muted-foreground">
@@ -991,7 +1146,11 @@ export default function App() {
               </label>
               {skipResources && (
                 <p id="skip-resources-help" className="text-xs text-muted-foreground">
-                  {t("dmWebSkipResourcesHelp")}
+                  {t(
+                    inputMode === "extracted"
+                      ? "dmWebExtractedSkipResourcesHelp"
+                      : "dmWebSkipResourcesHelp",
+                  )}
                   {legacyAstc ? ` ${t("dmWebSkipKeepsLegacy")}` : ""}
                 </p>
               )}
@@ -1026,11 +1185,23 @@ export default function App() {
             <div className="space-y-2">
               <Button asChild>
                 <a href={download.url} download={download.fileName}>
-                  {t(signedDownload ? "dmWebSignedDownload" : "dmWebDownload")}
+                  {t(
+                    originalIdentityDownload
+                      ? "dmWebCustomOriginalDownload"
+                      : signedDownload
+                        ? "dmWebSignedDownload"
+                        : "dmWebDownload",
+                  )}
                 </a>
               </Button>
               <p className="text-xs text-muted-foreground">
-                {t(signedDownload ? "dmWebSignedHelp" : "dmWebDownloadHelp")}
+                {t(
+                  originalIdentityDownload
+                    ? "dmWebCustomOriginalRetained"
+                    : signedDownload
+                      ? "dmWebSignedHelp"
+                      : "dmWebDownloadHelp",
+                )}
               </p>
             </div>
           )}

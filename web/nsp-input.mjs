@@ -68,16 +68,18 @@ async function readRange(file, start, length) {
     fail("READ_FAILED", "Could not read the selected local file.");
   }
 }
-function finishDiscovery(records) {
+function finishDiscovery(records, allowXci = false) {
   const prodKeys = records.get("prod.keys");
   const titleKeys = records.get("title.keys");
   const nsps = [...records.entries()]
-    .filter(([name]) => name.endsWith(".nsp"))
+    .filter(([name]) => name.endsWith(".nsp") || (allowXci && name.endsWith(".xci")))
     .map(([, file]) => file);
   if (!prodKeys || nsps.length === 0) {
     fail(
       "MISSING_INPUT",
-      "Place prod.keys and at least one .nsp directly in the selected folder. title.keys is optional.",
+      allowXci
+        ? "Place prod.keys and at least one .nsp or .xci directly in the selected folder. title.keys is optional."
+        : "Place prod.keys and at least one .nsp directly in the selected folder. title.keys is optional.",
     );
   }
   if (nsps.length > NSP_INPUT_LIMITS.packages)
@@ -100,7 +102,8 @@ function addName(seen, name) {
  * 仅枚举根条目。不递归或打开无关文件。
  * Enumerates only root entries. Does not recurse or open unrelated files.
  */
-export async function discoverNspFolder(directory, { signal, onProgress } = {}) {
+export async function discoverNspFolder(directory, { signal, onProgress, allowXci = false } = {}) {
+  if (typeof allowXci !== "boolean") fail("DIRECTORY", "Invalid package discovery option.");
   const checkAbort = () => {
     if (signal?.aborted) throw new DOMException("Folder check cancelled.", "AbortError");
   };
@@ -166,7 +169,9 @@ export async function discoverNspFolder(directory, { signal, onProgress } = {}) 
       Promise.resolve(
         onProgress?.({
           scannedEntries: count,
-          nspCount: [...records.keys()].filter((name) => name.endsWith(".nsp")).length,
+          nspCount: [...records.keys()].filter(
+            (name) => name.endsWith(".nsp") || (allowXci && name.endsWith(".xci")),
+          ).length,
           prodKeysFound: records.has("prod.keys"),
           titleKeysFound: records.has("title.keys"),
         }),
@@ -186,7 +191,10 @@ export async function discoverNspFolder(directory, { signal, onProgress } = {}) 
     const folded = addName(seen, name);
     if (
       handle.kind === "file" &&
-      (folded === "prod.keys" || folded === "title.keys" || folded.endsWith(".nsp"))
+      (folded === "prod.keys" ||
+        folded === "title.keys" ||
+        folded.endsWith(".nsp") ||
+        (allowXci && folded.endsWith(".xci")))
     ) {
       records.set(folded, await awaitLookup(() => handle.getFile()));
       checkAbort();
@@ -194,13 +202,14 @@ export async function discoverNspFolder(directory, { signal, onProgress } = {}) 
     progress();
   }
   checkAbort();
-  return finishDiscovery(records);
+  return finishDiscovery(records, allowXci);
 }
 /**
  * input[webkitdirectory] 的后备路径。浏览器可能在此调用前已递归枚举。
  * Fallback for input[webkitdirectory]. Browser may enumerate recursively before this call.
  */
-export function discoverNspFiles(files) {
+export function discoverNspFiles(files, { allowXci = false } = {}) {
+  if (typeof allowXci !== "boolean") fail("DIRECTORY", "Invalid package discovery option.");
   const seen = new Set();
   const directories = new Set();
   const records = new Map();
@@ -223,10 +232,15 @@ export function discoverNspFiles(files) {
     }
     if (parts[1] !== file.name) fail("UNSAFE_NAME", "File name does not match its selected path.");
     const folded = addName(seen, file.name);
-    if (folded === "prod.keys" || folded === "title.keys" || folded.endsWith(".nsp"))
+    if (
+      folded === "prod.keys" ||
+      folded === "title.keys" ||
+      folded.endsWith(".nsp") ||
+      (allowXci && folded.endsWith(".xci"))
+    )
       records.set(folded, file);
   }
-  return finishDiscovery(records);
+  return finishDiscovery(records, allowXci);
 }
 
 /**

@@ -66,9 +66,9 @@ test("static import checks accept equivalent formatting but not comments, types 
     );
 });
 
-test("only the 84 audited source-only assets are rejected; live assets and proof records remain", () => {
-  assert.equal(SOURCE_ONLY_RUNTIME_ASSETS.length, 84);
-  assert.equal(new Set(SOURCE_ONLY_RUNTIME_ASSETS).size, 84);
+test("only the 88 audited source-only assets are rejected; live assets and proof records remain", () => {
+  assert.equal(SOURCE_ONLY_RUNTIME_ASSETS.length, 88);
+  assert.equal(new Set(SOURCE_ONLY_RUNTIME_ASSETS).size, 88);
   assert.ok(Object.isFrozen(SOURCE_ONLY_RUNTIME_ASSETS));
   for (const path of SOURCE_ONLY_RUNTIME_ASSETS)
     assert.throws(() => assertNoSourceOnlyRuntimeAsset(path), /Source-only module/);
@@ -159,4 +159,44 @@ test("frontend imports the shared client at build time, not through runtime byte
     assembly,
     /translator: \{\s+sealedEntry: "sealed-runtime\/dotnet-worker\.mjs",\s+entry: "sealed-runtime\/dotnet-worker\.mjs"/,
   );
+});
+
+// Alternate input modules belong to bundled frontend/worker closures, not raw public payloads.
+test("alternate input source stays bundled and synthetic smoke server has complete imports", async () => {
+  for (const path of [
+    "game-input.mjs",
+    "extracted-input.mjs",
+    "package-input.mjs",
+    "xci-input.mjs",
+  ]) {
+    assert(SOURCE_ONLY_RUNTIME_ASSETS.includes(path));
+    assert.throws(() => assertNoSourceOnlyRuntimeAsset(path), /Source-only module/);
+  }
+  const smoke = await source("../toolchain/nsp-extract-spike/browser-smoke.mjs");
+  for (const path of ["package-input.mjs", "xci-input.mjs", "extraction-errors.mjs"])
+    assert(smoke.includes(`"/${path}"`));
+  const sharedSource = smoke.slice(
+    smoke.indexOf("const shared = ["),
+    smoke.indexOf("].includes(pathname)"),
+  );
+  const shared = new Set([...sharedSource.matchAll(/"\/([^"/]+\.mjs)"/g)].map((match) => match[1]));
+  const webRoot = new URL("../", import.meta.url);
+  for (const path of shared) {
+    const url = new URL(path, webRoot);
+    const module = ts.createSourceFile(
+      path,
+      await readFile(url, "utf8"),
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.JS,
+    );
+    for (const statement of module.statements) {
+      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier))
+        continue;
+      const specifier = statement.moduleSpecifier.text;
+      if (!specifier.startsWith(".")) continue;
+      const dependency = new URL(specifier, url).pathname.slice(webRoot.pathname.length);
+      assert(shared.has(dependency), `${path} imports unmapped shared route ${dependency}`);
+    }
+  }
 });

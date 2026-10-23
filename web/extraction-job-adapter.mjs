@@ -1,5 +1,7 @@
 // 依据提取工作线程协议与已认证结果，将提取能力接入打包任务。
 // Connect extraction capabilities to packaging jobs using the extraction worker protocol and authenticated results.
+import { openExtractedInput } from "./extracted-input.mjs";
+import { resolveContentSelection } from "./content-selection.mjs";
 import { isExtractionDiagnosticCode } from "./extraction-errors.mjs";
 import {
   createExtractionWorkerClient,
@@ -13,6 +15,8 @@ import { resolveD2rExpansionSelection, D2R_CONTENT_MODES } from "./d2r-expansion
 
 export const EXTRACTION_ADAPTER_CAPABILITIES = Object.freeze({
   authenticatedSelection: true,
+  inputModes: Object.freeze(["packages", "extracted"]),
+  extractedDlcMetadataAuthenticated: false,
   lazyPlaintextReaders: true,
   requiresArchiveSecretLifetime: true,
   productionConversion: false,
@@ -38,7 +42,7 @@ function checkedReadResult(bytes, check) {
   }
 }
 const canonical = (value) =>
-  JSON.stringify(value, (_, child) => {
+  JSON.stringify(structuredClone(value), (_, child) => {
     if (typeof child === "bigint") return `${child}n`;
     if (child && typeof child === "object" && !Array.isArray(child))
       return Object.fromEntries(
@@ -50,7 +54,7 @@ const canonical = (value) =>
   });
 // 注册仅属于已完成的认证提取。复制的结果、
 // 调用方布尔值或调用方提供的元数据都不能建立来源证明。
-// Registration is private to completed authenticated extraction. A copied result,
+// Registration is private to authenticated extraction or the separately measured local-folder route. A copied result,
 // a caller boolean, or caller-supplied metadata can never create provenance.
 const authenticatedPrograms = new WeakMap();
 /**
@@ -73,7 +77,8 @@ export function readAuthenticatedProgramModules(extracted, selection, { signal }
 
 /**
  * 已认证且仍有效的资源能力。调用方持有的副本或信任标志都不能注册来源；选择绑定到同一个已验证提取结果。
- * Authenticated, live asset capabilities. No caller-owned copy or trust flag can
+ * Source-bound, live asset capabilities. Package inputs authenticate NCAs; local
+ * folders have measured module provenance, not a signed RomFS envelope. No copy or trust flag can
  * register provenance; selection is bound to the same verified extraction result.
  */
 export function readAuthenticatedAssets(extracted, selection, { signal } = {}) {
@@ -86,6 +91,13 @@ export function readAuthenticatedAssets(extracted, selection, { signal } = {}) {
   } catch {
     fail("EXTRACTION_PROVENANCE_REJECTED");
   }
+}
+
+// 内容模式绑定到私有来源登记；文件夹模式并不证明 DLC 不存在。
+// Bind runtime mode to private source registration; folder mode does not prove DLC absence.
+export function readInputContentPolicy(extracted, selection, options) {
+  readAuthenticatedAssets(extracted, selection, options);
+  return authenticatedPrograms.get(extracted).inputContentPolicy;
 }
 
 // 只有认证结果才能铸造记录令牌；令牌副本或清单行不能重新建立来源证明。
@@ -127,6 +139,87 @@ export function openAuthenticatedAstcRecord(token, { signal } = {}) {
   });
 }
 
+async function finishExtracted(programModules, romfs, selection, check, signal) {
+  // Capture only internally issued provenance before any asynchronous initialization.
+  const selectionKey = canonical(selection);
+  const inputContentPolicy = Object.freeze(
+    selection.inputKind === "extracted"
+      ? {
+          contentMode: "base-update-only",
+          inputProvenance: "local-extracted",
+          dlcMetadata: "not-authenticated",
+        }
+      : {
+          contentMode: selection.dlc.length ? "warlock" : "base-update-only",
+          inputProvenance: "authenticated-package",
+          dlcMetadata: "authenticated",
+        },
+  );
+  const logical = await createCascLogicalAssets(romfs, { signal });
+  const logicalAssets = Object.freeze({
+    lookup(path) {
+      check();
+      return logical.lookup(path);
+    },
+    itemSpriteManifest() {
+      check();
+      const lines = [];
+      let size = 0;
+      for (const row of logical.entries()) {
+        check();
+        const path = row[9].toLowerCase();
+        if (!/^data:data\/hd\/global\/ui\/items\/.*\.sprite$/.test(path)) continue;
+        const line = `${"|".repeat(9)}${path}|\n`;
+        size += new TextEncoder().encode(line).length;
+        if (size > 4 * 1024 * 1024) throw new Error("EXTRACTION_ITEM_MANIFEST_LIMIT");
+        lines.push(line);
+      }
+      return lines.join("");
+    },
+    findUniquePathSuffixes(suffixes) {
+      return findUniqueLogicalPathSuffixes(logical, suffixes, check);
+    },
+    findUniquePathSuffix(suffix) {
+      check();
+      if (
+        typeof suffix !== "string" ||
+        suffix.length > 512 ||
+        !/^\/[a-z0-9_/.-]+$/.test(suffix) ||
+        suffix.split("/").some((part) => part === "." || part === "..")
+      )
+        throw new Error("EXTRACTION_ASSET_SUFFIX");
+      let match;
+      for (const row of logical.entries()) {
+        check();
+        if (!row[9].toLowerCase().endsWith(suffix)) continue;
+        if (match !== undefined || logical.hasDuplicatePath(row[9]))
+          throw new Error("EXTRACTION_ASSET_AMBIGUOUS");
+        match = row[9];
+      }
+      if (match === undefined) throw new Error("EXTRACTION_ASSET_MISSING");
+      return match;
+    },
+    async read(path, options) {
+      check(options?.signal);
+      const bytes = await logical.read(path, options);
+      return checkedReadResult(bytes, () => check(options?.signal));
+    },
+  });
+  const extracted = Object.freeze({
+    programModules: Object.freeze(programModules),
+    romfs,
+    logicalAssets,
+  });
+  authenticatedPrograms.set(extracted, {
+    selection: selectionKey,
+    inputContentPolicy,
+    modules: extracted.programModules,
+    assets: Object.freeze({ romfs, logicalAssets }),
+    check: () => check(),
+  });
+  return extracted;
+}
+
 /**
  * 只有受信任的应用代码提供 createWorker。将这三个任务方法与独立受信任的生成器和输出适配器组合，组合清理逻辑，并显式运行 runPackagingJob({secretLifetime:"archive", ...})。不提供工作线程 URL、真实构建允许列表、UI 启用或网络回退。
  * Only trusted application code supplies createWorker. Combine these three job
@@ -159,6 +252,7 @@ export function createExtractionJobAdapter({
   let used = false,
     current,
     cleaned = false;
+  const localSessions = [];
   function lookup(session) {
     const state = sessions.get(session);
     if (!state || state.closed || cleaned) fail("EXTRACTION_DISPOSED");
@@ -169,6 +263,7 @@ export function createExtractionJobAdapter({
     try {
       if (current) await current.dispose();
     } finally {
+      for (const local of localSessions.splice(0)) local.dispose();
       for (const bytes of owned.splice(0)) bytes.fill(0);
     }
   }
@@ -177,6 +272,49 @@ export function createExtractionJobAdapter({
       if (used || cleaned) fail("EXTRACTION_SINGLE_USE");
       used = true;
       signal?.throwIfAborted();
+      if (inputs?.inputMode === "extracted") {
+        const state = { closed: false, extracted: false, local: null, inspected: null };
+        const openingLifetime = new AbortController();
+        const localSignal = signal
+          ? AbortSignal.any([signal, openingLifetime.signal])
+          : openingLifetime.signal;
+        const abort = () => {
+          state.closed = true;
+          openingLifetime.abort();
+          state.local?.dispose();
+        };
+        const session = Object.freeze({
+          async dispose() {
+            signal?.removeEventListener("abort", abort);
+            state.closed = true;
+            openingLifetime.abort();
+            state.local?.dispose();
+          },
+        });
+        current = session;
+        sessions.set(session, state);
+        signal?.addEventListener("abort", abort, { once: true });
+        try {
+          state.local = await openExtractedInput(inputs, {
+            signal: localSignal,
+            contentMode,
+            maxProgramBytes,
+          });
+          localSessions.push(state.local);
+          lookup(session);
+          state.inspected = { inputKind: "extracted", selection: state.local.selection };
+          return session;
+        } catch (error) {
+          await session.dispose();
+          fail(
+            signal?.aborted
+              ? "EXTRACTION_CANCELLED"
+              : isExtractionDiagnosticCode(error?.code)
+                ? error.code
+                : "EXTRACTION_FAILED",
+          );
+        }
+      }
       const client = createExtractionWorkerClient({
         createWorker,
         timeoutMs,
@@ -241,6 +379,17 @@ export function createExtractionJobAdapter({
       // Snapshot across the public coordinator boundary, not mutable cached records.
       return structuredClone(state.inspected);
     },
+    async selectContents({ session, selectionOptions, signal } = {}) {
+      signal?.throwIfAborted();
+      const state = lookup(session);
+      return state.local
+        ? structuredClone(state.local.selection)
+        : resolveContentSelection(
+            state.inspected.records,
+            state.inspected.inventory,
+            selectionOptions,
+          );
+    },
     async extractSelected({ session, selection, signal, onDiagnostic } = {}) {
       const state = lookup(session);
       const phase = (stage) => {
@@ -256,6 +405,23 @@ export function createExtractionJobAdapter({
       };
       try {
         signal?.throwIfAborted();
+        if (state.local) {
+          if (state.extracted || canonical(selection) !== canonical(state.local.selection))
+            fail("EXTRACTION_SELECTION_MISMATCH");
+          state.extracted = true;
+          const check = (readSignal) => {
+            lookup(session);
+            state.local.check(readSignal);
+          };
+          phase("logical-index");
+          return await finishExtracted(
+            state.local.programModules,
+            state.local.romfs,
+            state.local.selection,
+            check,
+            signal,
+          );
+        }
         if (
           state.extracted ||
           !selection ||
@@ -412,68 +578,7 @@ export function createExtractionJobAdapter({
           },
         });
         phase("logical-index");
-        const logical = await createCascLogicalAssets(romfs, { signal });
-        const logicalAssets = Object.freeze({
-          lookup(path) {
-            check();
-            return logical.lookup(path);
-          },
-          itemSpriteManifest() {
-            check();
-            const lines = [];
-            let size = 0;
-            for (const row of logical.entries()) {
-              check();
-              const path = row[9].toLowerCase();
-              if (!/^data:data\/hd\/global\/ui\/items\/.*\.sprite$/.test(path)) continue;
-              const line = `${"|".repeat(9)}${path}|\n`;
-              size += new TextEncoder().encode(line).length;
-              if (size > 4 * 1024 * 1024) throw new Error("EXTRACTION_ITEM_MANIFEST_LIMIT");
-              lines.push(line);
-            }
-            return lines.join("");
-          },
-          findUniquePathSuffixes(suffixes) {
-            return findUniqueLogicalPathSuffixes(logical, suffixes, check);
-          },
-          findUniquePathSuffix(suffix) {
-            check();
-            if (
-              typeof suffix !== "string" ||
-              suffix.length > 512 ||
-              !/^\/[a-z0-9_/.-]+$/.test(suffix) ||
-              suffix.split("/").some((part) => part === "." || part === "..")
-            )
-              throw new Error("EXTRACTION_ASSET_SUFFIX");
-            let match;
-            for (const row of logical.entries()) {
-              check();
-              if (!row[9].toLowerCase().endsWith(suffix)) continue;
-              if (match !== undefined || logical.hasDuplicatePath(row[9]))
-                throw new Error("EXTRACTION_ASSET_AMBIGUOUS");
-              match = row[9];
-            }
-            if (match === undefined) throw new Error("EXTRACTION_ASSET_MISSING");
-            return match;
-          },
-          async read(path, options) {
-            check(options?.signal);
-            const bytes = await logical.read(path, options);
-            return checkedReadResult(bytes, () => check(options?.signal));
-          },
-        });
-        const extracted = Object.freeze({
-          programModules: Object.freeze(programModules),
-          romfs,
-          logicalAssets,
-        });
-        authenticatedPrograms.set(extracted, {
-          selection: canonical(selected.selection),
-          modules: extracted.programModules,
-          assets: Object.freeze({ romfs, logicalAssets }),
-          check: () => check(),
-        });
-        return extracted;
+        return await finishExtracted(programModules, romfs, selected.selection, check, signal);
       } catch (error) {
         try {
           await session.dispose();

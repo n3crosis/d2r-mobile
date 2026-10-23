@@ -124,6 +124,12 @@ function inventory(romfs) {
   return { entries, totalBytes };
 }
 
+// 只验证资源布局；不读取载荷或创建输出。 | Validate resource layout without payload reads or output.
+export function validateResourceInventory(romfs) {
+  const { entries, totalBytes } = inventory(romfs);
+  return Object.freeze({ files: entries.length, totalBytes });
+}
+
 /**
  * 目录选择器及权限属于此前明确的用户手势。仅触及全新且不可预测的子目录。失败时只逐项删除已跟踪且句柄仍匹配的条目，绝不递归删除。不支持并发外部写入者（File System Access 没有独占创建原语）。保留未知新增项及替换项。onProgress 仅供参考，接收 BigInt 计数器，最多每 100ms 通知一次，另加文件/阶段切换通知。未编码 BigInt 前不要对其调用 JSON.stringify。
  * The directory picker/permission belongs to a prior explicit user gesture.

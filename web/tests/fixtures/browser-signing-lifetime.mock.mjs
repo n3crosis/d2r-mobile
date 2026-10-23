@@ -1,6 +1,11 @@
 // Synthetic orchestration tests; these never sign an IPA or execute browser/WASM code.
 import test, { mock } from "node:test";
 import assert from "node:assert/strict";
+// 保留新导入的真实校验契约；此夹具只替换已有的签名生命周期编排。
+// Preserve real newly imported validators; this fixture only mocks existing signing-lifetime orchestration.
+import { validateStagedZip } from "../../staged-zip-validator.mjs";
+import { readInputContentPolicy } from "../../extraction-job-adapter.mjs";
+import * as shellProfiles from "../../shell-profiles.mjs";
 let state;
 const unsigned = Object.freeze({ blob: new Blob([new Uint8Array(22)]), fileName: "unsigned.ipa" });
 const signed = Object.freeze({ blob: new Blob([new Uint8Array(23)]), fileName: "signed.ipa" });
@@ -72,8 +77,10 @@ mock.module("../../production-profile.mjs", {
 });
 mock.module("../../shell-profiles.mjs", {
   namedExports: {
+    ...shellProfiles,
     DEFAULT_SHELL_PROFILE_ID: "synthetic",
-    resolveShellProfile: () => ({ id: "synthetic" }),
+    resolveShellProfile: (id) =>
+      id === "synthetic" ? { id } : shellProfiles.resolveShellProfile(id),
   },
 });
 mock.module("../../extraction-job-adapter.mjs", {
@@ -85,6 +92,7 @@ mock.module("../../extraction-job-adapter.mjs", {
       cleanup() {},
     }),
     readAuthenticatedProgramModules() {},
+    readInputContentPolicy,
     readAuthenticatedAssets: () => ({ romfs: {} }),
   },
 });
@@ -131,7 +139,9 @@ mock.module("../../browser-blob-output.mjs", {
     createBrowserBlobOutputAdapters: () => ({ createOutput() {}, getDownload: () => unsigned }),
   },
 });
-mock.module("../../staged-zip-validator.mjs", { namedExports: { planStagedZip() {} } });
+mock.module("../../staged-zip-validator.mjs", {
+  namedExports: { planStagedZip() {}, validateStagedZip },
+});
 mock.module("../../packaging-job.mjs", {
   namedExports: {
     PackagingJobError: class extends Error {},
@@ -236,13 +246,19 @@ test("concurrent permission checks admit only one generation", async () => {
   reset();
   const packager = await prepareBrowserPackager();
   const permissions = [];
+  const queriesEntered = Promise.withResolvers();
   const input = {
     kind: "directory",
-    queryPermission: () => new Promise((resolve) => permissions.push(resolve)),
+    queryPermission: () =>
+      new Promise((resolve) => {
+        permissions.push(resolve);
+        if (permissions.length === 2) queriesEntered.resolve();
+      }),
   };
   const first = packager.generate({ input, exportResources: false });
   const second = packager.generate({ input, exportResources: false });
   const rejected = assert.rejects(second, /RELOAD_REQUIRED/);
+  await queriesEntered.promise;
   assert.equal(permissions.length, 2);
   permissions[0]("granted");
   permissions[1]("granted");
@@ -255,17 +271,20 @@ test("closing during permission query prevents generation after permission resol
   reset();
   const packager = await prepareBrowserPackager();
   let grant;
+  const queryEntered = Promise.withResolvers();
   const pending = packager.generate({
     input: {
       kind: "directory",
       queryPermission: () =>
         new Promise((resolve) => {
           grant = resolve;
+          queryEntered.resolve();
         }),
     },
     exportResources: false,
   });
   const rejected = assert.rejects(pending, /RELOAD_REQUIRED/);
+  await queryEntered.promise;
   await packager.close();
   grant("granted");
   await rejected;

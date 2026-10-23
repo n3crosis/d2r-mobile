@@ -524,3 +524,99 @@ test("explicit ID indexing handles comments, blank CRLF lines and missing final 
   assert.equal(new TextDecoder().decode(env.title()), explicit);
   await env.engine.execute("dispose");
 });
+
+// 合成 XCI 基础包与 NSP 更新/DLC 走同一 NCA/CNMT 路径，不执行原生解密。
+// Synthetic XCI base plus NSP update/DLC use the same NCA/CNMT path, without native decryption.
+async function mixedPackages() {
+  const { inspectNsp } = await import("../../nsp-input.mjs");
+  const source = fixture();
+  const original = await inspectNsp(source);
+  const parts = await Promise.all(
+    original.entries.map(async (entry) => ({
+      name: entry.name,
+      bytes: new Uint8Array(
+        await source.slice(Number(entry.offset), Number(entry.offset + entry.size)).arrayBuffer(),
+      ),
+    })),
+  );
+  const digest = async (bytes) => new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  async function container(members, hfs) {
+    const names = new TextEncoder().encode(members.map((member) => `${member.name}\0`).join(""));
+    const stride = hfs ? 64 : 24,
+      headerSize = 16 + stride * members.length + names.length;
+    const bytes = new Uint8Array(
+      headerSize + members.reduce((sum, member) => sum + member.bytes.length, 0),
+    );
+    const view = new DataView(bytes.buffer);
+    bytes.set(new TextEncoder().encode(hfs ? "HFS0" : "PFS0"));
+    view.setUint32(4, members.length, true);
+    view.setUint32(8, names.length, true);
+    bytes.set(names, 16 + stride * members.length);
+    let offset = 0,
+      nameOffset = 0;
+    for (let i = 0; i < members.length; i++) {
+      const { name, bytes: payload } = members[i],
+        at = 16 + stride * i;
+      view.setBigUint64(at, BigInt(offset), true);
+      view.setBigUint64(at + 8, BigInt(payload.length), true);
+      view.setUint32(at + 16, nameOffset, true);
+      if (hfs) {
+        view.setUint32(at + 20, payload.length, true);
+        bytes.set(await digest(payload), at + 32);
+      }
+      bytes.set(payload, headerSize + offset);
+      offset += payload.length;
+      nameOffset += name.length + 1;
+    }
+    return { bytes, headerSize };
+  }
+  const secure = await container(parts.slice(0, 2), true);
+  const root = await container([{ name: "secure", bytes: secure.bytes }], true);
+  const xci = new Uint8Array(512 + root.bytes.length),
+    head = new DataView(xci.buffer);
+  xci.set(new TextEncoder().encode("HEAD"), 0x100);
+  head.setBigUint64(0x130, 512n, true);
+  head.setBigUint64(0x138, BigInt(root.headerSize), true);
+  xci.set(await digest(root.bytes.subarray(0, root.headerSize)), 0x140);
+  xci.set(root.bytes, 512);
+  return [new Blob([xci]), new Blob([(await container(parts.slice(2), false)).bytes])];
+}
+test("XCI base plus NSP update/DLC retain signed headers, full hashes, CNMT selection and BKTR", async () => {
+  const { engine, hashCalls, calls } = setup();
+  const inspected = await engine.execute("initialize", {
+    nsps: await mixedPackages(),
+    prodKeys: new Blob([`header_key = ${"12".repeat(32)}\n`]),
+  });
+  assert.equal(inspected.records.length, 3);
+  assert.equal(hashCalls(), 6);
+  const selected = await engine.execute("select", { options: {} });
+  assert.equal(selected.selection.applicationId, app);
+  assert.equal(selected.selection.patch.titleId, patch);
+  assert.equal(selected.selection.dlc[0].titleId, dlc);
+  await engine.execute("openRomfs", { token: selected.token, verifyRomfs: true });
+  assert.deepEqual(calls.at(-1), ["romfs", true]);
+  await engine.execute("dispose");
+});
+test("invalid XCI prefix and unsigned base still fail closed before content use", async () => {
+  const packages = await mixedPackages(),
+    raw = new Uint8Array(await packages[0].arrayBuffer());
+  raw[0x140] ^= 1;
+  const invalid = setup();
+  await assert.rejects(
+    invalid.engine.execute("initialize", {
+      nsps: [new Blob([raw]), packages[1]],
+      prodKeys: new Blob([`header_key = ${"12".repeat(32)}\n`]),
+    }),
+    { code: "PACKAGE_INDEX_INVALID" },
+  );
+  assert.equal(invalid.keys(), undefined);
+  assert.equal(invalid.hashCalls(), 0);
+  const unsigned = setup({ unsignedBase: true });
+  await assert.rejects(
+    unsigned.engine.execute("initialize", {
+      nsps: packages,
+      prodKeys: new Blob([`header_key = ${"12".repeat(32)}\n`]),
+    }),
+    { code: "CONTENT_AUTHENTICATION_FAILED" },
+  );
+});

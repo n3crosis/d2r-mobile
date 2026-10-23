@@ -6,6 +6,11 @@
  */
 import { prepareSealedRuntime } from "./sealed-runtime/clients.mjs";
 import {
+  prepareAppCustomization,
+  customizeUnsignedIpa,
+  APP_CUSTOMIZATION_ERROR_CODES,
+} from "./app-customization.mjs";
+import {
   loadProductionProfile,
   bindProductionAstcEntries,
   inspectProductionAstcEntries,
@@ -15,6 +20,7 @@ import {
   createExtractionJobAdapter,
   readAuthenticatedProgramModules,
   readAuthenticatedAssets,
+  readInputContentPolicy,
 } from "./extraction-job-adapter.mjs";
 import { createProgramRewriterAdapter } from "./program-rewriter-adapter.mjs";
 import { createProductionAssetAdapter } from "./production-assets.mjs";
@@ -198,10 +204,19 @@ export async function prepareBrowserPackager({
       /**
        * 仅允许明确跳过原始资源导出；验证及补充包导出保持不变。
        * Allow only explicit original-resource export skipping; validation and supplemental export stay unchanged.
-       * @param {{input: any, selectedNspNames: any, signal?: AbortSignal, onProgress?: (event: any) => void, exportResources?: boolean}} options
+       * @param {{input: any, selectedNspNames?: any, inputMode?: "packages"|"extracted", signal?: AbortSignal, onProgress?: (event: any) => void, exportResources?: boolean, appCustomization?: any}} options
        */
-      async generate({ input, selectedNspNames, signal, onProgress, exportResources = true }) {
+      async generate({
+        input,
+        selectedNspNames,
+        inputMode = "packages",
+        signal,
+        onProgress,
+        exportResources = true,
+        appCustomization,
+      }) {
         validateResourceExportOption(exportResources);
+        const customization = await prepareAppCustomization(appCustomization, { signal });
         if (closed || used) throw new Error("RELOAD_REQUIRED");
         if (
           input?.kind !== "directory" ||
@@ -354,9 +369,9 @@ export async function prepareBrowserPackager({
             return entries;
           },
           async loadShell({ signal }) {
-            // 选择来自独立认证的提取边界。
-            // Selection came from the independently authenticated extraction boundary.
-            readAuthenticatedAssets(authenticated, selected, { signal });
+            // 包认证与已提取来源分开；文件夹模式不宣称 DLC 元数据已认证。
+            // Distinguish package authentication from local folders without claiming authenticated DLC metadata.
+            const inputPolicy = readInputContentPolicy(authenticated, selected, { signal });
             const path = "Payload/DmIOS.app/DmIOS";
             const original = profile.shell.entries.find((entry) => entry.path === path);
             if (!original) throw new Error("SHELL_EXECUTABLE_MISSING");
@@ -371,12 +386,19 @@ export async function prepareBrowserPackager({
               if (offset !== bytes.length) throw new Error("SHELL_SIZE");
               const variant = await deriveD2rRuntimeContentMode(bytes, {
                 profileId: profile.profileId,
-                contentMode: selected.dlc.length === 0 ? "base-update-only" : "warlock",
+                contentMode: inputPolicy.contentMode,
               });
               shellVariantBytes = variant.bytes;
               return {
                 ...profile.shell,
-                contentModeReceipt: variant.receipt,
+                contentModeReceipt:
+                  inputPolicy.inputProvenance === "local-extracted"
+                    ? Object.freeze({
+                        ...variant.receipt,
+                        inputProvenance: inputPolicy.inputProvenance,
+                        dlcMetadata: inputPolicy.dlcMetadata,
+                      })
+                    : variant.receipt,
                 entries: profile.shell.entries.map((entry) =>
                   entry.path !== path
                     ? entry
@@ -458,6 +480,7 @@ export async function prepareBrowserPackager({
               runPackagingJob({
                 input,
                 selectedNspNames,
+                inputMode,
                 adapters,
                 signal,
                 onProgress,
@@ -492,11 +515,45 @@ export async function prepareBrowserPackager({
           }
           throw error;
         }
+        let download = output.getDownload();
+        let customized;
+        try {
+          customized = await customizeUnsignedIpa(download.blob, customization, { signal });
+          if (customized.changed) download = Object.freeze({ ...download, blob: customized.blob });
+        } catch (cause) {
+          const error = new PackagingJobError(
+            cause,
+            Object.freeze({
+              status: "failed",
+              code: "STAGE_FAILED",
+              stage: "customization",
+              detailCode: APP_CUSTOMIZATION_ERROR_CODES.includes(cause?.message)
+                ? cause.message
+                : null,
+              committed: true,
+              cleanupCodes: Object.freeze([]),
+              ...(resourceOutcome ? { resources: resourceOutcome } : {}),
+              ...(legacyPackOutcome ? { legacyPack: legacyPackOutcome } : {}),
+            }),
+          );
+          // 外观失败时只恢复原始未签名 IPA；绝不报告定制成功或把它静默交给签名。
+          // Recover only the original unsigned IPA on customization failure; never claim success or silently sign it.
+          committedDownloads.set(error, download);
+          throw error;
+        }
         return {
           ...result,
+          ...(customized.changed
+            ? {
+                manifest: customized.manifest,
+                entries: customized.manifest.length,
+                bytesWritten: customized.blob.size,
+                customization: { changed: true, iconMode: customized.iconMode },
+              }
+            : {}),
           resources,
           ...(legacyPack ? { legacyPack, encoding: finalizedPack.encoding } : {}),
-          download: output.getDownload(),
+          download,
         };
       },
       close,

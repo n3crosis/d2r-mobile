@@ -338,8 +338,8 @@ export const catalog = Object.freeze({
     "文件夹检查失败；请查看状态消息"
   ],
   "dmWebMissingInput": [
-    "Put the missing files directly inside this folder, not in a subfolder.",
-    "请将缺少的文件直接放入此文件夹，而非子文件夹。"
+    "Put NSP/XCI packages and prod.keys directly inside this folder, not in a subfolder.",
+    "请将 NSP/XCI 软件包和 prod.keys 直接放入此文件夹，而非子文件夹。"
   ],
   "dmWebFolderPermission": [
     "Choose the folder again and allow access to read inputs and save the resource subfolder.",
@@ -486,8 +486,8 @@ export const catalog = Object.freeze({
     "复制日志"
   ],
   "dmWebInstructions": [
-    "Put the base NSP, update NSP(s), and prod.keys in one folder. DLC and title.keys are optional; some rights-managed packages need matching title keys.",
-    "请将基础 NSP、更新 NSP 和 prod.keys 放在同一文件夹。DLC 和 title.keys 为可选项；部分受权限管理的软件包需要匹配的标题密钥。"
+    "Put your NSP/XCI packages and prod.keys in one folder. Some packages also need title.keys.",
+    "将 NSP/XCI 软件包和 prod.keys 放在同一文件夹。部分软件包还需要 title.keys。"
   ],
   "dmWebSelectionHelp": [
     "Base and updates are preselected when filenames identify one base and its updates; otherwise all packages are selected. Review your selection. Include DLC for Warlock content; excluded files stay untouched.",
@@ -526,8 +526,8 @@ export const catalog = Object.freeze({
     "已提供"
   ],
   "dmWebFolderSummary": [
-    "%s NSP file(s); prod.keys %s; title.keys %s.",
-    "%s 个 NSP 文件；prod.keys %s；title.keys %s。"
+    "%s package(s); prod.keys %s; title.keys %s.",
+    "%s 个软件包；prod.keys %s；title.keys %s。"
   ],
   "dmWebManifest": [
     "Runtime manifest: %s",
@@ -546,8 +546,8 @@ export const catalog = Object.freeze({
     "正在检查 %s… %s"
   ],
   "dmWebFolderChecked": [
-    "Folder checked: %s NSP files; prod.keys found; title.keys %s",
-    "文件夹检查完成：%s 个 NSP 文件；已找到 prod.keys；title.keys %s"
+    "Folder checked: %s packages; prod.keys found; title.keys %s",
+    "文件夹检查完成：%s 个软件包；已找到 prod.keys；title.keys %s"
   ],
   "dmWebReviewSelection": [
     "%s: %s Review the package selection before generating.",
@@ -800,5 +800,173 @@ export const catalog = Object.freeze({
   "dmWebShaderSourceDigest": [
     "Source digest: %s",
     "源摘要：%s"
+  ],
+  "dmWebInputMode": [
+    "Game input",
+    "游戏输入"
+  ],
+  "dmWebInputPackages": [
+    "NSP / XCI packages",
+    "NSP / XCI 软件包"
+  ],
+  "dmWebInputExtracted": [
+    "Extracted ExeFS / RomFS",
+    "已提取的 ExeFS / RomFS"
+  ],
+  "dmWebExtractedInstructions": [
+    "Choose a folder containing already-merged ExeFS and RomFS. No keys needed. Base/update only; expansion input is unsupported and DLC metadata is not authenticated.",
+    "选择包含已合并 ExeFS 和 RomFS 的文件夹，无需密钥。仅支持基础游戏与更新，不支持扩展内容；DLC 元数据未经认证。"
+  ],
+  "dmWebExtractedSummary": [
+    "%s extracted file(s) found; no keys needed.",
+    "已找到 %s 个提取文件；无需密钥。"
+  ],
+  "dmWebExtractedChecked": [
+    "Merged base/update folder selected; DLC metadata is not authenticated.",
+    "已选择合并的基础游戏与更新文件夹；DLC 元数据未经认证。"
+  ],
+  "dmWebExtractedReady": [
+    "%s: %s Ready.",
+    "%s：%s 已就绪。"
+  ],
+  "dmWebExtractedMissingInput": [
+    "Choose a folder containing ExeFS/main, ExeFS/sdk, and RomFS/data/build_manifest.psv.",
+    "请选择包含 ExeFS/main、ExeFS/sdk 和 RomFS/data/build_manifest.psv 的文件夹。"
+  ],
+  "dmWebExtractedInvalidName": [
+    "The extracted folder contains invalid or duplicate paths. Check the folder and try again.",
+    "已提取文件夹包含无效或重复路径。请检查文件夹后重试。"
+  ],
+  "dmWebExtractedLimit": [
+    "The extracted folder exceeds file-count or path-length limits.",
+    "已提取文件夹超出文件数量或路径长度限制。"
+  ],
+  "dmWebSupportedVersions": [
+    "Game version: %s only. Other versions are not supported.",
+    "游戏版本：仅 %s。其他版本暂不支持。"
+  ],
+  "dmWebProgramUnsupportedVersion": [
+    "This game executable version is not supported. Use a version listed above.",
+    "此游戏程序版本尚不支持。请使用上方列出的版本。"
+  ],
+  "dmWebProgramModuleMismatch": [
+    "The ExeFS modules are from different releases. Use a complete set from one release.",
+    "ExeFS 模块来自不同游戏版本。请使用同一版本的完整文件。"
+  ],
+  "dmWebProgramShellMismatch": [
+    "This game release is not compatible with the selected iOS target.",
+    "此游戏版本与所选 iOS 目标不兼容。"
+  ],
+  "dmWebProgramInvalidModules": [
+    "ExeFS is missing required modules or contains extra modules.",
+    "ExeFS 缺少必需模块或包含额外模块。"
+  ],
+  "dmWebProgramDigestMismatch": [
+    "The game executable does not match a supported release. Check the source files.",
+    "游戏程序与支持版本不匹配。请检查源文件。"
+  ],
+  "dmWebProgramBuildIdMismatch": [
+    "The game executable build ID does not match a supported release.",
+    "游戏程序构建标识与支持版本不匹配。"
+  ],
+  "dmWebCustomizeApp": [
+    "Customize app (optional)",
+    "自定义应用（可选）"
+  ],
+  "dmWebCustomHelp": [
+    "Leave fields blank to keep the defaults. Files and settings stay on this device and are not uploaded.",
+    "留空以保留默认值。文件和设置仅在本设备使用，不上传。"
+  ],
+  "dmWebCustomName": [
+    "App name",
+    "应用名称"
+  ],
+  "dmWebCustomBundle": [
+    "Bundle ID",
+    "应用标识符"
+  ],
+  "dmWebCustomBundleHelp": [
+    "Your signing profile must match the new bundle ID. Changing it creates a separate app identity.",
+    "签名描述文件必须匹配新的应用标识符。更改标识符会被视为另一个应用。"
+  ],
+  "dmWebCustomVersion": [
+    "Version (e.g. 1.0.0)",
+    "版本号（如 1.0.0）"
+  ],
+  "dmWebCustomBuild": [
+    "Build number (e.g. 1 or 1.0)",
+    "构建号（如 1 或 1.0）"
+  ],
+  "dmWebCustomIcon": [
+    "App icon (PNG)",
+    "应用图标（PNG）"
+  ],
+  "dmWebCustomIconHelp": [
+    "Opaque square PNG, 256–1024 px, up to 4 MiB; 8-bit RGB/RGBA, not interlaced. Custom icons may not appear in every iOS view; appearance is unverified.",
+    "不透明正方形 PNG，256–1024 像素，最多 4 MiB；8 位 RGB/RGBA，非交错。自定义图标可能不会显示在所有 iOS 界面，实际效果尚未验证。"
+  ],
+  "dmWebCustomRemoveIcon": [
+    "Remove custom icon",
+    "移除自定义图标"
+  ],
+  "dmWebCustomNameInvalid": [
+    "Use an app name of up to 80 characters without control characters or leading/trailing spaces.",
+    "应用名称最多 80 个字符，不能包含控制字符或首尾空格。"
+  ],
+  "dmWebCustomBundleInvalid": [
+    "Use a bundle ID of up to 255 characters with dot-separated letters, digits, or hyphens, such as com.example.game.",
+    "应用标识符最多 255 个字符，仅使用由句点分隔的字母、数字或连字符，如 com.example.game。"
+  ],
+  "dmWebCustomVersionInvalid": [
+    "Use three dot-separated version numbers, such as 1.0.0, without leading zeros.",
+    "版本号必须是三个由句点分隔的数字，如 1.0.0，不能包含前导零。"
+  ],
+  "dmWebCustomBuildInvalid": [
+    "Use a build number starting with 1–9999, optionally followed by up to two numbers from 0–99, without leading zeros.",
+    "构建号首段为 1–9999，可再加最多两段 0–99 的数字，不能包含前导零。"
+  ],
+  "dmWebCustomIconInvalid": [
+    "Choose a valid opaque square PNG, 256–1024 px, up to 4 MiB, with 8-bit RGB/RGBA and no interlacing.",
+    "请选择有效的不透明正方形 PNG，256–1024 像素，最多 4 MiB，8 位 RGB/RGBA 且非交错。"
+  ],
+  "dmWebCustomInvalid": [
+    "These app customizations could not be applied. Check the settings and try again.",
+    "无法应用这些自定义设置。请检查设置后重试。"
+  ],
+  "dmWebCustomChecking": [
+    "Checking app settings…",
+    "正在检查应用设置…"
+  ],
+  "dmWebCustomCorrect": [
+    "Correct the app customization and try again.",
+    "请更正应用自定义设置后重试。"
+  ],
+  "dmWebCustomOriginalRetained": [
+    "Customization was not applied. The retained unsigned IPA has the original app name, bundle ID, version, and icon; it was not automatically signed.",
+    "自定义未应用。保留的未签名 IPA 使用原始应用名称、标识符、版本和图标；未自动签名。"
+  ],
+  "dmWebCustomOriginalDownload": [
+    "Download original unsigned IPA",
+    "下载原始未签名 IPA"
+  ],
+  "dmWebStagesCustomization": [
+    "Customizing app",
+    "自定义应用"
+  ],
+  "dmWebExtractedInputInvalid": [
+    "The extracted input could not be validated. Check the merged ExeFS and RomFS folders.",
+    "无法验证已提取的输入。请检查已合并的 ExeFS 和 RomFS 文件夹。"
+  ],
+  "dmWebExtractedDlcUnsupported": [
+    "Expansion input is not supported for extracted folders. Use merged base/update files or switch to NSP/XCI input.",
+    "已提取文件夹不支持扩展内容输入。请使用已合并的基础游戏与更新文件，或改选 NSP/XCI 输入。"
+  ],
+  "dmWebExtractedResourceLayout": [
+    "The extracted resource layout is not supported. Use already-merged base/update resources.",
+    "此提取文件夹的资源布局不受支持。请使用已合并的基础游戏与更新资源。"
+  ],
+  "dmWebExtractedSkipResourcesHelp": [
+    "Skip only if the device already has resources from this exact merged folder. Existing device files are not verified.",
+    "仅在设备上已有此合并文件夹对应的资源时跳过。不会验证设备上已有的文件。"
   ]
 });

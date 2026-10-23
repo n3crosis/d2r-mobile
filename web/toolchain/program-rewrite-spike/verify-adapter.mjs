@@ -131,7 +131,7 @@ export async function verifyGuestAdapter(page) {
       createWorker,
       verifyProvenance: () => ({ main: validBytes, sdk: sdkBytes }),
     });
-    await expectCode(() => realRejected.generateProgram(), "PROGRAM_INPUT_DIGEST_MISMATCH");
+    await expectCode(() => realRejected.generateProgram(), "PROGRAM_UNSUPPORTED_VERSION");
     await realRejected.dispose();
     const provenanceRejected = createProgramRewriterAdapter({
       createWorker,

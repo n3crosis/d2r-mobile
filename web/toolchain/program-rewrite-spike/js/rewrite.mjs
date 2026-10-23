@@ -1,7 +1,7 @@
 import {
   PROGRAM_REWRITE_LIMITS,
   PROGRAM_REWRITER_SOURCE,
-  REGISTERED_PROGRAM_RELEASE,
+  findRegisteredProgramRelease,
 } from "../../../program-release-catalog.mjs";
 import {
   check,
@@ -251,14 +251,12 @@ export function createJavaScriptProgramRewriter(initialize) {
       "Invalid bounded program input",
     );
     const inputHash = await hash(bytes);
-    let registered;
+    let registered, release;
     if (releaseId !== undefined) {
-      registered = REGISTERED_PROGRAM_RELEASE.modules.find((entry) => entry.name === moduleName);
+      release = findRegisteredProgramRelease(releaseId);
+      registered = release?.modules.find((entry) => entry.name === moduleName);
       check(
-        releaseId === REGISTERED_PROGRAM_RELEASE.id &&
-          caseName === undefined &&
-          registered &&
-          registered.inputSha256 === inputHash,
+        release && caseName === undefined && registered && registered.inputSha256 === inputHash,
         "Unsupported registered program input",
       );
       check(
@@ -270,7 +268,8 @@ export function createJavaScriptProgramRewriter(initialize) {
       { manifest } = runtime;
     check(
       manifest?.sourceSha256 === SOURCE_SHA256 &&
-        REGISTERED_PROGRAM_RELEASE.sourceSha256 === SOURCE_SHA256,
+        PROGRAM_REWRITER_SOURCE === SOURCE_SHA256 &&
+        (!release || release.sourceSha256 === SOURCE_SHA256),
       "Program source pin mismatch",
     );
     const fixture = manifest.cases.find(
@@ -283,7 +282,7 @@ export function createJavaScriptProgramRewriter(initialize) {
     const { files } = await rewriteNso({
       bytes,
       moduleName,
-      ruleset: registered ? REGISTERED_PROGRAM_RELEASE.ruleset : fixture.ruleset,
+      ruleset: registered ? release.ruleset : fixture.ruleset,
       privateGates: true,
       native: runtime.native,
       bindings: runtime.bindings ?? null,

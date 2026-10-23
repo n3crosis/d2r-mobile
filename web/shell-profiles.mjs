@@ -1,12 +1,15 @@
 // 封闭的公开外壳配置，依据发布摘要及独立的宿主二进制检查。
 // Closed public shell profiles, based on release digests and independent host inspection.
+import {
+  REGISTERED_PROGRAM_RELEASE,
+  findRegisteredProgramRelease,
+} from "./program-release-catalog.mjs";
 import defaultEvidence from "./toolchain/shell-release-evidence/v1.0.18.json" with { type: "json" };
 import legacyEvidence from "./toolchain/shell-release-evidence/v1.0.18-ios18.json" with { type: "json" };
 import { SHELL_DERIVED_CAPACITIES } from "./toolchain/shell-release-evidence/v1.0.18-derived-capacities.mjs";
 import legacyCapacities from "./toolchain/shell-release-evidence/v1.0.18-ios18-derived-capacities.json" with { type: "json" };
 
 export const DEFAULT_SHELL_PROFILE_ID = "v1.0.18-ios26";
-export const SHELL_PROFILE_IDS = Object.freeze([DEFAULT_SHELL_PROFILE_ID, "v1.0.18-ios18"]);
 function freeze(value) {
   if (value && typeof value === "object") {
     for (const child of Object.values(value)) freeze(child);
@@ -18,6 +21,7 @@ const profiles = freeze({
   [DEFAULT_SHELL_PROFILE_ID]: {
     id: DEFAULT_SHELL_PROFILE_ID,
     releaseId: "v1.0.18",
+    programReleaseIds: [REGISTERED_PROGRAM_RELEASE.id],
     evidence: defaultEvidence,
     capacities: SHELL_DERIVED_CAPACITIES,
     archivePath: "profile/shell.zip",
@@ -36,6 +40,7 @@ const profiles = freeze({
   "v1.0.18-ios18": {
     id: "v1.0.18-ios18",
     releaseId: "v1.0.18-ios18",
+    programReleaseIds: [REGISTERED_PROGRAM_RELEASE.id],
     evidence: legacyEvidence,
     capacities: legacyCapacities,
     archivePath: "profile/shell-ios18.zip",
@@ -54,11 +59,15 @@ const profiles = freeze({
     },
   },
 });
+export const SHELL_PROFILE_IDS = Object.freeze(Object.keys(profiles));
 for (const profile of Object.values(profiles)) {
   const executable = profile.evidence.entries.find(
     (entry) => entry.path === profile.capacities.evidence.executablePath,
   );
   if (
+    !profile.programReleaseIds.length ||
+    new Set(profile.programReleaseIds).size !== profile.programReleaseIds.length ||
+    profile.programReleaseIds.some((id) => !findRegisteredProgramRelease(id)) ||
     profile.capacities.shellSha256 !== profile.evidence.sha256 ||
     !executable ||
     executable.sha256 !== profile.capacities.evidence.executableSha256 ||

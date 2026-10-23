@@ -1,10 +1,22 @@
 // 浏览器打包诊断：依据固定错误代码与共享界面文字表，不显示私密输入。
 // Browser packaging diagnostics based on fixed error codes and the shared UI table, without private inputs.
 import { t } from "./i18n.mjs";
+import { APP_CUSTOMIZATION_ERROR_CODES } from "./app-customization.mjs";
+import { isProgramCompatibilityDiagnosticCode } from "./program-compatibility.mjs";
 import { sanitizeShaderDiagnostic } from "./shader-diagnostics.mjs";
 import { isAirCompilerDiagnosticCode } from "./air-compiler-contract.mjs";
 import { extractionProgressLabel, isExtractionDiagnosticCode } from "./extraction-errors.mjs";
 const reasons = Object.freeze({
+  EXTRACTED_INPUT_INVALID: "dmWebExtractedInputInvalid",
+  EXTRACTED_DLC_UNSUPPORTED: "dmWebExtractedDlcUnsupported",
+  EXTRACTED_RESOURCE_LAYOUT: "dmWebExtractedResourceLayout",
+  ...Object.fromEntries(APP_CUSTOMIZATION_ERROR_CODES.map((code) => [code, "dmWebCustomInvalid"])),
+  PROGRAM_UNSUPPORTED_VERSION: "dmWebProgramUnsupportedVersion",
+  PROGRAM_MODULE_RELEASE_MISMATCH: "dmWebProgramModuleMismatch",
+  PROGRAM_SHELL_RELEASE_MISMATCH: "dmWebProgramShellMismatch",
+  PROGRAM_INVALID_MODULE_SET: "dmWebProgramInvalidModules",
+  PROGRAM_INPUT_DIGEST_MISMATCH: "dmWebProgramDigestMismatch",
+  PROGRAM_BUILD_ID_MISMATCH: "dmWebProgramBuildIdMismatch",
   PROD_KEYS_MISSING: "dmWebReasonsProdKeysMissing",
   PROD_KEYS_UNREADABLE: "dmWebReasonsProdKeysUnreadable",
   PROD_KEYS_TOO_LARGE: "dmWebReasonsProdKeysTooLarge",
@@ -41,6 +53,7 @@ const stages = Object.freeze({
   extraction: "dmWebStagesExtraction",
   disposal: "dmWebStagesDisposal",
   program: "dmWebStagesProgram",
+  customization: "dmWebStagesCustomization",
   assets: "dmWebStagesAssets",
   shaders: "dmWebStagesShaders",
   shell: "dmWebStagesShell",
@@ -108,11 +121,20 @@ export function isLegacyAstcDiagnosticCode(code) {
 }
 export function packagingFailureSummary(report) {
   if (report?.code === "CANCELLED") return t("dmWebCancelled");
-  const code =
-    isExtractionDiagnosticCode(report?.detailCode) ||
-    isLegacyAstcDiagnosticCode(report?.detailCode) ||
-    (report?.stage === "shaders" && isAirCompilerDiagnosticCode(report?.detailCode))
-      ? report.detailCode
+  // 先限定程序代码的阶段，避免通用提取代码集合放宽其范围。
+  // Scope program codes before the generic extraction set can broaden their stages.
+  const detailCode = report?.detailCode;
+  const code = isProgramCompatibilityDiagnosticCode(detailCode)
+    ? report?.stage === "program" ||
+      (report?.stage === "secrets" &&
+        ["PROGRAM_UNSUPPORTED_VERSION", "PROGRAM_MODULE_RELEASE_MISMATCH"].includes(detailCode))
+      ? detailCode
+      : null
+    : isExtractionDiagnosticCode(detailCode) ||
+        (report?.stage === "customization" && APP_CUSTOMIZATION_ERROR_CODES.includes(detailCode)) ||
+        isLegacyAstcDiagnosticCode(detailCode) ||
+        (report?.stage === "shaders" && isAirCompilerDiagnosticCode(detailCode))
+      ? detailCode
       : null;
   const stage = Object.hasOwn(stages, report?.stage)
     ? t(stages[report.stage])
@@ -232,4 +254,35 @@ export function shaderFailureDetails(report) {
   if (detail.sourceSha256) lines.push(`SHA-256: ${detail.sourceSha256}`);
   if (detail.sourceDigest) lines.push(t("dmWebShaderSourceDigest", detail.sourceDigest));
   return [...new Set(lines)];
+}
+
+// 文件夹错误只映射固定代码，不复制本地路径或解析器原文。
+// Folder errors map fixed codes only, without local paths or raw parser messages.
+export function gameFolderFailureMessage(code) {
+  const keys = {
+    MISSING_INPUT: "dmWebMissingInput",
+    EXTRACTED_MISSING_INPUT: "dmWebExtractedMissingInput",
+    EXTRACTED_DLC_UNSUPPORTED: "dmWebExtractedDlcUnsupported",
+    EXTRACTED_NAME: "dmWebExtractedInvalidName",
+    EXTRACTED_LIMIT: "dmWebExtractedLimit",
+  };
+  return t(
+    typeof code === "string" && Object.hasOwn(keys, code) ? keys[code] : "dmWebFolderUnreadable",
+  );
+}
+
+// 自定义失败不透露图标文件名、证书、输入值或内部错误文本。
+// Customization failures expose no icon filenames, certificates, values or internal error text.
+export function appCustomizationFailureMessage(error) {
+  const keys = {
+    APP_CUSTOMIZATION_NAME_INVALID: "dmWebCustomNameInvalid",
+    APP_CUSTOMIZATION_BUNDLE_INVALID: "dmWebCustomBundleInvalid",
+    APP_CUSTOMIZATION_VERSION_INVALID: "dmWebCustomVersionInvalid",
+    APP_CUSTOMIZATION_BUILD_INVALID: "dmWebCustomBuildInvalid",
+    APP_CUSTOMIZATION_ICON_INVALID: "dmWebCustomIconInvalid",
+  };
+  const code = error instanceof Error ? error.message : undefined;
+  return t(
+    typeof code === "string" && Object.hasOwn(keys, code) ? keys[code] : "dmWebCustomInvalid",
+  );
 }
