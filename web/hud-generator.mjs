@@ -6,6 +6,7 @@
  */
 import { acceptsNativeArtPngDigest } from "./native-art-png-digests.mjs";
 import { LEGACY_ART_REVISION, requireArtRevision } from "./toolchain/art-recipes-js/revision.mjs";
+import { runCachedAssetOperation } from "./asset-output-cache.mjs";
 const IMAGE_PATHS = Object.freeze({
   front_panel: "hd/global/ui/PANEL/HUD_02/front_panel.sprite",
   levelupbutton: "hd/global/ui/Controller/HUD/LevelUpButton.sprite",
@@ -45,6 +46,8 @@ export async function generateHud({
   mode,
   signal,
   recipeRevision = LEGACY_ART_REVISION,
+  outputCache,
+  cacheContext,
 }) {
   const upstream = requireArtRevision(recipeRevision);
   const check = () => {
@@ -164,19 +167,30 @@ export async function generateHud({
     for (const map of [images, fonts, atlases]) for (const key of Object.keys(map)) delete map[key];
     if (payload.length > 64 * 1024 * 1024) fail("HUD_INPUT_LIMIT");
     check();
-    const result = await assetWorker.run("hud-v4", payload, {
+    const options = {
       mode,
       metadataSha256,
       ...(upstream ? { revision: recipeRevision } : {}),
+    };
+    return await runCachedAssetOperation({
+      outputCache,
+      cacheContext,
+      operation: "hud-v4",
+      payload,
+      options,
+      signal,
+      checkCancellation: check,
+      run: () => assetWorker.run("hud-v4", payload, options),
+      validate(result) {
+        check();
+        if (
+          !result.files?.["base.png"] ||
+          !result.files?.["hud.json"] ||
+          !result.files?.["hud_v4_ui/ui.json"]
+        )
+          fail("HUD_OUTPUT_SET");
+      },
     });
-    check();
-    if (
-      !result.files?.["base.png"] ||
-      !result.files?.["hud.json"] ||
-      !result.files?.["hud_v4_ui/ui.json"]
-    )
-      fail("HUD_OUTPUT_SET");
-    return result;
   } finally {
     for (const bytes of owned) bytes.fill(0);
   }

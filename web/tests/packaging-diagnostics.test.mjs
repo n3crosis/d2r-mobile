@@ -419,3 +419,30 @@ test("UI appends sanitized shader detail lines after the failure summary", async
     /appendActivity\(packagingFailureSummary\(report\), true\);\s*for \(const detail of shaderFailureDetails\(report\)\) appendActivity\(detail, true\)/,
   );
 });
+
+test("shader progress exposes only a bounded actual compiler worker count", () => {
+  for (const count of [1, 2, 4]) {
+    const progress = sanitizeShaderRecordProgress({
+      completedRecords: 2,
+      totalRecords: 6927,
+      compilerWorkers: count,
+    });
+    assert.equal(progress.compilerWorkers, count);
+    assert.equal(
+      shaderProgressLabel({
+        stage: "shaders",
+        state: "running",
+        diagnostic: { kind: "shader-records", ...progress },
+      }),
+      `Generating shaders (2/6927) · compiler workers: ${count}`,
+    );
+  }
+  for (const count of [0, 5, NaN, "4", "PRIVATE"]) {
+    const progress = sanitizeShaderRecordProgress({
+      completedRecords: 2,
+      totalRecords: 6927,
+      compilerWorkers: count,
+    });
+    assert.equal(progress.compilerWorkers, undefined);
+  }
+});

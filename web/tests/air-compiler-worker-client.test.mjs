@@ -274,3 +274,254 @@ test("native frontend wording survives worker, client, report and local display 
     return true;
   });
 });
+
+// 每个协议替身代表独立实例；测试只控制完成顺序，不衡量真实编译性能。
+// Each protocol substitute represents an isolated instance; these tests control completion order, not compiler performance.
+async function poolSetup(
+  t,
+  { capabilities = { hardwareConcurrency: 8, deviceMemory: 8 }, createWorker } = {},
+) {
+  const { createAirCompilerWorkerPool } = await import("../air-compiler-worker-client.mjs");
+  const compilation = t.mock.method(WebAssembly, "compile", async () => ({ synthetic: true }));
+  const workers = [];
+  const client = await createAirCompilerWorkerPool({
+    assets,
+    capabilities,
+    createWorker() {
+      if (createWorker) return createWorker(workers);
+      const worker = new ProtocolWorker();
+      workers.push(worker);
+      return worker;
+    },
+  });
+  t.after(() => client.dispose());
+  return { client, workers, compilation };
+}
+
+test("AIR pool shares one verified code compilation across four isolated bounded lanes", async (t) => {
+  const { client, workers, compilation } = await poolSetup(t);
+  assert.equal(client.concurrency, 4);
+  assert.equal(workers.length, 4);
+  assert.equal(compilation.mock.callCount(), 1);
+  const pending = workers.map((_, index) => client.compile(`${source}\n// ${index}`, options));
+  await nextTurn();
+  assert.ok(workers.every((worker) => worker.requests.length === 2));
+  await assert.rejects(client.compile(source, options), { code: "AIR_COMPILER_BUSY" });
+  assert.ok(
+    workers.every((worker) => worker.requests.length === 2),
+    "overflow is not queued",
+  );
+  for (const index of [3, 1, 2, 0]) {
+    const response = compiled(workers[index]);
+    new Uint8Array(response.bytes).fill(index + 1);
+    workers[index].reply(response);
+  }
+  const results = await Promise.all(pending);
+  assert.deepEqual(
+    results.map((result) => result.bytes[0]),
+    [1, 2, 3, 4],
+  );
+  assert.equal(compilation.mock.callCount(), 1);
+});
+
+test("AIR pool caps device hints without requiring shared memory or cross-origin isolation", async () => {
+  const { selectAirCompilerConcurrency: select } =
+    await import("../air-compiler-worker-client.mjs");
+  assert.equal(select({ hardwareConcurrency: 64, deviceMemory: 8 }), 4);
+  assert.equal(select({ hardwareConcurrency: 4, deviceMemory: 8 }), 4);
+  assert.equal(select({ hardwareConcurrency: 2, deviceMemory: 8 }), 2);
+  assert.equal(select({ hardwareConcurrency: 64, deviceMemory: 4 }), 2);
+  assert.equal(select({ hardwareConcurrency: 8, deviceMemory: 2 }), 1);
+  assert.equal(select({}), 2);
+  assert.equal(select({ hardwareConcurrency: 1 }), 1);
+  assert.equal(select({ hardwareConcurrency: Infinity, deviceMemory: NaN }), 2);
+});
+
+for (const mode of ["abort", "failure", "dispose"])
+  test(`AIR pool ${mode} stops all lanes and wipes undelivered replies`, async (t) => {
+    const { client, workers } = await poolSetup(t);
+    const controller = new AbortController();
+    const pending = workers.map(() =>
+      client.compile(source, { ...options, signal: controller.signal }),
+    );
+    const settlement = Promise.allSettled(pending);
+    await nextTurn();
+    const response = compiled(workers[3]);
+    workers[3].reply(response);
+    if (mode === "abort") controller.abort();
+    else if (mode === "dispose") client.dispose();
+    else
+      workers[0].reply({
+        type: "error",
+        id: workers[0].requests.at(-1).id,
+        code: "AIR_FRONTEND_FAILED",
+      });
+    const results = await settlement;
+    assert.ok(results.every((result) => result.status === "rejected"));
+    assert.ok(workers.every((worker) => worker.terminations === 1));
+    assert.ok(new Uint8Array(response.bytes).every((value) => value === 0));
+    assert.equal(client.ready, false);
+    assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+    await assert.rejects(client.compile(source, options), { code: "AIR_COMPILER_DISPOSED" });
+  });
+
+test("AIR pool recycles only an exhausted lane using already verified code", async (t) => {
+  const { client, workers, compilation } = await poolSetup(t);
+  const first = client.compile(source, options);
+  await nextTurn();
+  workers[0].reply(compiled(workers[0], true));
+  await first;
+  const next = client.compile(source, options);
+  await nextTurn();
+  assert.equal(workers.length, 5);
+  assert.equal(workers[0].terminations, 1);
+  assert.ok(workers.slice(1).every((worker) => worker.terminations === 0));
+  workers[4].reply(compiled(workers[4]));
+  await next;
+  assert.equal(compilation.mock.callCount(), 1);
+});
+
+test("AIR pool keeps initialized lanes if another worker cannot be created", async (t) => {
+  const { client, workers } = await poolSetup(t, {
+    createWorker(workers) {
+      if (workers.length === 2) throw new Error("Synthetic worker resource limit");
+      const worker = new ProtocolWorker();
+      workers.push(worker);
+      return worker;
+    },
+  });
+  assert.equal(client.concurrency, 2);
+  assert.equal(client.ready, true);
+  assert.ok(workers.every((worker) => worker.terminations === 0));
+});
+
+test("AIR pool never downgrades corrupted worker initialization into success", async (t) => {
+  const workers = [];
+  t.mock.method(WebAssembly, "compile", async () => ({ synthetic: true }));
+  const { createAirCompilerWorkerPool } = await import("../air-compiler-worker-client.mjs");
+  await assert.rejects(
+    createAirCompilerWorkerPool({
+      assets,
+      capabilities: { hardwareConcurrency: 8, deviceMemory: 8 },
+      createWorker() {
+        const worker = new ProtocolWorker();
+        if (workers.length === 1)
+          worker.postMessage = function (message) {
+            queueMicrotask(() =>
+              this.reply({ type: "error", id: message.id, code: "AIR_ASSET_MISMATCH" }),
+            );
+          };
+        workers.push(worker);
+        return worker;
+      },
+    }),
+    { code: "AIR_ASSET_MISMATCH" },
+  );
+  assert.equal(workers.length, 2);
+  assert.ok(workers.every((worker) => worker.terminations === 1));
+});
+
+test("AIR pool stops adding workers when initialized heaps exhaust its startup budget", async (t) => {
+  const { client, workers } = await poolSetup(t, {
+    createWorker(workers) {
+      const worker = new ProtocolWorker();
+      worker.postMessage = function (message, transfers = []) {
+        const data = structuredClone(message, { transfer: transfers });
+        this.requests.push(data);
+        queueMicrotask(() =>
+          this.reply({ type: "initialized", id: data.id, heapBytes: 256 * 1024 * 1024 }),
+        );
+      };
+      workers.push(worker);
+      return worker;
+    },
+  });
+  assert.equal(client.concurrency, 2);
+  assert.equal(workers.length, 2);
+});
+
+test("AIR pool timeout terminates every active worker", async (t) => {
+  const { client, workers } = await poolSetup(t);
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const pending = workers.map(() => client.compile(source, options));
+  const settlement = Promise.allSettled(pending);
+  await nextTurn();
+  t.mock.timers.tick(client.limits.compilationMs);
+  const results = await settlement;
+  assert.ok(results.every((result) => result.status === "rejected"));
+  assert.ok(workers.every((worker) => worker.terminations === 1));
+  assert.equal(client.ready, false);
+});
+
+for (const mode of ["error", "protocol"])
+  test(`AIR pool rejects an accepted lane's ${mode} while another lane initializes`, async (t) => {
+    const { createAirCompilerWorkerPool } = await import("../air-compiler-worker-client.mjs");
+    t.mock.method(WebAssembly, "compile", async () => ({ synthetic: true }));
+    const workers = [];
+    await assert.rejects(
+      createAirCompilerWorkerPool({
+        assets,
+        capabilities: { hardwareConcurrency: 8, deviceMemory: 8 },
+        createWorker() {
+          const worker = new ProtocolWorker();
+          if (workers.length === 1)
+            worker.postMessage = function (message, transfers = []) {
+              this.requests.push(structuredClone(message, { transfer: transfers }));
+              queueMicrotask(() => {
+                if (mode === "error") workers[0].dispatchEvent(new Event("error"));
+                else workers[0].reply({ type: "initialized", id: 999, heapBytes: 4096 });
+              });
+            };
+          workers.push(worker);
+          return worker;
+        },
+      }),
+      { code: mode === "error" ? "AIR_WORKER_FAILED" : "AIR_PROTOCOL_FAILED" },
+    );
+    assert.equal(workers.length, 2);
+    assert.ok(workers.every((worker) => worker.terminations === 1));
+  });
+
+test("AIR pool rejects a lane stopped after its initialized reply but before startup handoff", async (t) => {
+  const { createAirCompilerWorkerPool } = await import("../air-compiler-worker-client.mjs");
+  t.mock.method(WebAssembly, "compile", async () => ({ synthetic: true }));
+  const worker = new ProtocolWorker();
+  worker.postMessage = function (message) {
+    queueMicrotask(() => {
+      this.reply({ type: "initialized", id: message.id, heapBytes: 4096 });
+      this.reply({ type: "initialized", id: message.id, heapBytes: 4096 });
+    });
+  };
+  await assert.rejects(
+    createAirCompilerWorkerPool({
+      assets,
+      capabilities: { hardwareConcurrency: 1 },
+      createWorker: () => worker,
+    }),
+    { code: "AIR_PROTOCOL_FAILED" },
+  );
+  assert.equal(worker.terminations, 1);
+});
+
+test("AIR pool cancellation between last initialization and pool handoff rejects and terminates", async (t) => {
+  const { createAirCompilerWorkerPool } = await import("../air-compiler-worker-client.mjs");
+  t.mock.method(WebAssembly, "compile", async () => ({ synthetic: true }));
+  const controller = new AbortController();
+  const worker = new ProtocolWorker();
+  worker.postMessage = function (message) {
+    queueMicrotask(() => {
+      this.reply({ type: "initialized", id: message.id, heapBytes: 4096 });
+      queueMicrotask(() => queueMicrotask(() => controller.abort()));
+    });
+  };
+  await assert.rejects(
+    createAirCompilerWorkerPool({
+      assets,
+      signal: controller.signal,
+      capabilities: { hardwareConcurrency: 1 },
+      createWorker: () => worker,
+    }),
+    { code: "AIR_ABORTED" },
+  );
+  assert.equal(worker.terminations, 1);
+});

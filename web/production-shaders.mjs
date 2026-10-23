@@ -4,7 +4,7 @@
  * 全目录浏览器编译。绝不调用 Apple Metal，也不在摘要证明之前发布输出。
  * Full-catalog browser compilation. Never invokes Apple Metal or publishes before digest proof.
  */
-import { shaderFailureDiagnostic } from "./shader-diagnostics.mjs";
+import { shaderFailureDiagnostic, withShaderFailureContext } from "./shader-diagnostics.mjs";
 import { yieldBrowserTask } from "./browser-task-yield.mjs";
 import { resolveLogicalAssetSuffixes } from "./logical-asset-suffixes.mjs";
 import { assertShaderCatalog } from "./shader-catalog-adapter.mjs";
@@ -17,6 +17,7 @@ import { validateNsoSegments } from "./nso-validation.mjs";
 import { c1NeedsFullBuffer, readableTileVariant } from "./shader-native-artifacts.mjs";
 import { assertSealedRuntime } from "./sealed-runtime/clients.mjs";
 import { acceptCompiledShaderOutput } from "./compiled-shader-boundary.mjs";
+import { cacheKeyFor } from "./local-output-cache.mjs";
 const encoder = new TextEncoder();
 const MAX_TOTAL = 512 * 1024 * 1024;
 function fail(message) {
@@ -48,7 +49,13 @@ async function mainImage(bytes, signal) {
   }
   return image;
 }
-export function createProductionShaderAdapter({ runtime, catalog, trustedShell }) {
+export function createProductionShaderAdapter({
+  runtime,
+  catalog,
+  trustedShell,
+  outputCache,
+  cacheContext,
+}) {
   assertSealedRuntime(runtime);
   assertShaderCatalog(catalog);
   trustedShell = structuredClone(trustedShell);
@@ -104,30 +111,101 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
         controller.signal.throwIfAborted();
       };
       const budget = createShaderOutputBudget(MAX_TOTAL);
+      const concurrency =
+        Number.isSafeInteger(compiler.concurrency) &&
+        compiler.concurrency >= 1 &&
+        compiler.concurrency <= 4
+          ? compiler.concurrency
+          : 1;
       const reportRecords = createShaderRecordProgress(
         expected.length,
-        onProgress,
+        typeof onProgress === "function"
+          ? (progress) => onProgress(Object.freeze({ ...progress, compilerWorkers: concurrency }))
+          : undefined,
         controller.signal,
       );
+      const compilation = createShaderCompilationQueue(concurrency, controller);
+      let cacheWriteTail = Promise.resolve();
+      const writeCachedOutput = (key, bytes) => {
+        // 队列最多保留每个活跃记录的一个写入；串行提交避免缓存写入互斥丢失。
+        // At most one write per active record is retained; serialize commits to avoid cache write-lock misses.
+        const write = cacheWriteTail.then(() => {
+          check();
+          return outputCache.write({ kind: "shader", key, bytes, signal: controller.signal });
+        });
+        cacheWriteTail = write.catch(() => {});
+        return write;
+      };
       let sources;
       let failureContext = { substep: "authenticated-input" };
       const pending = [],
         c1 = [];
-      const compileLibrary = async (source, key, variant, replay) => {
+      const compileLibrary = async (source, key, variant, replay, context) => {
         check();
-        failureContext = {
-          ...failureContext,
+        let failureContext = {
+          ...context,
           substep: "source-hashing",
           variant,
           shaderStage: replay.msl_entry_kind,
         };
         const sourceBytes = encoder.encode(source.replaceAll("\r\n", "\n"));
-        let output;
+        let output, cacheKey;
         try {
           const sourceSha256 = Array.from(
             new Uint8Array(await crypto.subtle.digest("SHA-256", sourceBytes)),
             (value) => value.toString(16).padStart(2, "0"),
           ).join("");
+          check();
+          const expectedOutput = {
+            key,
+            variant,
+            entry: replay.entry,
+            stage: replay.msl_entry_kind,
+            sourceSetDigest: trustedShell.trustedRecipe.shaderDigest,
+            sourceSha256,
+          };
+          // Translation/reflection and the full source-set proof still run on every hit.
+          // The complete runtime pin also versions compiler wrapper and validation code.
+          if (outputCache && /^[a-f0-9]{64}$/.test(cacheContext?.runtimeManifestSha256 ?? "")) {
+            try {
+              cacheKey = await cacheKeyFor({
+                schemaVersion: 1,
+                context: cacheContext,
+                compiler: compiler.compiler,
+                options: compiler.options,
+                expected: expectedOutput,
+              });
+              const cached = await outputCache.read({
+                kind: "shader",
+                key: cacheKey,
+                maxBytes: compiler.limits.outputBytes,
+                signal: controller.signal,
+              });
+              if (cached) {
+                try {
+                  const accepted = await acceptCompiledShaderOutput({
+                    source,
+                    binary: cached,
+                    compiler: compiler.compiler,
+                    options: compiler.options,
+                    expected: expectedOutput,
+                    signal: controller.signal,
+                  });
+                  try {
+                    check();
+                    return accepted;
+                  } catch (error) {
+                    accepted.bytes.fill(0);
+                    throw error;
+                  }
+                } finally {
+                  cached.fill(0);
+                }
+              }
+            } catch {
+              check(); // Storage/old validation failures are misses, cancellation is not.
+            }
+          }
           check();
           failureContext = { ...failureContext, substep: "compilation", sourceSha256 };
           output = await compiler.compile(source, {
@@ -137,24 +215,67 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
           });
           check();
           failureContext.substep = "output-validation";
-          return await acceptCompiledShaderOutput({
+          const accepted = await acceptCompiledShaderOutput({
             source,
             binary: output.bytes,
             compiler: output.compiler,
             options: output.options,
-            expected: {
-              key,
-              variant,
-              entry: replay.entry,
-              stage: replay.msl_entry_kind,
-              sourceSetDigest: trustedShell.trustedRecipe.shaderDigest,
-              sourceSha256,
-            },
+            expected: expectedOutput,
             signal: controller.signal,
           });
+          try {
+            if (cacheKey) await writeCachedOutput(cacheKey, accepted.bytes);
+            check();
+            return accepted;
+          } catch (error) {
+            if (controller.signal.aborted || signal?.aborted || disposed) {
+              accepted.bytes.fill(0);
+              throw error;
+            }
+            return accepted;
+          }
+        } catch (error) {
+          throw withShaderFailureContext(error, failureContext);
         } finally {
           sourceBytes.fill(0);
           if (output?.bytes instanceof Uint8Array) output.bytes.fill(0);
+        }
+      };
+      const compileRecord = async (source, key, variant, replay, context) => {
+        try {
+          // 编译后只保留库字节，不再为整个目录保留所有 MSL 文本。
+          // Retain compiled bytes rather than the whole catalog's MSL text.
+          const baseResult = await compileLibrary(source, key, "b", replay, context);
+          const base = baseResult.bytes;
+          retained.push(base);
+          context.substep = "output-budget";
+          budget.replace(0, base.length);
+          let fetch = null,
+            fetchResult;
+          if (variant) {
+            fetchResult = await compileLibrary(variant.msl, key, "bf", replay, context);
+            fetch = fetchResult.bytes;
+            retained.push(fetch);
+            context.substep = "output-budget";
+            budget.replace(0, fetch.length);
+          }
+          check();
+          // 记录实际 WASM 编译器，不再把参考 Xcode 命令写成已执行的编译器。
+          // Record the actual WASM compiler, never an unexecuted reference Xcode command.
+          replay.chain_metal = `${baseResult.receipt.compiler.id}; wasm; ios18; fastMath=true`;
+          replay.compiled = {
+            base: baseResult.receipt,
+            baseReceiptSha256: baseResult.receiptSha256,
+            ...(fetchResult
+              ? { fetch: fetchResult.receipt, fetchReceiptSha256: fetchResult.receiptSha256 }
+              : {}),
+          };
+          const replayReservation = encoder.encode(JSON.stringify(replay)).length;
+          budget.replace(0, replayReservation);
+          pending.push({ key, replay, base, fetch, replayReservation });
+          reportRecords(pending.length);
+        } catch (error) {
+          throw withShaderFailureContext(error, context);
         }
       };
       try {
@@ -196,9 +317,11 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
         sources = createShaderSourceCache(
           keys.filter((key) => catalog.describe(key).embedded).length,
         );
+        let record = 0;
         for (const key of keys) {
+          await compilation.waitForSlot();
           check();
-          failureContext = { substep: "catalog-lookup", record: pending.length + 1 };
+          failureContext = { substep: "catalog-lookup", record: ++record };
           const descriptor = catalog.describe(key);
           failureContext.substep = "source-read";
           failureContext.shaderStage = descriptor.stage;
@@ -280,42 +403,14 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
               ? readableTileVariant(source, replay.bindings, catalog.bfWant.includes(key))
               : null;
           if (variant) replay.fetch = variant.metadata;
-          // 编译后只保留库字节，不再为整个目录保留所有 MSL 文本。
-          // Retain compiled bytes rather than the whole catalog's MSL text.
-          const baseResult = await compileLibrary(source, key, "b", replay);
-          const base = baseResult.bytes;
-          retained.push(base);
-          failureContext.substep = "output-budget";
-          budget.replace(0, base.length);
-          let fetch = null,
-            fetchResult;
-          if (variant) {
-            fetchResult = await compileLibrary(variant.msl, key, "bf", replay);
-            fetch = fetchResult.bytes;
-            retained.push(fetch);
-            failureContext.substep = "output-budget";
-            budget.replace(0, fetch.length);
-          }
-          check();
-          // 记录实际 WASM 编译器，不再把参考 Xcode 命令写成已执行的编译器。
-          // Record the actual WASM compiler, never an unexecuted reference Xcode command.
-          replay.chain_metal = `${baseResult.receipt.compiler.id}; wasm; ios18; fastMath=true`;
-          replay.compiled = {
-            base: baseResult.receipt,
-            baseReceiptSha256: baseResult.receiptSha256,
-            ...(fetchResult
-              ? { fetch: fetchResult.receipt, fetchReceiptSha256: fetchResult.receiptSha256 }
-              : {}),
-          };
-          const replayReservation = encoder.encode(JSON.stringify(replay)).length;
-          budget.replace(0, replayReservation);
-          pending.push({ key, replay, base, fetch, replayReservation });
-          reportRecords(pending.length);
+          const context = { ...failureContext };
+          compilation.submit(() => compileRecord(source, key, variant, replay, context));
           if (descriptor.embedded) sources.completeEmbedded();
           // 不联网地让出执行，允许在目录记录之间取消。
           // Yield without networking; permit cancellation between catalog records.
           await yieldBrowserTask({ signal: controller.signal });
         }
+        await compilation.drain();
         check();
         failureContext = { substep: "source-proof" };
         const proof = await pipeline.verifyCompleteSourceSet();
@@ -382,14 +477,18 @@ export function createProductionShaderAdapter({ runtime, catalog, trustedShell }
       } catch (error) {
         // 原始异常不进入日志；仅附加经过白名单过滤的阶段诊断。
         // Raw exceptions never enter logs; attach only allowlisted stage diagnostics.
-        const diagnostic = shaderFailureDiagnostic(error, failureContext);
+        const cause = compilation.failure ?? error;
+        controller.abort(cause);
+        await compilation.settle();
+        const diagnostic = shaderFailureDiagnostic(cause, failureContext);
         dispose();
-        const failure = new Error(error?.message ?? "Shader operation failed");
-        failure.name = error?.name ?? "Error";
-        failure.code = error?.code;
+        const failure = new Error(cause?.message ?? "Shader operation failed");
+        failure.name = cause?.name ?? "Error";
+        failure.code = cause?.code;
         failure.shaderDiagnostic = diagnostic;
         throw failure;
       } finally {
+        await compilation.settle();
         sources?.dispose();
         pipeline?.dispose();
         pipeline = null;
@@ -547,4 +646,57 @@ export function createShaderFinalizationCheckpoint(
       started = now();
     });
   };
+}
+
+// 编译窗口仅保留最多四条记录；首个失败会立即取消所有工作，不排队整个目录。
+// The compilation window retains at most four records; the first failure cancels all work, never queues the full catalog.
+export function createShaderCompilationQueue(concurrency, controller) {
+  if (
+    !Number.isSafeInteger(concurrency) ||
+    concurrency < 1 ||
+    concurrency > 4 ||
+    !(controller instanceof AbortController)
+  )
+    fail("Invalid shader compilation window");
+  const active = new Set();
+  let failure;
+  const check = () => {
+    if (failure) throw failure;
+    controller.signal.throwIfAborted();
+  };
+  return Object.freeze({
+    get failure() {
+      return failure;
+    },
+    async waitForSlot() {
+      check();
+      while (active.size >= concurrency) {
+        await Promise.race(active);
+        check();
+      }
+    },
+    submit(run) {
+      check();
+      if (active.size >= concurrency || typeof run !== "function")
+        fail("Shader compilation window full");
+      const task = Promise.resolve()
+        .then(() => {
+          check();
+          return run();
+        })
+        .catch((error) => {
+          if (!failure) failure = error;
+          controller.abort(failure);
+        })
+        .finally(() => active.delete(task));
+      active.add(task);
+    },
+    async drain() {
+      await Promise.all(active);
+      check();
+    },
+    async settle() {
+      await Promise.all(active);
+    },
+  });
 }

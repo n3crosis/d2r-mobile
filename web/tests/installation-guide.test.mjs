@@ -34,7 +34,7 @@ test("only the short FAQ uses the existing Accordion, without adding a dependenc
   const imports = [...faq.matchAll(/from "([^"]+)"/g)].map((match) => match[1]);
   assert.deepEqual(imports, ["../../i18n.mjs", "@/components/ui/accordion"]);
   assert.match(faq, /<Accordion type="single" collapsible>/);
-  assert.equal([...faq.matchAll(/\["dmWebFaq\w+Question"/g)].length, 5);
+  assert.equal([...faq.matchAll(/\["dmWebFaq\w+Question"/g)].length, 6);
   assert.match(faq, /aria-labelledby="faq-heading"/);
 });
 

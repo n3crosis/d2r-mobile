@@ -108,6 +108,8 @@ export function createAssetPipelineAdapter({
   mercenaryArt = false,
   remainingArt = false,
   nativeOverlayGenerated = null,
+  outputCache,
+  cacheContext,
   prebuiltPack,
   textureReplacements = [],
   createAssetWorker,
@@ -332,6 +334,8 @@ export function createAssetPipelineAdapter({
             assetWorker: worker,
             decodeAtlas,
             signal: combined,
+            outputCache,
+            cacheContext,
           }),
         );
         check();

@@ -26,6 +26,7 @@ import {
 import { createProgramRewriterAdapter } from "./program-rewriter-adapter.mjs";
 import { createProductionAssetAdapter } from "./production-assets.mjs";
 import { createProductionShaderAdapter } from "./production-shaders.mjs";
+import { createLocalOutputCache } from "./local-output-cache.mjs";
 import { createBrowserBlobOutputAdapters, IPA_DOWNLOAD_LIMITS } from "./browser-blob-output.mjs";
 import { planStagedZip } from "./staged-zip-validator.mjs";
 import { exportRomfsResources, ResourceExportError } from "./resource-folder-export.mjs";
@@ -102,7 +103,7 @@ export async function prepareBrowserPackager({
     signal,
     onProgress,
   });
-  let profile, program, assets, shaders, shellVariantBytes, signingFactory;
+  let profile, program, assets, shaders, shellVariantBytes, signingFactory, outputCache;
   let closed = false;
   let deferRuntimeClose = false;
   let closePromise, wholeClosePromise;
@@ -118,6 +119,7 @@ export async function prepareBrowserPackager({
       () => program?.dispose(),
       () => assets?.dispose(),
       () => shaders?.dispose(),
+      () => outputCache?.close(),
       () => profile?.close(),
       () => {
         if (!deferRuntimeClose) return runtime.close();
@@ -189,7 +191,7 @@ export async function prepareBrowserPackager({
        * 仅允许明确跳过原始资源导出；验证及补充包导出保持不变。
        * Allow only explicit original-resource export skipping; validation and supplemental export stay unchanged.
        * Omitted inputMode detects the input route; pass a discovered mode to pin a rescan.
-       * @param {{input: any, selectedNspNames?: any, inputMode?: "packages"|"extracted", signal?: AbortSignal, onProgress?: (event: any) => void, exportResources?: boolean, appCustomization?: any, profileId?: string, legacyAstc?: boolean, astcPreset?: "thorough"|"fast", skipContentHashes?: boolean}} options
+       * @param {{input: any, selectedNspNames?: any, inputMode?: "packages"|"extracted", signal?: AbortSignal, onProgress?: (event: any) => void, exportResources?: boolean, appCustomization?: any, profileId?: string, legacyAstc?: boolean, astcPreset?: "thorough"|"fast", skipContentHashes?: boolean, ignoreCache?: boolean}} options
        */
       async generate({
         input,
@@ -203,7 +205,9 @@ export async function prepareBrowserPackager({
         legacyAstc = initialLegacyAstc,
         astcPreset = initialAstcPreset,
         skipContentHashes = initialSkipContentHashes,
+        ignoreCache = false,
       }) {
+        if (typeof ignoreCache !== "boolean") throw new Error("IGNORE_CACHE_OPTION");
         validateGenerationOptions(legacyAstc, astcPreset, skipContentHashes);
         if (!preparedProfileIds.includes(resolveShellProfile(profileId).id))
           throw new Error("PROFILE_NOT_PRELOADED");
@@ -221,6 +225,7 @@ export async function prepareBrowserPackager({
         // Permission checks can outlive closure or another caller; recheck the single-use state on resumption.
         if (closed || used) throw new Error("RELOAD_REQUIRED");
         used = true;
+        const cacheContext = { runtimeManifestSha256: manifestSha256 };
         let extraction;
         try {
           // 仅使用已验证内存中的公开字节；选项在整个作业期间固定。
@@ -237,6 +242,18 @@ export async function prepareBrowserPackager({
           if (legacyAstc) await runtime.prepareAstcProducer({ signal });
           signal?.throwIfAborted();
           if (closed) throw new Error("RELOAD_REQUIRED");
+          const preparedCache = await createLocalOutputCache({
+            directory: input,
+            ignoreCache,
+            signal,
+            onWarning: onProgress,
+          });
+          if (closed || signal?.aborted) {
+            preparedCache.close();
+            signal?.throwIfAborted();
+            throw new Error("RELOAD_REQUIRED");
+          }
+          outputCache = preparedCache;
           extraction = createExtractionJobAdapter({
             createWorker: runtime.createExtractionWorker,
             contentMode: profile.contentMode,
@@ -253,10 +270,13 @@ export async function prepareBrowserPackager({
             createWorker: runtime.createProgramWorker,
             workerOutputOwnership: "owned",
           });
-          if (!legacyAstc) assets = createProductionAssetAdapter({ runtime, profile });
+          if (!legacyAstc)
+            assets = createProductionAssetAdapter({ runtime, profile, outputCache, cacheContext });
           shaders = createProductionShaderAdapter({
             runtime,
             catalog: profile.catalog,
+            outputCache,
+            cacheContext,
             trustedShell: {
               ...profile.shell.contract,
               trustedRecipe: profile.trustedShell.trustedRecipe,
@@ -382,6 +402,8 @@ export async function prepareBrowserPackager({
               assets = createProductionAssetAdapter({
                 runtime,
                 profile,
+                outputCache,
+                cacheContext,
                 prebuiltPack: { pack: finalizedPack.pack, records: finalizedPack.records },
               });
             }

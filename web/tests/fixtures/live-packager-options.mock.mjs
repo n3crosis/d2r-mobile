@@ -93,6 +93,22 @@ mock.module("../../production-shaders.mjs", {
     },
   },
 });
+mock.module("../../local-output-cache.mjs", {
+  namedExports: {
+    async createLocalOutputCache(options) {
+      state.cacheOptions = options;
+      if (state.cachePause) {
+        state.cacheEntered.resolve();
+        await state.cachePause.promise;
+      }
+      return {
+        close() {
+          state.cacheCloses++;
+        },
+      };
+    },
+  },
+});
 mock.module("../../packaging-job.mjs", {
   namedExports: {
     PackagingJobError: class extends Error {},
@@ -115,7 +131,13 @@ globalThis.fetch = () => {
 };
 const { prepareBrowserPackager } = await import("../../browser-packager.mjs");
 function reset() {
-  state = { loadedProfiles: [], closedProfiles: [], producerPrepares: 0, runtimeCloses: 0 };
+  state = {
+    loadedProfiles: [],
+    closedProfiles: [],
+    producerPrepares: 0,
+    runtimeCloses: 0,
+    cacheCloses: 0,
+  };
 }
 const input = { kind: "directory", queryPermission: async () => "granted" };
 
@@ -206,4 +228,28 @@ for (const action of ["cancel", "close"])
     assert.equal(state.producerPrepares, 0);
     assert.equal(state.runtimeCloses, 1);
     await packager.close();
+  });
+
+for (const action of ["cancel", "close"])
+  test(`${action} during cache acquisition closes the late cache before private work`, async () => {
+    reset();
+    const packager = await prepareBrowserPackager();
+    state.cacheEntered = Promise.withResolvers();
+    state.cachePause = Promise.withResolvers();
+    const controller = new AbortController();
+    const generating = packager.generate({ input, ignoreCache: true, signal: controller.signal });
+    await state.cacheEntered.promise;
+    assert.equal(state.cacheOptions.ignoreCache, true);
+    if (action === "close") await packager.close();
+    else controller.abort();
+    state.cachePause.resolve();
+    await assert.rejects(
+      generating,
+      action === "close" ? /RELOAD_REQUIRED/ : { name: "AbortError" },
+    );
+    assert.equal(state.cacheCloses, 1);
+    assert.equal(state.extraction, undefined);
+    assert.equal(state.job, undefined);
+    await packager.close();
+    assert.equal(state.cacheCloses, 1);
   });

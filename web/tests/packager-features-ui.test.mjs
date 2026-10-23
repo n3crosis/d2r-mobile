@@ -312,6 +312,7 @@ async function runPreflight(options, makeIcon) {
     signing: false,
     astcPreset: "thorough",
     skipContentHashes: true,
+    ignoreCache: false,
     skipResources: false,
     generationTracker,
     createGenerationProgress: (jobOptions) => {

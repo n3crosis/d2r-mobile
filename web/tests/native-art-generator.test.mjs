@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { generateNativeArt } from "../native-art-generator.mjs";
+import { memoryOutputCache, assetCacheContext } from "./helpers/memory-output-cache.mjs";
 const sha = (b) => createHash("sha256").update(b).digest("hex");
 function fixture() {
   const bytes = new Uint8Array([1, 2, 3]);
@@ -86,4 +87,29 @@ test("native art rejects source hash, output omissions, bad decoded dimensions a
   f.signal = controller.signal;
   await assert.rejects(generateNativeArt(f), /CANCELLED/);
   assert.equal(f.reads.length, 0);
+});
+
+test("native-art cache hits still authenticate fresh input and invalidate changed decoded content", async () => {
+  const f = fixture();
+  const run = f.assetWorker.run;
+  let calls = 0;
+  f.assetWorker.run = (...args) => {
+    calls++;
+    return run(...args);
+  };
+  const options = { ...f, outputCache: memoryOutputCache(), cacheContext: assetCacheContext };
+  await generateNativeArt(options);
+  await generateNativeArt(options);
+  assert.equal(calls, 1);
+  assert.equal(f.reads.length, 22);
+  const decode = options.decodeAtlas;
+  options.decodeAtlas = async (...args) => ({
+    ...(await decode(...args)),
+    pixels: new Uint8Array([4, 3, 2, 1]),
+  });
+  await generateNativeArt(options);
+  assert.equal(calls, 2);
+  options.logicalAssets = { read: async () => new Uint8Array([0]) };
+  await assert.rejects(generateNativeArt(options), /SOURCE_HASH/);
+  assert.equal(calls, 2);
 });

@@ -4,6 +4,7 @@
  * 完整原生图像清单，不是通用裁剪配方或完整 IPA 流水线。
  * Complete native-art inventory, not a generic crop recipe or complete IPA pipeline.
  */
+import { runCachedAssetOperation } from "./asset-output-cache.mjs";
 const MAX_INPUT = 8 * 1024 * 1024;
 const MAX_PAYLOAD = 20 * 1024 * 1024;
 const fail = (code) => {
@@ -31,6 +32,8 @@ export async function generateNativeArt({
   metadata,
   metadataSha256,
   signal,
+  outputCache,
+  cacheContext,
 }) {
   const check = () => {
     if (signal?.aborted) fail("NATIVE_ART_CANCELLED");
@@ -132,16 +135,27 @@ export async function generateNativeArt({
     for (const map of [raw, rgba]) for (const key of Object.keys(map)) delete map[key];
     if (payload.length > MAX_PAYLOAD) fail("NATIVE_ART_INPUT_LIMIT");
     check();
-    const result = await assetWorker.run("native-art", payload, { metadataSha256 });
-    check();
     const expected = [...manifest.assets.map((a) => a.asset), "dm_touch_native_art.c"].sort();
-    if (
-      Object.keys(result.files ?? {})
-        .sort()
-        .join() !== expected.join()
-    )
-      fail("NATIVE_ART_OUTPUT_SET");
-    return result;
+    const options = { metadataSha256 };
+    return await runCachedAssetOperation({
+      outputCache,
+      cacheContext,
+      operation: "native-art",
+      payload,
+      options,
+      signal,
+      checkCancellation: check,
+      run: () => assetWorker.run("native-art", payload, options),
+      validate(result) {
+        check();
+        if (
+          Object.keys(result.files ?? {})
+            .sort()
+            .join() !== expected.join()
+        )
+          fail("NATIVE_ART_OUTPUT_SET");
+      },
+    });
   } finally {
     for (const bytes of owned) bytes.fill(0);
   }

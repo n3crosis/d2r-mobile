@@ -243,7 +243,10 @@ for (const transport of ["direct", "identity", "gzip"])
     assert.equal(state.fetches, fetches);
     assert.equal(state.revoked.length, 0);
     assert.equal(assertSealedRuntime(runtime), runtime);
-    assert.equal(state.workers.filter((worker) => worker.terminations === 1).length, 3);
+    assert.equal(
+      state.workers.filter((worker) => worker.terminations === 1).length,
+      2 + state.workers.filter((worker) => worker.air).length,
+    );
     assert.throws(() => runtime.createAirCompilerClient(), /unavailable/);
     assert.throws(() => runtime.createTranslator(), /retired/);
     assert.throws(() => runtime.createCrossWorker(), /retired/);
@@ -317,27 +320,44 @@ test("idle sibling leases and active work block all retirement cleanup", async (
   assertOriginalsIntact(state, files);
 });
 
-test("compiler retry and recycling keep originals until successful retirement", async (t) => {
+test("compiler failure stops its pool but keeps public originals until retirement", async (t) => {
   const { runtime, state, files } = await setup(t);
   const compiler = runtime.createAirCompilerClient();
   const first = compile(compiler);
   await nextTurn();
   const initial = state.workers.find((worker) => worker.air);
-  initial.reply({ type: "error", id: initial.requests.at(-1).id, code: "AIR_COMPILATION_FAILED" });
-  await assert.rejects(first);
+  initial.reply({ type: "error", id: initial.requests.at(-1).id, code: "AIR_FRONTEND_FAILED" });
+  await assert.rejects(first, { code: "AIR_FRONTEND_FAILED" });
+  assert.equal(compiler.ready, false);
+  assert.ok(
+    state.workers.filter((worker) => worker.air).every((worker) => worker.terminations === 1),
+  );
+  await assert.rejects(compile(compiler), { code: "AIR_COMPILER_DISPOSED" });
   assert.equal(runtime.retireShaderWorkers(release), false);
+  assertReadable(runtime, files);
+  compiler.dispose();
+  assert.equal(runtime.retireShaderWorkers(release), true);
+  assertOriginalsIntact(state, files);
+});
+
+test("compiler recycling reuses prepared code and keeps originals until successful retirement", async (t) => {
+  const { runtime, state, files } = await setup(t);
+  const compiler = runtime.createAirCompilerClient();
+  const initialCount = state.workers.filter((worker) => worker.air).length;
+  const first = compile(compiler);
+  await nextTurn();
+  const recycledOutput = compiled(
+    state.workers.find((worker) => worker.air),
+    { recycle: true },
+  );
+  assert.equal((await first).bytes.buffer, recycledOutput.buffer);
   assertReadable(runtime, files);
   const second = compile(compiler);
   await nextTurn();
-  const recycledOutput = compiled(state.workers.at(-1), { recycle: true });
-  assert.equal((await second).bytes.buffer, recycledOutput.buffer);
-  assertReadable(runtime, files);
-  const third = compile(compiler);
-  await nextTurn();
   const finalOutput = compiled(state.workers.at(-1));
-  await third;
-  assert.equal(state.preparations, 1, "all retries reuse the prepared inert module");
-  assert.equal(state.workers.filter((worker) => worker.air).length, 3);
+  await second;
+  assert.equal(state.preparations, 1, "recycling reuses the prepared inert module");
+  assert.equal(state.workers.filter((worker) => worker.air).length, initialCount + 1);
   compiler.dispose();
   assert.equal(runtime.retireShaderWorkers(release), true);
   assertOriginalsIntact(state, files);

@@ -14,6 +14,7 @@ const questions = [
   ["dmWebFaqIosQuestion", "dmWebGuideTargets"],
   ["dmWebFaqAssetsQuestion", "dmWebFaqAssetsAnswer"],
   ["dmWebFaqPrivacyQuestion", "dmWebFaqPrivacyAnswer"],
+  ["dmWebFaqCacheQuestion", "dmWebFaqCacheAnswer"],
 ] as const;
 
 export function PreparationFaq() {

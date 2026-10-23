@@ -30,9 +30,21 @@ const failCleanup = () => {
   throw new Error("PRODUCTION_ASSET_CLEANUP");
 };
 
-export function createProductionAssetAdapter({ runtime, profile, prebuiltPack }) {
+export function createProductionAssetAdapter({
+  runtime,
+  profile,
+  prebuiltPack,
+  outputCache,
+  cacheContext,
+}) {
   if (typeof profile?.profileId !== "string") throw new Error("PRODUCTION_ASSET_PROFILE");
   const { assetRecipe } = resolveShellProfile(profile.profileId);
+  const assetCacheContext = Object.freeze({
+    runtimeManifestSha256: cacheContext?.runtimeManifestSha256 ?? null,
+    profileId: profile.profileId,
+    artRevision: assetRecipe.artRevision,
+    overlayRevision: assetRecipe.overlayRevision,
+  });
   prebuiltPack = snapshotPrebuiltPackMetadata(prebuiltPack);
   let astcBinding;
   const owned = [],
@@ -76,6 +88,8 @@ export function createProductionAssetAdapter({ runtime, profile, prebuiltPack })
           metadata: profile.nativeArt,
           metadataSha256: profile.nativeArtSha256,
           signal,
+          outputCache,
+          cacheContext: assetCacheContext,
         });
         const artFiles = fileViews(art.files);
         const hud = await generateHud({
@@ -88,6 +102,8 @@ export function createProductionAssetAdapter({ runtime, profile, prebuiltPack })
           mode: "switch-upscaled",
           recipeRevision: assetRecipe.artRevision,
           signal,
+          outputCache,
+          cacheContext: assetCacheContext,
         });
         const hudFiles = fileViews(hud.files);
         const derived = await generateProductionDerived({
@@ -136,6 +152,8 @@ export function createProductionAssetAdapter({ runtime, profile, prebuiltPack })
           remainingArt: true,
           nativeOverlayGenerated: generated,
           prebuiltPack,
+          outputCache,
+          cacheContext: assetCacheContext,
           createAssetWorker: runtime.createAssetWorker,
           recycleAssetWorker: runtime.recycleAssetWorker,
           createTextureClient: runtime.createTextureClient,

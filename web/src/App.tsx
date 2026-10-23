@@ -130,6 +130,7 @@ export default function App() {
   const credentialsSelected = signingFiles.identity && signingFiles.profile;
   const [legacyStatus, setLegacyStatus] = useState("");
   const [skipResources, setSkipResources] = useState(false);
+  const [ignoreCache, setIgnoreCache] = useState(false);
   const [resourceOutcome, setResourceOutcome] = useState("");
   const [storageAdvisory, setStorageAdvisory] = useState("");
   const profileId = target === "ios18" ? IOS18_SHELL_PROFILE_ID : DEFAULT_SHELL_PROFILE_ID;
@@ -615,6 +616,7 @@ export default function App() {
       signing,
       astcPreset,
       skipContentHashes,
+      ignoreCache,
       exportResources: !skipResources,
       inputMode,
     });
@@ -678,6 +680,7 @@ export default function App() {
     setStatus(t("dmWebStarting"));
     if (jobOptions.legacyAstc) setLegacyStatus(t("dmWebLegacyPreparing"));
     appendActivity(t("dmWebGenerationStarted"), true);
+    if (jobOptions.ignoreCache) appendActivity(t("dmWebIgnoreCacheActive"), true);
     if (jobOptions.inputMode === "packages")
       appendActivity(
         t(jobOptions.skipContentHashes ? "dmWebSkipHashActive" : "dmWebFastMode"),
@@ -693,6 +696,7 @@ export default function App() {
         legacyAstc: jobOptions.legacyAstc,
         astcPreset: jobOptions.astcPreset,
         skipContentHashes: jobOptions.skipContentHashes,
+        ignoreCache: jobOptions.ignoreCache,
         input: folder,
         inputMode: jobOptions.inputMode,
         ...(Object.keys(preparedCustomization).length
@@ -702,6 +706,8 @@ export default function App() {
         exportResources: jobOptions.exportResources,
         signal: controller.signal,
         onProgress: (event: {
+          phase?: string;
+          status?: string;
           label?: string;
           stage?: string;
           state?: string;
@@ -725,6 +731,14 @@ export default function App() {
           };
         }) => {
           if (!acceptingProgress || controller.signal.aborted || !current()) return;
+          if (event.phase === "cache") {
+            const cacheLabel = packagingActivity(event);
+            if (cacheLabel) {
+              pendingGenerationStatus.current = cacheLabel;
+              appendActivity(cacheLabel, true);
+            }
+            return;
+          }
           tracker.observe(event);
           pendingOverallProgress.current = { tracker, snapshot: tracker.snapshot() };
           appendActivity(null);
@@ -1191,6 +1205,31 @@ export default function App() {
               </AccordionTrigger>
               <AccordionContent forceMount className="space-y-4">
                 <FieldGroup className="gap-4">
+                  <Field orientation="horizontal">
+                    <Checkbox
+                      id="ignore-cache"
+                      checked={ignoreCache}
+                      aria-describedby="ignore-cache-help"
+                      disabled={busy || generating || finished || download !== null}
+                      onCheckedChange={(checked) => {
+                        if (
+                          operationGate.current.busy ||
+                          finished ||
+                          busy ||
+                          generating ||
+                          download !== null
+                        )
+                          return;
+                        setIgnoreCache(checked === true);
+                      }}
+                    />
+                    <FieldContent>
+                      <FieldLabel htmlFor="ignore-cache">{t("dmWebIgnoreCache")}</FieldLabel>
+                      <FieldDescription id="ignore-cache-help" className="text-xs">
+                        {t("dmWebIgnoreCacheHelp")}
+                      </FieldDescription>
+                    </FieldContent>
+                  </Field>
                   <Field className="gap-2 [&>[data-slot=native-select-wrapper]]:w-full [&>[data-slot=native-select-wrapper]]:max-w-xs">
                     <FieldLabel htmlFor="ios-target">{t("dmWebTarget")}</FieldLabel>
                     <NativeSelect

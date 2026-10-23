@@ -15,7 +15,7 @@ import {
 } from "../runtime-asset-groups.mjs";
 import { createAstcProducerClient as initializeAstcProducerClient } from "../astc-producer-client.mjs";
 import { prepareVerifiedIpaSigningFactory } from "./ipa-signing-factory.mjs";
-import { createAirCompilerWorkerClient } from "../air-compiler-worker-client.mjs";
+import { createAirCompilerWorkerPool } from "../air-compiler-worker-client.mjs";
 import { shaderFailureDiagnostic } from "../shader-diagnostics.mjs";
 import {
   validateAirCompilerRuntimeComponent,
@@ -972,7 +972,7 @@ export async function prepareSealedRuntime({
       if (name === "airCompiler") {
         compilerInitialization = new AbortController();
         try {
-          compilerClient = await createAirCompilerWorkerClient({
+          compilerClient = await createAirCompilerWorkerPool({
             createWorker: () => {
               if (closed || compilerRetired) fail("AIR compiler runtime closed");
               return new Worker(url, { type: "module" });
@@ -1284,7 +1284,7 @@ export async function prepareSealedRuntime({
         );
       compilerLeases++;
       let released = false,
-        active = false;
+        active = 0;
       const release = () => {
         if (released) return;
         released = true;
@@ -1299,10 +1299,11 @@ export async function prepareSealedRuntime({
         compiler: compilerClient.compiler,
         options: compilerClient.options,
         limits: compilerClient.limits,
+        concurrency: compilerClient.concurrency,
         async compile(source, options = {}) {
-          if (released || closed || compilerRetired || active)
+          if (released || closed || compilerRetired || active >= compilerClient.concurrency)
             fail("AIR compiler lease closed or busy");
-          active = true;
+          active++;
           compilerActive++;
           try {
             const result = await compilerClient.compile(source, options);
@@ -1317,7 +1318,7 @@ export async function prepareSealedRuntime({
             }
             return result;
           } finally {
-            active = false;
+            active--;
             compilerActive--;
           }
         },

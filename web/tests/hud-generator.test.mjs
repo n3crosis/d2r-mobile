@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { generateHud, HUD_LOGICAL_INPUTS } from "../hud-generator.mjs";
+import { memoryOutputCache, assetCacheContext } from "./helpers/memory-output-cache.mjs";
 import {
   RELEASE_ART_REVISION,
   UPSTREAM_ART_REVISION,
@@ -104,4 +105,26 @@ test("HUD forwards only a recognized explicit internal source revision", async (
   invalid.recipeRevision = "v2";
   await assert.rejects(generateHud(invalid), /RECIPE_REVISION/);
   assert.equal(invalid.reads.length, 0);
+});
+
+test("HUD reuses encoded rendering, but changed font bytes require fresh rendering", async () => {
+  const f = fixture();
+  let calls = 0;
+  const run = f.assetWorker.run;
+  f.assetWorker.run = (...args) => {
+    calls++;
+    return run(...args);
+  };
+  const options = { ...f, outputCache: memoryOutputCache(), cacheContext: assetCacheContext };
+  await generateHud(options);
+  await generateHud(options);
+  assert.equal(calls, 1);
+  assert.equal(f.reads.length, HUD_LOGICAL_INPUTS.length * 2);
+  const read = f.logicalAssets.read;
+  f.logicalAssets.read = (path, request) =>
+    path.endsWith(".otf")
+      ? new TextEncoder().encode("changed synthetic font")
+      : read(path, request);
+  await generateHud(options);
+  assert.equal(calls, 2);
 });

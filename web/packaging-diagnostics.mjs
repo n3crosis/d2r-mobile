@@ -104,6 +104,8 @@ export function resourceProgressLabel(event) {
 // 仅固定标签与有界数值进度进入活动日志。
 // Only fixed labels and bounded numeric progress enter the activity log.
 export function packagingActivity(event) {
+  if (event?.phase === "cache")
+    return event.status === "unavailable" ? t("dmWebCacheUnavailable") : null;
   const diagnostic = extractionProgressLabel(event?.diagnostic);
   if (diagnostic) return diagnostic;
   if (!Object.hasOwn(stages, event?.stage)) return null;
@@ -216,7 +218,17 @@ export function sanitizeShaderRecordProgress(value) {
   return Object.freeze({
     completedRecords: value.completedRecords,
     totalRecords: value.totalRecords,
+    ...(Number.isSafeInteger(value.compilerWorkers) &&
+    value.compilerWorkers >= 1 &&
+    value.compilerWorkers <= 4
+      ? { compilerWorkers: value.compilerWorkers }
+      : {}),
   });
+}
+export function compilerWorkerLabel(count) {
+  return Number.isSafeInteger(count) && count >= 1 && count <= 4
+    ? t("dmWebCompilerWorkers", count)
+    : "";
 }
 export function shaderProgressLabel(event) {
   if (
@@ -228,7 +240,8 @@ export function shaderProgressLabel(event) {
   const progress = sanitizeShaderRecordProgress(event.diagnostic);
   return progress
     ? t("dmWebStagesShaders") +
-        t("dmWebProgressFraction", progress.completedRecords, progress.totalRecords)
+        t("dmWebProgressFraction", progress.completedRecords, progress.totalRecords) +
+        compilerWorkerLabel(progress.compilerWorkers)
     : null;
 }
 

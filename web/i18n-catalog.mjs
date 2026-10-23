@@ -617,6 +617,10 @@ export const catalog = Object.freeze({
     " (%s/%s)",
     "（%s/%s）"
   ],
+  "dmWebCompilerWorkers": [
+    " · compiler workers: %s",
+    " · 编译工作线程：%s"
+  ],
   "dmWebProgressSize": [
     "; %s MB",
     "；%s MB"
@@ -1320,5 +1324,29 @@ export const catalog = Object.freeze({
   "dmWebGenerateReady": [
     "Ready to generate.",
     "可以生成。"
+  ],
+  "dmWebIgnoreCache": [
+    "Ignore saved build cache",
+    "忽略已保存的生成缓存"
+  ],
+  "dmWebIgnoreCacheHelp": [
+    "Rebuild generated files instead of reusing saved results. Existing files are not deleted; new accepted results may update the cache. Verified public runtime downloads are unaffected.",
+    "重新生成文件，不复用已保存的结果。不会删除现有文件；新通过校验的结果可能更新缓存。已验证的公开运行组件下载缓存不受影响。"
+  ],
+  "dmWebIgnoreCacheActive": [
+    "This run will not reuse saved build results; accepted new results may still update the cache.",
+    "本次生成不复用已保存的生成缓存；通过校验的新结果仍可更新缓存。"
+  ],
+  "dmWebFaqCacheQuestion": [
+    "How do I troubleshoot cached build results?",
+    "重复生成遇到问题，如何处理缓存？"
+  ],
+  "dmWebFaqCacheAnswer": [
+    "First try Ignore saved build cache in Advanced. If cleanup is still needed, stop generation and close other packager tabs, then delete only the .d2r-cache folder inside your selected game folder and retry. Do not delete D2R-resources-*, Legacy Device Pack-*, original game files, keys, or saves. Verified public runtime downloads in the browser are separate.",
+    "先尝试在“高级选项”中勾选“忽略已保存的生成缓存”。如仍需清理，请先停止生成并关闭其他打包页面，然后仅删除所选游戏文件夹内的 .d2r-cache 文件夹，再重试。不要删除 D2R-resources-*、Legacy Device Pack-*、原始游戏文件、密钥或存档。此操作与浏览器中已验证的公开运行组件下载缓存无关。"
+  ],
+  "dmWebCacheUnavailable": [
+    "Saved build cache is unavailable; continuing without it.",
+    "已保存的生成缓存不可用，将继续生成而不使用缓存。"
   ]
 });

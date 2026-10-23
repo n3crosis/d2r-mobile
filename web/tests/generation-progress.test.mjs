@@ -262,7 +262,7 @@ test("the UI uses actual Radix values, fixed copy and guarded/coalesced job upda
   assert.match(app, /generationTracker.current === pendingProgress.tracker/);
   assert.match(
     app,
-    /if \(!acceptingProgress \|\| controller.signal.aborted \|\| !current\(\)\) return;\s+tracker.observe\(event\)/,
+    /if \(!acceptingProgress \|\| controller.signal.aborted \|\| !current\(\)\) return;\s+if \(event.phase === "cache"\) \{[\s\S]*?return;\s+\}\s+tracker.observe\(event\)/,
   );
   assert.match(
     app,

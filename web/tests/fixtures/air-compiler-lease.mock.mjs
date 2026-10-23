@@ -150,3 +150,35 @@ for (const mode of ["lease", "runtime", "signal", "none"])
       }
     }
   });
+
+// 一个租约可占满固定池，关闭活跃租约必须立即停止全部实例。
+// One lease may fill the fixed pool; closing an active lease must stop every instance immediately.
+test("sealed AIR lease accepts four concurrent calls, bounds overload and cancels every worker", async (t) => {
+  Object.assign(navigator, { hardwareConcurrency: 8, deviceMemory: 8 });
+  t.after(() => {
+    delete navigator.hardwareConcurrency;
+    delete navigator.deviceMemory;
+  });
+  const { runtime, workers } = await setup(t);
+  const lease = runtime.createAirCompilerClient();
+  assert.equal(lease.concurrency, 4);
+  assert.equal(workers.length, 4);
+  const pending = Array.from({ length: 4 }, () =>
+    lease.compile("kernel void main0() {}", {
+      entry: "main0",
+      stage: "kernel",
+    }),
+  );
+  const settlement = Promise.allSettled(pending);
+  await nextTurn();
+  await assert.rejects(
+    lease.compile("kernel void main0() {}", { entry: "main0", stage: "kernel" }),
+    /busy/,
+  );
+  assert.equal(runtime.retireShaderWorkers(), false);
+  lease.dispose();
+  const results = await settlement;
+  assert.ok(results.every((result) => result.status === "rejected"));
+  assert.ok(workers.every((worker) => worker.terminations === 1));
+  assert.equal(lease.ready, false);
+});

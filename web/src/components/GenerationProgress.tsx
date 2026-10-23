@@ -1,6 +1,7 @@
 import { useId } from "react";
 import { Progress } from "@/components/ui/progress";
 import { t } from "../../i18n.mjs";
+import { compilerWorkerLabel } from "../../packaging-diagnostics.mjs";
 import { createGenerationProgress } from "../../generation-progress.mjs";
 
 type Snapshot = ReturnType<ReturnType<typeof createGenerationProgress>["snapshot"]>;
@@ -33,7 +34,8 @@ function stageDetail(detail: Snapshot["detail"]) {
     case "shaders":
       return (
         t("dmWebStagesShaders") +
-        t("dmWebProgressFraction", detail.completedRecords, detail.totalRecords)
+        t("dmWebProgressFraction", detail.completedRecords, detail.totalRecords) +
+        compilerWorkerLabel(detail.compilerWorkers)
       );
     case "resources":
       return t(

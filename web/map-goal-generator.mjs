@@ -5,6 +5,7 @@
  * Complete current-name map-goal assets. No OS fonts, private old names, or inferred atlas layout.
  */
 import { LEGACY_ART_REVISION, requireArtRevision } from "./toolchain/art-recipes-js/revision.mjs";
+import { runCachedAssetOperation } from "./asset-output-cache.mjs";
 export const MAP_GOAL_IMAGE_PATHS = Object.freeze({
   symbols: "hd/global/ui/PANEL/Quest_Log/TalRashaSymbol.sprite",
   units: "hd/global/ui/AUTOMAP/Units.sprite",
@@ -48,6 +49,8 @@ export async function generateMapGoal({
   decodeAtlas,
   signal,
   recipeRevision = LEGACY_ART_REVISION,
+  outputCache,
+  cacheContext,
 }) {
   const upstream = requireArtRevision(recipeRevision);
   const expected = upstream ? UPSTREAM_MAP_GOAL_OUTPUTS : MAP_GOAL_OUTPUTS;
@@ -115,9 +118,38 @@ export async function generateMapGoal({
     check();
     let result;
     try {
-      result = await assetWorker.run("map-goal", payload, {
+      const options = {
         names: "current",
         ...(upstream ? { revision: recipeRevision } : {}),
+      };
+      result = await runCachedAssetOperation({
+        outputCache,
+        cacheContext,
+        operation: "map-goal",
+        payload,
+        options,
+        signal,
+        checkCancellation: check,
+        maxTotalBytes: 16 * 1024 * 1024,
+        run: () => assetWorker.run("map-goal", payload, options),
+        validate(candidate) {
+          check();
+          if (
+            Object.keys(candidate.files ?? {})
+              .sort()
+              .join() !== [...expected].sort().join()
+          )
+            fail("MAP_GOAL_OUTPUT_SET");
+          let output = 0;
+          for (const value of Object.values(candidate.files)) {
+            if (
+              !(value instanceof Uint8Array || value instanceof ArrayBuffer) ||
+              !value.byteLength ||
+              (output += value.byteLength) > 16 * 1024 * 1024
+            )
+              fail("MAP_GOAL_OUTPUT_LIMIT");
+          }
+        },
       });
     } finally {
       release(payload);
@@ -129,21 +161,6 @@ export async function generateMapGoal({
       else if (value instanceof ArrayBuffer) outputOwned.push(new Uint8Array(value));
     }
     check();
-    if (
-      Object.keys(result.files ?? {})
-        .sort()
-        .join() !== [...expected].sort().join()
-    )
-      fail("MAP_GOAL_OUTPUT_SET");
-    let output = 0;
-    for (const value of Object.values(result.files)) {
-      if (
-        !(value instanceof Uint8Array || value instanceof ArrayBuffer) ||
-        !value.byteLength ||
-        (output += value.byteLength) > 16 * 1024 * 1024
-      )
-        fail("MAP_GOAL_OUTPUT_LIMIT");
-    }
     success = true;
     return result;
   } finally {

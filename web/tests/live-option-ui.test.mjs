@@ -35,6 +35,7 @@ const cases = [
   ["checked={!skipContentHashes}", "setSkipContentHashes", true, "checked"],
   ['id="astc-preset"', "setAstcPreset", "fast", "value"],
   ["checked={signing}", "setSigning", true, "checked"],
+  ["checked={ignoreCache}", "setIgnoreCache", true, "checked"],
 ];
 function context(overrides = {}) {
   const writes = [];
@@ -46,6 +47,7 @@ function context(overrides = {}) {
       astcPreset: "thorough",
       signing: false,
       skipContentHashes: true,
+      ignoreCache: false,
       busy: false,
       generating: false,
       finished: false,
