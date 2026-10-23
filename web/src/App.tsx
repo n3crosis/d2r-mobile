@@ -1307,7 +1307,12 @@ export default function App() {
                 {signing && (
                   <FieldSet
                     className="max-w-xl gap-3"
-                    disabled={!signingReady || (!ready && !signingRetryAvailable) || busy}
+                    disabled={
+                      !signingReady ||
+                      busy ||
+                      generating ||
+                      ((!ready || finished || download !== null) && !signingRetryAvailable)
+                    }
                   >
                     <FieldLegend className="sr-only">{t("dmWebSigningCredentials")}</FieldLegend>
                     <FieldGroup className="gap-3">

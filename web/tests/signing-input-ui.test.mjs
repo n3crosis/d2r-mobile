@@ -3,6 +3,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import vm from "node:vm";
+import ts from "typescript";
 import { signWithLocalFiles } from "../signing-input.mjs";
 import { IPA_SIGNING_LIMITS } from "../ipa-signing-contract.mjs";
 const inputs = () => ({
@@ -97,10 +99,6 @@ test("UI preloads signing before credentials and keeps signing errors outside pa
   assert.match(source, /get\("signing"\) === "1"/);
   assert.match(source, /prepareBrowserPackager\(\{[\s\S]*?editableOptions: true,\s*signal:/);
   assert.match(source, /setSigningReady\(value.signingReady\)/);
-  assert.match(
-    source,
-    /disabled=\{!signingReady \|\| \(!ready && !signingRetryAvailable\) \|\| busy\}/,
-  );
   assert.ok(
     source.indexOf("downloadPreparation.current.retain(result.download)") <
       source.indexOf("await runSigning(jobPackager, result.download"),
@@ -121,6 +119,92 @@ test("UI preloads signing before credentials and keeps signing errors outside pa
   assert.doesNotMatch(signing, /packagingFailure|setResourceOutcome|setLegacyStatus/);
   assert.doesNotMatch(source, /localStorage|sessionStorage/);
   assert.match(source, /autoComplete="off"/);
+});
+
+// 检查真实字段组表达式；仅显式签名重试允许在终止后重新选择凭据。
+// Check the real fieldset expression; only an explicit signing retry permits credentials after termination.
+test("signing inputs lock after output or termination without blocking an idle signing retry", async () => {
+  const source = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const parsed = ts.createSourceFile(
+    "App.tsx",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const inputs = [];
+  function visit(node) {
+    if (
+      ts.isJsxSelfClosingElement(node) &&
+      node.tagName.getText(parsed) === "Input" &&
+      node.attributes.properties.some(
+        (attribute) =>
+          ts.isJsxAttribute(attribute) &&
+          attribute.name.getText(parsed) === "id" &&
+          ["signing-identity", "signing-password", "signing-profile"].includes(
+            attribute.initializer?.text,
+          ),
+      )
+    )
+      inputs.push(node);
+    ts.forEachChild(node, visit);
+  }
+  visit(parsed);
+  assert.equal(inputs.length, 3);
+  for (const input of inputs) {
+    let parent = input.parent;
+    while (
+      parent &&
+      !(ts.isJsxElement(parent) && parent.openingElement.tagName.getText(parsed) === "FieldSet")
+    )
+      parent = parent.parent;
+    assert.ok(parent, "each credential input inherits a disabled fieldset");
+    const disabled = parent.openingElement.attributes.properties
+      .find(
+        (attribute) =>
+          ts.isJsxAttribute(attribute) && attribute.name.getText(parsed) === "disabled",
+      )
+      .initializer.expression.getText(parsed);
+    const state = {
+      ready: true,
+      signingReady: true,
+      busy: false,
+      generating: false,
+      finished: false,
+      download: null,
+      signingRetryAvailable: false,
+    };
+    const locked = (overrides) => vm.runInNewContext(disabled, { ...state, ...overrides });
+    assert.equal(locked({}), false, "ready pre-generation credentials are editable");
+    for (const override of [
+      { ready: false },
+      { signingReady: false },
+      { busy: true },
+      { generating: true },
+      { finished: true },
+      { download: { fileName: "unsigned.ipa" } },
+      { download: { fileName: "D2RMobile-signed.ipa" } },
+    ])
+      assert.equal(locked(override), true, JSON.stringify(override));
+    const retry = {
+      ready: false,
+      finished: true,
+      download: { fileName: "unsigned.ipa" },
+      signingRetryAvailable: true,
+    };
+    assert.equal(locked(retry), false, "failed signing permits fresh credentials for retry");
+    for (const override of [{ busy: true }, { generating: true }, { signingReady: false }])
+      assert.equal(
+        locked({ ...retry, ...override }),
+        true,
+        "active or unavailable retry stays locked",
+      );
+    assert.equal(
+      locked({ ...retry, signingRetryAvailable: false }),
+      true,
+      "successful retry locks credentials",
+    );
+  }
 });
 
 test("terminal UI cleanup closes the captured packager without losing completed downloads", async () => {
