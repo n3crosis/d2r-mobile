@@ -117,7 +117,7 @@ test("UI uses opaque recovery before generic failure wording and preserves expor
   assert.match(recovery, /retain\(recovered\)/);
   assert.match(recovery, /committedCleanupWarning\(\)/);
   assert.match(recovery, /dmWebResourcesSaved/);
-  assert.match(recovery, /prepareDownload\(!originalIdentity\)/);
+  assert.match(recovery, /prepareDownload\(!originalIdentity && !jobOptions.signing\)/);
   assert.doesNotMatch(recovery, /\.generate\(/);
 });
 

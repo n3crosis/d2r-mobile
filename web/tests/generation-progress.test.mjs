@@ -266,10 +266,10 @@ test("the UI uses actual Radix values, fixed copy and guarded/coalesced job upda
   );
   assert.match(
     app,
-    /if \(!current\(\) \|\| controller.signal.aborted\) return;\s+tracker\?\.observeSigning\(event\)/,
+    /if \(!acceptingSigningProgress \|\| !current\(\) \|\| controller.signal.aborted\) return;\s+tracker\?\.observeSigning\(event\)/,
   );
   assert.doesNotMatch(component, /setInterval|setTimeout|Date.now/);
-  assert.equal((app.match(/<GenerationProgress /g) ?? []).length, 1);
+  assert.equal((app.match(/<GenerationProgress\b/g) ?? []).length, 1);
 });
 
 test("official Progress renders correct determinate, complete and indeterminate accessibility states", async () => {
@@ -307,6 +307,67 @@ test("official Progress renders correct determinate, complete and indeterminate 
     if (value === null) assert.doesNotMatch(markup, /aria-valuenow/);
     else assert.match(markup, new RegExp(`aria-valuenow="${value}"`));
   }
+});
+
+// 在服务端渲染状态容器以确认签名消息只出现一次；不启动浏览器或运行时。
+// Render the status container on the server to prove signing messages appear once; no browser or runtime startup.
+test("job status and signing completion stay inside one progress box without duplicate outside lines", async () => {
+  const { default: ts } = await import("typescript");
+  const { default: vm } = await import("node:vm");
+  const { createRequire } = await import("node:module");
+  const { createElement } = await import("react");
+  const { renderToStaticMarkup } = await import("react-dom/server");
+  const require = createRequire(import.meta.url);
+  const component = await readFile(
+    new URL("../src/components/GenerationProgress.tsx", import.meta.url),
+    "utf8",
+  );
+  const compiled = ts.transpileModule(component, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      jsx: ts.JsxEmit.ReactJSX,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
+  const exports = {};
+  vm.runInNewContext(compiled, {
+    exports,
+    require: (name) => {
+      if (name === "@/components/ui/progress")
+        return { Progress: () => createElement("div", { role: "progressbar" }) };
+      if (name === "../../i18n.mjs") return { t: (key) => key };
+      if (name === "../../packaging-diagnostics.mjs") return { compilerWorkerLabel: () => "" };
+      return require(name);
+    },
+  });
+  const tracker = createGenerationProgress({ signing: true });
+  tracker.generated(result());
+  tracker.startSigning();
+  tracker.signed(output());
+  tracker.downloadPrepared(true);
+  const markup = renderToStaticMarkup(
+    createElement(exports.GenerationProgress, {
+      progress: tracker.snapshot(),
+      statusId: "packager-status",
+      statusMessages: ["signed completion detail", "signed completion detail", "resource result"],
+    }),
+  );
+  assert.equal((markup.match(/signed completion detail/g) ?? []).length, 1);
+  assert.match(
+    markup,
+    /<section[\s\S]*id="packager-status"[^>]*role="status"[^>]*aria-live="polite"[\s\S]*signed completion detail[\s\S]*<\/section>/,
+  );
+  assert.equal(
+    renderToStaticMarkup(
+      createElement(exports.GenerationProgress, { progress: null, statusMessages: ["startup"] }),
+    ),
+    "",
+  );
+  const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  assert.match(app, /statusMessages=\{\[status, signingStatus, resourceOutcome\]\}/);
+  assert.match(app, /!overallProgress && \(\s*<p\s+id="packager-status"/);
+  assert.match(app, /!overallProgress && signingStatus &&/);
+  assert.match(app, /!overallProgress && resourceOutcome &&/);
 });
 
 test("actual App progress publication rejects old jobs and clears queued snapshots at terminal updates", async () => {

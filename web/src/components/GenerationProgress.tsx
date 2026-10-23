@@ -66,10 +66,19 @@ function stageDetail(detail: Snapshot["detail"]) {
   }
 }
 
-export function GenerationProgress({ progress }: { progress: Snapshot | null }) {
+export function GenerationProgress({
+  progress,
+  statusMessages = [],
+  statusId,
+}: {
+  progress: Snapshot | null;
+  statusMessages?: string[];
+  statusId?: string;
+}) {
   const labelId = useId(),
     descriptionId = useId();
   if (!progress) return null;
+  const messages = [...new Set(statusMessages.filter(Boolean))];
   const summary =
     progress.status === "running" ? t(stageKeys[progress.stage]) : t(statusKeys[progress.status]);
   const count = t(
@@ -99,6 +108,13 @@ export function GenerationProgress({ progress }: { progress: Snapshot | null }) 
       <p className="text-sm" role="status" aria-live="polite">
         {summary}
       </p>
+      {messages.length > 0 && (
+        <div id={statusId} className="space-y-1 text-sm" role="status" aria-live="polite">
+          {messages.map((message) => (
+            <p key={message}>{message}</p>
+          ))}
+        </div>
+      )}
       {progress.status === "running" && (
         <p className="text-xs text-muted-foreground">{stageDetail(progress.detail)}</p>
       )}

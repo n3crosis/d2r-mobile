@@ -185,7 +185,7 @@ test("customization failure recovery labels original identity without automatic 
   );
   assert.match(recovery, /setOriginalIdentityDownload\(originalIdentity\)/);
   assert.match(recovery, /dmWebCustomOriginalRetained/);
-  assert.match(recovery, /prepareDownload\(!originalIdentity\)/);
+  assert.match(recovery, /prepareDownload\(!originalIdentity && !jobOptions.signing\)/);
   assert.doesNotMatch(
     recovery,
     /runSigning|setSigningRetryAvailable\(true\)|unsignedForSigning.current =/,
@@ -406,12 +406,18 @@ test("every requested-customization recovery stays manual and labels the origina
     app.indexOf("      appendActivity(packagingFailureSummary"),
   );
   for (const stage of ["cleanup", "customization"]) {
-    for (const requested of [false, true]) {
+    for (const [requested, signing] of [
+      [false, false],
+      [false, true],
+      [true, false],
+      [true, true],
+    ]) {
       const calls = [],
         retained = { blob: new Blob(["original"]), fileName: "original.ipa" };
       const context = {
         recovered: retained,
         report: { stage },
+        jobOptions: { signing },
         preparedCustomization: requested ? { displayName: "Custom" } : {},
         downloadPreparation: { current: { retain: (value) => assert.equal(value, retained) } },
         setOriginalIdentityDownload: (value) => calls.push(["original", value]),
@@ -431,7 +437,7 @@ test("every requested-customization recovery stays manual and labels the origina
       );
       assert.deepEqual(
         calls.find(([kind]) => kind === "automatic"),
-        ["automatic", !requested],
+        ["automatic", !requested && !signing],
       );
       const output = calls.find(([kind]) => kind === "completedOutput")[1];
       assert.equal(output.appName, "Original app");

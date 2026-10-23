@@ -1352,5 +1352,13 @@ export const catalog = Object.freeze({
   "dmWebGenerationExpectation": [
     "Keep this tab in the foreground while generating. The first build may take 30 minutes or longer, depending on your computer.",
     "请在生成期间保持此标签页处于前台。首次生成可能需要 30 分钟或更长时间，具体取决于你的电脑。"
+  ],
+  "dmWebUnsignedFallbackDownload": [
+    "Download unsigned IPA instead",
+    "改为下载未签名 IPA"
+  ],
+  "dmWebUnsignedFallbackHelp": [
+    "Local signing did not finish. Retry signing above, or download this unsigned IPA to sign with another tool. It is not ready to install.",
+    "本地签名尚未完成。请在上方重试签名，或下载此未签名 IPA 后使用其他工具签名。它尚不能直接安装。"
   ]
 });

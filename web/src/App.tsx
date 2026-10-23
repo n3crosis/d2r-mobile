@@ -490,11 +490,20 @@ export default function App() {
     if (prepared.status !== "ready") {
       setDownloadPreparationFailed(true);
       appendActivity(t("dmWebDownloadPreparationFailed"), true);
+      setStatus(t("dmWebDownloadPreparationFailed"));
       return;
     }
     setDownload({ url: prepared.url, fileName: prepared.fileName });
     setDownloadPreparationFailed(false);
-    if (automatic) attemptAutomaticDownload(prepared);
+    const requestedOutputComplete = tracker?.snapshot().status === "complete";
+    if (tracker?.included.signing && requestedOutputComplete) {
+      setSigningStatus(t("dmWebSigningComplete"));
+      setStatus(t("dmWebSigningComplete"));
+    }
+    // 签名作业的未签名恢复产物只能手动下载，不能冒充已完成的请求产物。
+    // Unsigned recovery from a signing job is manual-only, never the completed requested output.
+    if (automatic && (!tracker?.included.signing || requestedOutputComplete))
+      attemptAutomaticDownload(prepared);
   }
   function clearSigningInputs() {
     if (identityInput.current) identityInput.current.value = "";
@@ -509,10 +518,15 @@ export default function App() {
     current: () => boolean,
   ): Promise<boolean> {
     const tracker = generationTracker.current;
+    let acceptingSigningProgress = true;
+    pendingGenerationStatus.current = null;
+    setDownload(null);
+    setDownloadPreparationFailed(false);
     tracker?.startSigning();
     publishProgress(tracker);
     setSigningRetryAvailable(false);
     setSigningStatus(t("dmWebSigningWorking"));
+    setStatus(t("dmWebSigningWorking"));
     let attempt: Awaited<ReturnType<Packager["prepareSigning"]>> | undefined;
     try {
       // 先初始化独立线程，再读取凭据；重试不再运行转换或资源导出。
@@ -528,18 +542,20 @@ export default function App() {
         password: passwordInput.current?.value ?? "",
         signal: controller.signal,
         onProgress: (event: { stage: string; completed: number; total: number }) => {
-          if (!current() || controller.signal.aborted) return;
+          if (!acceptingSigningProgress || !current() || controller.signal.aborted) return;
           tracker?.observeSigning(event);
           publishProgress(tracker);
         },
       });
+      acceptingSigningProgress = false;
+      controller.signal.throwIfAborted();
       if (!current()) return false;
+      pendingGenerationStatus.current = null;
       downloadPreparation.current.retain(signed);
       tracker?.signed(signed);
       publishProgress(tracker);
       unsignedForSigning.current = null;
-      setSigningStatus(t("dmWebSigningComplete"));
-      setStatus(t("dmWebSigningComplete"));
+      setSigningStatus("");
       prepareDownload();
       return false;
     } catch (signingError) {
@@ -558,13 +574,15 @@ export default function App() {
       );
       tracker?.signingFailed(controller.signal.aborted);
       publishProgress(tracker);
+      pendingGenerationStatus.current = null;
       setSigningStatus(signingMessage);
       appendActivity(signingMessage, true);
-      setStatus(t("dmWebUnsignedReady"));
+      setStatus(signingMessage);
       setSigningRetryAvailable(true);
       prepareDownload(false);
       return true;
     } finally {
+      acceptingSigningProgress = false;
       attempt?.close();
       clearSigningInputs();
     }
@@ -798,6 +816,8 @@ export default function App() {
         },
       });
       if (!current()) return;
+      acceptingProgress = false;
+      pendingGenerationStatus.current = null;
       generationCompleted = true;
       setCompletedOutput(
         createPostGenerationGuide(
@@ -810,25 +830,26 @@ export default function App() {
       if (jobOptions.legacyAstc && result.legacyPack?.status === "complete")
         setLegacyStatus(t("dmWebLegacyComplete", result.legacyPack.directoryName));
       downloadPreparation.current.retain(result.download);
-      appendActivity(t("dmWebUnsignedReady"), true);
       if (result.resources.status === "skipped") {
         setResourceOutcome(t("dmWebResourcesSkipped"));
-        setStatus(t("dmWebUnsignedReady"));
       } else if (result.resources.status === "complete") {
         setResourceOutcome(t("dmWebResourcesSaved", result.resources.directoryName));
-        setStatus(t("dmWebDownloadReady", folder.name, result.resources.directoryName));
       } else {
         setResourceOutcome(t("dmWebResultIncomplete"));
-        setStatus(t("dmWebUnsignedReady"));
       }
-      // 下载准备失败只提供重试，不重新运行转换或覆盖已完成导出状态。
-      // Download preparation failures offer retry only, without rerunning conversion or overwriting completed exports.
-      prepareDownload(!jobOptions.signing);
+      // 请求签名时先保留未签名数据；签名完成前不发布下载链接或就绪消息。
+      // Retain unsigned bytes when signing is requested; publish no download or ready message before signing finishes.
       if (jobOptions.signing) {
-        acceptingProgress = false;
-        pendingGenerationStatus.current = null;
         unsignedForSigning.current = result.download;
         keepSigningFactory = await runSigning(jobPackager, result.download, controller, current);
+      } else {
+        appendActivity(t("dmWebUnsignedReady"), true);
+        setStatus(
+          result.resources.status === "complete"
+            ? t("dmWebDownloadReady", folder.name, result.resources.directoryName)
+            : t("dmWebUnsignedReady"),
+        );
+        prepareDownload();
       }
     } catch (error) {
       if (!current()) return;
@@ -837,6 +858,7 @@ export default function App() {
         publishProgress(tracker);
         setDownloadPreparationFailed(true);
         appendActivity(t("dmWebDownloadPreparationFailed"), true);
+        setStatus(t("dmWebDownloadPreparationFailed"));
         return;
       }
       tracker.fail(controller.signal.aborted);
@@ -878,7 +900,7 @@ export default function App() {
         setStatus(warning);
         // 自定义失败只提供明确标注的原始下载，不自动下载或签名。
         // Customization failures offer a labeled original download, without automatic download or signing.
-        prepareDownload(!originalIdentity);
+        prepareDownload(!originalIdentity && !jobOptions.signing);
         return;
       }
       appendActivity(packagingFailureSummary(report), true);
@@ -1127,15 +1149,21 @@ export default function App() {
               {generationReadinessMessage}
             </p>
           )}
-          <GenerationProgress progress={overallProgress} />
-          <p
-            id="packager-status"
-            className="text-sm text-muted-foreground"
-            role="status"
-            aria-live="polite"
-          >
-            {status}
-          </p>
+          <GenerationProgress
+            progress={overallProgress}
+            statusMessages={[status, signingStatus, resourceOutcome]}
+            statusId="packager-status"
+          />
+          {!overallProgress && (
+            <p
+              id="packager-status"
+              className="text-sm text-muted-foreground"
+              role="status"
+              aria-live="polite"
+            >
+              {status}
+            </p>
+          )}
           {folder && (
             <div className="space-y-2">
               <p className="break-all text-sm font-medium">{folder.name}</p>
@@ -1159,21 +1187,23 @@ export default function App() {
               )}
             </div>
           )}
-          {signingStatus && (
+          {!overallProgress && signingStatus && (
             <p className="text-sm text-muted-foreground" role="status">
               {signingStatus}
             </p>
           )}
-          {resourceOutcome && (
+          {!overallProgress && resourceOutcome && (
             <p className="text-sm text-muted-foreground" role="status">
               {resourceOutcome}
             </p>
           )}
           {downloadPreparationFailed && (
             <div className="space-y-2">
-              <p className="text-sm text-muted-foreground" role="status">
-                {t("dmWebDownloadPreparationFailed")}
-              </p>
+              {!overallProgress && (
+                <p className="text-sm text-muted-foreground" role="status">
+                  {t("dmWebDownloadPreparationFailed")}
+                </p>
+              )}
               <Button onClick={() => prepareDownload()}>
                 {t("dmWebRetryDownloadPreparation")}
               </Button>
@@ -1184,7 +1214,7 @@ export default function App() {
               {t("dmWebRetrySigning")}
             </Button>
           )}
-          {download && (
+          {download && !busy && (
             <div className="space-y-2">
               <Button asChild>
                 <a href={download.url} download={download.fileName}>
@@ -1193,7 +1223,9 @@ export default function App() {
                       ? "dmWebCustomOriginalDownload"
                       : signedDownload
                         ? "dmWebSignedDownload"
-                        : "dmWebDownload",
+                        : signing
+                          ? "dmWebUnsignedFallbackDownload"
+                          : "dmWebDownload",
                   )}
                 </a>
               </Button>
@@ -1203,12 +1235,14 @@ export default function App() {
                     ? "dmWebCustomOriginalRetained"
                     : signedDownload
                       ? "dmWebSignedHelp"
-                      : "dmWebDownloadHelp",
+                      : signing
+                        ? "dmWebUnsignedFallbackHelp"
+                        : "dmWebDownloadHelp",
                 )}
               </p>
             </div>
           )}
-          {download && completedOutput && !busy && (
+          {download && completedOutput && !busy && (!signing || signedDownload) && (
             <PostGenerationGuide
               output={completedOutput}
               downloadFileName={download.fileName}

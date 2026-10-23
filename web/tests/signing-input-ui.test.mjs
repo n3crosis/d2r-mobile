@@ -110,7 +110,8 @@ test("UI preloads signing before credentials and keeps signing errors outside pa
   assert.match(signing, /dmWebSigningCancelled/);
   assert.match(signing, /dmWebSigningFailed/);
   assert.match(signing, /prepareDownload\(false\)/);
-  assert.match(signing, /setStatus\(t\("dmWebUnsignedReady"\)\)/);
+  assert.match(signing, /setStatus\(signingMessage\)/);
+  assert.doesNotMatch(signing, /setStatus\(t\("dmWebUnsignedReady"\)\)/);
   assert.match(source, /const signedDownload = download\?\.fileName === "D2RMobile-signed.ipa"/);
   assert.match(signing, /clearSigningInputs\(\)/);
   assert.match(signing, /setSigningStatus\(signingMessage\)/);
@@ -232,7 +233,7 @@ test("terminal UI cleanup closes the captured packager without losing completed 
   assert.ok(cleanup.indexOf("await jobPackager.close()") < cleanup.indexOf("operation.finish()"));
   assert.match(
     source,
-    /dmWebSigningCancelled"[\s\S]*?dmWebSigningFailed"[\s\S]*?setStatus\(t\("dmWebUnsignedReady"\)\)/,
+    /dmWebSigningCancelled"[\s\S]*?dmWebSigningFailed"[\s\S]*?setStatus\(signingMessage\)/,
   );
 });
 
@@ -277,7 +278,10 @@ test("UI signing retry initializes before reads and retains no conversion lifecy
       attempt.indexOf("await signWithLocalFiles"),
   );
   assert.match(attempt, /sign: attempt.sign/);
-  assert.match(attempt, /finally \{\s*attempt\?\.close\(\);\s*clearSigningInputs\(\)/);
+  assert.match(
+    attempt,
+    /finally \{\s*acceptingSigningProgress = false;\s*attempt\?\.close\(\);\s*clearSigningInputs\(\)/,
+  );
   assert.match(attempt, /unsignedForSigning.current = null/);
   const retry = source.slice(
     source.indexOf("  async function retrySigning()"),

@@ -4,6 +4,7 @@ import test, { mock } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { OPTIONAL_RUNTIME_ASSET_GROUPS } from "../../runtime-asset-groups.mjs";
+import { selectAirCompilerConcurrency } from "../../air-compiler-worker-client.mjs";
 import {
   AIR_COMPILER_RUNTIME,
   airCompilerRuntimeComponent,
@@ -316,14 +317,15 @@ test("every production plan initializes from retained assembly paths without raw
     "airCompiler",
     "astcProducer",
   ]);
-  assert.equal(state.workers.length, 8);
+  const compilerWorkers = selectAirCompilerConcurrency();
+  assert.equal(state.workers.length, Object.keys(runtime.initialized).length - 1 + compilerWorkers);
   assert.equal(compilerPreparations, 1);
-  assert.equal(state.compilerInitializations, 1);
+  assert.equal(state.compilerInitializations, compilerWorkers);
   assert.equal(state.privateCalls, 0);
   assert.equal(state.fetches.length, state.expectedFetches);
   assert.equal(state.helperCalls, 1);
   assert.deepEqual(
-    state.workers.slice(0, 7).map((worker) => worker.assetNames),
+    state.workers.slice(0, -1).map((worker) => worker.assetNames),
     [
       ["image-kernels.wasm", "png-codec.wasm", "font-rasterizer.wasm"],
       [
@@ -343,7 +345,7 @@ test("every production plan initializes from retained assembly paths without raw
       ["hactool-boundary.wasm"],
       ["spirv-cross.wasm"],
       ["capstone-lz4.wasm"],
-      ["factory", "wasm"],
+      ...Array.from({ length: compilerWorkers }, () => ["factory", "wasm"]),
     ],
   );
   for (const path of SOURCE_ONLY_RUNTIME_ASSETS)
