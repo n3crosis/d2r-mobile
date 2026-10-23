@@ -13,7 +13,7 @@ test("typed pointer-slot correction is a separately authenticated 0107 delta", a
   const path = "patches/0107-a2flo-typed-constant-pointer-slots.patch";
   const patch = await read(path);
   const expected = "a347fbee6ebebf76a8eae835d3bcbfaff8a4082651c2e42d6a0f980b867c27ec";
-  assert.equal(manifest.patches.length, 9);
+  assert.equal(manifest.patches.length, 10);
   assert.deepEqual(manifest.patches[6], { path, sha256: expected });
   assert.equal(hash(patch), expected);
   assert.deepEqual(
@@ -205,7 +205,7 @@ test("canonical GEP restoration is an exact additive 0109 delta", async () => {
   const path = "patches/0109-a2flo-canonical-gep-recasts.patch";
   const expected = "52724314a6e3095290fdd933ceb0caa51e057162216d523a8c62a5a73b906e85";
   const patch = await read(path);
-  assert.deepEqual(manifest.patches.at(-1), { path, sha256: expected });
+  assert.deepEqual(manifest.patches[8], { path, sha256: expected });
   assert.equal(hash(patch), expected);
   assert.deepEqual(
     [...patch.matchAll(/^\+\+\+ b\/(.+)$/gm)].map((match) => match[1]),

@@ -40,6 +40,10 @@
     {
       "path": "patches/0109-a2flo-canonical-gep-recasts.patch",
       "sha256": "52724314a6e3095290fdd933ceb0caa51e057162216d523a8c62a5a73b906e85"
+    },
+    {
+      "path": "patches/0110-a2flo-scalar-i1-conversions.patch",
+      "sha256": "1e41886634d829084a3752d56723e38b55ff20dd75649510be6c4be446ca0c82"
     }
   ],
   "patchedFiles": {
@@ -65,7 +69,7 @@
     "clang/lib/CodeGen/CodeGenTypes.h": "bbb38103de877bfa70bb1ba3b1c67aaecafa7889d5edbb054577cc2b65978a7b",
     "llvm/include/llvm/Transforms/LibFloor/FloorImage.h": "797f537613c7ae608c8376161a538cdbf639dc4fa17a2923d43e4ba39c34208c",
     "llvm/lib/Transforms/LibFloor/FloorImage.cpp": "468e29894c59f85395b609ac7cbe07a79792c51215cc9575ba34948b57999c3d",
-    "llvm/lib/Transforms/LibFloor/MetalFinal.cpp": "2eeff094e126d5208a73da6f9b711921f0f42c0e73b8f51b1d82c8ef4ce62197",
+    "llvm/lib/Transforms/LibFloor/MetalFinal.cpp": "b7f8c3d17df3fddea4e87cd8a6fc2ac6ed0d53531714f9403b73ab72f3c39973",
     "llvm/lib/Transforms/LibFloor/MetalImage.cpp": "89f4dda86f2e0d8acf73f4413693bb9de0cf20e0c22159d6263cc66fe1f25448",
     "llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp": "bd857274c61741b968bbc5c9d7fc9a849b99757fba93290f260031e54ca65c06",
     "llvm/lib/Transforms/LibFloor/VulkanFinal.cpp": "660a2705c55985066d9eda8140068c907bc4037105202d9ca420d7b25f756733",

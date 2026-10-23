@@ -12,7 +12,9 @@ and extends only proven inverse-pointer merge handling. The additive
 `0109-a2flo-canonical-gep-recasts.patch` preserves those eight patches and restores
 only the exact canonical scalar/vector storage pointer after a validated GEP.
 Neither extension changes the MSL API, fixed 31-call canary, zlib fixes or runtime
-integrity checks.
+integrity checks. The separate `0110-a2flo-scalar-i1-conversions.patch`
+preserves all nine patches and hardens only scalar i1-to-floating conversion
+lowering; it is not evidence of an invalid AIR intrinsic or a rendering fix.
 
 ## Changed source files
 
@@ -236,9 +238,9 @@ renamed or accepted under aliases. The bounded compilation budget includes
 the four liveness variants: 31 API calls total. Each added shader is source-only, excluded from the public runtime
 payload, and included by the existing tracked compiler-directory source copy.
 Source-only tests check fixture wiring and copy closure but do not execute the
-compiler. The authenticated 75e6bd1 artifact includes `0108` and passes the
+compiler. The authenticated 20475da artifact includes `0109` and passes the
 existing canary. Neither `0108` nor `0109` adds a demonstrated natural-MSL
-reproducer for its narrow inverse case; their native coverage remains static-only.
+reproducer for its narrow inverse case; their native fixtures remain unexecuted.
 
 ## Authored storage/interface regressions
 
@@ -318,22 +320,26 @@ and stage-linkage or device effects are separate, unestablished claims.
 
 ## Evidence and verification boundary
 
-These corrections respond to authenticated CI artifacts. The 75e6bd1 compiler
-includes `0106` through `0108` and passes the existing strict canary. The remaining
-unchanged original kernel still rejects with the bounded category
-`scalar or non-aggregate inverse pointer cast (getelementptr)`. The parenthesized
-opcode now establishes a GEP input, but neither its result/destination type,
-indices nor inbounds flag was observed. No usable pre-error IR proves that the
-exact canonical-storage case occurs in that kernel. This integration does not
-claim actual kernel recovery.
+These corrections respond to authenticated CI artifacts. The sealed compiler-only
+acceptance for revision `20475dad74fea1d29f066a06ffe13ff204de05e1`, including `0109`,
+passes all 7,212 original shaders and preserves the bitcode of all 7,211 previously
+accepted shaders. The same existing strict canary passes. This establishes the
+previously failing kernel's compilation recovery, not browser, GPU or device
+acceptance, correct memory accesses, or rendering equivalence.
 
-`0109` is a statically reviewed correction for the precisely defined symbolic
-cases above, pending a fresh matching artifact and unchanged-source checks. The
-native matrices have not run here or in current CI, which does not build
-`opt`/FileCheck. No new natural-MSL probe, raw-IR API mode, extra job or native-tool
-build is added. Other pointer graph shapes remain unsupported. The conservative
-maximum diagnostic length is 278 characters, including the invalid-opcode
-fallback; subreasons cannot reveal source names, values, paths or IR.
+The earlier 75e6bd1 rejection identified a GEP input but did not reveal its exact
+type, destination, indices or inbounds flag. The new successful compilation does
+not turn the authored symbolic fixtures into observed pre-error IR or executed
+native regressions. The native matrices have not run here or in current CI, which
+does not build `opt`/FileCheck. No raw-IR API mode, extra job or native-tool build
+is added. Other pointer graph shapes remain unsupported. The conservative maximum
+diagnostic length is 278 characters, including the invalid-opcode fallback;
+subreasons cannot reveal source names, values, paths or IR.
+
+The separate `0110` scalar-i1 hardening remains unvalidated by an emitted artifact.
+Its next authenticated compiler run must verify disappearance of the 417 old
+signed-i1 conversion calls and complete unchanged-source nonregression. Neither
+call removal nor full-pipeline preservation is claimed by these source checks.
 
 The source-only verification procedure is:
 
@@ -350,9 +356,9 @@ checks exact patch inventory, patch digests, modified-source path coverage and
 runtime source identity. None of these steps builds or invokes LLVM, Clang or
 WASM, and no private corpus source is included in this package.
 
-A new CI-built artifact and execution of authored regressions plus the
-unchanged corpus are still required to validate `0109`.
-Existing artifacts cannot contain that canonical-GEP correction. The complete manifest hash
+A new CI-built artifact and full-pipeline/corpus validation are still required for
+`0110`; the sealed 20475da artifact does not contain that scalar-i1 correction.
+Native authored regressions remain unexecuted. The complete manifest hash
 and all patch hashes already participate in runtime source identity, so old
 receipts must become stale rather than being relabeled or bypassed. No source
 identity, metallib entry/stage, container-integrity or bitcode-hash check is
@@ -378,3 +384,38 @@ No ccache installation, cache round-trip, CI launch or speedup was measured here
 The next already-required cold compiler build must seed this cache; later hit/miss
 statistics are needed to establish benefit. The 2 GiB limit is per snapshot, not
 an overall repository cache quota.
+
+## Scalar i1 conversion hardening
+
+The additive `0110` delta changes only
+`llvm/lib/Transforms/LibFloor/MetalFinal.cpp`'s conversion helper. Scalar `SIToFP`
+and `UIToFP` from i1 to half, float or double become respectively
+`select(condition, -1.0, +0.0)` and `select(condition, +1.0, +0.0)`. Signed i1 true
+is -1, not +1. The helper accepts a folded LLVM `Value`; it copies a debug location
+only when the replacement is an instruction, then replaces every use before
+erasing the cast. No memory access, branch, freeze, extra flag or assumption is
+introduced. All vectors, other integer widths, reverse conversions and unsupported
+floating destinations retain the existing conversion/failure path.
+
+This removes a dependency on `air.convert.*.i1` at that helper. The absence of
+`air.convert.f.f32.s.i1` from the inspected reference libraries is not proof that
+the symbol is invalid or that the existing emitted code is a miscompile. This
+hardening does not establish frontend cast correctness, device acceptance or
+rendering equivalence. Later compiler passes may still simplify or restructure
+the result; full-pipeline preservation and emitted-call removal remain untested.
+
+`fixtures/scalar-i1-conversions.ll`, its `.expected.ll` counterpart and
+`scalar-i1-conversions.json` contain 25 authored symbolic input/expected-shape
+cases. They cover all six signed/unsigned destination combinations, constant,
+poison and undef folding, a shared freeze, adjacent casts, debug locations,
+repeated uses and excluded controls. Expected text describes immediate helper
+shapes modulo SSA naming; it is not captured compiler output. There are no RUN
+lines, and no LLVM parser, verifier or pass has executed these cases. Exact
+fixture identities, case inventory and runtime-payload exclusion are tested.
+
+This source-only addition does not alter the existing 31-call real-WASM canary,
+API, object-cache workflow or acceptance gates, and adds no natural-MSL probe.
+Fresh authenticated artifact/full-pipeline validation must verify removal of the
+417 old signed-i1 calls plus full nonregression before claiming emitted-code
+improvement. The sealed 20475da compiler-only result remains the baseline; browser,
+GPU/device behavior and rendering equivalence are separate unestablished claims.
