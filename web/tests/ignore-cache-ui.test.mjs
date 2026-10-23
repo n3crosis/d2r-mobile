@@ -94,13 +94,13 @@ test("cache help clearly separates manual private-cache cleanup from files the u
     /not deleted.*may update.*public runtime downloads/,
   );
   for (const text of catalog.dmWebFaqCacheAnswer) {
-    assert.match(text, /\.d2r-cache/);
+    assert.match(text, /D2R-cache/);
     assert.match(text, /D2R-resources-\*/);
     assert.match(text, /Legacy Device Pack-\*/);
   }
   assert.match(
     catalog.dmWebFaqCacheAnswer[0],
-    /stop generation and close other packager tabs.*delete only the \.d2r-cache folder inside your selected game folder/,
+    /stop generation and close other packager tabs.*delete only the D2R-cache folder inside your selected game folder/,
   );
   assert.match(
     catalog.dmWebFaqCacheAnswer[0],
@@ -108,7 +108,7 @@ test("cache help clearly separates manual private-cache cleanup from files the u
   );
   assert.match(
     catalog.dmWebFaqCacheAnswer[1],
-    /先停止生成并关闭其他打包页面.*仅删除所选游戏文件夹内的 \.d2r-cache/,
+    /先停止生成并关闭其他打包页面.*仅删除所选游戏文件夹内的 D2R-cache/,
   );
   assert.match(catalog.dmWebFaqCacheAnswer[1], /不要删除.*原始游戏文件、密钥或存档/);
 });

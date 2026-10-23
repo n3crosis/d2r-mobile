@@ -135,7 +135,10 @@ async function setup({
   absent = false,
   full = false,
   missingAirComponent = false,
+  pageUrl = "https://example.test/",
 } = {}) {
+  globalThis.location = { href: pageUrl, origin: new URL(pageUrl).origin };
+  const runtimeBase = new URL("./runtime/", pageUrl);
   state = {
     fetches: [],
     workers: [],
@@ -206,7 +209,10 @@ async function setup({
   data.set("runtime-manifest.json", raw);
   state.expectedFetches = 1 + assets.filter((asset) => enabled || !asset.optionalGroup).length;
   globalThis.fetch = async (url) => {
-    const path = new URL(url).pathname.slice("/runtime/".length);
+    const requested = new URL(url);
+    assert.equal(requested.origin, runtimeBase.origin);
+    assert.ok(requested.pathname.startsWith(runtimeBase.pathname));
+    const path = requested.pathname.slice(runtimeBase.pathname.length);
     state.fetches.push(path);
     assert.ok(data.has(path), `Unexpected public fetch: ${path}`);
     return new Response(data.get(path));
@@ -216,7 +222,7 @@ async function setup({
     ...module,
     data,
     options: {
-      baseUrl: "https://example.test/runtime/",
+      baseUrl: "./runtime/",
       manifestSha256: sha(raw),
       ...(full ? {} : { components: ["program"] }),
       signal: state.signal,
@@ -297,6 +303,23 @@ test("incomplete AIR component metadata rejects before worker creation", async (
   assert.equal(state.workers.length, 0);
   assert.equal(state.privateCalls, 0);
 });
+test("GitHub Pages project paths keep runtime fetches and shader-worker URLs under the project", async (t) => {
+  t.mock.method(WebAssembly, "compile", async () => ({ syntheticCompilerModule: true }));
+  const { prepareSealedRuntime, options } = await setup({
+    full: true,
+    enabled: true,
+    pageUrl: "https://n3crosis.github.io/d2r-mobile/",
+  });
+  const runtime = await prepareSealedRuntime(options);
+  assert.equal(state.fetches.length, state.expectedFetches);
+  assert.equal(Object.keys(runtime.workerUrls).length, 2);
+  for (const url of Object.values(runtime.workerUrls))
+    assert.ok(url.startsWith("https://n3crosis.github.io/d2r-mobile/runtime/"));
+  assert.ok(state.workers.every((worker) => worker.url.startsWith("blob:")));
+  await runtime.close();
+  assert.ok(state.workers.every((worker) => worker.terminated));
+});
+
 test("every production plan initializes from retained assembly paths without raw client sources", async (t) => {
   let compilerPreparations = 0;
   t.mock.method(WebAssembly, "compile", async (bytes) => {

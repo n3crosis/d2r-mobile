@@ -54,7 +54,7 @@
         "마나: %d / %d"
       ]
     },
-    "mergedSha256": "d248f3db4aa454e7eba816706649d567e3726162877fa78e5d82c600e4d3b297",
+    "mergedSha256": "4ca1aba3700d126fb02ac1f58f7a698dc4969741e27d6642854534c3a6de623d",
     "mergedDifference": "Additional dmWeb rows only; HUD selects dmHudLife and dmHudMana"
   },
   "mergedSourceOverrides": {

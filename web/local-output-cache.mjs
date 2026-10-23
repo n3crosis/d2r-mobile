@@ -1,6 +1,6 @@
 // Disposable local output cache. Folder bytes are trusted only against this origin's
 // independent ledger, populated after a caller has validated a freshly generated output.
-const ROOT = ".d2r-cache";
+const ROOT = "D2R-cache";
 const VERSION = "v1";
 const LEDGER = "d2r-generated-output-ledger-v1-";
 const PREFIX = "/__d2r_generated_output_ledger__/v1/";

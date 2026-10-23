@@ -4,6 +4,8 @@ English: [TESTING.md](TESTING.md)
 
 本仓库只有一个 GitHub Actions 工作流：**Verify**。常规推送/PR
 运行一个快速的 Linux 浏览器构建任务，手动触发时也运行同一任务。
+受信分支推送成功后，可由仅负责部署的任务将同一份静态产物发布至 GitHub
+Pages；拉取请求不会触发部署。
 没有 CI 矩阵、跨平台任务或可选的重型 CI 验证配置。
 共用的浏览器构建验证可通过以下命令在本地运行：
 
@@ -118,8 +120,20 @@ GitHub quick 任务成功后会上传 **web-preview**，其中仅包含 `web/dis
 同一个 GitHub 任务还会在前端验证后构建固定版本的公开 JavaScript/WASM/.NET/Cross
 运行时，然后将通过清单验证的运行时文件集合上传至
 `web-preview/runtime/`。这不会增加浏览器验证套件、矩阵或
-第二个任务。确切的前置要求，以及构建好的运行时文件与经过验证可用的游戏 IPA
+第二个构建任务。确切的前置要求，以及构建好的运行时文件与经过验证可用的游戏 IPA
 之间的区别，请参阅[运行时组装](runtime-build/README.md)。
+
+### GitHub Pages
+
+首次使用时，在 **Settings → Pages → Build and deployment → Source** 选择
+**GitHub Actions**。`github-pages` 环境必须允许 `feature/web-ipa-packager`
+分支，不应允许拉取请求部署。只有本仓库该分支成功的推送或手动运行，才将
+`web/dist/` 作为 Pages 产物上传。独立部署任务只有 Pages/OIDC 写入权限，
+不会重新构建、检出源码或读取私有输入。原有可下载预览仍会保留。
+
+HTML 资源与运行时/工作线程 URL 使用项目相对路径，可在 `/d2r-mobile/`
+路径下工作，无需自定义域名、内联脚本或 Service Worker。工作流会报告实际
+部署地址；仅完成配置不代表站点已经上线。合成子路径测试不证明浏览器或游戏执行。
 Pyodide 仍可用于明确调用的本地验证与一致性参考，
 但当前的公开运行时构建不会安装或打包它。
 

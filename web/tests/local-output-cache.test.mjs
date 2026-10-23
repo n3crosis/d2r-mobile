@@ -136,13 +136,42 @@ function fixture() {
     },
   };
   const options = { directory: root, environment };
-  const shaderFolder = () => root.entries.get(".d2r-cache").entries.get("v1").entries.get("shader");
+  const shaderFolder = () => root.entries.get("D2R-cache").entries.get("v1").entries.get("shader");
   return { state, root, caches, environment, options, shaderFolder };
 }
 const key = "a".repeat(64);
 const value = new Uint8Array([1, 2, 3, 4]);
 const read = (cache, extra = {}) => cache.read({ kind: "shader", key, maxBytes: 16, ...extra });
 const write = (cache, extra = {}) => cache.write({ kind: "shader", key, bytes: value, ...extra });
+
+test("visible cache starts with a fresh ledger and leaves older hidden caches untouched", async () => {
+  const f = fixture();
+  const previous = await createLocalOutputCache(f.options);
+  assert.equal(await write(previous), true);
+  previous.close();
+  await tick();
+  const hidden = f.root.entries.get("D2R-cache");
+  const oldMarker = hidden.entries.get("v1").entries.get("cache.json").bytes.slice();
+  const oldLedger = [...f.caches.values()][0];
+  const oldEntries = [...oldLedger.entries];
+  f.root.entries.set(".d2r-cache", hidden);
+  f.root.entries.delete("D2R-cache");
+  const getDirectory = f.root.getDirectoryHandle.bind(f.root);
+  f.root.getDirectoryHandle = (name, options) => {
+    assert.notEqual(name, ".d2r-cache", "never probe or migrate the old hidden folder");
+    return getDirectory(name, options);
+  };
+  const cache = await createLocalOutputCache(f.options);
+  assert.equal(await read(cache), null);
+  assert.equal(f.caches.size, 2);
+  assert.notEqual(f.root.entries.get("D2R-cache"), hidden);
+  assert.equal(await write(cache), true);
+  assert.deepEqual(await read(cache), value);
+  assert.equal(f.root.entries.get(".d2r-cache"), hidden);
+  assert.deepEqual(hidden.entries.get("v1").entries.get("cache.json").bytes, oldMarker);
+  assert.deepEqual([...oldLedger.entries], oldEntries);
+  cache.close();
+});
 
 test("canonical key order, complete inputs, and bounded metadata", async () => {
   assert.equal(
@@ -346,7 +375,7 @@ test("hung optional storage times out and abandoned completion is not reused", a
 });
 test("unavailable browser storage and malformed foreign marker never block or get deleted", async () => {
   const f = fixture();
-  const root = await f.root.getDirectoryHandle(".d2r-cache", { create: true });
+  const root = await f.root.getDirectoryHandle("D2R-cache", { create: true });
   const folder = await root.getDirectoryHandle("v1", { create: true });
   const marker = await folder.getFileHandle("cache.json", { create: true });
   marker.bytes = new TextEncoder().encode("not our marker");
@@ -384,7 +413,7 @@ test("close cancels a pending ledger commit and holds lock through its late outc
 test("closed cache cannot start later leaf creation after a suspended directory lookup", async () => {
   const f = fixture(),
     cache = await createLocalOutputCache(f.options);
-  const folder = f.root.entries.get(".d2r-cache").entries.get("v1");
+  const folder = f.root.entries.get("D2R-cache").entries.get("v1");
   const original = folder.getDirectoryHandle.bind(folder),
     wait = deferred(),
     entered = deferred();

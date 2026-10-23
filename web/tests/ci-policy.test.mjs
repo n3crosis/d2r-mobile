@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 import { profiles, validateProfile, run } from "../verification/verify.mjs";
 const workflows = new URL("../../.github/workflows/", import.meta.url);
 
-test("one GitHub workflow runs only one Linux browser-build job", async () => {
+test("one GitHub workflow builds once and only adds a trusted-branch Pages deployment", async () => {
   assert.deepEqual(
     (await readdir(workflows)).filter((name) => name.endsWith(".yml")),
     ["verify.yml"],
@@ -15,7 +15,7 @@ test("one GitHub workflow runs only one Linux browser-build job", async () => {
   const text = await readFile(new URL("verify.yml", workflows), "utf8");
   assert.deepEqual(
     [...text.slice(text.indexOf("\njobs:")).matchAll(/^ {2}([a-z-]+):/gm)].map((match) => match[1]),
-    ["quick"],
+    ["quick", "deploy-pages"],
   );
   assert.match(text, /runs-on: ubuntu-24\.04/);
   assert.match(text, /run: node web\/verification\/verify\.mjs quick/);
@@ -52,6 +52,37 @@ test("one GitHub workflow runs only one Linux browser-build job", async () => {
   for (const sha of text.matchAll(/uses: [^@]+@(\S+)/g)) assert.match(sha[1], /^[0-9a-f]{40}$/);
   assert.match(text, /name: web-preview\n\s+path: web\/dist\//);
   assert.match(text, /retention-days: 7/);
+});
+
+test("Pages reuses verified public output without granting deployment permissions to builds or PRs", async () => {
+  const text = await readFile(new URL("verify.yml", workflows), "utf8");
+  const [build, deploy] = text.split("\n  deploy-pages:\n");
+  assert.ok(deploy);
+  assert.doesNotMatch(build, /pages: write|id-token: write/);
+  assert.match(deploy, /needs: quick/);
+  assert.match(deploy, /needs\.quick\.result == 'success'/);
+  const upload = build.slice(build.indexOf("      - name: Package the same verified webpage"));
+  for (const section of [upload, deploy]) {
+    assert.match(section, /github\.repository == 'n3crosis\/d2r-mobile'/);
+    assert.match(section, /github\.ref == 'refs\/heads\/feature\/web-ipa-packager'/);
+    assert.match(
+      section,
+      /github\.event_name == 'push' \|\| github\.event_name == 'workflow_dispatch'/,
+    );
+    assert.doesNotMatch(section, /pull_request|always\(|secrets\./);
+  }
+  assert.match(upload, /uses: actions\/upload-pages-artifact@[a-f0-9]{40}/);
+  assert.match(upload, /path: web\/dist\//);
+  assert.match(upload, /retention-days: 1/);
+  assert.match(deploy, /permissions:\n\s+pages: write\n\s+id-token: write/);
+  assert.match(
+    deploy,
+    /environment:\n\s+name: github-pages\n\s+url: \$\{\{ steps\.deployment\.outputs\.page_url \}\}/,
+  );
+  assert.match(deploy, /uses: actions\/configure-pages@[a-f0-9]{40}/);
+  assert.match(deploy, /uses: actions\/deploy-pages@[a-f0-9]{40}/);
+  assert.doesNotMatch(deploy, /checkout|run:|enablement:|contents: write|download-artifact/);
+  assert.ok(build.indexOf("node web/runtime-build/stage-preview.mjs") < build.indexOf(upload));
 });
 
 // 原生编译输入与固定配方来源变更也必须触发同一个构建作业。

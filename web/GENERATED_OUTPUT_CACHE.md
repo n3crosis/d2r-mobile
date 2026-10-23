@@ -1,6 +1,6 @@
 # Local generated-output cache
 
-The browser packager may save disposable generated outputs in `.d2r-cache/v1/`
+The browser packager may save disposable generated outputs in `D2R-cache/v1/`
 inside the selected input folder. The cache is optional: permission, quota,
 corruption, unsupported browser storage, and storage timeouts fall back to normal
 generation. A fixed nonfatal notice is emitted once; raw paths/errors are not
@@ -57,10 +57,14 @@ stored. The cache is not an extraction/input-authentication bypass.
   preserved. File System Access has no exclusive-create/compare-and-delete
   primitive; concurrent external modification of cache files is unsupported.
 
-The entire `.d2r-cache` folder is disposable and can be deleted manually after a
+The entire `D2R-cache` folder is disposable and can be deleted manually after a
 job has ended. Missing files become misses. Cache statistics, an automatic cache
 clear button, portable signed cache manifests, translation caching, disk-backed
 shader output, and browser/device timing proof are not implemented here.
+
+Older `.d2r-cache` folders are left untouched and are not read or automatically
+migrated. A fresh `D2R-cache` gets a new marker identity and therefore a separate
+trusted ledger; existing hidden-cache records cannot become hits in the new folder.
 
 ## Verification
 
@@ -71,7 +75,9 @@ not execute private game inputs, a compiler, WASM, a browser, or a device.
 
 ## 简体中文
 
-可重复使用的生成结果保存在所选输入目录的 `.d2r-cache/v1/` 中。
+可重复使用的生成结果保存在所选输入目录的 `D2R-cache/v1/` 中。
+旧的 `.d2r-cache` 文件夹不会被读取、自动迁移或删除。新的 `D2R-cache` 使用新的
+标记身份与独立可信账本，不会误用旧隐藏缓存的记录。
 “忽略已保存的构建缓存”会跳过本次读取，但新生成且校验通过的结果仍可更新缓存；
 它不关闭公开运行时下载缓存。目录中的文件或 JSON 不能自行证明可信性，必须与
 当前浏览器同源存储的独立摘要记录一致，并重新通过输出校验。清除浏览器数据或
@@ -80,5 +86,5 @@ not execute private game inputs, a compiler, WASM, a browser, or a device.
 
 缓存错误不应中止正常生成，取消操作仍然有效。单文件上限为 16 MiB，已登记记录
 上限为 32,768 个、2 GiB；这不是包含崩溃残留文件的硬磁盘配额。不会递归删除目录。
-任务结束后可以手动删除整个 `.d2r-cache` 文件夹。现有验证仅使用合成数据与模块模拟，
+任务结束后可以手动删除整个 `D2R-cache` 文件夹。现有验证仅使用合成数据与模块模拟，
 没有执行私有输入、真实编译器、WASM、浏览器或设备验证。

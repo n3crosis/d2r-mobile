@@ -34,7 +34,7 @@ complete result index. Cancellation stays fatal and wipes owned returned bytes.
 
 Ignore-cache mode bypasses reads in the shared local cache; successful fresh
 generation may refresh its entries. Public runtime download caching is separate.
-Deleting the selected folder's `.d2r-cache` rebuilds generated outputs next time;
+Deleting the selected folder's `D2R-cache` rebuilds generated outputs next time;
 it must not delete original input, `D2R-resources-*`, `Legacy Device Pack-*` or IPA
 outputs. Completed resource markers currently lack source-bound per-file digest
 proof, so this feature does not silently reuse or certify those folders, nor

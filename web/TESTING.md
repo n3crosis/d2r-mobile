@@ -4,6 +4,8 @@
 
 The repository has one GitHub Actions workflow: **Verify**. Ordinary pushes/PRs
 run one quick Linux browser-build job, and manual dispatch runs that same job.
+Successful trusted-branch pushes can then deploy the same static output to GitHub
+Pages in a deployment-only job; pull requests never deploy.
 There are no CI matrices, cross-platform jobs, or optional heavy CI profiles.
 The shared browser-build verification runs locally through:
 
@@ -121,8 +123,23 @@ compatibility, installation or execution; see the delivery checklist.
 The same single GitHub job also builds the pinned public JavaScript/WASM/.NET/Cross
 runtimes after frontend verification, then uploads the manifest-verified runtime
 inventory under `web-preview/runtime/`. It adds no browser proof suite, matrix or
-second job. See [runtime assembly](runtime-build/README.md) for exact prerequisites
+second build job. See [runtime assembly](runtime-build/README.md) for exact prerequisites
 and the distinction between built runtime files and a verified usable game IPA.
+
+### GitHub Pages
+
+Enable **Settings → Pages → Build and deployment → Source: GitHub Actions** once.
+The `github-pages` environment must permit `feature/web-ipa-packager`; do not
+permit pull-request deployments. Only this repository's successful pushes or
+manual runs on that branch upload `web/dist/` as the Pages artifact. The separate
+deployment job has only Pages/OIDC write permissions and does not rebuild, check
+out sources, or read private inputs. The existing downloadable preview remains.
+
+HTML assets and runtime/worker URLs are project-relative, supporting the
+`/d2r-mobile/` path without a custom domain, inline scripts, or a service worker.
+The workflow reports the actual deployed URL; configuration alone is not proof
+that the site is live. Synthetic subpath tests do not establish browser or game
+execution.
 Pyodide remains available for explicitly invoked local proofs and parity oracles,
 but it is not installed or packaged by the current public-runtime build.
 
