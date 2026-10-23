@@ -27,28 +27,33 @@ export type AppCustomizationDraft = {
 const fields = [
   {
     name: "displayName",
+    section: "identity",
     label: "dmWebCustomName",
     maxLength: APP_CUSTOMIZATION_LIMITS.displayNameCharacters * 2,
   },
   {
     name: "bundleIdentifier",
+    section: "identity",
     label: "dmWebCustomBundle",
     maxLength: APP_CUSTOMIZATION_LIMITS.bundleIdentifierCharacters,
   },
   {
     name: "version",
+    section: "advanced",
     label: "dmWebCustomVersion",
     maxLength: APP_CUSTOMIZATION_LIMITS.versionCharacters,
   },
-  { name: "buildVersion", label: "dmWebCustomBuild", maxLength: 10 },
+  { name: "buildVersion", section: "advanced", label: "dmWebCustomBuild", maxLength: 10 },
 ] as const;
 export function AppCustomizationFields({
+  section,
   value,
   defaults,
   disabled,
   onChange,
   error,
 }: {
+  section: "identity" | "advanced";
   value: AppCustomizationDraft;
   defaults: Readonly<
     Record<"displayName" | "bundleIdentifier" | "version" | "buildVersion", string>
@@ -59,9 +64,13 @@ export function AppCustomizationFields({
 }) {
   const iconInput = useRef<HTMLInputElement>(null);
   return (
-    <div className="space-y-3 border-t pt-4">
-      <FieldTitle>{t("dmWebCustomizeApp")}</FieldTitle>
-      <FieldDescription className="text-xs">{t("dmWebCustomHelp")}</FieldDescription>
+    <div className={section === "advanced" ? "space-y-3 border-t pt-4" : "space-y-3"}>
+      {section === "advanced" && (
+        <>
+          <FieldTitle>{t("dmWebCustomizeApp")}</FieldTitle>
+          <FieldDescription className="text-xs">{t("dmWebCustomHelp")}</FieldDescription>
+        </>
+      )}
       <FieldSet
         className="max-w-xl gap-4"
         disabled={disabled}
@@ -69,78 +78,88 @@ export function AppCustomizationFields({
       >
         <FieldLegend className="sr-only">{t("dmWebCustomizeApp")}</FieldLegend>
         <FieldGroup className="grid gap-3 sm:grid-cols-2">
-          {fields.map(({ name, label, maxLength }) => (
-            <Field key={name} className="gap-2">
-              <FieldLabel htmlFor={`custom-${name}`}>{t(label)}</FieldLabel>
-              <Input
-                id={`custom-${name}`}
-                type="text"
-                value={value[name] ?? defaults[name]}
-                maxLength={maxLength}
-                autoComplete="off"
-                spellCheck={false}
-                onChange={(event) =>
-                  onChange(updateAppCustomizationDraft(value, defaults, name, event.target.value))
-                }
-                onBlur={() => {
-                  if (!disabled && value[name] === "")
-                    onChange(updateAppCustomizationDraft(value, defaults, name, defaults[name]));
-                }}
-              />
-            </Field>
-          ))}
+          {fields
+            .filter((field) => field.section === section)
+            .map(({ name, label, maxLength }) => (
+              <Field key={name} className="gap-2">
+                <FieldLabel htmlFor={`custom-${name}`}>{t(label)}</FieldLabel>
+                <Input
+                  id={`custom-${name}`}
+                  type="text"
+                  value={value[name] ?? defaults[name]}
+                  maxLength={maxLength}
+                  autoComplete="off"
+                  spellCheck={false}
+                  onChange={(event) =>
+                    onChange(updateAppCustomizationDraft(value, defaults, name, event.target.value))
+                  }
+                  onBlur={() => {
+                    if (!disabled && value[name] === "")
+                      onChange(updateAppCustomizationDraft(value, defaults, name, defaults[name]));
+                  }}
+                />
+              </Field>
+            ))}
         </FieldGroup>
-        {value.bundleIdentifier && value.bundleIdentifier !== defaults.bundleIdentifier && (
-          <FieldDescription className="text-xs">{t("dmWebCustomBundleHelp")}</FieldDescription>
+        {section === "identity" &&
+          value.bundleIdentifier &&
+          value.bundleIdentifier !== defaults.bundleIdentifier && (
+            <FieldDescription className="text-xs">{t("dmWebCustomBundleHelp")}</FieldDescription>
+          )}
+        {section === "advanced" && (
+          <>
+            <Field className="gap-2">
+              <FieldLabel htmlFor="custom-icon">{t("dmWebCustomIcon")}</FieldLabel>
+              <Input
+                id="custom-icon"
+                ref={iconInput}
+                type="file"
+                accept="image/png,.png"
+                aria-describedby="custom-icon-help"
+                onChange={(event) => onChange({ ...value, icon: event.target.files?.[0] })}
+              />
+              <FieldDescription id="custom-icon-help" className="text-xs">
+                {t("dmWebCustomIconHelp")}
+              </FieldDescription>
+              {!value.icon && (
+                <FieldDescription className="text-xs">
+                  {t("dmWebCustomDefaultIcon")}
+                </FieldDescription>
+              )}
+            </Field>
+            <div className="flex flex-wrap gap-2">
+              {value.icon && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (disabled) return;
+                    onChange({ ...value, icon: undefined });
+                    if (iconInput.current) iconInput.current.value = "";
+                  }}
+                >
+                  {t("dmWebCustomRemoveIcon")}
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (disabled) return;
+                  onChange({});
+                  if (iconInput.current) iconInput.current.value = "";
+                }}
+              >
+                {t("dmWebCustomReset")}
+              </Button>
+            </div>
+          </>
         )}
-        <Field className="gap-2">
-          <FieldLabel htmlFor="custom-icon">{t("dmWebCustomIcon")}</FieldLabel>
-          <Input
-            id="custom-icon"
-            ref={iconInput}
-            type="file"
-            accept="image/png,.png"
-            aria-describedby="custom-icon-help"
-            onChange={(event) => onChange({ ...value, icon: event.target.files?.[0] })}
-          />
-          <FieldDescription id="custom-icon-help" className="text-xs">
-            {t("dmWebCustomIconHelp")}
-          </FieldDescription>
-          {!value.icon && (
-            <FieldDescription className="text-xs">{t("dmWebCustomDefaultIcon")}</FieldDescription>
-          )}
-        </Field>
-        <div className="flex flex-wrap gap-2">
-          {value.icon && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                if (disabled) return;
-                onChange({ ...value, icon: undefined });
-                if (iconInput.current) iconInput.current.value = "";
-              }}
-            >
-              {t("dmWebCustomRemoveIcon")}
-            </Button>
-          )}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              if (disabled) return;
-              onChange({});
-              if (iconInput.current) iconInput.current.value = "";
-            }}
-          >
-            {t("dmWebCustomReset")}
-          </Button>
-        </div>
       </FieldSet>
 
-      {error && (
+      {section === "identity" && error && (
         <FieldError id="customization-error" className="pb-3">
           {error}
         </FieldError>

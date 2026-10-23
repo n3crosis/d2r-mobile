@@ -3,7 +3,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { createPostGenerationGuide } from "../post-generation-guide.mjs";
-import { resolveAppIdentityPreview } from "../app-customization-defaults.mjs";
 
 const defaults = {
   displayName: "D2R Mobile",
@@ -65,31 +64,6 @@ test("skipped, missing and incomplete resources never produce a copy-success ins
   assert.equal(createPostGenerationGuide({ resources }, ""), null);
 });
 
-test("visible identity uses valid edits and does not advertise invalid draft values", () => {
-  assert.deepEqual(resolveAppIdentityPreview({}, defaults), {
-    displayName: defaults.displayName,
-    bundleIdentifier: defaults.bundleIdentifier,
-  });
-  assert.deepEqual(
-    resolveAppIdentityPreview(
-      { displayName: "My D2R", bundleIdentifier: "com.example.game" },
-      defaults,
-    ),
-    { displayName: "My D2R", bundleIdentifier: "com.example.game" },
-  );
-  assert.deepEqual(
-    resolveAppIdentityPreview(
-      { displayName: "My D2R", bundleIdentifier: "invalid identifier" },
-      defaults,
-    ),
-    { displayName: "My D2R", bundleIdentifier: defaults.bundleIdentifier },
-  );
-  assert.deepEqual(
-    resolveAppIdentityPreview({ displayName: "", bundleIdentifier: "com.example.game" }, defaults),
-    { displayName: defaults.displayName, bundleIdentifier: "com.example.game" },
-  );
-});
-
 test("UI snapshots successful identity, uses originals for recovery, and reads actual download filename", async () => {
   const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
   const guide = await readFile(
@@ -109,16 +83,4 @@ test("UI snapshots successful identity, uses originals for recovery, and reads a
   assert.match(guide, /t\("dmWebResultCopy", output.resourcesDirectory, output.appName\)/);
   assert.match(guide, /t\("dmWebResultCopy", output.legacyDirectory, output.appName\)/);
   assert.doesNotMatch(guide, /legacyAstc|<UUID>|D2RMobile-unsigned\.ipa|org\.d2rmobile\.app/);
-});
-
-test("current identity is visible outside Advanced while edits stay inside the mounted section", async () => {
-  const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
-  const identityIndex = app.indexOf("{identityPreview.displayName}");
-  const advancedIndex = app.indexOf('<AccordionItem value="advanced">');
-  assert.ok(identityIndex !== -1 && identityIndex < advancedIndex);
-  assert.ok(app.indexOf("{identityPreview.bundleIdentifier}") < advancedIndex);
-  const advanced = app.slice(advancedIndex, app.indexOf('<AccordionItem value="signing">'));
-  assert.match(advanced, /<AppCustomizationFields/);
-  assert.match(advanced, /<AccordionContent forceMount/);
-  assert.doesNotMatch(app, /<AccordionItem value="customize"/);
 });

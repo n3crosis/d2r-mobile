@@ -166,6 +166,7 @@ test("signing inputs lock after output or termination without blocking an idle s
       )
       .initializer.expression.getText(parsed);
     const state = {
+      signing: true,
       ready: true,
       signingReady: true,
       busy: false,
@@ -177,6 +178,7 @@ test("signing inputs lock after output or termination without blocking an idle s
     const locked = (overrides) => vm.runInNewContext(disabled, { ...state, ...overrides });
     assert.equal(locked({}), false, "ready pre-generation credentials are editable");
     for (const override of [
+      { signing: false },
       { ready: false },
       { signingReady: false },
       { busy: true },
@@ -193,7 +195,12 @@ test("signing inputs lock after output or termination without blocking an idle s
       signingRetryAvailable: true,
     };
     assert.equal(locked(retry), false, "failed signing permits fresh credentials for retry");
-    for (const override of [{ busy: true }, { generating: true }, { signingReady: false }])
+    for (const override of [
+      { signing: false },
+      { busy: true },
+      { generating: true },
+      { signingReady: false },
+    ])
       assert.equal(
         locked({ ...retry, ...override }),
         true,

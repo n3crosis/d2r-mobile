@@ -21,7 +21,7 @@ const customization = await readFile(
   "utf8",
 );
 const parsed = ts.createSourceFile("App.tsx", app, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-function handler(tag, id) {
+function handlers(tag, id) {
   const matches = [];
   function visit(node) {
     if (
@@ -41,8 +41,8 @@ function handler(tag, id) {
     ts.forEachChild(node, visit);
   }
   visit(parsed);
-  assert.equal(matches.length, 1);
-  return matches[0];
+  assert.equal(matches.length, tag === "AppCustomizationFields" ? 2 : 1);
+  return matches;
 }
 function inputContext(overrides = {}) {
   const writes = [];
@@ -79,7 +79,8 @@ test("manual route and package selectors are removed without changing customizat
     { operationGate: { current: { busy: true } } },
   ]) {
     const { context, writes } = inputContext(overrides);
-    vm.runInNewContext(handler("AppCustomizationFields"), context)({ displayName: "changed" });
+    for (const handler of handlers("AppCustomizationFields"))
+      vm.runInNewContext(handler, context)({ displayName: "changed" });
     assert.equal(writes.length, 0);
   }
 });
@@ -123,12 +124,12 @@ test("compatibility display derives from the actual selected profile registry", 
 test("advanced customization shows selected-shell defaults without persisting or submitting unchanged values", () => {
   const advanced = app.slice(
     app.indexOf('<AccordionItem value="advanced">'),
-    app.indexOf('<AccordionItem value="signing">'),
+    app.indexOf("</AccordionContent>", app.indexOf('<AccordionItem value="advanced">')),
   );
   assert.match(advanced, /<AppCustomizationFields/);
   assert.match(advanced, /<AccordionContent forceMount/);
   assert.doesNotMatch(customization, /<AccordionItem|<AccordionContent/);
-  assert.match(app, /useState<string\[\]>\(\(\) => \(signing \? \["signing"\] : \[\]\)\)/);
+  assert.match(app, /useState<string\[\]>\(\[\]\)/);
   assert.match(app, /useState<AppCustomizationDraft>\(\{\}\)/);
   assert.match(app, /resolveAppCustomizationDefaults\(profileId\)/);
   assert.match(app, /normalizeAppCustomizationDraft\(appCustomization, appCustomizationDefaults\)/);

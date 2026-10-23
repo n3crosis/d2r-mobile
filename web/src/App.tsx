@@ -37,7 +37,6 @@ import { prepareAppCustomization } from "../app-customization.mjs";
 import {
   normalizeAppCustomizationDraft,
   resolveAppCustomizationDefaults,
-  resolveAppIdentityPreview,
 } from "../app-customization-defaults.mjs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { prepareBrowserPackager, takeCommittedDownload } from "../browser-packager.mjs";
@@ -122,13 +121,7 @@ export default function App() {
   const [signingReady, setSigningReady] = useState(false);
   const [signingStatus, setSigningStatus] = useState("");
   const [signingRetryAvailable, setSigningRetryAvailable] = useState(false);
-  const [openOptions, setOpenOptions] = useState<string[]>(() => (signing ? ["signing"] : []));
-  useEffect(() => {
-    if (signingRetryAvailable)
-      setOpenOptions((current) =>
-        current.includes("signing") ? current : [...current, "signing"],
-      );
-  }, [signingRetryAvailable]);
+  const [openOptions, setOpenOptions] = useState<string[]>([]);
   const unsignedForSigning = useRef<{ blob: Blob; fileName: string } | null>(null);
   const identityInput = useRef<HTMLInputElement>(null);
   const profileInput = useRef<HTMLInputElement>(null);
@@ -153,10 +146,6 @@ export default function App() {
   const appCustomizationDefaults = useMemo(
     () => resolveAppCustomizationDefaults(profileId),
     [profileId],
-  );
-  const identityPreview = useMemo(
-    () => resolveAppIdentityPreview(appCustomization, appCustomizationDefaults),
-    [appCustomization, appCustomizationDefaults],
   );
   const [customizationError, setCustomizationError] = useState("");
   const customizationValidation = useMemo(() => {
@@ -926,16 +915,107 @@ export default function App() {
         </CardHeader>
         <CardContent className="space-y-4">
           <InstallationGuide />
-          <dl className="grid gap-x-6 gap-y-2 rounded-md border bg-muted/30 px-3 py-2 text-sm sm:grid-cols-2">
-            <div className="min-w-0">
-              <dt className="text-xs text-muted-foreground">{t("dmWebCustomName")}</dt>
-              <dd className="break-words font-medium">{identityPreview.displayName}</dd>
-            </div>
-            <div className="min-w-0">
-              <dt className="text-xs text-muted-foreground">{t("dmWebCustomBundle")}</dt>
-              <dd className="break-all font-medium">{identityPreview.bundleIdentifier}</dd>
-            </div>
-          </dl>
+          <AppCustomizationFields
+            section="identity"
+            value={appCustomization}
+            defaults={appCustomizationDefaults}
+            disabled={!ready || busy || finished || download !== null}
+            error={customizationValidation.error || customizationError}
+            onChange={(value) => {
+              if (operationGate.current.busy || !ready || busy || finished || download !== null)
+                return;
+              setAppCustomization(value);
+              setCustomizationError("");
+            }}
+          />
+          <FieldSet className="gap-3 border-t pt-4">
+            <FieldLegend variant="label">{t("dmWebSigningOptions")}</FieldLegend>
+            <Field orientation="horizontal">
+              <Checkbox
+                id="signing-enabled"
+                checked={signing}
+                disabled={busy || generating || finished || download !== null}
+                onCheckedChange={(checked) => {
+                  if (
+                    operationGate.current.busy ||
+                    finished ||
+                    busy ||
+                    generating ||
+                    download !== null
+                  )
+                    return;
+                  if (checked !== true) clearSigningInputs();
+                  setSigning(checked === true);
+                }}
+              />
+              <FieldContent>
+                <FieldLabel htmlFor="signing-enabled">{t("dmWebSigningOption")}</FieldLabel>
+                <FieldDescription className="text-xs">{t("dmWebSigningHelp")}</FieldDescription>
+              </FieldContent>
+            </Field>
+            <FieldSet
+              className="max-w-xl gap-3"
+              disabled={
+                !signing ||
+                !signingReady ||
+                busy ||
+                generating ||
+                ((!ready || finished || download !== null) && !signingRetryAvailable)
+              }
+            >
+              <FieldLegend className="sr-only">{t("dmWebSigningCredentials")}</FieldLegend>
+              <FieldGroup className="gap-3">
+                <Field className="gap-1.5 sm:grid sm:grid-cols-[11rem_minmax(0,1fr)] sm:items-center">
+                  <FieldLabel htmlFor="signing-identity" className="font-normal">
+                    {t("dmWebSigningIdentity")}
+                  </FieldLabel>
+                  <Input
+                    id="signing-identity"
+                    ref={identityInput}
+                    type="file"
+                    accept=".p12,.pfx"
+                    onChange={() => {
+                      if (!operationGate.current.busy)
+                        setSigningFiles({
+                          identity: Boolean(identityInput.current?.files?.[0]),
+                          profile: Boolean(profileInput.current?.files?.[0]),
+                        });
+                    }}
+                  />
+                </Field>
+                <Field className="gap-1.5 sm:grid sm:grid-cols-[11rem_minmax(0,1fr)] sm:items-center">
+                  <FieldLabel htmlFor="signing-password" className="font-normal">
+                    {t("dmWebSigningPassword")}
+                  </FieldLabel>
+                  <Input
+                    id="signing-password"
+                    ref={passwordInput}
+                    type="password"
+                    autoComplete="off"
+                    maxLength={IPA_SIGNING_LIMITS.passwordCharacters}
+                  />
+                </Field>
+                <Field className="gap-1.5 sm:grid sm:grid-cols-[11rem_minmax(0,1fr)] sm:items-center">
+                  <FieldLabel htmlFor="signing-profile" className="font-normal">
+                    {t("dmWebSigningProfile")}
+                  </FieldLabel>
+                  <Input
+                    id="signing-profile"
+                    ref={profileInput}
+                    type="file"
+                    accept=".mobileprovision"
+                    onChange={() => {
+                      if (!operationGate.current.busy)
+                        setSigningFiles({
+                          identity: Boolean(identityInput.current?.files?.[0]),
+                          profile: Boolean(profileInput.current?.files?.[0]),
+                        });
+                    }}
+                  />
+                </Field>
+              </FieldGroup>
+            </FieldSet>
+          </FieldSet>
           <div className="grid gap-3 sm:grid-cols-2">
             <Button
               variant="outline"
@@ -1257,6 +1337,7 @@ export default function App() {
                   )}
                 </FieldGroup>
                 <AppCustomizationFields
+                  section="advanced"
                   value={appCustomization}
                   defaults={appCustomizationDefaults}
                   disabled={!ready || busy || finished || download !== null}
@@ -1274,99 +1355,6 @@ export default function App() {
                     setCustomizationError("");
                   }}
                 />
-              </AccordionContent>
-            </AccordionItem>
-            <AccordionItem value="signing">
-              <AccordionTrigger className="min-h-11 py-3">
-                {t("dmWebSigningOptions")}
-              </AccordionTrigger>
-              <AccordionContent forceMount className="space-y-4">
-                <Field orientation="horizontal">
-                  <Checkbox
-                    id="signing-enabled"
-                    checked={signing}
-                    disabled={busy || generating || finished || download !== null}
-                    onCheckedChange={(checked) => {
-                      if (
-                        operationGate.current.busy ||
-                        finished ||
-                        busy ||
-                        generating ||
-                        download !== null
-                      )
-                        return;
-                      if (checked !== true) clearSigningInputs();
-                      setSigning(checked === true);
-                    }}
-                  />
-                  <FieldContent>
-                    <FieldLabel htmlFor="signing-enabled">{t("dmWebSigningOption")}</FieldLabel>
-                    <FieldDescription className="text-xs">{t("dmWebSigningHelp")}</FieldDescription>
-                  </FieldContent>
-                </Field>
-                {signing && (
-                  <FieldSet
-                    className="max-w-xl gap-3"
-                    disabled={
-                      !signingReady ||
-                      busy ||
-                      generating ||
-                      ((!ready || finished || download !== null) && !signingRetryAvailable)
-                    }
-                  >
-                    <FieldLegend className="sr-only">{t("dmWebSigningCredentials")}</FieldLegend>
-                    <FieldGroup className="gap-3">
-                      <Field className="gap-1.5 sm:grid sm:grid-cols-[11rem_minmax(0,1fr)] sm:items-center">
-                        <FieldLabel htmlFor="signing-identity" className="font-normal">
-                          {t("dmWebSigningIdentity")}
-                        </FieldLabel>
-                        <Input
-                          id="signing-identity"
-                          ref={identityInput}
-                          type="file"
-                          accept=".p12,.pfx"
-                          onChange={() => {
-                            if (!operationGate.current.busy)
-                              setSigningFiles({
-                                identity: Boolean(identityInput.current?.files?.[0]),
-                                profile: Boolean(profileInput.current?.files?.[0]),
-                              });
-                          }}
-                        />
-                      </Field>
-                      <Field className="gap-1.5 sm:grid sm:grid-cols-[11rem_minmax(0,1fr)] sm:items-center">
-                        <FieldLabel htmlFor="signing-password" className="font-normal">
-                          {t("dmWebSigningPassword")}
-                        </FieldLabel>
-                        <Input
-                          id="signing-password"
-                          ref={passwordInput}
-                          type="password"
-                          autoComplete="off"
-                          maxLength={IPA_SIGNING_LIMITS.passwordCharacters}
-                        />
-                      </Field>
-                      <Field className="gap-1.5 sm:grid sm:grid-cols-[11rem_minmax(0,1fr)] sm:items-center">
-                        <FieldLabel htmlFor="signing-profile" className="font-normal">
-                          {t("dmWebSigningProfile")}
-                        </FieldLabel>
-                        <Input
-                          id="signing-profile"
-                          ref={profileInput}
-                          type="file"
-                          accept=".mobileprovision"
-                          onChange={() => {
-                            if (!operationGate.current.busy)
-                              setSigningFiles({
-                                identity: Boolean(identityInput.current?.files?.[0]),
-                                profile: Boolean(profileInput.current?.files?.[0]),
-                              });
-                          }}
-                        />
-                      </Field>
-                    </FieldGroup>
-                  </FieldSet>
-                )}
               </AccordionContent>
             </AccordionItem>
           </Accordion>

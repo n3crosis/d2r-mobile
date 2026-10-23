@@ -66,7 +66,7 @@ test("form uses shadcn controls with explicit matching labels and compact disclo
   }
 });
 
-test("all three local file inputs remain mounted when their option section closes", () => {
+test("signing files are always mounted and Advanced retains the icon input when closed", () => {
   let count = 0;
   for (const document of documents) {
     for (const input of elements(document).filter(
@@ -76,10 +76,12 @@ test("all three local file inputs remain mounted when their option section close
       count++;
       const accordionContent = enclosing(input, "AccordionContent");
       if (accordionContent) assert.ok(attribute(accordionContent, "forceMount"));
-      else {
+      else if (document !== documents[0]) {
         const appElements = elements(documents[0]);
         const customization = appElements.find(
-          (node) => node.tagName.getText() === "AppCustomizationFields",
+          (node) =>
+            node.tagName.getText() === "AppCustomizationFields" &&
+            attribute(node, "section")?.initializer?.text === "advanced",
         );
         assert.ok(attribute(enclosing(customization, "AccordionContent"), "forceMount"));
       }
@@ -90,7 +92,8 @@ test("all three local file inputs remain mounted when their option section close
   assert.equal(count, 3);
   assert.match(sources[0], /\[&_\[data-slot=accordion-content\]\[data-state=closed\]\]:hidden/);
   assert.match(sources[0], /onValueChange=\{setOpenOptions\}/);
-  assert.match(sources[0], /if \(signingRetryAvailable\)[\s\S]*?setOpenOptions/);
+  assert.doesNotMatch(sources[0], /<AccordionItem value="signing"|\{signing && \(/);
+  assert.match(sources[0], /useState<string\[\]>\(\[\]\)/);
 });
 
 test("existing Tailwind pipeline emits file, focus, closed-content and numbered-step utilities", async () => {

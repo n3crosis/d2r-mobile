@@ -49,17 +49,10 @@ test("default primary flow contains no expanded selectors and keeps overrides to
   assert.ok(app.indexOf('t("dmWebGenerate")') < advanced.pos);
   assert.ok(app.indexOf("{status}") < advanced.pos);
   assert.ok(app.indexOf("originalIdentityDownload\n") < advanced.pos);
-  const signing = details.find((node) => node.getText(parsed).includes('t("dmWebSigningOptions")'));
-  if (signing.openingElement.tagName.getText(parsed) === "AccordionItem") {
-    assert.equal(attribute(signing.openingElement, "value").initializer.text, "signing");
-    assert.match(app, /useState<string\[\]>\(\(\) => \(signing \? \["signing"\] : \[\]\)\)/);
-    assert.match(app, /if \(signingRetryAvailable\)[\s\S]*?setOpenOptions/);
-  } else {
-    assert.equal(
-      attribute(signing.openingElement, "open").initializer.expression.getText(parsed),
-      "signing || signingRetryAvailable",
-    );
-  }
+  assert.ok(!details.some((node) => node.getText(parsed).includes('t("dmWebSigningOptions")')));
+  for (const id of ["signing-enabled", "signing-identity", "signing-password", "signing-profile"])
+    assert.ok(app.indexOf(`id="${id}"`) < advanced.pos);
+  assert.match(app, /useState<string\[\]>\(\[\]\)/);
   assert.match(app, /get\("target"\) === "ios18" \? "ios18" : "ios26"/);
   assert.match(app, /get\("legacyAstc"\) === "1"/);
   assert.doesNotMatch(app, /userAgent|userAgentData|deviceMemory/);
