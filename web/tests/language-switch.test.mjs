@@ -123,7 +123,6 @@ test("the shared translation bridge switches future text while earlier messages 
     assert.equal(t("dmWebChoose"), catalog.dmWebChoose[1]);
     assert.equal(earlierMessage, catalog.dmWebChoose[0]);
     assert.equal(seen.at(-1), catalog.dmWebChoose[1]);
-    assert.equal(t("dmWebLanguageHistoryHelp"), catalog.dmWebLanguageHistoryHelp[1]);
   } finally {
     unsubscribe();
     setBrowserLanguage(original);
@@ -182,9 +181,6 @@ test("top selector rerenders the mounted App and html language without remountin
     change.getText(parsed),
     /reload|location|setFolder|setInputMode|setAppCustomization|clearSigningInputs|prepareBrowserPackager/,
   );
-  assert.match(
-    catalog.dmWebLanguageHistoryHelp[0],
-    /Earlier status messages and activity entries keep their original language/,
-  );
-  assert.match(catalog.dmWebLanguageHistoryHelp[1], /之前的状态消息和活动记录保留原语言/);
+  assert.doesNotMatch(app, /dmWebLanguageHistoryHelp|ui-language-help/);
+  assert.equal(Object.hasOwn(catalog, "dmWebLanguageHistoryHelp"), false);
 });

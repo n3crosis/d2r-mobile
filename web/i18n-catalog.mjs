@@ -1348,9 +1348,5 @@ export const catalog = Object.freeze({
   "dmWebCacheUnavailable": [
     "Saved build cache is unavailable; continuing without it.",
     "已保存的生成缓存不可用，将继续生成而不使用缓存。"
-  ],
-  "dmWebLanguageHistoryHelp": [
-    "Controls and new messages use the selected language. Earlier status messages and activity entries keep their original language.",
-    "控件和新消息会使用所选语言；之前的状态消息和活动记录保留原语言。"
   ]
 });

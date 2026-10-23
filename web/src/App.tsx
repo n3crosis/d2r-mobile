@@ -915,27 +915,21 @@ export default function App() {
     <main className="mx-auto flex min-h-screen max-w-3xl items-start px-4 py-8 sm:items-center sm:px-6 sm:py-12">
       <Card className="w-full gap-5 overflow-hidden border-primary/15 pt-0 shadow-sm">
         <CardHeader className="gap-3 border-b border-primary/10 bg-linear-to-br from-primary/10 via-card to-card py-6">
-          <div className="space-y-1">
-            <Field orientation="horizontal" className="ml-auto w-fit gap-2">
-              <FieldLabel htmlFor="ui-language">Language / 语言</FieldLabel>
-              <NativeSelect
-                id="ui-language"
-                value={language}
-                aria-describedby="ui-language-help"
-                onChange={(event) => setBrowserLanguage(event.target.value)}
-              >
-                <NativeSelectOption value="en" lang="en">
-                  English
-                </NativeSelectOption>
-                <NativeSelectOption value="zh-CN" lang="zh-CN">
-                  简体中文
-                </NativeSelectOption>
-              </NativeSelect>
-            </Field>
-            <p id="ui-language-help" className="text-right text-xs text-muted-foreground">
-              {t("dmWebLanguageHistoryHelp")}
-            </p>
-          </div>
+          <Field orientation="horizontal" className="ml-auto w-fit gap-2">
+            <FieldLabel htmlFor="ui-language">Language / 语言</FieldLabel>
+            <NativeSelect
+              id="ui-language"
+              value={language}
+              onChange={(event) => setBrowserLanguage(event.target.value)}
+            >
+              <NativeSelectOption value="en" lang="en">
+                English
+              </NativeSelectOption>
+              <NativeSelectOption value="zh-CN" lang="zh-CN">
+                简体中文
+              </NativeSelectOption>
+            </NativeSelect>
+          </Field>
           <div className="flex items-center gap-3">
             <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
               <PackageIcon className="size-6" aria-hidden="true" />
