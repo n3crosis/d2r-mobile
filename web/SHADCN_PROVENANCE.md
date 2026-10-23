@@ -6,8 +6,6 @@ These are upstream component sources, not lookalike reimplementations.
 Source adaptations are `from "cn"` → `from "@/lib/utils"` for the standard local
 clsx/tailwind-merge helper, and registry-local imports → `@/components/ui/`.
 No alternate UI library or hand-written replacement primitives are used.
-The separately attributed community Stepper below is an exception to the official
-shadcn/ui provenance; it is not an official shadcn component.
 已移除未使用的组件与导出；下方来源记录保留作历史归属。
 Unused scaffold was removed: `alert.tsx`, `CardAction`, `CardFooter`, and the public
 `buttonVariants` export. The registry records below remain as historical attribution.
@@ -52,37 +50,12 @@ The copied components also receive standard Oxfmt formatting under the workspace
 configuration. The hashes above identify original registry responses, not the
 locally formatted files. Formatting does not introduce custom component styles.
 
-## ReUI community Stepper
+## Installation guide
 
-The official [shadcn/ui component index](https://ui.shadcn.com/docs/components)
-does not list a Stepper as of 2026-10-23. Its
-[registry directory](https://ui.shadcn.com/docs/directory) distinguishes
-third-party/community components from the official library.
-
-`src/components/ui/stepper.tsx` is vendored from the real, MIT-licensed
-[ReUI Radix Stepper](https://reui.io/docs/components/radix/stepper), retrieved on
-2026-10-23. It is not a locally invented lookalike or an official shadcn/ui component.
-
-- Registry: https://reui.io/r/radix-nova/stepper.json
-- Registry response SHA-256: `2cd6f01155065c1c4363cf16484f8146b5a4357cd71c775f6c59af62736358be`
-- License: https://github.com/keenthemes/reui/blob/main/LICENSE.md, retained verbatim
-  in `REUI_LICENSE.md` and copied into the frontend notices.
-- Registry dependencies: `cn` and `radix-ui`. The `cn` import uses the existing
-  `@/lib/utils` clsx/tailwind-merge helper; no packages were added.
-
-Documented local adaptations beyond Oxfmt formatting:
-
-- Explicit `completed={false}` suppresses position-based completion. The guide
-  uses this on every step; viewing instructions never asserts device actions happened.
-- React `useId` scopes tab/panel IDs. The tablist belongs to the navigation,
-  not the wrapper containing panels; contents have matching tabpanel semantics.
-- Navigation/content forward labelling props; triggers have `type="button"`.
-- Trigger registration removes the actual node on cleanup, including Strict Mode.
-- Keyboard callbacks and context dependencies are stable and complete for the
-  repository's hook lint rules.
-
-The installation guide composes this Stepper with the official shadcn Accordion
-above. The guide is collapsible and shows one compact detail panel at a time.
+The preparation and installation guide uses the existing official shadcn Accordion
+with plain numbered labels. Each step expands to its instructions; signing and
+transfer alternatives remain optional disclosures. Opening a step does not mark
+installation or copying complete. No additional component library is used.
 
 ## Overall generation Progress
 

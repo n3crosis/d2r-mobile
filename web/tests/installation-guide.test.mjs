@@ -1,11 +1,9 @@
-// Static source and isolated navigation checks only; no browser, compiler, game or device execution.
+// Static guide and notice checks only; no browser, compiler, game or device execution.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile, mkdtemp, rm } from "node:fs/promises";
+import { readFile, access, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import vm from "node:vm";
-import ts from "typescript";
 import { catalog } from "../i18n-catalog.mjs";
 import { writeFrontendNotices } from "../scripts/frontend-notices.mjs";
 
@@ -13,35 +11,13 @@ const guide = await readFile(
   new URL("../src/components/InstallationGuide.tsx", import.meta.url),
   "utf8",
 );
-const stepper = await readFile(
-  new URL("../src/components/ui/stepper.tsx", import.meta.url),
-  "utf8",
-);
-const parsed = ts.createSourceFile(
-  "stepper.tsx",
-  stepper,
-  ts.ScriptTarget.Latest,
-  true,
-  ts.ScriptKind.TSX,
-);
-function declaration(name) {
-  const matches = [];
-  function visit(node) {
-    if (ts.isVariableDeclaration(node) && node.name.getText(parsed) === name) matches.push(node);
-    ts.forEachChild(node, visit);
-  }
-  visit(parsed);
-  assert.equal(matches.length, 1, name);
-  return matches[0].initializer;
-}
 
-test("guide uses the attributed community Stepper with a compact disclosure and four linked panels", () => {
-  assert.match(guide, /<Accordion type="single" collapsible/);
-  assert.match(guide, /<Stepper defaultValue=\{1\}/);
-  assert.match(guide, /<StepperNav aria-label=/);
-  assert.match(guide, /<StepperItem[\s\S]*?completed=\{false\}/);
-  assert.match(guide, /<StepperContent[\s\S]*?forceMount/);
-  assert.match(guide, /<StepperSeparator/);
+test("guide uses only the existing Accordion with four plain numbered step labels", () => {
+  const imports = [...guide.matchAll(/from "([^"]+)"/g)].map((match) => match[1]);
+  assert.deepEqual(imports, ["../../i18n.mjs", "@/components/ui/accordion"]);
+  assert.match(guide, /<Accordion type="single" collapsible defaultValue="dmWebGuidePrepare">/);
+  assert.match(guide, /<AccordionItem key=\{step.title\} value=\{step.title\}>/);
+  assert.match(guide, /\{index \+ 1\}\. \{t\(step.title\)\}/);
   const titles = [
     ...guide
       .slice(guide.indexOf("const steps ="), guide.indexOf("] as const;"))
@@ -53,6 +29,13 @@ test("guide uses the attributed community Stepper with a compact disclosure and 
     "dmWebGuideInstall",
     "dmWebGuideCopy",
   ]);
+  assert.doesNotMatch(
+    guide,
+    /Stepper|Questionnaire|useState|useEffect|setTimeout|fetch\(|localStorage|onDrop|type="file"|completed=/,
+  );
+});
+
+test("guide preserves bilingual instructions, optional details and the no-auto-completion warning", () => {
   for (const key of [...guide.matchAll(/"(dmWebGuide\w+)"/g)].map((match) => match[1])) {
     assert.equal(catalog[key]?.length, 2, key);
     assert.ok(
@@ -60,80 +43,10 @@ test("guide uses the attributed community Stepper with a compact disclosure and 
       key,
     );
   }
-  assert.doesNotMatch(
-    guide,
-    /useEffect|setTimeout|fetch\(|localStorage|onDrop|type="file"|completed=\{true\}/,
-  );
-});
-
-test("browsing a later guide step cannot auto-complete earlier manual steps", () => {
-  const state = declaration("state").getText(parsed);
-  for (let activeStep = 1; activeStep <= 4; activeStep++) {
-    for (let step = 1; step <= 4; step++) {
-      assert.equal(
-        vm.runInNewContext(state, { step, activeStep, completed: false }),
-        step === activeStep ? "active" : "inactive",
-      );
-    }
-  }
-  assert.equal(
-    vm.runInNewContext(state, { step: 1, activeStep: 4, completed: undefined }),
-    "completed",
-    "upstream default is retained outside the guide",
-  );
-});
-
-test("real keyboard handler supports arrow, Home/End and explicit panel activation", () => {
-  const callback = declaration("handleKeyDown");
-  const code = `(${callback.parameters.map((parameter) => parameter.name.getText(parsed)).join(",")}) => ${callback.body.getText(parsed)}`;
-  for (const [key, expected] of [
-    ["ArrowRight", "next"],
-    ["ArrowDown", "next"],
-    ["ArrowLeft", "prev"],
-    ["ArrowUp", "prev"],
-    ["Home", "first"],
-    ["End", "last"],
-    ["Enter", "select"],
-    [" ", "select"],
-  ]) {
-    const calls = [];
-    const handler = vm.runInNewContext(code, {
-      myIdx: 2,
-      step: 3,
-      focusNext: () => calls.push("next"),
-      focusPrev: () => calls.push("prev"),
-      focusFirst: () => calls.push("first"),
-      focusLast: () => calls.push("last"),
-      setActiveStep: (step) => {
-        assert.equal(step, 3);
-        calls.push("select");
-      },
-    });
-    handler({ key, preventDefault: () => calls.push("prevent") });
-    assert.deepEqual(calls, ["prevent", expected]);
-  }
-});
-
-test("tablist is limited to navigation and stable IDs connect tabs to hidden retained panels", () => {
-  const root = stepper.slice(
-    stepper.indexOf("function Stepper("),
-    stepper.indexOf("interface StepperItemProps"),
-  );
-  const nav = stepper.slice(
-    stepper.indexOf("function StepperNav("),
-    stepper.indexOf("function StepperPanel("),
-  );
-  const content = stepper.slice(stepper.indexOf("function StepperContent("));
-  assert.doesNotMatch(root, /role="tablist"/);
-  assert.match(root, /const id = useId\(\)/);
-  assert.match(nav, /role="tablist"/);
-  assert.match(nav, /aria-orientation=\{orientation\}/);
-  assert.match(stepper, /const id = `\$\{stepperCtx.id\}-tab-\$\{step\}`/);
-  assert.match(stepper, /const panelId = `\$\{stepperCtx.id\}-panel-\$\{step\}`/);
-  assert.match(content, /role="tabpanel"/);
-  assert.match(content, /aria-labelledby=\{`\$\{id\}-tab-\$\{value\}`\}/);
-  assert.match(content, /hidden=\{!isActive && forceMount\}/);
-  assert.match(stepper, /if \(node\) return registerTrigger\(node\)/);
+  assert.match(guide, /extraDetails\[index \+ 1\]/);
+  assert.match(guide, /dmWebGuideSigningDetails/);
+  assert.match(guide, /dmWebGuideTransferDetails/);
+  assert.match(catalog.dmWebGuideIntro[0], /does not mark installation or copying complete/);
 });
 
 test("guide copy distinguishes local output from manual device installation and resource copying", () => {
@@ -211,15 +124,20 @@ test("installation instructions separate IPA signing from asset file sharing and
     assert.ok(guide.includes(url));
 });
 
-test("production notices retain the ReUI MIT license in full without running a frontend build", async () => {
-  const directory = await mkdtemp(resolve(tmpdir(), "reui-notices-"));
+test("removed community component and license are absent from source and generated notices", async () => {
+  for (const path of ["../src/components/ui/stepper.tsx", "../REUI_LICENSE.md"])
+    await assert.rejects(access(new URL(path, import.meta.url)), { code: "ENOENT" });
+  const provenance = await readFile(new URL("../SHADCN_PROVENANCE.md", import.meta.url), "utf8");
+  assert.doesNotMatch(provenance, /ReUI|reui|community Stepper/);
+  assert.match(provenance, /existing official shadcn Accordion/);
+  assert.match(provenance, /Overall generation Progress/);
+  const directory = await mkdtemp(resolve(tmpdir(), "guide-notices-"));
   try {
     await writeFrontendNotices(directory);
-    const license = await readFile(new URL("../REUI_LICENSE.md", import.meta.url), "utf8");
-    assert.match(license, /Copyright \(c\) 2025 Keenthemes Inc/);
-    assert.ok(
-      (await readFile(resolve(directory, "third-party-notices.txt"), "utf8")).includes(license),
-    );
+    const notices = await readFile(resolve(directory, "third-party-notices.txt"), "utf8");
+    assert.doesNotMatch(notices, /ReUI|Keenthemes/);
+    for (const path of ["../SHADCN_LICENSE.md", "../node_modules/lucide-react/LICENSE"])
+      assert.ok(notices.includes(await readFile(new URL(path, import.meta.url), "utf8")));
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

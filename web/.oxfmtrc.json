@@ -14,7 +14,6 @@
     "**/obj/",
     "**/_framework/",
     "SHADCN_LICENSE.md",
-    "REUI_LICENSE.md",
     "vendor/spark-md5-3.0.2/spark-md5.mjs",
     "vendor/spark-md5-3.0.2/LICENSE2",
     "toolchain/**/dist/",

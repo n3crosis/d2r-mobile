@@ -7,17 +7,6 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import {
-  Stepper,
-  StepperContent,
-  StepperIndicator,
-  StepperItem,
-  StepperNav,
-  StepperPanel,
-  StepperSeparator,
-  StepperTitle,
-  StepperTrigger,
-} from "@/components/ui/stepper";
 
 const steps = [
   {
@@ -87,31 +76,15 @@ export function InstallationGuide() {
         <AccordionTrigger className="min-h-11 py-3">{t("dmWebGuideTitle")}</AccordionTrigger>
         <AccordionContent className="space-y-4 pb-4">
           <p className="text-xs text-muted-foreground">{t("dmWebGuideIntro")}</p>
-          <Stepper defaultValue={1} className="space-y-4">
-            <StepperNav aria-label={t("dmWebGuideTitle")}>
-              {steps.map((step, index) => (
-                <StepperItem
-                  key={step.title}
-                  step={index + 1}
-                  completed={false}
-                  className="min-w-0 items-start"
-                >
-                  <StepperTrigger className="min-h-16 min-w-0 flex-col gap-2 rounded-md px-1 py-1 text-center">
-                    <StepperIndicator className="size-7">{index + 1}</StepperIndicator>
-                    <StepperTitle className="text-xs leading-snug">{t(step.title)}</StepperTitle>
-                  </StepperTrigger>
-                  {index < steps.length - 1 && <StepperSeparator className="mt-4 min-w-2" />}
-                </StepperItem>
-              ))}
-            </StepperNav>
-            <StepperPanel>
-              {steps.map((step, index) => (
-                <StepperContent
-                  key={step.title}
-                  value={index + 1}
-                  forceMount
-                  className="rounded-lg border bg-card p-3 text-xs leading-relaxed text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
+          <Accordion type="single" collapsible defaultValue="dmWebGuidePrepare">
+            {steps.map((step, index) => (
+              <AccordionItem key={step.title} value={step.title}>
+                <AccordionTrigger className="min-h-11 py-3 text-sm">
+                  <span>
+                    {index + 1}. {t(step.title)}
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent className="pb-4 text-xs leading-relaxed text-muted-foreground">
                   <ul className="list-disc space-y-2 pl-4">
                     {step.details.map((key) => (
                       <li key={key}>{t(key)}</li>
@@ -148,10 +121,10 @@ export function InstallationGuide() {
                       ))}
                     </div>
                   )}
-                </StepperContent>
-              ))}
-            </StepperPanel>
-          </Stepper>
+                </AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
         </AccordionContent>
       </AccordionItem>
     </Accordion>
