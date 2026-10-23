@@ -3,6 +3,7 @@
 import { defaultState, clearCircles, silhouette, metal } from "../art-kernels/kernels.mjs";
 import { ordered, put, roundEven as round, float, stringifyPython } from "./python-values.mjs";
 import { requireValue as require, vitalCharacters, generateLayout } from "./support.mjs";
+import { LEGACY_ART_REVISION, requireArtRevision } from "../art-recipes-js/revision.mjs";
 import { acceptsNativeArtPngDigest } from "../../native-art-png-digests.mjs";
 const FONTS = ["blizzardglobal-v5_81.ttf", "exocetblizzardot-medium.otf"];
 const IMAGE_NAMES = ["front_panel", "levelupbutton", "greater_healing_potion"];
@@ -74,6 +75,9 @@ function border(image) {
 export async function generateHud(payload, options, { codec, kernels: k, font }) {
   require(payload instanceof Uint8Array && payload.length <= 64 * 1024 * 1024, "HUD_INPUT_LIMIT");
   require(options?.mode === "switch-upscaled", "HUD_MODE_REQUIRED");
+  const upstream = requireArtRevision(
+    Object.hasOwn(options, "revision") ? options.revision : LEGACY_ART_REVISION,
+  );
   require(codec && k && font, "HUD_DEPENDENCIES_REQUIRED");
   const bundle = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(payload)),
     metadata = bundle.metadata;
@@ -132,7 +136,7 @@ export async function generateHud(payload, options, { codec, kernels: k, font })
     require(pixels <= MAX_PIXELS, "HUD_PIXEL_LIMIT");
     decodedAtlases[a.asset] = image;
   }
-  const vital = vitalCharacters(metadata.i18n),
+  const vital = vitalCharacters(metadata.i18n, upstream),
     files = Object.create(null);
   let outputBytes = 0,
     activeFont = "";

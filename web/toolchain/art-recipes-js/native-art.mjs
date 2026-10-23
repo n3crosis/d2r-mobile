@@ -152,6 +152,10 @@ export async function generateNativeArt(payload, options, { codec, sha256, md5 }
       `native_art：${asset.official_path} 的原件和冻结的不一样（游戏版本不对？）`,
     );
     const { rgba, width, height } = images.get(path);
+    requireValue(
+      (await sha256(rgba)) === asset.decoded_rgba_sha256,
+      `native_art：${asset.asset} 解出的 RGBA 像素与冻结的不一致`,
+    );
     const png = await codec.encodeRgba(rgba, width, height);
     requireValue(
       png instanceof Uint8Array && acceptsNativeArtPngDigest(asset, await sha256(png)),
@@ -197,7 +201,7 @@ export async function generateNativeArt(payload, options, { codec, sha256, md5 }
     "native_art：技能索引和冻结的不一致",
   );
   const out = [
-    "/* Generated from frozen official Skills/Skilldesc; do not hand-edit rows. */",
+    "/* 从冻结原版表生成，不手改。 | Generated from frozen official tables; do not hand-edit. */",
     '#include "dm_touch_native_art.h"',
     '#include "../../host/dm_input.h"',
     "#include <stddef.h>",

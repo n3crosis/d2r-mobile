@@ -45,21 +45,32 @@ mock.module("../../casc-overlay-writer.mjs", {
 });
 const { generateNativeOverlay, NATIVE_OVERLAY_GENERATED } =
   await import("../../native-overlay-generator.mjs");
-function options() {
+const { RELEASE_OVERLAY_REVISION, UPSTREAM_OVERLAY_REVISION } =
+  await import("../../toolchain/overlay-recipe-js/revision.mjs");
+const { createOverlayManifest } = await import("../../overlay-contract.mjs");
+function options(upstream = false, revision = UPSTREAM_OVERLAY_REVISION) {
   return {
+    ...(upstream ? { recipeRevision: revision } : {}),
     generated: Object.fromEntries(
       NATIVE_OVERLAY_GENERATED.map((name) => [name, new Uint8Array([8])]),
     ),
     worker: {
       close() {},
-      async run() {
+      async run(_operation, _payload, operationOptions) {
+        assert.deepEqual(operationOptions, upstream ? { revision } : {});
         const files = {},
           variants = ["base", "item_notes"].map((name, i) => {
             const id = `${i}-replacement`;
             files[id] = new Uint8Array([10 + i]);
-            const names = i
+            let names = i
               ? ["ctrl_touch", "dm_textbox_plain.tsv", "features.txt", "touch_strings.tsv"]
               : ["ctrl_touch", "touch_strings.tsv"];
+            if (upstream)
+              names = [
+                ...names,
+                ...(revision === UPSTREAM_OVERLAY_REVISION ? ["ps_glyphs"] : []),
+                "xbox_glyphs",
+              ].sort();
             return {
               name,
               replacements: [{ path: "data/a.bin", add: false, file: id }],
@@ -87,6 +98,49 @@ const external = () => ({
       decodedSize: 30,
     },
   ],
+});
+test("b811 release seals Xbox-only variants without later PlayStation activation", async () => {
+  const out = await generateNativeOverlay({
+    ...options(true, RELEASE_OVERLAY_REVISION),
+    prebuiltPack: external(),
+  });
+  for (const root of [
+    "romfs_overlay",
+    "romfs_overlay_variants/item_notes",
+    "romfs_overlay_astc",
+    "romfs_overlay_astc_variants/item_notes",
+  ]) {
+    assert.ok(out.files[`${root}/xbox_glyphs`]);
+    assert.equal(out.files[`${root}/ps_glyphs`], undefined);
+    assert.match(
+      new TextDecoder().decode(out.files[`${root}/overlay.manifest`]),
+      /^DM_OVERLAY_V1 243ab3eec668192415561f806ebbf2e670ea5a8a83aee8b72f92021a23989763\n/,
+    );
+  }
+  assert.equal(Object.keys(out.files).length, 29);
+});
+test("latest-source branch seals every variant after markers and ASTC metadata", async () => {
+  const out = await generateNativeOverlay({ ...options(true), prebuiltPack: external() });
+  for (const root of [
+    "romfs_overlay",
+    "romfs_overlay_variants/item_notes",
+    "romfs_overlay_astc",
+    "romfs_overlay_astc_variants/item_notes",
+  ]) {
+    const inventory = Object.fromEntries(
+      Object.entries(out.files)
+        .filter(([path]) => path.startsWith(root + "/") && path !== `${root}/overlay.manifest`)
+        .map(([path, data]) => [path.slice(root.length + 1), data]),
+    );
+    assert.ok(inventory.ps_glyphs);
+    assert.ok(inventory.xbox_glyphs);
+    assert.deepEqual(out.files[`${root}/overlay.manifest`], await createOverlayManifest(inventory));
+  }
+  assert.equal(Object.keys(out.files).length, 33);
+  await assert.rejects(
+    generateNativeOverlay({ ...options(), recipeRevision: "v2.0.0" }),
+    /REVISION/,
+  );
 });
 test("optional ASTC preserves all default bytes, recipes and exact11 output", async () => {
   calls.length = 0;
@@ -136,8 +190,8 @@ test("recycle failure wipes recipe buffers before releasing them", async () => {
   const opts = options();
   const run = opts.worker.run;
   let returned;
-  opts.worker.run = async () => {
-    returned = await run();
+  opts.worker.run = async (...args) => {
+    returned = await run(...args);
     const id = Object.keys(returned.files)[0];
     returned.files[id] = returned.files[id].buffer;
     return returned;

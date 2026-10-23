@@ -77,6 +77,7 @@ for table in sorted({name for name, _, _ in native["LABELS"]}):
                     "esES": f"Meta {i}",
                     "esMX": f"Destino {i}",
                     "ruRU": f"Цель {i}",
+                    "koKR": f"목표 {i}",
                 }
             )
     text = json.dumps(rows, ensure_ascii=False)
@@ -84,7 +85,7 @@ for table in sorted({name for name, _, _ in native["LABELS"]}):
     reads[f"local/lng/strings/{table}.json"] = text.encode()
 native["main"]()
 files = sorted(p.name for p in (OUT / "expected").iterdir())
-assert len(files) == 164
+assert len(files) == 195
 (OUT / "files.json").write_text(json.dumps(files))
 (OUT / "backend.json").write_text(json.dumps({**backend, "contract": "pyodide-matched-BASIC"}))
 (OUT / "bundle.json").write_text(
@@ -93,7 +94,7 @@ assert len(files) == 164
         ensure_ascii=False,
     )
 )
-(OUT / "options.json").write_text(json.dumps({"names": "current"}))
+(OUT / "options.json").write_text(json.dumps({"names": "current", "revision": "e3756f8942b40eba6c851e881828a5b1bda17fd6"}))
 print(
-    "Original map-goal: 164 outputs, 31 labels x five languages, seven symbols and alpha-halved cross"
+    "Original map-goal: 195 outputs, 31 labels x six languages, seven symbols and alpha-halved cross"
 )

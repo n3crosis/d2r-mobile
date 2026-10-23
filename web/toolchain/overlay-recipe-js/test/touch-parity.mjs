@@ -604,6 +604,7 @@ const nativeProgram = String.raw`
 import base64,contextlib,hashlib,io,json,os,sys,tempfile
 os.environ.pop('DM_OVERLAY_MAC',None)
 os.environ.pop('DM_CUSTOM_TEST_ROWS',None)
+os.environ['MOVIE_FFMPEG']='0'
 sys.path.insert(0,sys.argv[1]+'/dm/ios/tools')
 import touch_layout as t
 payload=json.load(sys.stdin)

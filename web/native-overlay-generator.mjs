@@ -7,6 +7,12 @@
  * extraction adapter's private authenticated capability. No whole RomFS copy.
  */
 import { readAuthenticatedAssets } from "./extraction-job-adapter.mjs";
+import { createOverlayManifest } from "./overlay-contract.mjs";
+import {
+  LEGACY_OVERLAY_REVISION,
+  UPSTREAM_OVERLAY_REVISION,
+  requireOverlayRevision,
+} from "./toolchain/overlay-recipe-js/revision.mjs";
 import {
   prepareCascOverlayManifest,
   writeCascOverlay,
@@ -61,13 +67,15 @@ function path(value) {
     fail("OVERLAY_PATH");
   return value;
 }
-function needed(p) {
+function needed(p, upstream, playstation) {
   return (
     p.startsWith("data/global/ui/layouts/") ||
     (p.startsWith("data/local/lng/strings/") && p.endsWith(".json")) ||
     (p.startsWith("data/global/excel/") && (p.endsWith(".txt") || p.endsWith("/inventory.bin"))) ||
     (p.startsWith("data/hd/items/") && p.endsWith(".json")) ||
-    p.startsWith("data/hd/global/ui/controller/controllerbuttons/switch/") ||
+    ["switch", ...(upstream ? ["xbox"] : []), ...(playstation ? ["ps5"] : [])].some((platform) =>
+      p.startsWith(`data/hd/global/ui/controller/controllerbuttons/${platform}/`),
+    ) ||
     (p.startsWith("data/hd/global/ui/controller/cursor/") && p.endsWith(".sprite"))
   );
 }
@@ -77,7 +85,7 @@ function base64(raw) {
     text += String.fromCharCode(...raw.subarray(i, i + 32768));
   return btoa(text);
 }
-async function manifestInputs(romfs, logicalAssets, signal) {
+async function manifestInputs(romfs, logicalAssets, signal, upstream, playstation) {
   const file = romfs.getFile("data/build_manifest.psv");
   if (!file || file.size > BigInt(NATIVE_OVERLAY_LIMITS.manifest)) fail("OVERLAY_MANIFEST_LIMIT");
   const selected = new Map(),
@@ -102,7 +110,7 @@ async function manifestInputs(romfs, logicalAssets, signal) {
     )
       fail("OVERLAY_MANIFEST_LIMIT");
     projected.push(row);
-    if (!needed(key) || selected.has(key)) return;
+    if (!needed(key, upstream, playstation) || selected.has(key)) return;
     const actual = logicalAssets.lookup(key);
     // 原生变换选择清单中第一个匹配行，而通用
     // CASC 读取器索引最后一行。不要悄悄改变重复项语义。
@@ -149,8 +157,11 @@ export async function generateNativeOverlay({
   recycleWorker,
   signal,
   prebuiltPack,
+  recipeRevision = LEGACY_OVERLAY_REVISION,
 } = {}) {
   signal?.throwIfAborted();
+  const upstream = requireOverlayRevision(recipeRevision);
+  const playstation = recipeRevision === UPSTREAM_OVERLAY_REVISION;
   const assets = readAuthenticatedAssets(extracted, selection, { signal });
   if (
     !worker ||
@@ -227,7 +238,13 @@ export async function generateNativeOverlay({
   signal?.addEventListener("abort", abort, { once: true });
   let payload;
   try {
-    const input = await manifestInputs(assets.romfs, assets.logicalAssets, signal);
+    const input = await manifestInputs(
+      assets.romfs,
+      assets.logicalAssets,
+      signal,
+      upstream,
+      playstation,
+    );
     bundle.manifest = input.manifest;
     for (const [key, size] of input.selected) {
       signal?.throwIfAborted();
@@ -244,7 +261,11 @@ export async function generateNativeOverlay({
     bundle.generated = {};
     bundle.manifest = "";
     if (payload.length > NATIVE_OVERLAY_LIMITS.payload) fail("OVERLAY_INPUT_LIMIT");
-    const result = await worker.run("overlay-recipe", payload, {});
+    const result = await worker.run(
+      "overlay-recipe",
+      payload,
+      upstream ? { revision: recipeRevision } : {},
+    );
     for (const value of Object.values(result?.files ?? {})) {
       const data = bytes(value);
       if (data) owned.push(data);
@@ -312,10 +333,13 @@ export async function generateNativeOverlay({
         output[`${prefix}/${name}`] = data.slice();
       }
       const sideNames = variant.sidecars.map((s) => s.path).sort();
-      const expected =
-        variant.name === "base"
-          ? ["ctrl_touch", "touch_strings.tsv"]
-          : ["ctrl_touch", "dm_textbox_plain.tsv", "features.txt", "touch_strings.tsv"];
+      const expected = [
+        "ctrl_touch",
+        ...(variant.name === "base" ? [] : ["dm_textbox_plain.tsv", "features.txt"]),
+        ...(playstation ? ["ps_glyphs"] : []),
+        "touch_strings.tsv",
+        ...(upstream ? ["xbox_glyphs"] : []),
+      ];
       if (JSON.stringify(sideNames) !== JSON.stringify(expected)) fail("OVERLAY_SIDECAR_SET");
       let astcPrefix;
       if (external) {
@@ -372,6 +396,19 @@ export async function generateNativeOverlay({
             fail("OVERLAY_OUTPUT_LIMIT");
           output[`${astcPrefix}/${side.path}`] = data.slice();
         }
+      }
+      // 最后封清单，ASTC 的 pack.json 和每个变体的旁路文件也参与精确字节哈希。
+      // Finalize last, including ASTC pack.json and every variant's exact sidecar bytes.
+      for (const root of (upstream ? [prefix, astcPrefix] : []).filter(Boolean)) {
+        const files = Object.fromEntries(
+          Object.entries(output)
+            .filter(([path]) => path.startsWith(root + "/"))
+            .map(([path, data]) => [path.slice(root.length + 1), data]),
+        );
+        const data = await createOverlayManifest(files, { signal, revision: recipeRevision });
+        if ((outputBytes += data.length) > NATIVE_OVERLAY_LIMITS.output)
+          fail("OVERLAY_OUTPUT_LIMIT");
+        output[`${root}/overlay.manifest`] = data;
       }
     }
     if (used.size !== Object.keys(result.files).length) fail("OVERLAY_UNEXPECTED_FILE");

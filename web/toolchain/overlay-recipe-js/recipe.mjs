@@ -28,6 +28,12 @@ import {
 } from "./inventory.mjs";
 import { createAnnotations } from "./annotations.mjs";
 import { PythonFloat } from "../art-recipes-js/native-art-util.mjs";
+import {
+  LEGACY_OVERLAY_REVISION,
+  RELEASE_OVERLAY_REVISION,
+  UPSTREAM_OVERLAY_REVISION,
+  requireOverlayRevision,
+} from "./revision.mjs";
 
 const MiB = 1024 * 1024;
 const LAY = "data/global/ui/layouts/",
@@ -189,6 +195,46 @@ export function touchPath(path) {
     }
   return null;
 }
+/** 从原生清单选择 Xbox/PS 图标，保留原始遍历顺序与 PS 回落次序。
+ * Select native Xbox/PS glyphs, preserving manifest order and PS fallback order. */
+export function controllerGlyphs(rows, readAsset, { playstation = true } = {}) {
+  const output = new Map(),
+    buttons = UI + "controller/controllerbuttons/",
+    target = UI + "ztouch_controller_buttons_ui/",
+    have = new Set(rows.map((row) => logical(row[9])));
+  for (const row of rows) {
+    if (!row[9].toLowerCase().includes("/ui/controller/controllerbuttons/switch/")) continue;
+    const name = row[9].split("/").at(-1);
+    const source =
+      { "ButtonRight.sprite": "ButtonBottom.sprite", "ButtonBottom.sprite": "ButtonRight.sprite" }[
+        name
+      ] || name;
+    output.set(target + "switchx" + name.toLowerCase(), readAsset(buttons + "xbox/" + source));
+  }
+  if (!playstation) return output;
+  const face = {
+    buttonright: "buttonbottom",
+    buttonbottom: "buttonright",
+    buttontop: "buttonleft",
+    buttonleft: "buttontop",
+  };
+  for (const name of sorted(
+    [...have]
+      .filter((path) => path.startsWith(buttons + "switch/"))
+      .map((path) => path.slice((buttons + "switch/").length)),
+  )) {
+    const stem = name.slice(0, -7),
+      source = (face[stem] || stem) + ".sprite";
+    const path = [
+      buttons + "ps5/" + source,
+      buttons + "ps5/" + source.replaceAll("rectangle", ""),
+      buttons + "switch/" + name,
+    ].find((path) => have.has(path));
+    requireValue(path, "OVERLAY_PS_GLYPH_SOURCE");
+    output.set(target + "switchp" + name, readAsset(path));
+  }
+  return output;
+}
 /** 保留插入顺序及原始控制器/共享布局集的两项门禁。
  * Preserve insertion order and both original controller/shared layout-set gates. */
 export function relocateLayouts(
@@ -335,9 +381,16 @@ export function createOverlayRecipe({ png, md5, sha1 } = {}) {
     async execute(operation, payload, options = {}) {
       requireValue(operation === "overlay-recipe", "OVERLAY_RECIPE_OPERATION");
       requireValue(
-        payload instanceof Uint8Array && payload.length <= 144 * MiB && exactKeys(options, []),
+        payload instanceof Uint8Array &&
+          payload.length <= 144 * MiB &&
+          (exactKeys(options, []) || exactKeys(options, ["revision"])),
         "OVERLAY_RECIPE_OPTIONS",
       );
+      const revision = Object.hasOwn(options, "revision")
+        ? options.revision
+        : LEGACY_OVERLAY_REVISION;
+      const upstream = requireOverlayRevision(revision),
+        playstation = revision === UPSTREAM_OVERLAY_REVISION;
       const input = JSON.parse(utf8sig(payload));
       requireValue(exactKeys(input, ["manifest", "assets", "generated"]), "OVERLAY_RECIPE_INPUT");
       requireValue(
@@ -396,7 +449,7 @@ export function createOverlayRecipe({ png, md5, sha1 } = {}) {
         const [path, raw] = entry(suffix || "/ui/layouts/" + rel);
         return [path, utf8sig(raw)];
       };
-      const touch = createTouchLayouts({ readLayout, readEntry, rows });
+      const touch = createTouchLayouts({ readLayout, readEntry, rows, upstream });
       const repl = new Map([
         [UI + "panel/hud_02/bugbtn.sprite", rawSprite(hud)],
         [UI + "panel/hud_02/front_panel.sprite", rawSprite(png.decodeRgba(b64(closeImage.base64)))],
@@ -462,11 +515,14 @@ export function createOverlayRecipe({ png, md5, sha1 } = {}) {
       mercenary(repl);
       update(repl, touch.buildCursor());
       update(repl, touch.buildGlyphs());
+      if (upstream) update(repl, controllerGlyphs(rows, readAsset, { playstation }));
       update(repl, touch.buildProfile());
       const annotations = createAnnotations({
         readAsset,
         readReplacement: (path) => repl.get(path),
         sha1,
+        upstream,
+        release: revision === RELEASE_OVERLAY_REVISION,
       });
       const strings = await annotations.buildTouchStrings();
       update(repl, strings.replacements);
@@ -539,7 +595,7 @@ export function createOverlayRecipe({ png, md5, sha1 } = {}) {
         ["controller/hudmonsterhealthhd.json", padBossPct],
         ["controller/console/characteroptionspanelhd.json", padBliss],
         ["controller/console/settingspanelhd.json", padSettings],
-        ["controller/console/videooptionspanelhd.json", padCustomPage],
+        ["controller/console/videooptionspanelhd.json", (text) => padCustomPage(text, upstream)],
       ])
         applyLayout(pr, rel, fn);
       pouch(pr);
@@ -606,7 +662,9 @@ export function createOverlayRecipe({ png, md5, sha1 } = {}) {
           base,
           [
             ["ctrl_touch", ctrl],
+            ["ps_glyphs", utf8.encode("ztouch_controller_buttons_ui/switchp*.sprite\n")],
             ["touch_strings.tsv", strings.touchStrings],
+            ["xbox_glyphs", utf8.encode("ztouch_controller_buttons_ui/switchx*.sprite\n")],
           ],
         ],
         [
@@ -623,11 +681,17 @@ export function createOverlayRecipe({ png, md5, sha1 } = {}) {
                     .join(""),
               ),
             ],
+            ["ps_glyphs", utf8.encode("ztouch_controller_buttons_ui/switchp*.sprite\n")],
             ["touch_strings.tsv", strings.touchStrings],
+            ["xbox_glyphs", utf8.encode("ztouch_controller_buttons_ui/switchx*.sprite\n")],
           ],
         ],
       ])
-        for (const [path, raw] of sidecars) variant.sidecars.push({ path, file: addFile(raw) });
+        for (const [path, raw] of sidecars) {
+          if (!upstream && ["ps_glyphs", "xbox_glyphs"].includes(path)) continue;
+          if (!playstation && path === "ps_glyphs") continue;
+          variant.sidecars.push({ path, file: addFile(raw) });
+        }
       return { files, variants };
     },
   });

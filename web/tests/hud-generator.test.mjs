@@ -2,6 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { generateHud, HUD_LOGICAL_INPUTS } from "../hud-generator.mjs";
+import {
+  RELEASE_ART_REVISION,
+  UPSTREAM_ART_REVISION,
+} from "../toolchain/art-recipes-js/revision.mjs";
 const sha = (b) => createHash("sha256").update(b).digest("hex");
 function fixture() {
   const png = new Uint8Array([1, 2, 3]);
@@ -35,6 +39,7 @@ function fixture() {
       async run(op, payload, options) {
         assert.equal(op, "hud-v4");
         assert.equal(options.mode, "switch-upscaled");
+        assert.equal(options.revision, undefined);
         const bundle = JSON.parse(new TextDecoder().decode(payload));
         assert.deepEqual(Object.keys(bundle.fonts).sort(), [
           "blizzardglobal-v5_81.ttf",
@@ -81,4 +86,22 @@ test("HUD propagates missing archive font instead of substituting an OS font", a
     return read(path, options);
   };
   await assert.rejects(generateHud(f), /font absent/);
+});
+
+test("HUD forwards only a recognized explicit internal source revision", async () => {
+  for (const revision of [RELEASE_ART_REVISION, UPSTREAM_ART_REVISION]) {
+    const f = fixture();
+    f.recipeRevision = revision;
+    const run = f.assetWorker.run;
+    f.assetWorker.run = async (operation, payload, options) => {
+      assert.equal(options.revision, revision);
+      const { revision: _revision, ...legacyOptions } = options;
+      return run(operation, payload, legacyOptions);
+    };
+    await generateHud(f);
+  }
+  const invalid = fixture();
+  invalid.recipeRevision = "v2";
+  await assert.rejects(generateHud(invalid), /RECIPE_REVISION/);
+  assert.equal(invalid.reads.length, 0);
 });

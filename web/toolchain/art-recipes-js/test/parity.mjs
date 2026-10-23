@@ -12,6 +12,7 @@ import { createNativeArtCases, nativeHashDependencies } from "./native-cases.mjs
 import { createArtRecipes } from "../recipes.mjs";
 import { generateDefaultFrame } from "../default-frame.mjs";
 import { generateMapGoal, LABELS } from "../map-goal.mjs";
+import { RELEASE_ART_REVISION, UPSTREAM_ART_REVISION } from "../revision.mjs";
 import { createOracle } from "./oracle.mjs";
 import "../scripts/verify-source.mjs";
 const oracle = await createOracle();
@@ -110,6 +111,7 @@ try {
       esES: "Áéñ",
       esMX: "café",
       ruRU: "Жизнь",
+      koKR: "생명력",
     });
   }
   const bundle = {
@@ -131,6 +133,8 @@ try {
     ),
   };
   await compare("map-goal", generateMapGoal, enc(bundle), { names: "current" });
+  for (const revision of [RELEASE_ART_REVISION, UPSTREAM_ART_REVISION])
+    await compare("map-goal", generateMapGoal, enc(bundle), { names: "current", revision });
   for (const options of [{}, { names: "old" }, { names: "current", extra: 0 }])
     await compare("map-goal", generateMapGoal, enc(bundle), options, true);
   const modified = (f) => {

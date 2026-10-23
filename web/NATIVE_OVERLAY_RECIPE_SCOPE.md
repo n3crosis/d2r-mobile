@@ -5,6 +5,17 @@ layout/table/string transformations, and the real bounded CASC serializer. It is
 not just a replacement-path plan. It returns actual base and `item_notes` overlay
 bytes with their sidecars, ready for packaging-job entries.
 
+## Revision boundary
+
+Production retains the v1.0.18 overlay behavior while trusted v2 shell evidence
+is not activated. The dormant release revision
+`b811b90172f4eb40ec1bc89d903308e0c5ab88d0` adds Korean, Xbox glyphs and complete
+per-variant manifests. The separate latest source revision
+`e3756f8942b40eba6c851e881828a5b1bda17fd6` also adds PlayStation glyphs and four
+voice strings; the published v2.0.0 shell predates those changes. A version label
+alone cannot activate either new branch. See
+[recipe revision status](toolchain/overlay-recipe-js/README.md#upstream-source-revision-and-shell-activation).
+
 ## Preserved semantics
 
 The source-pinned `gen_romfs_overlay.py` orchestration and its helper modules are

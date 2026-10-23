@@ -24,7 +24,7 @@ for name, path in PATHS.items():
 parts = ["import csv, hashlib, io, json\nfrom pathlib import Path\n"]
 allowed = {"sha", "canonical", "classes", "codes", "classes_by_code", "COMMON_ICON"}
 for node in ast.parse(content.pop("generator")).body:
-    if isinstance(node, ast.FunctionDef) and node.name == "main":
+    if isinstance(node, ast.FunctionDef) and node.name in {"main", "validate_rgba"}:
         parts.append(ast.unparse(node))
     elif isinstance(node, ast.Assign) and any(
         isinstance(t, ast.Name) and t.id in allowed for t in node.targets

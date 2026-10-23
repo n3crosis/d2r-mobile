@@ -35,11 +35,14 @@ signing is not performed. A caller's claimed build ID cannot bypass admission.
 - `js/rewrite.mjs`, `rules.mjs`, `outputs.mjs`: scanning, rule application and
   exact output formatting.
 - `js/rule-data.mjs`: literal source-derived rule tables.
+- `audit-apple-source.py`: statically specializes the reviewed v2 target helpers to Apple,
+  checks their exact AST hashes, and compares the entire remaining script to the
+  pre-v2 AST. It neither imports nor executes the upstream program.
 - `audit-js-source.py`: checks the complete original source SHA-256 and compares
   every generated rule table against its Python AST. `--write` regenerates tables.
 - `audit-source.py`: retains the input-hash, source-surface and native-rule audit.
 
-Builds run the source audit before shipping JS. Worker admission also checks the
+Builds run all source audits before dependency downloads or compilation. Worker admission also checks the
 compiled source hash against the registered catalog. The sealed production worker
 accepts only the native WASM bytes at initialization: no Python runtime, adapters,
 source files, fixture fetch or synthetic input route is required there.
@@ -66,3 +69,18 @@ additional CI job.
 
 Shared art generation still needs Pyodide/Pillow. Removing program-specific
 Python files does not remove those shared dependencies from the whole app.
+
+## Upstream v2 Apple scope
+
+The browser route remains Apple-only. Upstream's Android/HarmonyOS TLS and
+stack-rewrite paths are not ported or selectable. The reviewed Apple paths retain
+the prior relocation instructions, rule tables, input hashes and limits. One pure
+temporary-register assignment moved before an emit; the static proof explicitly
+normalizes only this reviewed motion. `apple-source-baseline.json` records the
+old complete AST hash and the exact reviewed new target-helper nodes.
+
+New fixups start with `# TARGET\t0x0`. The adapter accepts absent TARGET for
+legacy Apple records, but rejects explicit nonzero or duplicate targets. The
+manual Python oracle is explicitly pinned to `DM_TARGET=apple` regardless of its
+parent environment. This update adds source-only and synthetic JS checks, not a
+new native/WASM execution result, v2 shell qualification, or game/device claim.

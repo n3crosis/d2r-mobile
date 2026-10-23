@@ -48,7 +48,7 @@ export async function buildOutputs(context, rules, keyIndex, bootlist = null) {
       text += line([hexAddress(off), raw, await hash(unhex(raw)), why]);
     put("rules.tsv", text);
   }
-  let fixups = `# PATCH_OFF\t${hexAddress(patchOff)}\n# KEY_PAGE_OFF\t${hexAddress(keyPageOff)}\n# KEY_PAGE_SIZE\t0x4000\n# TEXT_END\t${hexAddress(textEnd)}\n# RO_OFF\t${hexAddress(roOff)}\n# DATA_OFF\t${hexAddress(dataOff)}\n`;
+  let fixups = `# TARGET\t0x0\n# PATCH_OFF\t${hexAddress(patchOff)}\n# KEY_PAGE_OFF\t${hexAddress(keyPageOff)}\n# KEY_PAGE_SIZE\t0x4000\n# TEXT_END\t${hexAddress(textEnd)}\n# RO_OFF\t${hexAddress(roOff)}\n# DATA_OFF\t${hexAddress(dataOff)}\n`;
   for (const [key, index] of Object.entries(keyIndex)) fixups += `# KEY_${key}_IDX\t${index}\n`;
   put("fixups.tsv", fixups);
   put(

@@ -8,6 +8,8 @@
  * authenticates manifest-selected asset bytes before exposing them here.
  */
 import DATA from "./annotation-data.json" with { type: "json" };
+import { legacyI18n, legacyTouch } from "./legacy-v1.mjs";
+import { releaseI18n } from "./release-v2.mjs";
 
 export const annotationSources = Object.freeze({ ...DATA.sources });
 const encoder = new TextEncoder();
@@ -654,7 +656,14 @@ function textboxTable(full, plain) {
  * Returned Maps are insertion ordered. Sidecars are UTF-8 without BOM; string
  * replacements have exactly one BOM, as native utf-8-sig writes do.
  */
-export function createAnnotations({ readAsset, readReplacement = () => undefined, sha1 }) {
+export function createAnnotations({
+  readAsset,
+  readReplacement = () => undefined,
+  sha1,
+  upstream = true,
+  release = false,
+}) {
+  const touchData = upstream ? DATA.touch : legacyTouch;
   if (
     typeof readAsset !== "function" ||
     typeof readReplacement !== "function" ||
@@ -678,10 +687,10 @@ export function createAnnotations({ readAsset, readReplacement = () => undefined
       seen = new Set();
     let count = 0;
     const strings = new Strings(readAsset, () => undefined);
-    for (const [name, items] of Object.entries(DATA.touch.tables.zhCN)) {
+    for (const [name, items] of Object.entries(touchData.tables.zhCN)) {
       strings.load(name);
       for (const [key, [hash, next]] of Object.entries(items))
-        if (DATA.touch.fileOnly.includes(key)) {
+        if (touchData.fileOnly.includes(key)) {
           const match = strings.iter(name, key)[0];
           if (!match) fail("TOUCH_STRING_KEY", `${name}/${key}`);
           await sourceHash(JSON.parse(match.value), hash, `${name}/${key}`);
@@ -689,16 +698,16 @@ export function createAnnotations({ readAsset, readReplacement = () => undefined
           strings.text.set(name, text.slice(0, match.start) + json(next) + text.slice(match.end));
           count++;
         }
-      if (Object.keys(items).some((key) => DATA.touch.fileOnly.includes(key)))
+      if (Object.keys(items).some((key) => touchData.fileOnly.includes(key)))
         replacements.set(STR + name, encode(strings.text.get(name), true));
     }
     // 原生附属文件校验的是原始资源，而非仅用于文件的替换内容。
     // Native sidecar validates original assets, never the file-only replacements.
     const originals = new Strings(readAsset, () => undefined);
-    for (const name of Object.keys(DATA.touch.tables.zhCN))
-      for (const [lang, tables] of Object.entries(DATA.touch.tables)) {
+    for (const name of Object.keys(touchData.tables.zhCN))
+      for (const [lang, tables] of Object.entries(touchData.tables)) {
         for (const [key, [hash, next]] of Object.entries(tables[name] || {})) {
-          if (lang === "zhCN" && DATA.touch.fileOnly.includes(key)) continue;
+          if (lang === "zhCN" && touchData.fileOnly.includes(key)) continue;
           const value = originals.getLang(name, key, lang);
           if (value === null) fail("TOUCH_STRING_KEY", `${name}/${key}/${lang}`);
           await sourceHash(value, hash, `${name}/${key}/${lang}`);
@@ -717,7 +726,7 @@ export function createAnnotations({ readAsset, readReplacement = () => undefined
     };
   }
   async function buildI18n() {
-    const data = DATA.i18n,
+    const data = upstream ? (release ? releaseI18n : DATA.i18n) : legacyI18n,
       strings = new Strings(readAsset, readReplacement);
     strings.load("ui.json");
     let text = strings.text.get("ui.json");
@@ -725,15 +734,16 @@ export function createAnnotations({ readAsset, readReplacement = () => undefined
       used = new Set();
     const fmt = new RegExp(data.format, "g"),
       proper = new RegExp(data.proper, "g");
-    const add = data.rows.map(([key, zh, en, es, mx, ru], i) => {
-      if (!/^dm[A-Za-z0-9]+$/.test(key) || !zh || !en || !es || !ru || used.has(key))
+    const add = data.rows.map(([key, zh, en, es, mx, ru, ko], i) => {
+      if (!upstream) ko = en;
+      if (!/^dm[A-Za-z0-9]+$/.test(key) || !zh || !en || !es || !ru || !ko || used.has(key))
         fail("I18N_ROW", key);
       used.add(key);
       if (have.has(key)) fail("I18N_KEY_CLASH", key);
       mx ||= es;
       const placeholders = json(zh.match(fmt) || []);
       const limit = data.enLimits.find(([pat]) => new RegExp("^(?:" + pat + ")$").test(key))?.[1];
-      for (const t of [en, es, mx, ru]) {
+      for (const t of [en, es, mx, ru, ko]) {
         if (
           !data.enHasZh.includes(key) &&
           /[\u3000-\u9fff\uff00-\uffef]/.test(t.replace(proper, ""))
@@ -754,7 +764,9 @@ export function createAnnotations({ readAsset, readReplacement = () => undefined
               ? mx
               : lang === "ruRU"
                 ? ru
-                : en;
+                : lang === "koKR"
+                  ? ko
+                  : en;
       return out;
     });
     const end = text.trimEnd().lastIndexOf("]");

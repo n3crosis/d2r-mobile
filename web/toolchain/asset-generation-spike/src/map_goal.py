@@ -1,4 +1,4 @@
-"""Bounded map-goal boundary; unchanged original render, current names only."""
+"""Bounded map-goal boundary; source-revision-gated inventory, current names only."""
 
 import base64
 import io
@@ -14,7 +14,9 @@ IMAGE_PATHS = {
     "symbols": "hd/global/ui/PANEL/Quest_Log/TalRashaSymbol.sprite",
     "units": "hd/global/ui/AUTOMAP/Units.sprite",
 }
-LANGUAGES = ("zhCN", "enUS", "esES", "esMX", "ruRU")
+LEGACY_REVISION = "v1.0.18"
+RELEASE_REVISION = "b811b90172f4eb40ec1bc89d903308e0c5ab88d0"
+UPSTREAM_REVISION = "e3756f8942b40eba6c851e881828a5b1bda17fd6"
 
 
 def require(condition, code):
@@ -24,7 +26,14 @@ def require(condition, code):
 
 def generate(payload, options):
     require(len(payload) <= 20 * 1024 * 1024, "MAP_GOAL_INPUT_LIMIT")
-    require(options == {"names": "current"}, "MAP_GOAL_CURRENT_NAMES_REQUIRED")
+    require(
+        set(options) in ({"names"}, {"names", "revision"}) and options.get("names") == "current",
+        "MAP_GOAL_CURRENT_NAMES_REQUIRED",
+    )
+    revision = options.get("revision", LEGACY_REVISION)
+    require(revision in (LEGACY_REVISION, RELEASE_REVISION, UPSTREAM_REVISION), "OVERLAY_RECIPE_REVISION")
+    upstream = revision != LEGACY_REVISION
+    languages = ("zhCN", "enUS", "esES", "esMX", "ruRU") + (("koKR",) if upstream else ())
     bundle = json.loads(payload.decode())
     require(set(bundle) == {"images", "font", "strings"}, "MAP_GOAL_INPUT_SET")
     require(set(bundle["images"]) == set(IMAGE_PATHS), "MAP_GOAL_IMAGE_SET")
@@ -47,7 +56,7 @@ def generate(payload, options):
         for table, key, _ in original.LABELS:
             if table == name:
                 require(key in indexed, "MAP_GOAL_MISSING_KEY")
-                for lang in LANGUAGES:
+                for lang in languages:
                     value = indexed[key].get(lang)
                     require(
                         isinstance(value, str)
@@ -87,7 +96,7 @@ def generate(payload, options):
             rows = {r["Key"]: r for r in json.loads(text.decode("utf-8-sig"))}
             for _, key, _ in original.LABELS:
                 if key in rows:
-                    for lang in LANGUAGES:
+                    for lang in languages:
                         width = measured_font.getlength(rows[key][lang])
                         require(0 <= width <= 8192 - 2 * original.PAD_X, "MAP_GOAL_RENDER_WIDTH")
         with tempfile.TemporaryDirectory(prefix="map-goal-") as tmp:
@@ -106,7 +115,7 @@ def generate(payload, options):
             old_sprite = original.sprite_png
             original.sprite_png = lambda path: images[path]
             try:
-                original.main()
+                original.main(upstream)
             finally:
                 original.sprite_png = old_sprite
                 del original.romfs_art, original.OUT, original.HERE, original.ROMFS
@@ -114,10 +123,10 @@ def generate(payload, options):
             expected |= {
                 f"label_{i}{suffix}.png"
                 for i in range(len(original.LABELS))
-                for suffix in ("", "_en", "_es", "_mx", "_ru")
+                for suffix in ("", "_en", "_es", "_mx", "_ru") + (("_ko",) if upstream else ())
             }
             paths = {p.name: p for p in (root / "out").iterdir() if p.is_file()}
-            require(set(paths) == expected and len(expected) == 164, "MAP_GOAL_OUTPUT_SET")
+            require(set(paths) == expected and len(expected) == (195 if upstream else 164), "MAP_GOAL_OUTPUT_SET")
             require(
                 sum(p.stat().st_size for p in paths.values()) <= 16 * 1024 * 1024,
                 "MAP_GOAL_OUTPUT_LIMIT",

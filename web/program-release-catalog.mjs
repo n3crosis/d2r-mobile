@@ -5,7 +5,7 @@
  * Repository-backed inputs, NOT evidence that browser output ran on a device.
  */
 export const PROGRAM_REWRITER_SOURCE =
-  "d0bee134202bcc7c976c2713ffec2881f77b43bbfc24f4ebde17f0886c3dc22e";
+  "f23802979ceeeab8267b724b2d7f1a568b900777eb8718a0471a41317dc744ee";
 export const REGISTERED_PROGRAM_RELEASE = Object.freeze({
   id: "switch-3.3.94012-touch-run-v4",
   gameVersion: "3.3.94012",

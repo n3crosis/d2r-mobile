@@ -2,6 +2,11 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 mkdir -p deps dist/licenses dist/js
+# Reject source drift before any dependency download or compilation.
+(cd ../../.. && sha256sum -c web/toolchain/program-rewrite-spike/upstream-source.sha256)
+python3 audit-apple-source.py
+python3 audit-js-source.py
+python3 audit-source.py
 fetch() {
   local name="$1" repo tag commit
   read -r repo tag commit < <(python3 -c 'import json,sys; d=json.load(open("toolchain-lock.json"))[sys.argv[1]]; print(d["repository"], d["tag"], d["commit"])' "$name")
@@ -29,8 +34,6 @@ emcc --no-entry -O2 -I deps/capstone/include bridge.c \
   -sEXPORTED_FUNCTIONS='["_decode_word","_LZ4_decompress_safe","_malloc","_free"]' \
   -sEXPORTED_RUNTIME_METHODS='["ccall","UTF8ToString","HEAPU8"]' \
   -o dist/capstone-lz4.mjs
-(cd ../../.. && sha256sum -c web/toolchain/program-rewrite-spike/upstream-source.sha256)
-python3 audit-js-source.py
 cp worker.mjs rewrite-core.mjs dist/
 for file in js/*.mjs; do
   sed 's@../../../program-release-catalog.mjs@../program-release-catalog.mjs@g' "$file" > "dist/js/$(basename "$file")"

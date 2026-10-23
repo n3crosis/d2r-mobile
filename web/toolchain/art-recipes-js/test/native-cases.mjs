@@ -36,6 +36,7 @@ export async function createNativeArtCases(codec) {
       official_sprite_sha256: sha256(raw[path]),
       official_sprite_md5: md5(raw[path]),
       decoded_png_sha256: sha256(await codec.encodeRgba(pixels, width, height)),
+      decoded_rgba_sha256: sha256(pixels),
       atlas_px: [width, height],
       frame_width: 1.9,
       frame_pitch: 2,
@@ -149,6 +150,15 @@ export async function createNativeArtCases(codec) {
       (bundle) => {
         changeManifest(bundle, (manifest) => {
           manifest.assets[0].official_sprite_md5 = "0".repeat(32);
+        });
+      },
+      true,
+    ),
+    testCase(
+      "decoded-rgba-sha256",
+      (bundle) => {
+        changeManifest(bundle, (manifest) => {
+          manifest.assets[0].decoded_rgba_sha256 = "0".repeat(64);
         });
       },
       true,

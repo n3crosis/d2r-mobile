@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { generateMapGoal, MAP_GOAL_OUTPUTS, MAP_GOAL_FONT } from "../map-goal-generator.mjs";
+import {
+  generateMapGoal,
+  MAP_GOAL_OUTPUTS,
+  UPSTREAM_MAP_GOAL_OUTPUTS,
+  MAP_GOAL_FONT,
+} from "../map-goal-generator.mjs";
+import { UPSTREAM_ART_REVISION } from "../toolchain/art-recipes-js/revision.mjs";
 function fixture() {
   const reads = [],
     buffers = [];
@@ -38,7 +44,7 @@ function fixture() {
   };
   return { logicalAssets, decodeAtlas, assetWorker, reads, buffers };
 }
-test("Map-goal maps exactly eight archive reads and all164 required outputs", async () => {
+test("Map-goal maps exactly eight archive reads and all 164 legacy outputs", async () => {
   const f = fixture();
   const result = await generateMapGoal(f);
   assert.equal(Object.keys(result.files).length, 164);
@@ -168,4 +174,22 @@ test("Map-goal releases input snapshots before worker execution without wiping b
   await generateMapGoal(f);
   assert.ok(request.every((byte) => byte === 0));
   assert.deepEqual(original, new Uint8Array([4, 5, 6]));
+});
+
+test("Map-goal enables the 195-file inventory only with an explicit internal revision", async () => {
+  const f = fixture();
+  f.recipeRevision = UPSTREAM_ART_REVISION;
+  f.assetWorker.run = async (_op, _payload, options) => {
+    assert.deepEqual(options, { names: "current", revision: UPSTREAM_ART_REVISION });
+    return {
+      files: Object.fromEntries(
+        UPSTREAM_MAP_GOAL_OUTPUTS.map((name) => [name, new Uint8Array([1])]),
+      ),
+    };
+  };
+  assert.equal(Object.keys((await generateMapGoal(f)).files).length, 195);
+  const invalid = fixture();
+  invalid.recipeRevision = "v2";
+  await assert.rejects(generateMapGoal(invalid), /RECIPE_REVISION/);
+  assert.equal(invalid.reads.length, 0);
 });

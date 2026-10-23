@@ -12,6 +12,7 @@ import {
   utf8,
 } from "./util.mjs";
 import { parsePythonJson } from "./native-art-util.mjs";
+import { LEGACY_ART_REVISION, requireArtRevision } from "./revision.mjs";
 const NPC = [212, 196, 145],
   OBJ = [255, 255, 255];
 export const LABELS = Object.freeze(
@@ -49,15 +50,21 @@ export const LABELS = Object.freeze(
     ["npcs", "Nihlathak", NPC],
   ].map((label) => Object.freeze([...label.slice(0, 2), Object.freeze([...label[2]])])),
 );
-const LANGUAGES = ["zhCN", "enUS", "esES", "esMX", "ruRU"];
-const SUFFIXES = ["", "_en", "_es", "_mx", "_ru"];
+const LEGACY_LANGUAGES = ["zhCN", "enUS", "esES", "esMX", "ruRU"];
+const LEGACY_SUFFIXES = ["", "_en", "_es", "_mx", "_ru"];
 const TABLES = [...new Set(LABELS.map(([name]) => name))];
 export function generateMapGoal(payload, options, { codec, kernels, font }) {
   payloadBytes(payload, 20 * 1024 * 1024, "MAP_GOAL_INPUT_LIMIT");
   requireValue(
-    exactKeys(options, ["names"]) && options.names === "current",
+    (exactKeys(options, ["names"]) || exactKeys(options, ["names", "revision"])) &&
+      options.names === "current",
     "MAP_GOAL_CURRENT_NAMES_REQUIRED",
   );
+  const upstream = requireArtRevision(
+    Object.hasOwn(options, "revision") ? options.revision : LEGACY_ART_REVISION,
+  );
+  const languages = upstream ? [...LEGACY_LANGUAGES, "koKR"] : LEGACY_LANGUAGES;
+  const suffixes = upstream ? [...LEGACY_SUFFIXES, "_ko"] : LEGACY_SUFFIXES;
   const bundle = parsePythonJson(decoder.decode(payload));
   requireValue(exactKeys(bundle, ["images", "font", "strings"]), "MAP_GOAL_INPUT_SET");
   requireValue(exactKeys(bundle.images, ["symbols", "units"]), "MAP_GOAL_IMAGE_SET");
@@ -79,7 +86,7 @@ export function generateMapGoal(payload, options, { codec, kernels, font }) {
     for (const [table, key] of LABELS)
       if (table === name) {
         requireValue(indexed.has(key), "MAP_GOAL_MISSING_KEY");
-        for (const lang of LANGUAGES) {
+        for (const lang of languages) {
           const value = indexed.get(key)[lang];
           // 每个码点最多占两个 UTF-16 单元，先拒绝超长输入，再进行有界遍历。
           // Each code point uses at most two UTF-16 units; reject oversized input before bounded iteration.
@@ -135,7 +142,7 @@ export function generateMapGoal(payload, options, { codec, kernels, font }) {
     for (const indexed of strings.values())
       for (const [, key] of LABELS)
         if (indexed.has(key))
-          for (const lang of LANGUAGES) {
+          for (const lang of languages) {
             const width = font.measure(indexed.get(key)[lang]).length;
             requireValue(width >= 0 && width <= 8172, "MAP_GOAL_RENDER_WIDTH");
           }
@@ -169,7 +176,7 @@ export function generateMapGoal(payload, options, { codec, kernels, font }) {
     const manifest = [];
     for (const [i, [table, key, color]] of LABELS.entries()) {
       const row = strings.get(table).get(key);
-      for (const [j, lang] of LANGUAGES.entries()) {
+      for (const [j, lang] of languages.entries()) {
         const text = row[lang],
           width = Math.trunc(font.measure(text).length) + 20,
           height = 60;
@@ -181,7 +188,7 @@ export function generateMapGoal(payload, options, { codec, kernels, font }) {
           fill: [...color, 255],
           anchor: "mm",
         });
-        add(`label_${i}${SUFFIXES[j]}.png`, png(codec, { width, height, data: drawn }));
+        add(`label_${i}${suffixes[j]}.png`, png(codec, { width, height, data: drawn }));
       }
       manifest.push({
         id: i,
@@ -193,6 +200,7 @@ export function generateMapGoal(payload, options, { codec, kernels, font }) {
         esES: row.esES,
         esMX: row.esMX,
         ruRU: row.ruRU,
+        ...(upstream ? { koKR: row.koKR } : {}),
         color: [...color],
       });
     }
@@ -200,7 +208,7 @@ export function generateMapGoal(payload, options, { codec, kernels, font }) {
       "mapgoal.json",
       utf8(JSON.stringify({ text_px: 48, symbol_frames: 7, labels: manifest }, null, 1)),
     );
-    requireValue(Object.keys(files).length === 164, "MAP_GOAL_OUTPUT_SET");
+    requireValue(Object.keys(files).length === (upstream ? 195 : 164), "MAP_GOAL_OUTPUT_SET");
     success = true;
     return { files, backend: { ...backend } };
   } finally {

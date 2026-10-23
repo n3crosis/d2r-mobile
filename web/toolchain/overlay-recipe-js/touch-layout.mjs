@@ -3,6 +3,7 @@
 // Pinned native touch-layout recipe. Static widgets are generated from trusted source,
 // never from game assets; runtime reads are supplied by the authenticated overlay archive.
 import data from "./touch-data.json" with { type: "json" };
+import { legacyCustomPage } from "./legacy-v1.mjs";
 import { parseInventoryJson, pythonJsonDumps } from "./inventory.mjs";
 import { PythonFloat } from "../art-recipes-js/native-art-util.mjs";
 
@@ -207,14 +208,14 @@ export function padRibbon(s) {
 export const padMainmenu = (s) => appendLast(s, data._UPDATE_PAD);
 export const padInvRw = (s) => appendLast(s, data._RW);
 export const padSettings = (s) => sub1(s, '"@OptionsMenuVideo"', '"@KeyBindingTypeCustom"');
-function customPage(s) {
+function customPage(s, upstream = true) {
   requireValue(
     s.includes('"name": "VideoOptionsPanel"') && s.includes('"name": "OptionsTable"'),
     "console video layout changed",
   );
-  return [...data.customPage];
+  return [...(upstream ? data.customPage : legacyCustomPage)];
 }
-export const padCustomPage = (s) => customPage(s)[0];
+export const padCustomPage = (s, upstream = true) => customPage(s, upstream)[0];
 export function riftPanel(s) {
   for (const a of [
     '"type": "MessageLogPanel", "name": "MessageLogPanel"',
@@ -703,7 +704,7 @@ const present = {
   "onlinegameoptionspanelhd.json": rowHeight(dropRows(onlineRows)),
 };
 
-export function createTouchLayouts({ readLayout, readEntry, rows }) {
+export function createTouchLayouts({ readLayout, readEntry, rows, upstream = true }) {
   requireValue(typeof readLayout === "function", "authenticated layout reader required");
   const put = (out, path, text) => out.set(path.toLowerCase(), encoder.encode(text));
   const transformMap = (spec) => {
@@ -804,7 +805,11 @@ export function createTouchLayouts({ readLayout, readEntry, rows }) {
       }
       return out;
     },
-    buildPresent: () => transformMap(present),
+    buildPresent: () =>
+      transformMap({
+        ...present,
+        "controller/console/videooptionspanelhd.json": (s) => customPage(s, upstream),
+      }),
     buildPadRoot: () => transformMap(padRoot),
     buildProfile() {
       const out = new Map();

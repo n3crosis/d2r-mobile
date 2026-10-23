@@ -1,6 +1,6 @@
 {
   "dm/ios/tools/gen_merc_art.py": "0d65f6f3bf3a9328ea947ca91d7c625bc364c75e09a74192155b16d7c7b7b179",
-  "dm/ios/tools/gen_widestash_art.py": "5c3a4b1985625ba5ba7f727e0fd77afc1b835b1f9b3ca6337dbdc36626bea073",
+  "dm/ios/tools/gen_widestash_art.py": "f58435e650cc12e1472eb229a7eb5d4e08f7477f37f5d91376df5ad5af952c79",
   "dm/ios/tools/gen_trove_art.py": "d7c57fa5854fd845776b4a294d1198be3b902dc262c9dd35167589e42127f6c2",
   "dm/ios/tools/gen_vault_cover.py": "5a22420e14479c4c6625e79404a5fd8839c7610ed562e7dc038ac29a5d6be4a9",
   "dm/ios/tools/gen_pouch_art.py": "5870fea04d7cb8a7bab64a2975ab9c0ab451d2e174c15c5c29eb4df0bb17d40b",

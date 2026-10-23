@@ -1,15 +1,15 @@
 {
   "schemaVersion": 1,
   "sources": {
-    "dm/ios/tools/gen_hud_v4.py": "d190a279fb63ec0a0da913e3661713917a4a0ad9d7a84307865e73d0fd1583a7",
+    "dm/ios/tools/gen_hud_v4.py": "c37dc64dfd6a3fc09cb438e7e15990affc8eab2e880041dc80d9df3f54e4be8c",
     "web/toolchain/asset-generation-spike/src/core.py": "9d570bcc17ccf2ae460193c1fc093010ae22031ccf0c52e63a90a43bcdce9b1e",
     "web/toolchain/art-kernels/kernels.mjs": "87ec9ca1f11fb7ff6e4ae61fdec92e17dd7367b98eba80ad8264fc4c8d2b7b9c",
-    "dm/ios/tools/native_art/generate.py": "7a20f945f860a55a756fde685c1ddc4f7a92877b6f46da891437e634780c1992",
-    "web/toolchain/asset-generation-spike/src/native_art.py": "159462b6c3c094e46f3fbde40608b33056c65595b6daa419cb9497a36f6fbeb2",
-    "dm/ios/tools/gen_map_goal_art.py": "74f80d518c91c2e4b0a9a685da1cddb5ee7623a350ce17603b0f03c29a72126c",
-    "web/toolchain/asset-generation-spike/src/map_goal.py": "70a5975d8a6202c543228f518c60ad4fdf7fde6baf92041e105e6df3bb474cec",
+    "dm/ios/tools/native_art/generate.py": "d70f88aecd049e9286ea88ff9cdce6b353b282a9b98f2eaeadc229dcbfb80f19",
+    "web/toolchain/asset-generation-spike/src/native_art.py": "8e68874569f92afbfd1d9681c3c36ffff2ef220b65115785fe04b76edf5e8697",
+    "dm/ios/tools/gen_map_goal_art.py": "d68f9bd866034b4606b71d74af690c567187f3b9089dba682450c13038171d4b",
+    "web/toolchain/asset-generation-spike/src/map_goal.py": "569cc9b6b99bbf88d3f9e57ce7e5594a609c02533d7d7209cb2a5f16a12426e7",
     "dm/ios/tools/native_art/implementation.c.inc": "3bf1a58f9189d7857c4fc666e7044a958eff27cf1b594fd9d1b6c47d381db4b1",
-    "dm/ios/Sources/TouchArt/native_art_manifest.json": "edab392805937478af106de6949807bea7f597b8d4a3c3fa208528c5ae53a14a",
+    "dm/ios/Sources/TouchArt/native_art_manifest.json": "334ed8adfa6d21feea33946692a1d5088b5ed39edb36545241ee543414382a5e",
     "dm/ios/docs/native_art_v1_geometry.json": "7332bf327af662259cde973d5ed6ba80af472e4f0c232ea4dfe3fcf0a17a4799",
     "dm/ios/docs/touch_layout_spec_native_binding_v5.json": "e0e649d9c0a6cb6861f166db0e705be196f69a20c40993116f591b13cdcfec1f"
   }

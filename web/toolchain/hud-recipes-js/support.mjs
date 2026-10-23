@@ -106,10 +106,11 @@ function tsv(text) {
   }
   return rows;
 }
-export function vitalCharacters(text) {
+export function vitalCharacters(text, includeKorean = false) {
   const all = tsv(text),
     header = all.shift();
   const names = ["键", "中文", "English", "Español", "Español MX", "Русский"];
+  if (includeKorean || header?.includes("한국어")) names.push("한국어");
   requireValue(header && names.every((name) => header.includes(name)), "HUD_I18N_HEADER");
   const indices = names.map((name) => header.indexOf(name)),
     seen = new Set(),
@@ -123,7 +124,8 @@ export function vitalCharacters(text) {
         columns[0] &&
         columns[1] &&
         columns[2] &&
-        columns[4],
+        columns[4] &&
+        (names.length === 6 || columns[5]),
       "HUD_I18N_ROW",
     );
     requireValue(!seen.has(key), "HUD_I18N_DUPLICATE");
@@ -151,7 +153,7 @@ export function vitalCharacters(text) {
           "HUD_I18N_LENGTH",
         );
     }
-    values.set(key, columns);
+    values.set(key, includeKorean ? columns : columns.slice(0, 5));
   }
   let characters = "生命法力:/ 0123456789";
   const current = new Set(characters),

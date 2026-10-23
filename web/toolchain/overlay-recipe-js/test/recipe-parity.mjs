@@ -8,6 +8,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createOverlayRecipe, GENERATED } from "../recipe.mjs";
+import { UPSTREAM_OVERLAY_REVISION } from "../revision.mjs";
 import { buildAnnotationFixture, fixtureSha1 } from "./annotations-parity.mjs";
 import { inventoryFixtures } from "./inventory-parity.mjs";
 import { touchFixtures } from "./touch-parity.mjs";
@@ -95,10 +96,11 @@ function transparentSprite() {
 for (let i = 0; i < 3; i++)
   assets.set(`data/hd/global/ui/controller/cursor/fixture${i}.sprite`, transparentSprite());
 for (let i = 0; i < 22; i++)
-  assets.set(
-    `data/hd/global/ui/controller/controllerbuttons/switch/fixture${i}.sprite`,
-    transparentSprite(),
-  );
+  for (const platform of ["switch", "xbox"])
+    assets.set(
+      `data/hd/global/ui/controller/controllerbuttons/${platform}/fixture${i}.sprite`,
+      transparentSprite(),
+    );
 const manifest = [...assets]
   .map(
     ([path, bytes]) =>
@@ -142,7 +144,9 @@ const png = process.argv.includes("--wasm")
     };
 const recipe = createOverlayRecipe({ png, md5, sha1: fixtureSha1 });
 const payload = utf8.encode(JSON.stringify(bundle));
-const actual = await recipe.execute("overlay-recipe", payload, {});
+const actual = await recipe.execute("overlay-recipe", payload, {
+  revision: UPSTREAM_OVERLAY_REVISION,
+});
 assert.deepEqual(actual.variants, expected.variants, "Full variant receipts and ordering");
 assert.deepEqual(
   Object.keys(actual.files),
@@ -157,7 +161,17 @@ for (const [name, encoded] of Object.entries(expected.files)) {
   assert.equal(digest("sha256", output), digest("sha256", reference), name + " exact bytes");
   hashes[name] = { bytes: output.length, sha256: digest("sha256", output) };
 }
-const pinned = JSON.parse(readFileSync(new URL("expected-recipe-sha256.json", import.meta.url)));
+// 旧版摘要留作历史证据；新摘要只能在上面的独立原生比较通过后审核固定。
+// Retain the legacy digest as historical evidence; approve a new pin only after independent native equality above.
+const pinned = JSON.parse(
+  readFileSync(new URL("expected-upstream-recipe-sha256.json", import.meta.url)),
+);
+assert.equal(pinned.revision, UPSTREAM_OVERLAY_REVISION);
+assert.equal(
+  pinned.status,
+  "verified",
+  "Latest-source native recipe aggregate is not yet reviewed; do not reuse the legacy baseline",
+);
 assert.equal(Object.keys(hashes).length, pinned.files, "Pinned full recipe file count");
 assert.equal(
   digest("sha256", JSON.stringify({ variants: actual.variants, hashes })),
@@ -167,7 +181,9 @@ assert.equal(
 await assert.rejects(recipe.execute("overlay-recipe", payload, { unchecked: true }), /OPTIONS/);
 const tampered = { ...bundle, manifest: bundle.manifest.replace(/[a-f0-9]{32}/, "0".repeat(32)) };
 await assert.rejects(
-  recipe.execute("overlay-recipe", utf8.encode(JSON.stringify(tampered)), {}),
+  recipe.execute("overlay-recipe", utf8.encode(JSON.stringify(tampered)), {
+    revision: UPSTREAM_OVERLAY_REVISION,
+  }),
   /CKEY_MISMATCH/,
 );
 const dir = new URL("../test-results/", import.meta.url);

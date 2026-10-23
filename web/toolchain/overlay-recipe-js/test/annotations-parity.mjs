@@ -15,6 +15,7 @@ const root = fileURLToPath(new URL("../../../../", import.meta.url));
 // Use Python escapes for non-BMP characters; Bun 1.4.3 rewrites raw-template literals to JS-only escapes.
 const program = String.raw`
 import os,sys,json,base64,csv,io,tempfile,contextlib,hashlib
+os.environ['MOVIE_FFMPEG']='0'
 sys.path.insert(0,sys.argv[1]+'/dm/ios/tools')
 import touch_layout,touch_strings,dm_i18n,annot_strings,annot_drop
 asset={}; strings={}; tables={}

@@ -13,7 +13,7 @@ const encode = (text) => new TextEncoder().encode(text);
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const empty = (bytes) => assert.ok(bytes.every((value) => value === 0));
 const buildId = "534e5448455449430000000000000000";
-async function fixture(t) {
+async function fixture(t, targetHeader = "") {
   const snapshots = new Map(),
     copiedFiles = new Map(),
     inputs = {},
@@ -29,7 +29,8 @@ async function fixture(t) {
       "build_src.sha256": encode(`${PROGRAM_REWRITER_SOURCE}  patch_nso.py\n`),
       [`${name}.patched.bin`]: image,
       [`${name}.fixups.tsv`]: encode(
-        "# TEXT_END\t4\n# PATCH_OFF\t65536\n# KEY_PAGE_OFF\t49152\n# KEY_PAGE_SIZE\t16384\n# RO_OFF\t16384\n# DATA_OFF\t32768\n",
+        targetHeader +
+          "# TEXT_END\t4\n# PATCH_OFF\t65536\n# KEY_PAGE_OFF\t49152\n# KEY_PAGE_SIZE\t16384\n# RO_OFF\t16384\n# DATA_OFF\t32768\n",
       ),
     };
     for (const suffix of ["gates", "sites", "cuts", "params", "obs"])
@@ -375,3 +376,39 @@ test("owned genuine empty sidecars remain valid", async (t) => {
   await adapter.generateProgram();
   adapter.dispose();
 });
+
+for (const target of ["0", "0x0"]) {
+  test(`explicit Apple TARGET ${target} preserves synthetic Guest assembly`, async (t) => {
+    const f = await fixture(t, `# TARGET\t${target}\n`);
+    const adapter = adapterFor(f);
+    try {
+      const entries = await adapter.generateProgram();
+      assert.deepEqual(
+        await collect(entries.find((entry) => entry.path.endsWith("/Guest"))),
+        Buffer.from(f.guest),
+      );
+    } finally {
+      adapter.dispose();
+    }
+  });
+}
+for (const targetHeader of [
+  "# TARGET\t1\n",
+  "# TARGET\t0x2\n",
+  "# TARGET\t3\n",
+  "# TARGET\t0\n# TARGET\t0\n",
+  "# TARGET\t-1\n",
+]) {
+  test(`non-Apple or invalid TARGET rejects before Guest assembly: ${JSON.stringify(targetHeader)}`, async (t) => {
+    const f = await fixture(t, targetHeader);
+    const adapter = adapterFor(f);
+    try {
+      await assert.rejects(adapter.generateProgram(), { code: "PROGRAM_INVALID_FIXUPS" });
+      for (const bytes of f.snapshots.values()) empty(bytes);
+      for (const bytes of f.copiedFiles.values()) empty(bytes);
+      for (const bytes of Object.values(f.inputs)) assert.ok(bytes.some((value) => value !== 0));
+    } finally {
+      adapter.dispose();
+    }
+  });
+}

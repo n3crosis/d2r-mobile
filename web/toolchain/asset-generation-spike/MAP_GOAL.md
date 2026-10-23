@@ -6,16 +6,19 @@ and `local/lng/strings/{levels,monsters,objects,item-names,npcs}.json`. The font
 an original logical archive input, never an installed OS font or an added user-file
 requirement. Missing inputs fail. No proprietary content is bundled.
 
-The pinned original `gen_map_goal_art.py` constants and all functions are extracted
-without algorithm changes. The boundary replaces only decoded atlas and logical-read
-access. It runs the original `main`, original label rendering, crops, cross alpha
-halving, and manifest construction. All 31 labels render in zhCN, enUS, esES, esMX,
-and ruRU. The optional private `annot/oldnames.tsv` is absent, as upstream permits;
+The pinned upstream `gen_map_goal_art.py` remains untouched. The AST packager
+gates exactly its three Korean additions behind an internal revision argument;
+selecting either branch yields a `main` AST identical to that revision's source.
+The boundary replaces decoded atlas and logical-read access. Original rendering,
+crops and alpha halving are retained. All 31 labels render in zhCN, enUS, esES,
+esMX and ruRU by default; the explicit upstream revision also requires koKR. The optional private `annot/oldnames.tsv` is absent, as upstream permits;
 old names therefore equal current names, with no `_old` image. Supplying an old-name
 table is not supported by this operation.
 
-The required inventory is exactly 164 files: seven symbols, cross, 155 labels, and
-`mapgoal.json`. No partial inventory succeeds. Inputs are bounded to 24 MiB total
+The default inventory stays at 164 files: seven symbols, cross, 155 labels and
+`mapgoal.json`. The internal upstream revision returns 195 files (186 labels).
+It is not a user setting or selected by production; a matching future shell
+profile and new parity evidence are required before activation. No partial inventory succeeds. Inputs are bounded to 24 MiB total
 logical bytes, 8 MiB per sprite/font, 2 MiB per string table, 20 MiB serialized
 payload, and 2,097,152 decoded pixels. Labels are nonempty, control-free, at most
 256 characters; tables contain at most 20,000 unique keys and all required locales.
@@ -33,7 +36,7 @@ contract is proven for real source inputs.
 ## Differential evidence contract
 
 CI executes the untouched original script with authored synthetic full-atlas RGBA,
-newly authored TrueType outlines and synthetic five-language strings. The native
+newly authored TrueType outlines and synthetic six-language strings. The native
 oracle independently constructs sprite headers and runs the original `sprite_png`
 header parsing and original main. Browser tests require exact bytes for every file,
 exact inventory and exact backend versions, with no image tolerance.
@@ -45,3 +48,5 @@ Legacy FreeType is not a current/safe dependency endorsement: release security a
 supported-runtime review remains mandatory before processing real user fonts.
 CI proof is pending until the committed workflow passes. No complete production
 asset bundle or working IPA is claimed.
+
+The v2 Korean fixtures have been updated but their native/browser render comparison has not been executed during this source-only migration. Historical pre-v2 render evidence does not establish v2 parity.

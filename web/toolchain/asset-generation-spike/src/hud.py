@@ -15,6 +15,9 @@ import hud_support_original as support
 
 FONTS = ("blizzardglobal-v5_81.ttf", "exocetblizzardot-medium.otf")
 IMAGE_NAMES = ("front_panel", "levelupbutton", "greater_healing_potion")
+LEGACY_REVISION = "v1.0.18"
+RELEASE_REVISION = "b811b90172f4eb40ec1bc89d903308e0c5ab88d0"
+UPSTREAM_REVISION = "e3756f8942b40eba6c851e881828a5b1bda17fd6"
 
 
 def require(condition, code):
@@ -26,6 +29,9 @@ def generate(payload, options):
     require(len(payload) <= 64 * 1024 * 1024, "HUD_INPUT_LIMIT")
     bundle = json.loads(payload.decode())
     require(options.get("mode") == "switch-upscaled", "HUD_MODE_REQUIRED")
+    revision = options.get("revision", LEGACY_REVISION)
+    require(revision in (LEGACY_REVISION, RELEASE_REVISION, UPSTREAM_REVISION), "OVERLAY_RECIPE_REVISION")
+    upstream = revision != LEGACY_REVISION
     metadata = bundle["metadata"]
     require(set(metadata) == {"patch", "i18n", "manifest"}, "HUD_METADATA_SET")
     pins = options.get("metadataSha256", {})
@@ -92,7 +98,10 @@ def generate(payload, options):
             (art / a["asset"]).write_bytes(raw)
         original.hud_v4_design = design
         original.layout_patch = support
-        original.dm_i18n = support
+        original.dm_i18n = types.SimpleNamespace(
+            FMT=support.FMT,
+            rows=lambda: [row if upstream else row[:6] for row in support.rows()],
+        )
         original.romfs_art = types.SimpleNamespace(
             read=lambda _, p: layout.encode()
             if p == "global/ui/Layouts/Controller/HUDPanelHD.json"

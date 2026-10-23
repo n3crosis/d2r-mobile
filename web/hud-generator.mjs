@@ -5,6 +5,7 @@
  * Complete Switch-upscaled native HUD. Fonts are logical archive reads, never OS files.
  */
 import { acceptsNativeArtPngDigest } from "./native-art-png-digests.mjs";
+import { LEGACY_ART_REVISION, requireArtRevision } from "./toolchain/art-recipes-js/revision.mjs";
 const IMAGE_PATHS = Object.freeze({
   front_panel: "hd/global/ui/PANEL/HUD_02/front_panel.sprite",
   levelupbutton: "hd/global/ui/Controller/HUD/LevelUpButton.sprite",
@@ -43,7 +44,9 @@ export async function generateHud({
   metadataSha256,
   mode,
   signal,
+  recipeRevision = LEGACY_ART_REVISION,
 }) {
+  const upstream = requireArtRevision(recipeRevision);
   const check = () => {
     if (signal?.aborted) fail("HUD_CANCELLED");
   };
@@ -161,7 +164,11 @@ export async function generateHud({
     for (const map of [images, fonts, atlases]) for (const key of Object.keys(map)) delete map[key];
     if (payload.length > 64 * 1024 * 1024) fail("HUD_INPUT_LIMIT");
     check();
-    const result = await assetWorker.run("hud-v4", payload, { mode, metadataSha256 });
+    const result = await assetWorker.run("hud-v4", payload, {
+      mode,
+      metadataSha256,
+      ...(upstream ? { revision: recipeRevision } : {}),
+    });
     check();
     if (
       !result.files?.["base.png"] ||

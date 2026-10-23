@@ -1,6 +1,6 @@
 # Complete native-art generator boundary
 
-This named stage runs the unchanged `native_art/generate.py:main`, AST-packaged with
+This named stage runs the source-pinned `native_art/generate.py:main`, AST-packaged with
 its original constants and hash checks. The source, C implementation include,
 manifest, geometry and binding documents are SHA-256 pinned in
 `native-art-provenance.json`. Build preparation emits the exact release metadata
@@ -13,8 +13,9 @@ trusted hashes. It reads exactly the two declared Skills/Skilldesc tables and al
 12 declared production atlases/HUD images. The current production inventory is
 2,330,201 pixels. It does not accept arbitrary output paths or generic recipes.
 It checks source SHA-256 before decoding. The original Python generator additionally
-checks source MD5, encoded PNG SHA-256 and the complete descriptor-index SHA-256.
-Any PNG encoder difference is a hard failure, never a relaxed pixel comparison.
+checks source MD5, frozen RGBA dimensions/SHA-256 and the complete descriptor-index SHA-256.
+The browser boundary additionally retains its encoded PNG SHA-256 guard; the v2
+pixel guard does not weaken that existing byte-integrity contract.
 
 The worker operation `native-art` receives explicit raw/decoded input maps and
 trusted metadata hashes. It emits every declared PNG and `dm_touch_native_art.c`.
@@ -53,3 +54,5 @@ client when the stage finishes. No existing texture adapter checks were relaxed.
 This stage is not yet an automatic packaging-job stage. Trusted shell table counts,
 full HUD/map-goal/font generation, remaining overlay generators and matching release
 inventory still block a complete production IPA pipeline.
+
+The linked native/browser proof above is historical pre-v2 evidence. The v2 RGBA guard, generated C comment and manifest digest are covered by source review and inert synthetic contract tests only in this migration; no new native/WASM/browser rendering or private-input run was performed.

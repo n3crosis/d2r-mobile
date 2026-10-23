@@ -76,3 +76,10 @@ SparkMD5 只用于旧格式校验，不用于安全或用户数据认证。
 
 尚有七个 Python 资源操作：image-default-frame、native-art、hud-v4、map-goal、
 mercenary-art、remaining-art、overlay-recipe。
+
+## 上游薄覆盖层审查
+
+e3756f8 对原生 `casc_overlay.py` 的更新仅加入 `link_source`/`--thin` 文件系统
+处理。浏览器序列化器原本就只输出配置和新增归档，不创建原资源符号链接；其使用
+的纯 CASC 序列化函数均未改变。此次在审查语义后更新来源固定值，不代表重新执行
+或通过了原生/WASM 对照测试。

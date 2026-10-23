@@ -59,6 +59,7 @@ test("recipe label and path limits count Unicode without expanding strings", asy
           esES: "a",
           esMX: "a",
           ruRU: "a",
+          koKR: "가",
         });
       // 只替换首个标签，保持超长用例仍在表格输入预算之内。
       // Replace only the first label to keep oversized cases within the table input budget.

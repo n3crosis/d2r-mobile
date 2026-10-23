@@ -94,3 +94,11 @@ claimed, and no .NET code changes are made.
 
 Seven Python asset operations remain: image-default-frame, native-art, hud-v4,
 map-goal, mercenary-art, remaining-art and overlay-recipe.
+
+## Upstream thin-overlay review
+
+The e3756f8 update to native `casc_overlay.py` only adds `link_source`/`--thin`
+filesystem handling. The browser serializer already emits thin config/archive
+outputs and never creates source symlinks; none of its pure CASC serialization
+functions changed. The source pin was advanced after this semantic review, not
+as evidence of a new native/WASM parity run.

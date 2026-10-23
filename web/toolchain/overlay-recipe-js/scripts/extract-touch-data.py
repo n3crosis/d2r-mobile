@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[4]
 OUT = Path(__file__).resolve().parents[1] / "touch-data.json"
 PINS = {
-    "dm/ios/tools/touch_layout.py": "f24d5e2460fdb9642e75c965eed214a4b277516557e7a6897d193dcfe75015a7",
+    "dm/ios/tools/touch_layout.py": "600e17649f2e3163add19b8d7b15b52b23e658f5e668e9bbb6c480cbde1fca86",
     "dm/host/dm_kills.c": "8a0de7a29ce473621dc94eee60fc397f14058309eb1e96ba394a54835d1bb436",
 }
 for name, expected in PINS.items():
@@ -19,6 +19,7 @@ for name, expected in PINS.items():
         raise SystemExit("Touch static source drift: " + name)
 os.environ.pop("DM_OVERLAY_MAC", None)
 os.environ.pop("DM_CUSTOM_TEST_ROWS", None)
+os.environ["MOVIE_FFMPEG"] = "0"
 source = ROOT / "dm/ios/tools/touch_layout.py"
 spec = importlib.util.spec_from_file_location("pinned_touch_static", source)
 module = importlib.util.module_from_spec(spec)
@@ -38,7 +39,7 @@ def string(function, contains):
 
 
 module._rw_children_check()
-data = {"sourceSha256": PINS, "environment": {"DM_OVERLAY_MAC": False, "DM_CUSTOM_TEST_ROWS": 0}}
+data = {"sourceSha256": PINS, "environment": {"DM_OVERLAY_MAC": False, "DM_CUSTOM_TEST_ROWS": 0, "MOVIE_FFMPEG": False}}
 for name in (
     "OFF",
     "FRONTEND",

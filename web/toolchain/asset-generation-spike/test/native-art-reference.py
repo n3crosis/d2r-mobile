@@ -47,6 +47,7 @@ for i in range(10):
             "official_sprite_sha256": sha(raw[path]),
             "official_sprite_md5": hashlib.md5(raw[path]).hexdigest(),
             "decoded_png_sha256": sha(png.getvalue()),
+            "decoded_rgba_sha256": sha(pixels),
             "atlas_px": [w, h],
             "frame_width": 1,
             "frame_pitch": 2,

@@ -22,7 +22,7 @@ packaging job still requires `secretLifetime: "archive"`; compose this adapter's
 `dispose` with job cleanup.
 
 1. Verify extraction provenance before creating clients or reading source bytes.
-2. Optionally generate all 164 map-goal outputs from authenticated archive fonts,
+2. Optionally generate all 164 legacy map-goal outputs from authenticated archive fonts,
    strings and complete atlases. The existing decoder's `frameCount` is passed as
    `frames`; its full layout/pixel checks are not weakened.
 3. For each explicit trusted texture recipe, read a bounded template and verify

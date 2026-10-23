@@ -23,11 +23,16 @@ start = next(
 )
 body = []
 for node in tree.body[start:]:
-    if isinstance(node, ast.If) and ast.unparse(node.test) == "len(sys.argv) > 3":
+    if isinstance(node, ast.If) and ast.unparse(node.test) == "args.tuning_json is not None":
         continue  # No arbitrary developer tuning in the browser release path.
+    if isinstance(node, ast.If) and ast.unparse(node.test) == "not args.overlay_only":
+        body.extend(node.body)  # The browser iOS recipe always includes skill silhouettes.
+        continue
     if isinstance(node, ast.Import) and any(n.name == "dm_i18n" for n in node.names):
         continue  # Supplied isolated source-pinned module, no filesystem import discovery.
     body.append(node)
+if any(isinstance(n, ast.Name) and n.id in {"args", "sys"} for node in body for n in ast.walk(node)):
+    raise SystemExit("Unexpected CLI dependency in packaged HUD recipe")
 wrapper = ast.parse("def generate(ROMFS, OUT, HERE, SRC):\n    pass\n").body[0]
 wrapper.body = body
 (out / "hud_original.py").write_text(

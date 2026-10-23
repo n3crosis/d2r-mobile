@@ -1,6 +1,7 @@
 """Original iOS overlay recipe on bounded in-memory inputs, no native processes."""
 
 import base64
+import builtins
 import contextlib
 import hashlib
 import importlib
@@ -106,6 +107,7 @@ def generate(payload, options):
     old_modules = {n: sys.modules.get(n) for n in MODULES}
     old_path, old_argv, old_env = sys.path[:], sys.argv[:], dict(os.environ)
     old_pixels = Image.MAX_IMAGE_PIXELS
+    old_open, old_io_open = builtins.open, io.open
     try:
         with tempfile.TemporaryDirectory(prefix="native-overlay-") as tmp:
             root = Path(tmp)
@@ -125,12 +127,13 @@ def generate(payload, options):
             out = root / "romfs_overlay"
             os.environ.pop("DM_OVERLAY_MAC", None)
             os.environ.pop("DM_ASTC_PACK", None)
+            os.environ["MOVIE_FFMPEG"] = "0"
             os.environ["DM_GEN_ASSETS"] = str(gen)
             os.environ["DM_HUD_V4_DIR"] = str(gen / "NativeHUD/v4")
             sys.path.insert(0, str(tools))
             for name in MODULES:
                 sys.modules.pop(name, None)
-            sys.modules["gen_assets"] = types.SimpleNamespace(ensure=lambda _: None)
+            sys.modules["gen_assets"] = types.SimpleNamespace(ensure=lambda _, overlay_only=False: None)
             sys.modules["gen_merc_art"] = types.SimpleNamespace(
                 ART=str(gen / "NativeHUD/mercslots"),
                 # Pinned gen_merc_art.py (0d65f6f3...b7b179), also used by
@@ -205,6 +208,8 @@ def generate(payload, options):
                 (dst / "ctrl_touch").write_text(
                     "触屏版布局在 layouts/xtouch_lay、ztouch_console_lay、0touch_console_switch_lay（dm_padmode.c 见到本文件才改写前缀）\n"
                 )
+                (dst / "xbox_glyphs").write_text("ztouch_controller_buttons_ui/switchx*.sprite\n")
+                (dst / "ps_glyphs").write_text("ztouch_controller_buttons_ui/switchp*.sprite\n")
                 variants.append({"name": name, "replacements": inventory, "sidecars": []})
                 return (
                     "browser-casc-pending",
@@ -237,6 +242,8 @@ def generate(payload, options):
                             "touch_strings.tsv",
                             "features.txt",
                             "dm_textbox_plain.tsv",
+                            "xbox_glyphs",
+                            "ps_glyphs",
                         ),
                         "OVERLAY_SIDECAR",
                     )
@@ -248,6 +255,7 @@ def generate(payload, options):
                     variant["sidecars"].append({"path": p.name, "file": key})
             return {"files": files, "variants": variants}
     finally:
+        builtins.open, io.open = old_open, old_io_open
         Image.MAX_IMAGE_PIXELS = old_pixels
         sys.path[:] = old_path
         sys.argv[:] = old_argv

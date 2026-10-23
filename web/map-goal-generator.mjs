@@ -4,6 +4,7 @@
  * 使用当前名称的完整地图目标资源。不使用操作系统字体、私有旧名称或推断的图集布局。
  * Complete current-name map-goal assets. No OS fonts, private old names, or inferred atlas layout.
  */
+import { LEGACY_ART_REVISION, requireArtRevision } from "./toolchain/art-recipes-js/revision.mjs";
 export const MAP_GOAL_IMAGE_PATHS = Object.freeze({
   symbols: "hd/global/ui/PANEL/Quest_Log/TalRashaSymbol.sprite",
   units: "hd/global/ui/AUTOMAP/Units.sprite",
@@ -16,14 +17,18 @@ export const MAP_GOAL_TABLES = Object.freeze([
   "npcs",
 ]);
 export const MAP_GOAL_FONT = "hd/ui/fonts/BlizzardGlobal-V5_81.ttf";
-export const MAP_GOAL_OUTPUTS = Object.freeze([
+const outputNames = (upstream) => [
   "mapgoal.json",
   "cross.png",
   ...Array.from({ length: 7 }, (_, i) => `sym_${i}.png`),
   ...Array.from({ length: 31 }, (_, i) =>
-    ["", "_en", "_es", "_mx", "_ru"].map((s) => `label_${i}${s}.png`),
+    (upstream ? ["", "_en", "_es", "_mx", "_ru", "_ko"] : ["", "_en", "_es", "_mx", "_ru"]).map(
+      (s) => `label_${i}${s}.png`,
+    ),
   ).flat(),
-]);
+];
+export const MAP_GOAL_OUTPUTS = Object.freeze(outputNames(false));
+export const UPSTREAM_MAP_GOAL_OUTPUTS = Object.freeze(outputNames(true));
 const fail = (code) => {
   throw new Error(code);
 };
@@ -37,7 +42,15 @@ const encode = (bytes) => {
  * decodeAtlas 必须返回已验证的完整图集，以及实际 frameWidth 和 frames。
  * decodeAtlas must return the validated full atlas plus actual frameWidth and frames.
  */
-export async function generateMapGoal({ logicalAssets, assetWorker, decodeAtlas, signal }) {
+export async function generateMapGoal({
+  logicalAssets,
+  assetWorker,
+  decodeAtlas,
+  signal,
+  recipeRevision = LEGACY_ART_REVISION,
+}) {
+  const upstream = requireArtRevision(recipeRevision);
+  const expected = upstream ? UPSTREAM_MAP_GOAL_OUTPUTS : MAP_GOAL_OUTPUTS;
   const owned = new Set(),
     outputOwned = [];
   let success = false;
@@ -102,7 +115,10 @@ export async function generateMapGoal({ logicalAssets, assetWorker, decodeAtlas,
     check();
     let result;
     try {
-      result = await assetWorker.run("map-goal", payload, { names: "current" });
+      result = await assetWorker.run("map-goal", payload, {
+        names: "current",
+        ...(upstream ? { revision: recipeRevision } : {}),
+      });
     } finally {
       release(payload);
     }
@@ -116,7 +132,7 @@ export async function generateMapGoal({ logicalAssets, assetWorker, decodeAtlas,
     if (
       Object.keys(result.files ?? {})
         .sort()
-        .join() !== [...MAP_GOAL_OUTPUTS].sort().join()
+        .join() !== [...expected].sort().join()
     )
       fail("MAP_GOAL_OUTPUT_SET");
     let output = 0;

@@ -101,7 +101,7 @@ for name, words, compressed, registered, ruleset, success in cases:
     target = HERE / "oracle" / name
     result = subprocess.run(
         [sys.executable, str(SOURCE), str(path), str(target), "main"],
-        env={**os.environ, "DM_RULESET": ruleset, "DM_PRIVATE_GATES": "1"},
+        env={**os.environ, "DM_TARGET": "apple", "DM_RULESET": ruleset, "DM_PRIVATE_GATES": "1"},
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
@@ -163,7 +163,7 @@ for file in (HERE / "oracle" / "gates").iterdir():
     shutil.copyfile(file, multi_target / file.name)
 subprocess.run(
     [sys.executable, str(SOURCE), str(sdk_path), str(multi_target), "sdk"],
-    env={**os.environ, "DM_RULESET": "native", "DM_PRIVATE_GATES": "1"},
+    env={**os.environ, "DM_TARGET": "apple", "DM_RULESET": "native", "DM_PRIVATE_GATES": "1"},
     check=True,
     stdout=subprocess.PIPE,
     stderr=subprocess.PIPE,

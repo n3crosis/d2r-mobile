@@ -3,8 +3,8 @@
 Callable ports of three existing bounded Python operations, not yet imported by the production worker:
 
 - `image-default-frame`: validate v31, crop the requested frame, apply the existing default-state numeric kernel, emit identical RGBA/PNG/v31 files and receipt.
-- `native-art`: verify trusted metadata, original SHA-256/MD5 and complete encoded-PNG SHA-256, then emit the nine class atlases plus any other declared atlases and the exact generated C index. The verified 3.3.94012 atlases also accept explicitly pinned browser PNG digests paired with their frozen digests. No PNG guard is weakened to a pixel digest.
-- `map-goal`: crop seven symbols, halve cross alpha with integer flooring, render 155 current-name localized labels, and emit the original 164-file set and JSON layout. Text uses exact FreeType BASIC direct drawing, not Canvas/source-over.
+- `native-art`: verify trusted metadata, original SHA-256/MD5, v2 frozen RGBA SHA-256, and complete encoded-PNG SHA-256, then emit the nine class atlases plus any other declared atlases and the exact generated C index. The verified 3.3.94012 atlases also accept explicitly pinned browser PNG digests paired with their frozen digests. No PNG guard is weakened to a pixel digest.
+- `map-goal`: crop seven symbols, halve cross alpha with integer flooring, render 155 current-name labels in five languages by default, and emit the legacy 164-file set and JSON layout. An explicit internal upstream revision adds Korean for 186 labels / 195 files. Text uses exact FreeType BASIC direct drawing, not Canvas/source-over.
 
 `createArtRecipes({codec,kernels,defaultState,font,md5,sha256})` returns an async `execute(operation,payload,options)` function. `payload` is a `Uint8Array`; options and return receipts retain the existing operation contracts. Files are a plain filename-to-`Uint8Array` object. `isArtRecipeOperation` is available for dispatch. Dependencies are injected so this module neither fetches artifacts nor initializes Python:
 
@@ -27,8 +27,12 @@ Run from the repository root:
     # After the actual pinned codec/font WASM artifacts have been built:
     node web/toolchain/art-recipes-js/test/parity.mjs --wasm
 
-Current focused evidence: **34 cases pass** against the bundled runtime, covering three default-frame successes, the complete map-goal output set, three native-art successes, and rejection cases. Factory version/missing-font/unsupported-operation checks also pass. The codec/font standalone WASM mode has not been run locally.
+Historical pre-v2 focused evidence: **34 cases passed** against the bundled runtime, covering three default-frame successes, the complete map-goal output set, three native-art successes, and rejection cases. Factory version/missing-font/unsupported-operation checks also pass. The codec/font standalone WASM mode has not been run locally.
 
 The runner uses synthetic images/tables and an already installed test font (`--font=/local/font.ttf` overrides the DejaVuSans default). No game input is read, stored or distributed. It loads the actual bundled vendor-hash-verified Pillow runtime under Node, not a browser. Default mode uses real Rust pixel WASM but injects the oracle's PNG/font operations to isolate recipe/control-flow equality. It therefore does not establish independent codec/font WASM parity. `--wasm` uses the standalone codec/font artifacts instead. Compare every output byte and receipt, including the complete map-goal manifest; rejection cases cover boundaries/hash enforcement.
 
 No worker/preparer/runtime-build edits belong to this directory. Production Python is not removed by these files alone. Before routing operations, build and prove the codec/font artifacts, include the source verifier in preparation, and bundle or resolve these local ESM imports in the verified runtime closure. Preserve the existing dependency licenses. Authentic game-font/asset and end-to-end device parity remain separate checks, not established by synthetic fixtures.
+
+## Upstream v2 migration
+
+The v2 source review and inert synthetic checks are recorded in [UPSTREAM_V2_ART_REVIEW.md](../../UPSTREAM_V2_ART_REVIEW.md). Native-art adds the frozen RGBA check without dropping the existing PNG-byte guard and adopts the upstream generated C comment. The default map-goal inventory remains legacy-compatible. Only the internal `RELEASE_ART_REVISION` (b811) or `UPSTREAM_ART_REVISION` (e375) adds required Korean strings, `_ko` files and `koKR` manifest fields. It aliases the overlay source revision discriminator; production does not select it, and it is not a user setting. A matching future shell profile and new parity evidence are required before activation. The historical runtime/font/WASM parity above has not been rerun for v2. Source-pin validation is not rendered-output parity.
