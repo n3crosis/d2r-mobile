@@ -28,7 +28,14 @@ const pipelineEntry = Object.freeze({
     yield new Uint8Array([1]);
   },
 });
-let forwarded, failure, pipelineDisposed, hudRevision, pipelineRevisions;
+let forwarded, failure, pipelineDisposed, hudRevision, pipelineRevisions, lifetimeCase;
+const output = (name, value, mayUseBuffer = false) => {
+  const bytes = new Uint8Array([value]);
+  lifetimeCase?.outputs.set(name, bytes);
+  return mayUseBuffer && lifetimeCase?.arrayBuffers ? bytes.buffer : bytes;
+};
+const fileBatch = (stage, files) =>
+  lifetimeCase?.invalidBatch === stage ? { invalid: "wrong type", ...files } : files;
 mock.module("../../extraction-job-adapter.mjs", {
   namedExports: {
     readAuthenticatedAssets: () => ({ logicalAssets: { read: async () => new Uint8Array(40) } }),
@@ -36,25 +43,41 @@ mock.module("../../extraction-job-adapter.mjs", {
 });
 mock.module("../../native-art-generator.mjs", {
   namedExports: {
-    generateNativeArt: async () => ({ files: { "dm_touch_native_art.c": new Uint8Array([1]) } }),
+    generateNativeArt: async () => ({
+      files: fileBatch("native", {
+        "dm_touch_native_art.c": output("art-c", 11, true),
+        "native/icon.png": output("art-icon", 12, true),
+      }),
+    }),
   },
 });
 mock.module("../../hud-generator.mjs", {
   namedExports: {
     generateHud: async ({ recipeRevision }) => {
       hudRevision = recipeRevision;
-      return {
-        files: {
-          "base.png": new Uint8Array([1]),
-          "hud.json": new Uint8Array([1]),
-          "hud_v4_ui/ui.json": new Uint8Array([1]),
-        },
+      await lifetimeCase?.onStage?.("hud");
+      const result = {
+        files: fileBatch("hud", {
+          "base.png": output("hud-base", 21, true),
+          "hud.json": output("hud-json", 22, true),
+          "hud_v4_ui/ui.json": output("hud-ui", 23, true),
+        }),
       };
+      await lifetimeCase?.onHudResult?.();
+      return result;
     },
   },
 });
 mock.module("../../production-derived.mjs", {
-  namedExports: { generateProductionDerived: async () => ({ files: {}, counts: {} }) },
+  namedExports: {
+    generateProductionDerived: async () => {
+      await lifetimeCase?.onStage?.("derived");
+      return {
+        files: fileBatch("derived", { "dm/derived.tsv": output("derived", 31) }),
+        counts: {},
+      };
+    },
+  },
 });
 mock.module("../../frontend-panel-transform.mjs", {
   namedExports: {
@@ -74,6 +97,7 @@ mock.module("../../asset-pipeline-adapter.mjs", {
       pipelineDisposed = false;
       return {
         async generateAssets() {
+          await lifetimeCase?.onStage?.("pipeline");
           if (failure instanceof Error) throw failure;
           if (failure === "pipeline") throw new Error("pipeline failure");
           return [pipelineEntry];
@@ -95,6 +119,7 @@ function adapter(enabled = true, options = {}) {
       ...client,
       close() {
         options.closed?.push(name);
+        options.onClose?.(name);
         if (failure === "close" || options.failClose === name) throw new Error("close failed");
       },
     };
@@ -107,7 +132,10 @@ function adapter(enabled = true, options = {}) {
       }),
     createTextureEncoder: () =>
       factory("encoder", {
-        encodeAndPack: async () => ({ sprite: new Uint8Array([1]), linearBC3: new Uint8Array(1) }),
+        encodeAndPack: async () => ({
+          sprite: output("panel-sprite", 41),
+          linearBC3: new Uint8Array(1),
+        }),
       }),
   };
   return createProductionAssetAdapter({
@@ -115,7 +143,7 @@ function adapter(enabled = true, options = {}) {
     profile: {
       profileId: options.profileId ?? "v1.0.18-ios26",
       nativeArt: { manifest: "{}" },
-      derivedCounts: {},
+      derivedCounts: options.derivedCounts ?? {},
     },
     ...(enabled ? { prebuiltPack: prebuilt } : {}),
   });
@@ -215,4 +243,137 @@ test("production forwards closed b811 and explicit legacy recipes, never caller 
     () => createProductionAssetAdapter({ runtime: {}, profile: {} }),
     /PRODUCTION_ASSET_PROFILE/,
   );
+});
+
+const trackOutputs = (t, options = {}) => {
+  failure = undefined;
+  lifetimeCase = { outputs: new Map(), ...options };
+  t.after(() => {
+    lifetimeCase = undefined;
+    failure = undefined;
+  });
+  return lifetimeCase;
+};
+const assertWiped = (outputs) => {
+  assert.ok(outputs.size > 0);
+  for (const [name, bytes] of outputs) assert.deepEqual([...bytes], [0], name);
+};
+
+test("production wipes intermediate outputs on HUD, derived and pipeline failure", async (t) => {
+  for (const stage of ["hud", "derived", "pipeline"]) {
+    for (const arrayBuffers of [false, true]) {
+      const primary = new Error(`${stage} stopped`);
+      const tracked = trackOutputs(t, {
+        arrayBuffers,
+        onStage(current) {
+          if (current === stage) throw primary;
+        },
+      });
+      const assets = adapter();
+      await assert.rejects(assets.generateAssets({}), (error) => error === primary);
+      assertWiped(tracked.outputs);
+      assets.dispose();
+      assertWiped(tracked.outputs);
+    }
+  }
+});
+
+test("production wipes returned derived bytes before rejecting capacity mismatch", async (t) => {
+  const tracked = trackOutputs(t);
+  const assets = adapter(true, { derivedCounts: { expected: 1 } });
+  await assert.rejects(assets.generateAssets({}), { message: "SHELL_DERIVED_CAPACITY_MISMATCH" });
+  assert.equal(tracked.outputs.has("derived"), true);
+  assertWiped(tracked.outputs);
+  assets.dispose();
+});
+
+test("production wipes valid siblings after an invalid-first generated batch", async (t) => {
+  for (const invalidBatch of ["native", "hud", "derived"]) {
+    const tracked = trackOutputs(t, { invalidBatch, arrayBuffers: true });
+    const assets = adapter();
+    await assert.rejects(assets.generateAssets({}), { message: "PRODUCTION_ASSET_OUTPUT_TYPE" });
+    assertWiped(tracked.outputs);
+    assets.dispose();
+    assertWiped(tracked.outputs);
+  }
+});
+
+test("production wipes all generated output on pipeline cancellation or final close failure", async (t) => {
+  for (const mode of ["pipeline-abort", "close-abort", "close-failure"]) {
+    const controller = new AbortController();
+    const primary = new Error("cancelled generation");
+    const tracked = trackOutputs(t, {
+      onStage(stage) {
+        if (stage === "pipeline" && mode === "pipeline-abort") controller.abort(primary);
+      },
+    });
+    const assets = adapter(true, {
+      failClose: mode === "close-failure" ? "worker" : undefined,
+      onClose(name) {
+        if (name === "worker" && mode === "close-abort") controller.abort(primary);
+      },
+    });
+    await assert.rejects(
+      assets.generateAssets({ signal: controller.signal }),
+      mode === "close-failure"
+        ? { message: "PRODUCTION_ASSET_CLEANUP" }
+        : (error) => error === primary,
+    );
+    assert.equal(tracked.outputs.has("panel-sprite"), true);
+    assertWiped(tracked.outputs);
+    assert.equal(assets.getAstcOutputBinding(), undefined);
+    assets.dispose();
+  }
+});
+
+test("production disposal wipes prior outputs and later returned HUD bytes", async (t) => {
+  let releaseHud, hudReady;
+  const ready = new Promise((resolve) => (hudReady = resolve));
+  const gate = new Promise((resolve) => (releaseHud = resolve));
+  const tracked = trackOutputs(t, {
+    async onHudResult() {
+      hudReady();
+      await gate;
+    },
+  });
+  const assets = adapter();
+  const pending = assets.generateAssets({});
+  await ready;
+  assets.dispose();
+  assert.deepEqual([...tracked.outputs.get("art-icon")], [0]);
+  assert.deepEqual([...tracked.outputs.get("hud-ui")], [23]);
+  releaseHud();
+  await assert.rejects(pending, { message: "PRODUCTION_ASSET_DISPOSED" });
+  assertWiped(tracked.outputs);
+});
+
+test("production retains success entry bytes until dispose without wiping shared HUD UI early", async (t) => {
+  const tracked = trackOutputs(t, {
+    arrayBuffers: true,
+    onStage() {
+      for (const [name, bytes] of tracked.outputs) assert.notEqual(bytes[0], 0, name);
+    },
+  });
+  const assets = adapter();
+  const entries = await assets.generateAssets({});
+  for (const name of ["art-c", "hud-base", "hud-json", "panel-sprite"])
+    assert.deepEqual([...tracked.outputs.get(name)], [0], name);
+  for (const [path, name, value] of [
+    ["native/icon.png", "art-icon", 12],
+    ["hud_v4_ui/ui.json", "hud-ui", 23],
+    ["dm/derived.tsv", "derived", 31],
+  ]) {
+    const item = entries.find((entry) => entry.path === path);
+    for (let repeat = 0; repeat < 2; repeat++) {
+      const chunks = [];
+      for await (const bytes of item.chunks()) chunks.push(bytes);
+      assert.equal(chunks[0].buffer, tracked.outputs.get(name).buffer);
+      assert.deepEqual([...chunks[0]], [value], name);
+    }
+  }
+  assert.equal(assets.getAstcOutputBinding(), binding);
+  assets.dispose();
+  assertWiped(tracked.outputs);
+  const item = entries.find((entry) => entry.path === "native/icon.png");
+  await assert.rejects(item.chunks().next(), { message: "PRODUCTION_ASSET_DISPOSED" });
 });
