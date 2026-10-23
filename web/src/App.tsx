@@ -317,7 +317,6 @@ export default function App() {
       const selected = await browser.showDirectoryPicker({ mode: "readwrite" });
       controller.signal.throwIfAborted();
       if (!current()) return;
-      setHasSelectedFolder(true);
       setSkipResources(false);
       selectedName = selected.name;
       setFolder(null);
@@ -337,6 +336,9 @@ export default function App() {
       const names = files.nsps.map((file) => file.name);
       setNspNames(names);
       setInputMode(files.inputMode);
+      // 仅成功检查输入后锁定配置；失败或取消仍可通过整页重载更改选项。
+      // Lock configuration only after discovery succeeds; failed/cancelled selection can still reload with new options.
+      setHasSelectedFolder(true);
       setFolder(selected);
       appendActivity(
         files.inputMode === "extracted"

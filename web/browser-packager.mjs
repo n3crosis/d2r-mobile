@@ -41,13 +41,12 @@ import {
   isLegacyAstcDiagnosticCode,
 } from "./packaging-diagnostics.mjs";
 import { inspectGuestTarget, inspectGuestPlist } from "./guest-target-stream.mjs";
-// 检查 API 存在性和 gzip 格式；权限、配额和实际可用性仍在使用时验证。
-// Check API presence and gzip format; permissions, quota and actual usability remain checked at use.
+// 检查必需 API 和 gzip 格式；权限与实际存储可用性在使用时验证，配额估算仅供参考。
+// Check required APIs and gzip format; permissions and actual storage usability are checked at use, not inferred from quota estimates.
 export function assertBrowserPackagerCapabilities(environment = globalThis) {
   if (
     !environment.isSecureContext ||
     typeof environment.navigator?.storage?.getDirectory !== "function" ||
-    typeof environment.navigator?.storage?.estimate !== "function" ||
     typeof environment.Worker !== "function" ||
     typeof environment.DecompressionStream !== "function" ||
     !environment.crypto?.subtle ||

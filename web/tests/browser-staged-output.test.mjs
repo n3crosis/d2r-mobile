@@ -139,13 +139,34 @@ for (const format of ["zip32", "zip64"])
     assert.deepEqual([...env.files.keys()], ["unrelated"]);
     assert.ok(env.events.indexOf(`remove:${name}`) < env.events.indexOf("destination-close"));
   });
-test("quota, permission, capability and collisions fail without collateral cleanup", async () => {
-  for (const faults of [{ quota: 0 }, { permission: "prompt" }]) {
-    const env = environment(faults);
-    await assert.rejects(adapters(env).createOutput({ manifest }));
+test("missing, failed, invalid and low quota estimates do not gate a valid archive", async () => {
+  for (const estimate of [
+    undefined,
+    async () => {
+      throw new Error("estimate unavailable");
+    },
+    async () => ({ quota: NaN, usage: 0 }),
+    async () => ({ quota: 0, usage: 0 }),
+  ]) {
+    const env = environment();
+    env.storage.estimate = estimate;
+    const adapter = adapters(env),
+      output = await writeStage(adapter);
+    await adapter.validateArchive({ output, manifest });
+    await output.close();
+    assert.deepEqual(env.committed, env.stageBytes);
+    assert.equal(env.destinationOpens, 1);
     assert.deepEqual([...env.files.keys()], ["unrelated"]);
-    assert.equal(env.destinationOpens, 0);
   }
+});
+test("permission, capability and collisions fail without collateral cleanup", async () => {
+  const denied = environment({ permission: "prompt" });
+  await assert.rejects(
+    adapters(denied).createOutput({ manifest }),
+    /OUTPUT_DESTINATION_PERMISSION_REQUIRED/,
+  );
+  assert.deepEqual([...denied.files.keys()], ["unrelated"]);
+  assert.equal(denied.destinationOpens, 0);
   const env = environment();
   env.files.set(name, Uint8Array.of(42));
   await assert.rejects(adapters(env).createOutput({ manifest }), /OUTPUT_TEMP_COLLISION/);
@@ -199,7 +220,7 @@ test("corrupted stage bytes and post-validation mutations cannot commit", async 
 test("transfer/cleanup failures, cancellation and late cancellation", async () => {
   for (const kind of ["destinationWrite", "destinationClose", "remove", "cancel", "lateCancel"]) {
     const controller = new AbortController(),
-      faults = { [kind]: true };
+      faults = { [kind]: true, quota: 0 };
     if (kind === "cancel") faults.onDestinationWrite = () => controller.abort();
     if (kind === "lateCancel") faults.onDestinationClose = () => controller.abort();
     const env = environment(faults),
@@ -217,14 +238,14 @@ test("transfer/cleanup failures, cancellation and late cancellation", async () =
     assert.deepEqual([...env.files.keys()], ["unrelated"]);
   }
 });
-test("stage write/close failures and pre-cancellation never open destination", async () => {
+test("actual stage write/close failures still fail safely with a low quota estimate", async () => {
   for (const kind of ["stageWrite", "stageClose"]) {
-    const env = environment({ [kind]: true }),
+    const env = environment({ [kind]: true, quota: 0 }),
       adapter = adapters(env);
-    if (kind === "stageWrite") await assert.rejects(writeStage(adapter));
+    if (kind === "stageWrite") await assert.rejects(writeStage(adapter), /disk full/);
     else {
       const output = await writeStage(adapter);
-      await assert.rejects(adapter.validateArchive({ output, manifest }));
+      await assert.rejects(adapter.validateArchive({ output, manifest }), /close failed/);
       await output.abort();
     }
     assert.equal(env.destinationOpens, 0);
@@ -330,7 +351,7 @@ test("setup cancellation preserves cleanup failure and does not delete a live st
 
 // 只读查询不拥有文件；取消后不必等浏览器返回，但必须观察迟到的结果或拒绝。
 // Read-only queries own no files; cancellation stops waiting while late results/rejections remain observed.
-for (const phase of ["permission", "estimate", "directory", "probe"])
+for (const phase of ["permission", "directory", "probe"])
   test(`cancellation during a pending ${phase} query does not wait or create files`, async () => {
     for (const lateFailure of [false, true]) {
       const controller = new AbortController(),
@@ -351,7 +372,6 @@ for (const phase of ["permission", "estimate", "directory", "probe"])
             : resolve(
                 {
                   permission: "granted",
-                  estimate: { quota: 10 ** 9, usage: 0 },
                   directory: root,
                   probe: { kind: "file" },
                 }[phase],
@@ -368,7 +388,6 @@ for (const phase of ["permission", "estimate", "directory", "probe"])
           return pending;
         };
       env.destinationHandle.queryPermission = query("permission", () => "granted");
-      env.storage.estimate = query("estimate", env.storage.estimate.bind(env.storage));
       env.storage.getDirectory = query("directory", () => root);
       const getFile = root.getFileHandle.bind(root),
         probe = query("probe", getFile);

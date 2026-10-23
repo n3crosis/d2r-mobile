@@ -26,10 +26,21 @@ test("complete capability surface passes without requesting permissions or readi
   assert.doesNotThrow(() => assertBrowserPackagerCapabilities(supported()));
 });
 
+test("storage estimates are optional and never read by the capability check", () => {
+  const environment = supported();
+  delete environment.navigator.storage.estimate;
+  assert.doesNotThrow(() => assertBrowserPackagerCapabilities(environment));
+  Object.defineProperty(environment.navigator.storage, "estimate", {
+    get() {
+      throw new Error("storage estimates must not gate browser support");
+    },
+  });
+  assert.doesNotThrow(() => assertBrowserPackagerCapabilities(environment));
+});
+
 test("missing or non-callable required methods use the existing unsupported code", () => {
   for (const path of [
     ["navigator", "storage", "getDirectory"],
-    ["navigator", "storage", "estimate"],
     ["Worker"],
     ["DecompressionStream"],
     ["crypto", "randomUUID"],

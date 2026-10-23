@@ -56,10 +56,7 @@ test("UI shares operation lease across folder, generation and signing retry hand
     3,
   );
   assert.match(source, /operations\.cancel\(\)/);
-  assert.match(
-    source,
-    /if \(!current\(\)\) return;\s+setHasSelectedFolder\(true\);\s+setSkipResources\(false\)/,
-  );
+  assert.match(source, /if \(!current\(\)\) return;\s+setSkipResources\(false\)/);
   assert.match(source, /if \(!current\(\)\) return;\s+generationCompleted = true/);
   assert.match(source, /if \(!current\(\)\) return;\s+const names = files\.nsps/);
 });

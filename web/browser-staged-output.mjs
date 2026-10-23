@@ -55,15 +55,10 @@ export function createBrowserStagedOutputAdapters({
   destinationHandle,
   archiveFormat,
   maxOutputBytes,
-  quotaReserveBytes = 16 * 1024 * 1024,
   storage = globalThis.navigator?.storage,
   secureContext = globalThis.isSecureContext,
   randomUUID = () => globalThis.crypto.randomUUID(),
 } = {}) {
-  assert(
-    Number.isSafeInteger(quotaReserveBytes) && quotaReserveBytes >= 0,
-    "OUTPUT_INVALID_RESERVE",
-  );
   const owned = new WeakMap();
   return {
     async createOutput({ manifest, signal: callerSignal }) {
@@ -75,9 +70,7 @@ export function createBrowserStagedOutputAdapters({
       const captured = snapshot(manifest);
       const plan = planStagedZip(captured, { archiveFormat, maxOutputBytes });
       assert(
-        secureContext === true &&
-          typeof storage?.getDirectory === "function" &&
-          typeof storage?.estimate === "function",
+        secureContext === true && typeof storage?.getDirectory === "function",
         "OUTPUT_OPFS_UNAVAILABLE",
       );
       assert(
@@ -94,16 +87,8 @@ export function createBrowserStagedOutputAdapters({
         "OUTPUT_DESTINATION_PERMISSION_REQUIRED",
       );
       signal?.throwIfAborted();
-      const estimate = await awaitLookup(() => storage.estimate(), signal);
-      signal.throwIfAborted();
-      assert(
-        Number.isFinite(estimate.quota) &&
-          Number.isFinite(estimate.usage) &&
-          estimate.quota >= 0 &&
-          estimate.usage >= 0 &&
-          estimate.quota - estimate.usage >= plan.totalBytes + quotaReserveBytes,
-        "OUTPUT_INSUFFICIENT_QUOTA",
-      );
+      // 配额估算仅供 UI 参考；实际 OPFS 写入和关闭操作才是存储可用性的依据。
+      // Quota estimates belong to the UI advisory; actual OPFS writes and closes determine availability.
       const root = await awaitLookup(() => storage.getDirectory(), signal);
       signal?.throwIfAborted();
       const uuid = randomUUID();

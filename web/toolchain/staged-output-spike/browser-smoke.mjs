@@ -147,21 +147,21 @@ try {
       results.push(
         "cancel during actual destination write: aborted, original preserved, own stage removed",
       );
-      const noQuota = createBrowserStagedOutputAdapters({
+      const lowQuota = createBrowserStagedOutputAdapters({
         destinationHandle: destination,
         archiveFormat: "zip64",
         maxOutputBytes: 1024 * 1024,
         storage: { ...storage, estimate: async () => ({ quota: 1, usage: 0 }) },
       });
-      let quotaBlocked = false;
-      try {
-        await noQuota.createOutput({ manifest });
-      } catch (error) {
-        quotaBlocked = error.message === "OUTPUT_INSUFFICIENT_QUOTA";
-      }
-      requireValue(quotaBlocked && (await names()).length === 2);
+      const lowQuotaOutput = await lowQuota.createOutput({ manifest });
+      requireValue((await names()).length === 3);
+      await lowQuotaOutput.abort();
+      requireValue((await names()).length === 2);
+      requireValue((await (await destination.getFile()).text()) === "previous");
       requireValue((await (await sentinel.getFile()).text()) === "untouched");
-      results.push("insufficient estimated quota: no temporary output created");
+      results.push(
+        "low estimated quota: staging allowed; abort cleans up and preserves existing output",
+      );
       return results;
     } finally {
       // 此目录由本隔离测试创建，并非用户存储。

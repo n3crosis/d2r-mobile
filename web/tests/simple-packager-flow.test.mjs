@@ -92,6 +92,7 @@ function harness({ pick, discover, previous = {} }) {
     inputMode: null,
     nspNames: [],
     skipResources: false,
+    hasSelectedFolder: false,
     ...previous,
   };
   const gate = createUiOperationGate();
@@ -165,6 +166,7 @@ test("automatic discovery includes every package, including DLC, with no filenam
   assert.equal(h.state.inputMode, "packages");
   assert.deepEqual([...h.state.nspNames], names);
   assert.equal(h.state.skipResources, false);
+  assert.equal(h.state.hasSelectedFolder, true);
   assert.equal(h.state.busy, false);
   assert.equal(h.gate.busy, false);
   assert.match(h.state.status, /dmWebPackagesReady/);
@@ -201,6 +203,7 @@ test("failed package discovery cannot retain a prior extracted selection or retr
       inputMode: "extracted",
       nspNames: ["old.nsp"],
       skipResources: true,
+      hasSelectedFolder: true,
     },
   });
   await h.choose();
@@ -209,6 +212,24 @@ test("failed package discovery cannot retain a prior extracted selection or retr
   assert.equal(h.state.nspNames.length, 0);
   assert.equal(h.calls.filter((call) => call === "discover").length, 1);
   assert.match(h.state.status, /MISSING_INPUT/);
+  assert.equal(h.state.hasSelectedFolder, true);
+});
+test("failed or dismissed first selection does not permanently lock configuration", async () => {
+  for (const failure of ["picker", "discovery"]) {
+    const h = harness({
+      pick: () => {
+        if (failure === "picker") throw new DOMException("cancel", "AbortError");
+        return { name: "invalid" };
+      },
+      discover: () => {
+        throw Object.assign(new Error("missing keys"), { code: "MISSING_INPUT" });
+      },
+    });
+    await h.choose();
+    assert.equal(h.state.hasSelectedFolder, false, failure);
+    assert.equal(h.state.busy, false, failure);
+    assert.equal(h.gate.busy, false, failure);
+  }
 });
 test("picker dismissal preserves an earlier selection and never starts discovery", async () => {
   const old = { name: "old" };
@@ -223,12 +244,14 @@ test("picker dismissal preserves an earlier selection and never starts discovery
       nspNames: ["old.nsp"],
       skipResources: true,
       status: "previous",
+      hasSelectedFolder: true,
     },
   });
   await h.choose();
   assert.equal(h.state.folder, old);
   assert.equal(h.state.skipResources, true);
   assert.equal(h.state.status, "previous");
+  assert.equal(h.state.hasSelectedFolder, true);
   assert.deepEqual(h.calls, ["pick"]);
   assert.equal(h.gate.busy, false);
 });
@@ -265,6 +288,7 @@ test("late cancelled discovery cannot repopulate mode or packages and closes the
   assert.equal(h.state.inputMode, null);
   assert.equal(h.state.nspNames.length, 0);
   assert.equal(h.state.finished, true);
+  assert.equal(h.state.hasSelectedFolder, false);
   assert.equal(h.calls.filter((call) => call === "close").length, 1);
   assert.equal(h.gate.busy, false);
 });
