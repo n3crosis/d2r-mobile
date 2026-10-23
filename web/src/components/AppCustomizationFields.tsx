@@ -3,7 +3,19 @@
 import { useRef } from "react";
 import { t } from "../../i18n.mjs";
 import { APP_CUSTOMIZATION_LIMITS } from "../../app-customization.mjs";
+import { updateAppCustomizationDraft } from "../../app-customization-defaults.mjs";
 import { Button } from "@/components/ui/button";
+import { AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
+import { Input } from "@/components/ui/input";
+import {
+  Field,
+  FieldSet,
+  FieldLegend,
+  FieldGroup,
+  FieldLabel,
+  FieldDescription,
+  FieldError,
+} from "@/components/ui/field";
 
 export type AppCustomizationDraft = {
   displayName?: string;
@@ -32,79 +44,118 @@ const fields = [
 ] as const;
 export function AppCustomizationFields({
   value,
+  defaults,
   disabled,
   onChange,
   error,
 }: {
   value: AppCustomizationDraft;
+  defaults: Readonly<
+    Record<"displayName" | "bundleIdentifier" | "version" | "buildVersion", string>
+  >;
   disabled: boolean;
   onChange: (value: AppCustomizationDraft) => void;
   error: string;
 }) {
   const iconInput = useRef<HTMLInputElement>(null);
   return (
-    <div className="space-y-2">
-      <details className="space-y-2 rounded-md border p-3">
-        <summary className="cursor-pointer text-sm font-medium">{t("dmWebCustomizeApp")}</summary>
-        <p className="text-xs text-muted-foreground">{t("dmWebCustomHelp")}</p>
-        <fieldset
-          className="space-y-2"
-          disabled={disabled}
-          aria-describedby={error ? "customization-error" : undefined}
-        >
-          <legend className="sr-only">{t("dmWebCustomizeApp")}</legend>
-          {fields.map(({ name, label, maxLength }) => (
-            <label key={name} className="block space-y-1 text-sm">
-              <span>{t(label)}</span>
-              <input
-                type="text"
-                value={value[name] ?? ""}
-                maxLength={maxLength}
-                autoComplete="off"
-                spellCheck={false}
-                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-                onChange={(event) => onChange({ ...value, [name]: event.target.value })}
+    <>
+      <AccordionItem value="customize">
+        <AccordionTrigger className="min-h-11 py-3">{t("dmWebCustomizeApp")}</AccordionTrigger>
+        <AccordionContent forceMount className="space-y-4">
+          <FieldDescription className="text-xs">{t("dmWebCustomHelp")}</FieldDescription>
+          <FieldSet
+            className="gap-4"
+            disabled={disabled}
+            aria-describedby={error ? "customization-error" : undefined}
+          >
+            <FieldLegend className="sr-only">{t("dmWebCustomizeApp")}</FieldLegend>
+            <FieldGroup className="gap-3">
+              {fields.map(({ name, label, maxLength }) => (
+                <Field key={name} className="gap-2">
+                  <FieldLabel htmlFor={`custom-${name}`}>{t(label)}</FieldLabel>
+                  <Input
+                    id={`custom-${name}`}
+                    type="text"
+                    value={value[name] ?? defaults[name]}
+                    maxLength={maxLength}
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="h-10"
+                    onChange={(event) =>
+                      onChange(
+                        updateAppCustomizationDraft(value, defaults, name, event.target.value),
+                      )
+                    }
+                    onBlur={() => {
+                      if (!disabled && value[name] === "")
+                        onChange(
+                          updateAppCustomizationDraft(value, defaults, name, defaults[name]),
+                        );
+                    }}
+                  />
+                </Field>
+              ))}
+            </FieldGroup>
+            {value.bundleIdentifier && value.bundleIdentifier !== defaults.bundleIdentifier && (
+              <FieldDescription className="text-xs">{t("dmWebCustomBundleHelp")}</FieldDescription>
+            )}
+            <Field className="gap-2">
+              <FieldLabel htmlFor="custom-icon">{t("dmWebCustomIcon")}</FieldLabel>
+              <Input
+                id="custom-icon"
+                ref={iconInput}
+                type="file"
+                accept="image/png,.png"
+                className="h-10 file:mr-3"
+                aria-describedby="custom-icon-help"
+                onChange={(event) => onChange({ ...value, icon: event.target.files?.[0] })}
               />
-            </label>
-          ))}
-          {value.bundleIdentifier && (
-            <p className="text-xs text-muted-foreground">{t("dmWebCustomBundleHelp")}</p>
-          )}
-          <label className="block space-y-1 text-sm">
-            <span>{t("dmWebCustomIcon")}</span>
-            <input
-              ref={iconInput}
-              type="file"
-              accept="image/png,.png"
-              className="block w-full text-sm"
-              aria-describedby="custom-icon-help"
-              onChange={(event) => onChange({ ...value, icon: event.target.files?.[0] })}
-            />
-          </label>
-          <p id="custom-icon-help" className="text-xs text-muted-foreground">
-            {t("dmWebCustomIconHelp")}
-          </p>
-          {value.icon && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                if (disabled) return;
-                onChange({ ...value, icon: undefined });
-                if (iconInput.current) iconInput.current.value = "";
-              }}
-            >
-              {t("dmWebCustomRemoveIcon")}
-            </Button>
-          )}
-        </fieldset>
-      </details>
+              <FieldDescription id="custom-icon-help" className="text-xs">
+                {t("dmWebCustomIconHelp")}
+              </FieldDescription>
+              {!value.icon && (
+                <FieldDescription className="text-xs">
+                  {t("dmWebCustomDefaultIcon")}
+                </FieldDescription>
+              )}
+            </Field>
+            <div className="flex flex-wrap gap-2">
+              {value.icon && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (disabled) return;
+                    onChange({ ...value, icon: undefined });
+                    if (iconInput.current) iconInput.current.value = "";
+                  }}
+                >
+                  {t("dmWebCustomRemoveIcon")}
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (disabled) return;
+                  onChange({});
+                  if (iconInput.current) iconInput.current.value = "";
+                }}
+              >
+                {t("dmWebCustomReset")}
+              </Button>
+            </div>
+          </FieldSet>
+        </AccordionContent>
+      </AccordionItem>
       {error && (
-        <p id="customization-error" className="text-sm text-muted-foreground" role="alert">
+        <FieldError id="customization-error" className="pb-3">
           {error}
-        </p>
+        </FieldError>
       )}
-    </div>
+    </>
   );
 }

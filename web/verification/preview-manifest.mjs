@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { verifyRuntimeInventory } from "../runtime-build/inventory.mjs";
 import { validateStaticBuild } from "../scripts/build-policy.mjs";
+import { FRONTEND_NOTICES_FILE } from "../scripts/frontend-notices.mjs";
 
 export async function createPreviewManifest(directory, commit = null, runtimeDigest = null) {
   const files = [];
@@ -21,7 +22,11 @@ export async function createPreviewManifest(directory, commit = null, runtimeDig
     if (!info.isFile() || info.isSymbolicLink())
       throw new Error("Preview must contain regular files only");
     if (name === "build-manifest.json") continue;
-    if (name !== "index.html" && !/^[A-Za-z0-9_-]+\.(js|css)$/.test(name)) {
+    if (
+      name !== "index.html" &&
+      name !== FRONTEND_NOTICES_FILE &&
+      !/^[A-Za-z0-9_-]+\.(js|css)$/.test(name)
+    ) {
       throw new Error("Unexpected file outside the static bundle allowlist");
     }
     if (info.size > 16 * 1024 * 1024) throw new Error("Unexpected oversized preview file");
@@ -32,7 +37,7 @@ export async function createPreviewManifest(directory, commit = null, runtimeDig
       sha256: createHash("sha256").update(bytes).digest("hex"),
     });
     if (name === "index.html") html = bytes.toString("utf8");
-    else assets.set(name, bytes.toString("utf8"));
+    else if (name !== FRONTEND_NOTICES_FILE) assets.set(name, bytes.toString("utf8"));
   }
   if (!html || files.length > 200) throw new Error("Invalid preview inventory");
   validateStaticBuild(html, assets);

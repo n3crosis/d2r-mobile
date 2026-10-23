@@ -21,10 +21,10 @@ does not establish all-device compatibility or numerical equivalence to Xcode.
 ## Implemented flow
 
 - Check secure-context/browser APIs, validate the complete public runtime manifest,
-  and preload the selected shell profile and required same-origin runtime assets
-  with exact hashes before accepting private inputs. Experimental older-GPU ASTC
-  support is selected during this public bootstrap and loads its optional assets
-  only when enabled.
+  and preload both bundled shell profiles plus optional capability bytes with
+  exact hashes before accepting private inputs. Options can change before
+  generation without a reload or loss of the selected folder. Optional ASTC and
+  signing workers start only when needed from those verified local bytes.
 - Initialize isolated workers, discover the single input folder, and
   authenticate/select compatible base, update and optional DLC content.
 - Keep game files and keys local. The prototype does not impose a CSP network
@@ -124,7 +124,7 @@ as a current implementation percentage.
   incomplete marker is not a successful export.
 - Experimental older-GPU mode generates a separate Legacy Device Pack alongside
   the original resources and matching ASTC overlays in the IPA. It is optional,
-  selected before private inputs, and remains unverified with real game inputs
+  selected before generation, and remains unverified with real game inputs
   or devices.
 
 The [original implementation plan](../docs/WEB_IPA_PACKAGER.md) retains architecture

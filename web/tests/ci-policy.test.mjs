@@ -28,12 +28,13 @@ test("one GitHub workflow runs only one Linux browser-build job", async () => {
   const steps = text.split(/\n {6}- /).slice(1);
   const uploads = steps.filter((step) => /uses: actions\/upload-artifact@/.test(step));
   const artifacts = new Map(uploads.map((step) => [step.match(/^ {10}name: (\S+)$/m)?.[1], step]));
-  assert.equal(uploads.length, 4);
+  assert.equal(uploads.length, 5);
   assert.deepEqual([...artifacts.keys()].sort(), [
     "air-compiler-diagnostic-source",
     "air-compiler-diagnostic-unvalidated",
     "air-compiler-source",
     "web-preview",
+    "web-preview-screenshot",
   ]);
   assert.match(text, /failure\(\) && steps\.runtime\.outcome == 'failure'/);
   assert.match(
@@ -47,7 +48,19 @@ test("one GitHub workflow runs only one Linux browser-build job", async () => {
   // No explicit condition means GitHub's default success() guard, never failure retention.
   for (const name of ["air-compiler-source", "web-preview"])
     assert.doesNotMatch(artifacts.get(name), /\n {8}if:/);
-  assert.doesNotMatch(text, /continue-on-error:|save-always:/);
+  assert.doesNotMatch(text, /save-always:/);
+  for (const step of steps.filter((step) => /continue-on-error:/.test(step))) {
+    assert.match(step, /id: preview_screenshot(?:_upload)?\n/);
+    assert.match(step, /continue-on-error: true/);
+  }
+  assert.match(
+    artifacts.get("web-preview-screenshot"),
+    /steps\.preview_screenshot\.outcome == 'success'/,
+  );
+  assert.match(
+    artifacts.get("web-preview-screenshot"),
+    /path: \$\{\{ runner\.temp \}\}\/web-preview-screenshot\/web-preview\.png/,
+  );
   assert.doesNotMatch(text, /pull_request_target:|self-hosted|secrets\./);
   for (const sha of text.matchAll(/uses: [^@]+@(\S+)/g)) assert.match(sha[1], /^[0-9a-f]{40}$/);
   assert.match(text, /name: web-preview\n\s+path: web\/dist\//);

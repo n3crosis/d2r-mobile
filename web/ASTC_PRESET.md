@@ -8,12 +8,13 @@ processing time for potentially lower image quality; no numeric speedup or devic
 compatibility is promised.
 
 Only `astcPreset=fast` selects Fast. Missing or unknown URL values fall back to
-Thorough. Choosing Thorough removes that query parameter. Changing the selector
-reloads the page before private input selection, just like the experimental
-option, and passes the fixed value to browser packager setup. The selector locks
-once a folder has been selected, during processing/generation, or when output is
-ready. Disabling the experimental option hides the selector; it does not enable
-ASTC processing in normal mode.
+Thorough. Choosing Thorough removes that query parameter. Changes apply to the
+next generation in the current page and preserve the selected folder. The
+generation operation snapshots its preset; the selector locks during active
+operations and after generation. Optional public bytes are already verified and
+preloaded, so a change needs no network request or runtime restart. Disabling the
+experimental option hides the selector; it does not enable ASTC processing in
+normal mode.
 
 All labels and explanatory text originate in `dm/i18n/ui_text.tsv`, with generated
 browser and native catalogs. UI source provenance hashes change with that table;

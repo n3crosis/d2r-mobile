@@ -34,9 +34,11 @@ Focused synthetic tests cover default behavior, exact contract extension, immuta
 ## Optional producer orchestration
 
 `prepareBrowserPackager({legacyAstc: true})` preloads the closed `legacy-astc`
-group during public bootstrap; default false stays unchanged. A preinitialized
-one-shot producer consumes authenticated extraction capabilities before the asset
-adapter is constructed. Only finalized `{pack,records}` metadata enters asset
+group during public bootstrap; default false stays unchanged for non-editable API
+callers. The browser UI uses `editableOptions: true` to preload the group regardless
+of the toggle, deferring its worker until an ASTC-enabled generation. In both paths,
+the one-shot producer initializes from verified public bytes, then consumes
+authenticated extraction capabilities before the asset adapter is constructed. Only finalized `{pack,records}` metadata enters asset
 generation, never external pack bytes or index TSV.
 
 Implementation limits: 256 MiB per encoded/decoded record, 8 GiB staged pack,

@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { resolve, dirname } from "node:path";
 import tailwind from "bun-plugin-tailwind";
 import { validateStaticBuild } from "./build-policy.mjs";
+import { writeFrontendNotices } from "./frontend-notices.mjs";
 
 export const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const outputDirectory = resolve(root, "dist");
@@ -26,6 +27,7 @@ export async function build() {
     plugins: [tailwind],
   });
   if (!result.success) throw new AggregateError(result.logs, "Frontend bundling failed");
+  await writeFrontendNotices(outputDirectory);
   const htmlPath = resolve(outputDirectory, "index.html");
   const html = await readFile(htmlPath, "utf8");
   const files = await readdir(outputDirectory);

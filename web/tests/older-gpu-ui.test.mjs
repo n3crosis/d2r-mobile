@@ -6,20 +6,13 @@ import { readFile } from "node:fs/promises";
 import { catalog } from "../i18n-catalog.mjs";
 
 const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
-test("older-GPU selection is explicit, reload-based and passed before private selection", () => {
+test("older-GPU choice stays in page and reaches the next generation", () => {
   assert.match(app, /get\("legacyAstc"\) === "1"/);
-  assert.match(app, /prepareBrowserPackager\(\{[\s\S]*?profileId,\s+legacyAstc,/);
-  const option = app.slice(
-    app.indexOf('aria-describedby="legacy-option-help"'),
-    app.indexOf('{t("dmWebLegacyOption")}'),
-  );
-  assert.match(
-    option,
-    /disabled=\{hasSelectedFolder \|\| busy \|\| generating \|\| download !== null\}/,
-  );
-  assert.match(option, /searchParams\.set\("legacyAstc", "1"\)/);
-  assert.match(option, /searchParams\.delete\("legacyAstc"\)/);
-  assert.match(option, /window\.location\.assign\(url\.href\)/);
+  assert.match(app, /prepareBrowserPackager\(\{[\s\S]*?editableOptions: true,/);
+  assert.match(app, /jobPackager.generate\(\{\s+profileId,\s+legacyAstc,/);
+  assert.match(app, /setLegacyAstc\(/);
+  assert.doesNotMatch(app, /window\.location\.assign|hasSelectedFolder/);
+  assert.match(app, /window\.history\.replaceState/);
 });
 test("pack progress and complete-on-later-failure outcome remain separate from IPA", () => {
   assert.match(app, /event\.stage === "legacy-pack"/);

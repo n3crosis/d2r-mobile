@@ -328,3 +328,28 @@ test("malformed omitted codec closure, mixed packs, and invalid group selection 
   files.pop();
   assert.throws(() => validateRuntimeProfileSelection(mixed), /payload is shared/);
 });
+
+test("editable bootstrap preloads both trusted bundled profiles without omitting common bytes", () => {
+  for (const packed of [false, true]) {
+    const manifest = fixture({ packed });
+    const result = validateRuntimeProfileSelection(manifest, undefined, {
+      preloadProfileIds: BUNDLED_SHELL_PROFILE_IDS,
+    });
+    assert.deepEqual(result.selectedInventory, manifest.assets);
+    assert.equal(result.downloadBytes, manifest.totalBytes);
+    assert.throws(
+      () =>
+        validateRuntimeProfileSelection(manifest, undefined, {
+          preloadProfileIds: ["not-a-profile"],
+        }),
+      /SHELL_PROFILE_UNKNOWN/,
+    );
+    assert.throws(
+      () =>
+        validateRuntimeProfileSelection(manifest, undefined, {
+          preloadProfileIds: null,
+        }),
+      /Invalid runtime profile preload/,
+    );
+  }
+});

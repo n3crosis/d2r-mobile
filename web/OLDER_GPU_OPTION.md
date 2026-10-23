@@ -4,7 +4,7 @@
 
 The **Older-GPU option (experimental)** is off by default and is independent of the iOS target. iOS 18 does not imply that a device needs it. Neither option guarantees device compatibility; no real-device result is claimed.
 
-Choose the option before selecting your input folder. Changing it reloads the page (`legacyAstc=1` in the URL) so its public resources preload before private files are selected. It is locked once you select a folder; reload to change it. Private files and keys stay local, with no conversion-time network dependency.
+Change this option any time before generation, without reloading or losing the selected folder. The URL reflects the choice (`legacyAstc=1` when enabled). Verified public capability bytes preload before private files are selected; the optional producer starts locally only when generation needs it. Options lock during active operations and after generation. Private files and keys stay local, with no conversion-time network dependency.
 
 With the option enabled, generation also saves a separate `Legacy Device Pack-<UUID>` folder inside your selected input folder. Its progress and completion appear separately from the IPA. Copy the complete Legacy Device Pack folder alongside your game resources into the installed app's Files folder. The IPA download alone is not enough; signing and installation remain separate steps.
 

@@ -12,9 +12,16 @@ const parsed = ts.createSourceFile("App.tsx", app, ts.ScriptTarget.Latest, true,
 const details = [];
 const selects = [];
 function visit(node) {
-  if (ts.isJsxElement(node) && node.openingElement.tagName.getText(parsed) === "details")
+  if (
+    ts.isJsxElement(node) &&
+    ["details", "AccordionItem"].includes(node.openingElement.tagName.getText(parsed))
+  )
     details.push(node);
-  if (ts.isJsxOpeningElement(node) && node.tagName.getText(parsed) === "select") selects.push(node);
+  if (
+    ts.isJsxOpeningElement(node) &&
+    ["select", "NativeSelect"].includes(node.tagName.getText(parsed))
+  )
+    selects.push(node);
   ts.forEachChild(node, visit);
 }
 visit(parsed);
@@ -43,10 +50,16 @@ test("default primary flow contains no expanded selectors and keeps overrides to
   assert.ok(app.indexOf("{status}") < advanced.pos);
   assert.ok(app.indexOf("originalIdentityDownload\n") < advanced.pos);
   const signing = details.find((node) => node.getText(parsed).includes('t("dmWebSigningOptions")'));
-  assert.equal(
-    attribute(signing.openingElement, "open").initializer.expression.getText(parsed),
-    "signing || signingRetryAvailable",
-  );
+  if (signing.openingElement.tagName.getText(parsed) === "AccordionItem") {
+    assert.equal(attribute(signing.openingElement, "value").initializer.text, "signing");
+    assert.match(app, /useState<string\[\]>\(\(\) => \(signing \? \["signing"\] : \[\]\)\)/);
+    assert.match(app, /if \(signingRetryAvailable\)[\s\S]*?setOpenOptions/);
+  } else {
+    assert.equal(
+      attribute(signing.openingElement, "open").initializer.expression.getText(parsed),
+      "signing || signingRetryAvailable",
+    );
+  }
   assert.match(app, /get\("target"\) === "ios18" \? "ios18" : "ios26"/);
   assert.match(app, /get\("legacyAstc"\) === "1"/);
   assert.doesNotMatch(app, /userAgent|userAgentData|deviceMemory/);
@@ -70,7 +83,7 @@ test("brief compatibility and detection copy does not claim authenticated extrac
     );
   assert.match(catalog.dmWebBcTextures[0], /required/);
   assert.match(catalog.dmWebLegacyTextures[0], /unverified/);
-  assert.match(catalog.dmWebOptionsBeforeFolder[0], /before choosing a folder/);
+  assert.match(catalog.dmWebOptionsBeforeFolder[0], /before generating/);
   assert.match(catalog.dmWebExtractedInstructions[0], /not authenticated/);
   assert.match(catalog.dmWebIncludedPackages[0], /All/);
 });
@@ -92,7 +105,6 @@ function harness({ pick, discover, previous = {} }) {
     inputMode: null,
     nspNames: [],
     skipResources: false,
-    hasSelectedFolder: false,
     ...previous,
   };
   const gate = createUiOperationGate();
@@ -123,7 +135,6 @@ function harness({ pick, discover, previous = {} }) {
     "Busy",
     "Cancelling",
     "Status",
-    "HasSelectedFolder",
     "SkipResources",
     "Folder",
     "NspNames",
@@ -166,7 +177,6 @@ test("automatic discovery includes every package, including DLC, with no filenam
   assert.equal(h.state.inputMode, "packages");
   assert.deepEqual([...h.state.nspNames], names);
   assert.equal(h.state.skipResources, false);
-  assert.equal(h.state.hasSelectedFolder, true);
   assert.equal(h.state.busy, false);
   assert.equal(h.gate.busy, false);
   assert.match(h.state.status, /dmWebPackagesReady/);
@@ -203,7 +213,6 @@ test("failed package discovery cannot retain a prior extracted selection or retr
       inputMode: "extracted",
       nspNames: ["old.nsp"],
       skipResources: true,
-      hasSelectedFolder: true,
     },
   });
   await h.choose();
@@ -212,7 +221,6 @@ test("failed package discovery cannot retain a prior extracted selection or retr
   assert.equal(h.state.nspNames.length, 0);
   assert.equal(h.calls.filter((call) => call === "discover").length, 1);
   assert.match(h.state.status, /MISSING_INPUT/);
-  assert.equal(h.state.hasSelectedFolder, true);
 });
 test("failed or dismissed first selection does not permanently lock configuration", async () => {
   for (const failure of ["picker", "discovery"]) {
@@ -226,7 +234,6 @@ test("failed or dismissed first selection does not permanently lock configuratio
       },
     });
     await h.choose();
-    assert.equal(h.state.hasSelectedFolder, false, failure);
     assert.equal(h.state.busy, false, failure);
     assert.equal(h.gate.busy, false, failure);
   }
@@ -244,14 +251,12 @@ test("picker dismissal preserves an earlier selection and never starts discovery
       nspNames: ["old.nsp"],
       skipResources: true,
       status: "previous",
-      hasSelectedFolder: true,
     },
   });
   await h.choose();
   assert.equal(h.state.folder, old);
   assert.equal(h.state.skipResources, true);
   assert.equal(h.state.status, "previous");
-  assert.equal(h.state.hasSelectedFolder, true);
   assert.deepEqual(h.calls, ["pick"]);
   assert.equal(h.gate.busy, false);
 });
@@ -288,7 +293,6 @@ test("late cancelled discovery cannot repopulate mode or packages and closes the
   assert.equal(h.state.inputMode, null);
   assert.equal(h.state.nspNames.length, 0);
   assert.equal(h.state.finished, true);
-  assert.equal(h.state.hasSelectedFolder, false);
   assert.equal(h.calls.filter((call) => call === "close").length, 1);
   assert.equal(h.gate.busy, false);
 });

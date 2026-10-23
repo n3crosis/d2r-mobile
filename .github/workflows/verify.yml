@@ -186,3 +186,45 @@ jobs:
           path: web/dist/
           if-no-files-found: error
           retention-days: 7
+      - name: Capture actual browser preview with runner Chrome (no game inputs)
+        id: preview_screenshot
+        continue-on-error: true
+        timeout-minutes: 2
+        run: |
+          screenshot_dir="$RUNNER_TEMP/web-preview-screenshot"
+          mkdir -p "$screenshot_dir"
+          chrome="$(command -v google-chrome || command -v google-chrome-stable)"
+          (cd web && exec bun scripts/serve.mjs) > "$screenshot_dir/server.log" 2>&1 &
+          preview_pid=$!
+          trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:4173/ > /dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:4173/ > /dev/null
+          timeout 90 "$chrome" --headless --disable-gpu --no-first-run --no-default-browser-check \
+            --user-data-dir="$screenshot_dir/chrome-profile" \
+            --window-size=1440,1200 --force-device-scale-factor=1 --hide-scrollbars \
+            --timeout=60000 --virtual-time-budget=20000 \
+            --screenshot="$screenshot_dir/web-preview.png" --dump-dom http://127.0.0.1:4173/ \
+            > "$screenshot_dir/page.html"
+          test -s "$screenshot_dir/web-preview.png"
+          grep -q 'role="heading" aria-level="1"' "$screenshot_dir/page.html"
+          printf 'Captured the actual built UI in runner Chrome at 1440 x 1200. No game inputs were selected or processed. This image is not an IPA or device validation.\n' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload browser preview screenshot separately
+        id: preview_screenshot_upload
+        if: ${{ !cancelled() && steps.preview_screenshot.outcome == 'success' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: web-preview-screenshot
+          path: ${{ runner.temp }}/web-preview-screenshot/web-preview.png
+          if-no-files-found: error
+          retention-days: 7
+      - name: Report unavailable screenshot without discarding validated preview
+        if: ${{ !cancelled() && (steps.preview_screenshot.outcome == 'failure' || steps.preview_screenshot_upload.outcome == 'failure') }}
+        run: |
+          echo "::warning::Browser screenshot capture or upload failed; the separately uploaded web-preview remains valid."
+          printf 'Browser screenshot capture or upload failed. See the screenshot step logs; the separately uploaded web-preview artifact is unaffected.\n' >> "$GITHUB_STEP_SUMMARY"

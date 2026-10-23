@@ -74,10 +74,12 @@ retained; synthetic inputs, test harnesses and proof HTML are excluded.
 
 The manifest retains `productionEnabled: false` as legacy build metadata and an
 inventory-validation invariant, not a browser enablement switch. The application
-verifies the trusted manifest and selected public assets, then initializes the
-requested runtime clients before private input selection. Generate additionally
-requires supported browser APIs, valid input selection and customization, an idle
-session, and optional signing readiness.
+verifies the trusted manifest and preloads both bundled profiles plus optional
+capability bytes before private input selection. Core clients initialize then;
+optional ASTC/signing workers initialize on demand from retained verified bytes.
+Options remain editable until generation, without further asset downloads. Generate
+additionally requires supported browser APIs, valid input selection and
+customization, an idle session, and an available signing factory when requested.
 
 This implemented wiring and the assembled public bytes do not establish
 current-revision browser, real-input/native-parity or signed device/gameplay

@@ -642,8 +642,8 @@ export const catalog = Object.freeze({
     "iOS 18 或更新版本"
   ],
   "dmWebTargetReload": [
-    "Changing target reloads the page. Choose before selecting a folder.",
-    "切换目标会重新加载页面；请先选择目标，再选择文件夹。"
+    "Changes apply when you generate; your selected folder is kept.",
+    "更改将在生成时生效；已选文件夹会保留。"
   ],
   "dmWebCompatibility18": [
     "IPA target: iOS 18+. Default output requires BC texture support. Not a guarantee for every device. Signing is separate.",
@@ -654,8 +654,8 @@ export const catalog = Object.freeze({
     "较旧 GPU 选项（实验性）"
   ],
   "dmWebLegacyHelp": [
-    "Changing this reloads the page. Also requires a separate Legacy Device Pack export. Device compatibility is not verified.",
-    "切换会重新加载页面。还需单独导出 Legacy Device Pack（旧设备资源包）；尚未验证设备兼容性。"
+    "Exports a separate Legacy Device Pack. Device compatibility is not verified.",
+    "将另行导出 Legacy Device Pack。设备兼容性尚未验证。"
   ],
   "dmWebLegacyPreparing": [
     "Legacy Device Pack: preparing; exported separately from the IPA.",
@@ -714,8 +714,8 @@ export const catalog = Object.freeze({
     "快速"
   ],
   "dmWebAstcPresetHelp": [
-    "Fast takes less processing time but may reduce image quality. Changing this reloads the page; choose before selecting a folder.",
-    "快速模式处理时间较短，但图像质量可能较低。切换会重新加载页面；请在选择文件夹前设置。"
+    "Fast takes less processing time but may reduce image quality. Changes apply when you generate.",
+    "快速模式耗时较短，但可能降低图像质量。更改将在生成时生效。"
   ],
   "dmWebDownloadPreparationFailed": [
     "The IPA was generated, but its download link could not be prepared. Completed resource exports are unchanged; retry the download without converting again.",
@@ -738,8 +738,8 @@ export const catalog = Object.freeze({
     "可选：在本地签名 IPA"
   ],
   "dmWebSigningHelp": [
-    "Unsigned IPA by default. Enable signing before choosing a folder; this reloads the page. Credentials stay on this device.",
-    "默认生成未签名 IPA。请在选择文件夹前启用签名，页面会重载。凭据仅留在本设备。"
+    "Unsigned IPA by default. Enable local signing before generating. Credentials stay on this device.",
+    "默认输出未签名 IPA。可在生成前启用本地签名；凭据仅在本设备使用。"
   ],
   "dmWebSigningCredentials": [
     "Local signing credentials",
@@ -874,8 +874,8 @@ export const catalog = Object.freeze({
     "自定义应用（可选）"
   ],
   "dmWebCustomHelp": [
-    "Leave fields blank to keep the defaults. Files and settings stay on this device and are not uploaded.",
-    "留空以保留默认值。文件和设置仅在本设备使用，不上传。"
+    "The selected shell’s defaults are shown. Edit any value; clear it or reset to restore the default. Files and settings stay on this device and are not uploaded.",
+    "已显示所选外壳的默认值。可直接编辑；清空或重置以恢复默认值。文件和设置仅在本设备使用，不上传。"
   ],
   "dmWebCustomName": [
     "App name",
@@ -986,8 +986,8 @@ export const catalog = Object.freeze({
     "实验性旧 GPU 纹理；设备兼容性未经验证。"
   ],
   "dmWebOptionsBeforeFolder": [
-    "Older iOS, older GPU or local signing? Set the options below before choosing a folder.",
-    "旧版 iOS、旧 GPU 或本地签名？请在选择文件夹前设置下方选项。"
+    "Change the options below before generating, without reloading or reselecting your folder.",
+    "生成前可随时调整下方选项，无需重新载入或重新选择文件夹。"
   ],
   "dmWebAdvancedOptions": [
     "Advanced",
@@ -1012,5 +1012,13 @@ export const catalog = Object.freeze({
   "dmWebSigningApplicationIdTooLong": [
     "The profile prefix plus bundle ID exceeds this signer's 255-character limit. Unsigned IPA retained; use it with another signer, or reload and generate with a shorter bundle ID.",
     "描述文件前缀加应用标识超过此签名工具的 255 字符上限。未签名 IPA 已保留；请使用其他签名工具，或重新载入并以较短应用标识生成。"
+  ],
+  "dmWebCustomDefaultIcon": [
+    "Using the selected shell’s default icon. Choose a PNG to replace it.",
+    "使用所选外壳的默认图标。选择 PNG 以替换。"
+  ],
+  "dmWebCustomReset": [
+    "Reset to shell defaults",
+    "恢复外壳默认值"
   ]
 });

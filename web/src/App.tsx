@@ -1,13 +1,36 @@
 // 浏览器本地打包界面：依据打包进度协议与共享多语文字表。
 // Local browser packaging UI based on the packaging progress protocol and shared multilingual table.
 import { t, browserLanguage } from "../i18n.mjs";
+import { FolderOpenIcon, PackageIcon, ShieldCheckIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+} from "@/components/ui/accordion";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import {
+  Field,
+  FieldSet,
+  FieldLegend,
+  FieldGroup,
+  FieldContent,
+  FieldLabel,
+  FieldDescription,
+} from "@/components/ui/field";
 import {
   AppCustomizationFields,
   type AppCustomizationDraft,
 } from "@/components/AppCustomizationFields";
-import { normalizeAppCustomization, prepareAppCustomization } from "../app-customization.mjs";
+import { prepareAppCustomization } from "../app-customization.mjs";
+import {
+  normalizeAppCustomizationDraft,
+  resolveAppCustomizationDefaults,
+} from "../app-customization-defaults.mjs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { prepareBrowserPackager, takeCommittedDownload } from "../browser-packager.mjs";
 import { DEFAULT_SHELL_PROFILE_ID, IOS18_SHELL_PROFILE_ID } from "../shell-profiles.mjs";
@@ -72,24 +95,31 @@ const megabytes = (bytes: number) => t("dmWebMegabytes", (bytes / 1_000_000).toF
 const loadingLabel = (phase: string) =>
   t(phase === "download" ? "dmWebDownloading" : "dmWebPreparing");
 export default function App() {
-  const [target] = useState(() =>
+  const [target, setTarget] = useState(() =>
     new URLSearchParams(window.location.search).get("target") === "ios18" ? "ios18" : "ios26",
   );
-  const [legacyAstc] = useState(
+  const [legacyAstc, setLegacyAstc] = useState(
     () => new URLSearchParams(window.location.search).get("legacyAstc") === "1",
   );
-  const [skipContentHashes] = useState(
+  const [skipContentHashes, setSkipContentHashes] = useState(
     () => new URLSearchParams(window.location.search).get("skipContentHashes") !== "0",
   );
-  const [astcPreset] = useState<"thorough" | "fast">(() =>
+  const [astcPreset, setAstcPreset] = useState<"thorough" | "fast">(() =>
     new URLSearchParams(window.location.search).get("astcPreset") === "fast" ? "fast" : "thorough",
   );
-  const [signing] = useState(
+  const [signing, setSigning] = useState(
     () => new URLSearchParams(window.location.search).get("signing") === "1",
   );
   const [signingReady, setSigningReady] = useState(false);
   const [signingStatus, setSigningStatus] = useState("");
   const [signingRetryAvailable, setSigningRetryAvailable] = useState(false);
+  const [openOptions, setOpenOptions] = useState<string[]>(() => (signing ? ["signing"] : []));
+  useEffect(() => {
+    if (signingRetryAvailable)
+      setOpenOptions((current) =>
+        current.includes("signing") ? current : [...current, "signing"],
+      );
+  }, [signingRetryAvailable]);
   const unsignedForSigning = useRef<{ blob: Blob; fileName: string } | null>(null);
   const identityInput = useRef<HTMLInputElement>(null);
   const profileInput = useRef<HTMLInputElement>(null);
@@ -110,15 +140,21 @@ export default function App() {
     .join(", ");
   const [inputMode, setInputMode] = useState<InputMode | null>(null);
   const [appCustomization, setAppCustomization] = useState<AppCustomizationDraft>({});
+  const appCustomizationDefaults = useMemo(
+    () => resolveAppCustomizationDefaults(profileId),
+    [profileId],
+  );
   const [customizationError, setCustomizationError] = useState("");
   const customizationValidation = useMemo(() => {
     try {
-      return { options: normalizeAppCustomization(appCustomization), error: "" };
+      return {
+        options: normalizeAppCustomizationDraft(appCustomization, appCustomizationDefaults),
+        error: "",
+      };
     } catch (error) {
       return { options: undefined, error: appCustomizationFailureMessage(error) };
     }
-  }, [appCustomization]);
-  const [hasSelectedFolder, setHasSelectedFolder] = useState(false);
+  }, [appCustomization, appCustomizationDefaults]);
   useEffect(() => {
     document.documentElement.lang = browserLanguage();
     document.title = t("dmWebTitle");
@@ -230,11 +266,7 @@ export default function App() {
     let previousPhase = "";
     void prepareBrowserPackager({
       manifestSha256: digest,
-      profileId,
-      legacyAstc,
-      astcPreset,
-      skipContentHashes,
-      signing,
+      editableOptions: true,
       signal: controller.signal,
       onProgress: (event: LoadingProgress) => {
         if (!controller.signal.aborted) {
@@ -294,7 +326,23 @@ export default function App() {
       preparedDownload.dispose();
       unsignedForSigning.current = null;
     };
-  }, [appendActivity, profileId, legacyAstc, astcPreset, skipContentHashes, signing]);
+  }, [appendActivity]);
+  useEffect(() => {
+    // URL 仅镜像公开选项；状态变化不会重新初始化运行时或清除文件与下载。
+    // URL mirrors public options only; changes never restart runtimes or clear files/downloads.
+    const url = new URL(window.location.href);
+    for (const [key, value] of [
+      ["target", target === "ios18" ? "ios18" : null],
+      ["legacyAstc", legacyAstc ? "1" : null],
+      ["astcPreset", astcPreset === "fast" ? "fast" : null],
+      ["skipContentHashes", skipContentHashes ? null : "0"],
+      ["signing", signing ? "1" : null],
+    ] as const) {
+      if (value === null) url.searchParams.delete(key);
+      else url.searchParams.set(key, value);
+    }
+    window.history.replaceState(window.history.state, "", url.href);
+  }, [target, legacyAstc, astcPreset, skipContentHashes, signing]);
   async function choose() {
     if (!ready || busy || !browser.showDirectoryPicker) return;
     const operation = operationGate.current.begin();
@@ -336,9 +384,6 @@ export default function App() {
       const names = files.nsps.map((file) => file.name);
       setNspNames(names);
       setInputMode(files.inputMode);
-      // 仅成功检查输入后锁定配置；失败或取消仍可通过整页重载更改选项。
-      // Lock configuration only after discovery succeeds; failed/cancelled selection can still reload with new options.
-      setHasSelectedFolder(true);
       setFolder(selected);
       appendActivity(
         files.inputMode === "extracted"
@@ -590,6 +635,10 @@ export default function App() {
     let keepSigningFactory = false;
     try {
       const result = await jobPackager.generate({
+        profileId,
+        legacyAstc,
+        astcPreset,
+        skipContentHashes,
         input: folder,
         inputMode,
         ...(Object.keys(preparedCustomization).length
@@ -777,26 +826,46 @@ export default function App() {
     }
   }
   return (
-    <main className="mx-auto flex min-h-screen max-w-xl items-center px-6 py-12">
-      <Card className="w-full">
-        <CardHeader>
-          <CardTitle>{t("dmWebTitle")}</CardTitle>
+    <main className="mx-auto flex min-h-screen max-w-3xl items-start px-4 py-8 sm:items-center sm:px-6 sm:py-12">
+      <Card className="w-full gap-5 overflow-hidden border-primary/15 pt-0 shadow-sm">
+        <CardHeader className="gap-3 border-b border-primary/10 bg-linear-to-br from-primary/10 via-card to-card py-6">
+          <div className="flex items-center gap-3">
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+              <PackageIcon className="size-6" aria-hidden="true" />
+            </span>
+            <CardTitle role="heading" aria-level={1} className="text-2xl tracking-tight">
+              {t("dmWebTitle")}
+            </CardTitle>
+          </div>
           <CardDescription>{t("dmWebAutoInstructions")}</CardDescription>
-          <CardDescription>
+          <CardDescription className="text-xs">
             {t(
               "dmWebOutputCompatibility",
               t(target === "ios18" ? "dmWebTarget18" : "dmWebTarget26"),
               t(legacyAstc ? "dmWebLegacyTextures" : "dmWebBcTextures"),
             )}
           </CardDescription>
-          <CardDescription>{t("dmWebOptionsBeforeFolder")}</CardDescription>
+          <CardDescription className="text-xs">{t("dmWebOptionsBeforeFolder")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-3">
-            <Button variant="outline" onClick={() => void choose()} disabled={!ready || busy}>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Button
+              variant="outline"
+              className="h-auto min-h-20 justify-start gap-3 rounded-xl border-primary/25 bg-primary/5 p-4 text-left whitespace-normal text-primary hover:bg-primary/10 hover:text-primary"
+              onClick={() => void choose()}
+              disabled={!ready || busy}
+            >
+              <span
+                className="flex size-7 shrink-0 items-center justify-center rounded-full border border-current text-xs"
+                aria-hidden="true"
+              >
+                1
+              </span>
+              <FolderOpenIcon aria-hidden="true" />
               {t("dmWebChoose")}
             </Button>
             <Button
+              className="h-auto min-h-20 justify-start gap-3 rounded-xl p-4 text-left whitespace-normal"
               onClick={() => void generate()}
               disabled={
                 !ready ||
@@ -809,6 +878,13 @@ export default function App() {
               }
               aria-busy={generating}
             >
+              <span
+                className="flex size-7 shrink-0 items-center justify-center rounded-full border border-current/40 text-xs"
+                aria-hidden="true"
+              >
+                2
+              </span>
+              {!generating && <PackageIcon aria-hidden="true" />}
               {generating && (
                 <span
                   className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none"
@@ -820,6 +896,7 @@ export default function App() {
             {busy && (
               <Button
                 variant="outline"
+                className="sm:col-span-2"
                 disabled={cancelling}
                 onClick={() => {
                   setReady(false);
@@ -845,16 +922,20 @@ export default function App() {
               {inputMode === "extracted" ? (
                 <p className="text-xs text-muted-foreground">{t("dmWebExtractedInstructions")}</p>
               ) : (
-                <details className="space-y-2 text-xs text-muted-foreground">
-                  <summary className="cursor-pointer">
-                    {t("dmWebIncludedPackages", nspNames.length)}
-                  </summary>
-                  <ul className="space-y-1 break-all">
-                    {nspNames.map((name) => (
-                      <li key={name}>{name}</li>
-                    ))}
-                  </ul>
-                </details>
+                <Accordion type="single" collapsible className="text-muted-foreground">
+                  <AccordionItem value="packages" className="border-0">
+                    <AccordionTrigger className="min-h-11 py-2 text-xs">
+                      {t("dmWebIncludedPackages", nspNames.length)}
+                    </AccordionTrigger>
+                    <AccordionContent className="pb-0 text-xs">
+                      <ul className="space-y-1 break-all">
+                        {nspNames.map((name) => (
+                          <li key={name}>{name}</li>
+                        ))}
+                      </ul>
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
               )}
             </div>
           )}
@@ -945,308 +1026,322 @@ export default function App() {
               </p>
             </div>
           )}
-          <details className="space-y-4 rounded-md border p-3">
-            <summary className="cursor-pointer text-sm font-medium">
-              {t("dmWebAdvancedOptions")}
-            </summary>
-            <div className="space-y-2">
-              <label htmlFor="ios-target" className="text-sm font-medium">
-                {t("dmWebTarget")}
-              </label>
-              <select
-                id="ios-target"
-                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
-                aria-describedby="ios-target-help"
-                value={target}
-                disabled={hasSelectedFolder || busy || generating || download !== null}
-                onChange={(event) => {
-                  const next = event.target.value;
-                  if (
-                    (next !== "ios18" && next !== "ios26") ||
-                    next === target ||
-                    operationGate.current.busy ||
-                    hasSelectedFolder ||
-                    busy ||
-                    generating ||
-                    download !== null
-                  )
-                    return;
-                  // 密封运行时只初始化一次；选择输入之前用整页重载切换封闭目标。
-                  // The sealed runtime initializes once; reload to switch closed targets before selecting inputs.
-                  const url = new URL(window.location.href);
-                  if (next === "ios18") url.searchParams.set("target", "ios18");
-                  else url.searchParams.delete("target");
-                  window.location.assign(url.href);
-                }}
-              >
-                <option value="ios26">{t("dmWebTarget26")}</option>
-                <option value="ios18">{t("dmWebTarget18")}</option>
-              </select>
-              <p id="ios-target-help" className="text-xs text-muted-foreground">
-                {t("dmWebTargetReload")}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {t("dmWebSupportedVersions", supportedVersions)}
-              </p>
-            </div>
-            <div className="space-y-2">
-              {inputMode !== "extracted" && (
-                <>
-                  <label className="flex items-start gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      className="mt-1"
-                      checked={!skipContentHashes}
-                      aria-describedby="verify-content-hashes-help"
-                      disabled={hasSelectedFolder || busy || generating || download !== null}
+          <Accordion
+            type="multiple"
+            value={openOptions}
+            onValueChange={setOpenOptions}
+            className="rounded-lg border px-3 [&_[data-slot=accordion-content][data-state=closed]]:hidden"
+          >
+            <AccordionItem value="advanced">
+              <AccordionTrigger className="min-h-11 py-3">
+                {t("dmWebAdvancedOptions")}
+              </AccordionTrigger>
+              <AccordionContent forceMount>
+                <FieldGroup className="gap-4">
+                  <Field className="gap-2 [&>[data-slot=native-select-wrapper]]:w-full">
+                    <FieldLabel htmlFor="ios-target">{t("dmWebTarget")}</FieldLabel>
+                    <NativeSelect
+                      id="ios-target"
+                      className="h-10"
+                      aria-describedby="ios-target-help"
+                      value={target}
+                      disabled={busy || generating || finished || download !== null}
                       onChange={(event) => {
+                        const next = event.target.value;
                         if (
+                          (next !== "ios18" && next !== "ios26") ||
+                          next === target ||
                           operationGate.current.busy ||
-                          hasSelectedFolder ||
+                          finished ||
                           busy ||
                           generating ||
                           download !== null
                         )
                           return;
-                        const url = new URL(window.location.href);
-                        if (event.target.checked) url.searchParams.set("skipContentHashes", "0");
-                        else url.searchParams.delete("skipContentHashes");
-                        window.location.assign(url.href);
+                        setTarget(next);
+                      }}
+                    >
+                      <NativeSelectOption value="ios26">{t("dmWebTarget26")}</NativeSelectOption>
+                      <NativeSelectOption value="ios18">{t("dmWebTarget18")}</NativeSelectOption>
+                    </NativeSelect>
+                    <FieldDescription id="ios-target-help" className="text-xs">
+                      {t("dmWebTargetReload")}
+                    </FieldDescription>
+                    <FieldDescription className="text-xs">
+                      {t("dmWebSupportedVersions", supportedVersions)}
+                    </FieldDescription>
+                  </Field>
+                  {inputMode !== "extracted" && (
+                    <Field orientation="horizontal">
+                      <Checkbox
+                        id="verify-content-hashes"
+                        checked={!skipContentHashes}
+                        aria-describedby="verify-content-hashes-help"
+                        disabled={busy || generating || finished || download !== null}
+                        onCheckedChange={(checked) => {
+                          if (
+                            operationGate.current.busy ||
+                            finished ||
+                            busy ||
+                            generating ||
+                            download !== null
+                          )
+                            return;
+                          setSkipContentHashes(checked !== true);
+                        }}
+                      />
+                      <FieldContent>
+                        <FieldLabel htmlFor="verify-content-hashes">
+                          {t("dmWebVerifyHashOption")}
+                        </FieldLabel>
+                        <FieldDescription id="verify-content-hashes-help" className="text-xs">
+                          {t("dmWebVerifyHashHelp")}
+                        </FieldDescription>
+                      </FieldContent>
+                    </Field>
+                  )}
+                  <Field orientation="horizontal">
+                    <Checkbox
+                      id="legacy-textures"
+                      checked={legacyAstc}
+                      aria-describedby="legacy-option-help"
+                      disabled={busy || generating || finished || download !== null}
+                      onCheckedChange={(checked) => {
+                        if (
+                          operationGate.current.busy ||
+                          finished ||
+                          busy ||
+                          generating ||
+                          download !== null
+                        )
+                          return;
+                        setLegacyAstc(checked === true);
                       }}
                     />
-                    {t("dmWebVerifyHashOption")}
-                  </label>
-                  <p id="verify-content-hashes-help" className="text-xs text-muted-foreground">
-                    {t("dmWebVerifyHashHelp")}
-                  </p>
-                </>
-              )}
-              <label className="flex items-start gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="mt-1"
-                  checked={legacyAstc}
-                  aria-describedby="legacy-option-help"
-                  disabled={hasSelectedFolder || busy || generating || download !== null}
-                  onChange={(event) => {
-                    if (
-                      operationGate.current.busy ||
-                      hasSelectedFolder ||
-                      busy ||
-                      generating ||
-                      download !== null
-                    )
-                      return;
-                    // 在接触私有输入前重载，确保可选资源已预加载。
-                    // Reload before private inputs so optional resources are preloaded.
-                    const url = new URL(window.location.href);
-                    if (event.target.checked) url.searchParams.set("legacyAstc", "1");
-                    else url.searchParams.delete("legacyAstc");
-                    window.location.assign(url.href);
-                  }}
-                />
-                {t("dmWebLegacyOption")}
-              </label>
-              <p id="legacy-option-help" className="text-xs text-muted-foreground">
-                {t("dmWebLegacyHelp")}
-              </p>
-              {legacyAstc && (
-                <div className="space-y-2">
-                  <label htmlFor="astc-preset" className="text-sm font-medium">
-                    {t("dmWebAstcPreset")}
-                  </label>
-                  <select
-                    id="astc-preset"
-                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
-                    value={astcPreset}
-                    aria-describedby="astc-preset-help"
-                    disabled={hasSelectedFolder || busy || generating || download !== null}
-                    onChange={(event) => {
+                    <FieldContent>
+                      <FieldLabel htmlFor="legacy-textures">{t("dmWebLegacyOption")}</FieldLabel>
+                      <FieldDescription id="legacy-option-help" className="text-xs">
+                        {t("dmWebLegacyHelp")}
+                      </FieldDescription>
+                    </FieldContent>
+                  </Field>
+                  {legacyAstc && (
+                    <Field className="gap-2 [&>[data-slot=native-select-wrapper]]:w-full">
+                      <FieldLabel htmlFor="astc-preset">{t("dmWebAstcPreset")}</FieldLabel>
+                      <NativeSelect
+                        id="astc-preset"
+                        className="h-10"
+                        value={astcPreset}
+                        aria-describedby="astc-preset-help"
+                        disabled={busy || generating || finished || download !== null}
+                        onChange={(event) => {
+                          if (
+                            operationGate.current.busy ||
+                            finished ||
+                            busy ||
+                            generating ||
+                            download !== null
+                          )
+                            return;
+                          const next = event.target.value;
+                          if (next === "fast" || next === "thorough") setAstcPreset(next);
+                        }}
+                      >
+                        <NativeSelectOption value="thorough">
+                          {t("dmWebAstcThorough")}
+                        </NativeSelectOption>
+                        <NativeSelectOption value="fast">{t("dmWebAstcFast")}</NativeSelectOption>
+                      </NativeSelect>
+                      <FieldDescription id="astc-preset-help" className="text-xs">
+                        {t("dmWebAstcPresetHelp")}
+                      </FieldDescription>
+                    </Field>
+                  )}
+                  {folder && (
+                    <Field orientation="horizontal">
+                      <Checkbox
+                        id="skip-resources"
+                        checked={skipResources}
+                        disabled={!ready || busy}
+                        aria-describedby={skipResources ? "skip-resources-help" : undefined}
+                        onCheckedChange={(checked) => {
+                          if (operationGate.current.busy) return;
+                          setSkipResources(checked === true);
+                        }}
+                      />
+                      <FieldContent>
+                        <FieldLabel htmlFor="skip-resources">{t("dmWebSkipResources")}</FieldLabel>
+                        {skipResources && (
+                          <FieldDescription id="skip-resources-help" className="text-xs">
+                            {t(
+                              inputMode === "extracted"
+                                ? "dmWebExtractedSkipResourcesHelp"
+                                : "dmWebSkipResourcesHelp",
+                            )}
+                            {legacyAstc ? ` ${t("dmWebSkipKeepsLegacy")}` : ""}
+                          </FieldDescription>
+                        )}
+                      </FieldContent>
+                    </Field>
+                  )}
+                </FieldGroup>
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="signing">
+              <AccordionTrigger className="min-h-11 py-3">
+                {t("dmWebSigningOptions")}
+              </AccordionTrigger>
+              <AccordionContent forceMount className="space-y-4">
+                <Field orientation="horizontal">
+                  <Checkbox
+                    id="signing-enabled"
+                    checked={signing}
+                    disabled={busy || generating || finished || download !== null}
+                    onCheckedChange={(checked) => {
                       if (
                         operationGate.current.busy ||
-                        hasSelectedFolder ||
+                        finished ||
                         busy ||
                         generating ||
                         download !== null
                       )
                         return;
-                      // 在选择私有输入前重载，使预设在整个作业期间保持固定。
-                      // Reload before private input selection so the preset stays fixed for the entire job.
-                      const url = new URL(window.location.href);
-                      if (event.target.value === "fast") url.searchParams.set("astcPreset", "fast");
-                      else url.searchParams.delete("astcPreset");
-                      window.location.assign(url.href);
+                      if (checked !== true) clearSigningInputs();
+                      setSigning(checked === true);
                     }}
+                  />
+                  <FieldContent>
+                    <FieldLabel htmlFor="signing-enabled">{t("dmWebSigningOption")}</FieldLabel>
+                    <FieldDescription className="text-xs">{t("dmWebSigningHelp")}</FieldDescription>
+                  </FieldContent>
+                </Field>
+                {signing && (
+                  <FieldSet
+                    className="gap-3"
+                    disabled={!signingReady || (!ready && !signingRetryAvailable) || busy}
                   >
-                    <option value="thorough">{t("dmWebAstcThorough")}</option>
-                    <option value="fast">{t("dmWebAstcFast")}</option>
-                  </select>
-                  <p id="astc-preset-help" className="text-xs text-muted-foreground">
-                    {t("dmWebAstcPresetHelp")}
-                  </p>
-                </div>
-              )}
-            </div>
-            {folder && (
-              <div className="space-y-2">
-                <label className="flex items-start gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    className="mt-1"
-                    checked={skipResources}
-                    disabled={!ready || busy}
-                    aria-describedby={skipResources ? "skip-resources-help" : undefined}
-                    onChange={(event) => {
-                      if (operationGate.current.busy) return;
-                      setSkipResources(event.target.checked);
-                    }}
-                  />
-                  {t("dmWebSkipResources")}
-                </label>
-                {skipResources && (
-                  <p id="skip-resources-help" className="text-xs text-muted-foreground">
-                    {t(
-                      inputMode === "extracted"
-                        ? "dmWebExtractedSkipResourcesHelp"
-                        : "dmWebSkipResourcesHelp",
-                    )}
-                    {legacyAstc ? ` ${t("dmWebSkipKeepsLegacy")}` : ""}
-                  </p>
+                    <FieldLegend className="sr-only">{t("dmWebSigningCredentials")}</FieldLegend>
+                    <FieldGroup className="gap-3">
+                      <Field className="gap-2">
+                        <FieldLabel htmlFor="signing-identity">
+                          {t("dmWebSigningIdentity")}
+                        </FieldLabel>
+                        <Input
+                          id="signing-identity"
+                          ref={identityInput}
+                          type="file"
+                          accept=".p12,.pfx"
+                          className="h-10 file:mr-3"
+                          onChange={() => {
+                            if (!operationGate.current.busy)
+                              setCredentialsSelected(
+                                Boolean(
+                                  identityInput.current?.files?.[0] &&
+                                  profileInput.current?.files?.[0],
+                                ),
+                              );
+                          }}
+                        />
+                      </Field>
+                      <Field className="gap-2">
+                        <FieldLabel htmlFor="signing-password">
+                          {t("dmWebSigningPassword")}
+                        </FieldLabel>
+                        <Input
+                          id="signing-password"
+                          ref={passwordInput}
+                          type="password"
+                          autoComplete="off"
+                          maxLength={IPA_SIGNING_LIMITS.passwordCharacters}
+                          className="h-10"
+                        />
+                      </Field>
+                      <Field className="gap-2">
+                        <FieldLabel htmlFor="signing-profile">
+                          {t("dmWebSigningProfile")}
+                        </FieldLabel>
+                        <Input
+                          id="signing-profile"
+                          ref={profileInput}
+                          type="file"
+                          accept=".mobileprovision"
+                          className="h-10 file:mr-3"
+                          onChange={() => {
+                            if (!operationGate.current.busy)
+                              setCredentialsSelected(
+                                Boolean(
+                                  identityInput.current?.files?.[0] &&
+                                  profileInput.current?.files?.[0],
+                                ),
+                              );
+                          }}
+                        />
+                      </Field>
+                    </FieldGroup>
+                  </FieldSet>
                 )}
-              </div>
-            )}
-          </details>
-          <details
-            className="space-y-2 rounded-md border p-3"
-            open={signing || signingRetryAvailable}
-          >
-            <summary className="cursor-pointer text-sm font-medium">
-              {t("dmWebSigningOptions")}
-            </summary>
-            <label className="flex items-start gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="mt-1"
-                checked={signing}
-                disabled={hasSelectedFolder || busy || generating || download !== null}
-                onChange={(event) => {
-                  if (
-                    operationGate.current.busy ||
-                    hasSelectedFolder ||
-                    busy ||
-                    generating ||
-                    download !== null
-                  )
-                    return;
-                  const url = new URL(window.location.href);
-                  if (event.target.checked) url.searchParams.set("signing", "1");
-                  else url.searchParams.delete("signing");
-                  window.location.assign(url.href);
-                }}
-              />
-              {t("dmWebSigningOption")}
-            </label>
-            <p className="text-xs text-muted-foreground">{t("dmWebSigningHelp")}</p>
-            {signing && (
-              <fieldset
-                className="space-y-2 rounded-md border p-3"
-                disabled={!signingReady || (!ready && !signingRetryAvailable) || busy}
-              >
-                <legend className="px-1 text-sm">{t("dmWebSigningCredentials")}</legend>
-                <label className="block text-sm">
-                  {t("dmWebSigningIdentity")}
-                  <input
-                    ref={identityInput}
-                    type="file"
-                    accept=".p12,.pfx"
-                    className="block w-full text-sm"
-                    onChange={() => {
-                      if (!operationGate.current.busy)
-                        setCredentialsSelected(
-                          Boolean(
-                            identityInput.current?.files?.[0] && profileInput.current?.files?.[0],
-                          ),
-                        );
-                    }}
-                  />
-                </label>
-                <label className="block text-sm">
-                  {t("dmWebSigningPassword")}
-                  <input
-                    ref={passwordInput}
-                    type="password"
-                    autoComplete="off"
-                    maxLength={IPA_SIGNING_LIMITS.passwordCharacters}
-                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  />
-                </label>
-                <label className="block text-sm">
-                  {t("dmWebSigningProfile")}
-                  <input
-                    ref={profileInput}
-                    type="file"
-                    accept=".mobileprovision"
-                    className="block w-full text-sm"
-                    onChange={() => {
-                      if (!operationGate.current.busy)
-                        setCredentialsSelected(
-                          Boolean(
-                            identityInput.current?.files?.[0] && profileInput.current?.files?.[0],
-                          ),
-                        );
-                    }}
-                  />
-                </label>
-              </fieldset>
-            )}
-          </details>
-          <AppCustomizationFields
-            value={appCustomization}
-            disabled={!ready || busy || finished || download !== null}
-            error={customizationValidation.error || customizationError}
-            onChange={(value) => {
-              if (operationGate.current.busy || !ready || busy || finished || download !== null)
-                return;
-              setAppCustomization(value);
-              setCustomizationError("");
-            }}
-          />
-          {storageAdvisory && <p className="text-xs text-muted-foreground">{storageAdvisory}</p>}
-          <details className="space-y-2 text-xs text-muted-foreground">
-            <summary className="cursor-pointer">{t("dmWebLogCount", activity.length)}</summary>
-            <p>{t("dmWebLogHelp")}</p>
-            <ol className="max-h-64 overflow-auto break-words space-y-1" aria-label={t("dmWebLog")}>
-              {activity.map((line) => (
-                <li key={line.id}>{line.text}</li>
-              ))}
-            </ol>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={async () => {
-                const request = ++copyRequest.current;
-                const revision = activityRevision.current;
-                copiedActivityRevision.current = revision;
-                setCopyStatus("");
-                try {
-                  await navigator.clipboard.writeText(
-                    activityBuffer.current.map((line) => line.text).join("\n"),
-                  );
-                  if (!mounted.current || request !== copyRequest.current) return;
-                  setCopyStatus(
-                    revision === activityRevision.current ? t("dmWebCopied") : t("dmWebCopiedNew"),
-                  );
-                } catch {
-                  if (mounted.current && request === copyRequest.current) {
-                    setCopyStatus(t("dmWebCopyFailed"));
-                  }
-                }
+              </AccordionContent>
+            </AccordionItem>
+            <AppCustomizationFields
+              value={appCustomization}
+              defaults={appCustomizationDefaults}
+              disabled={!ready || busy || finished || download !== null}
+              error={customizationValidation.error || customizationError}
+              onChange={(value) => {
+                if (operationGate.current.busy || !ready || busy || finished || download !== null)
+                  return;
+                setAppCustomization(value);
+                setCustomizationError("");
               }}
-            >
-              {t("dmWebCopy")}
-            </Button>
-            {copyStatus && <p role="status">{copyStatus}</p>}
-          </details>
+            />
+          </Accordion>
+          {storageAdvisory && <p className="text-xs text-muted-foreground">{storageAdvisory}</p>}
+          <Accordion type="single" collapsible className="text-muted-foreground">
+            <AccordionItem value="activity" className="border-0">
+              <AccordionTrigger className="min-h-11 py-2 text-xs">
+                {t("dmWebLogCount", activity.length)}
+              </AccordionTrigger>
+              <AccordionContent className="space-y-2 text-xs">
+                <p>{t("dmWebLogHelp")}</p>
+                <ol
+                  className="max-h-64 overflow-auto break-words space-y-1"
+                  aria-label={t("dmWebLog")}
+                >
+                  {activity.map((line) => (
+                    <li key={line.id}>{line.text}</li>
+                  ))}
+                </ol>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    const request = ++copyRequest.current;
+                    const revision = activityRevision.current;
+                    copiedActivityRevision.current = revision;
+                    setCopyStatus("");
+                    try {
+                      await navigator.clipboard.writeText(
+                        activityBuffer.current.map((line) => line.text).join("\n"),
+                      );
+                      if (!mounted.current || request !== copyRequest.current) return;
+                      setCopyStatus(
+                        revision === activityRevision.current
+                          ? t("dmWebCopied")
+                          : t("dmWebCopiedNew"),
+                      );
+                    } catch {
+                      if (mounted.current && request === copyRequest.current) {
+                        setCopyStatus(t("dmWebCopyFailed"));
+                      }
+                    }
+                  }}
+                >
+                  {t("dmWebCopy")}
+                </Button>
+                {copyStatus && <p role="status">{copyStatus}</p>}
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
           {loading && !loadFailed && (
             <div className="space-y-2 text-xs text-muted-foreground">
               {loading.phase === "download" && loading.totalBytes > 0 ? (
@@ -1286,7 +1381,10 @@ export default function App() {
               {loadFailed ? t("dmWebReloadRetry") : t("dmWebReload")}
             </Button>
           )}
-          <p className="text-xs text-muted-foreground">{t("dmWebPrivacy")}</p>
+          <p className="flex items-start gap-2 text-xs text-muted-foreground">
+            <ShieldCheckIcon className="size-4 shrink-0 text-primary" aria-hidden="true" />
+            {t("dmWebPrivacy")}
+          </p>
         </CardContent>
       </Card>
     </main>

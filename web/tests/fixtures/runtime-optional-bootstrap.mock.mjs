@@ -58,7 +58,11 @@ mock.module("../../astc-producer-client.mjs", {
       const buffers = assets.map(([, value]) => value);
       structuredClone(assets, { transfer: buffers });
       assert.ok(buffers.every((value) => value.byteLength === 0));
+      state.initializationSignal = signal;
+      state.initializationEntered?.resolve();
+      await state.initializationPause?.promise;
       if (state.initializationError) throw state.initializationError;
+      let clientClosed = false;
       const client = Object.freeze({
         initialized: !state.badProof,
         ready: true,
@@ -66,6 +70,8 @@ mock.module("../../astc-producer-client.mjs", {
           state.privateCalls++;
         },
         async close() {
+          if (clientClosed) return;
+          clientClosed = true;
           state.producerCloses++;
           worker.terminate();
           if (state.cleanupError) throw state.cleanupError;
@@ -347,3 +353,44 @@ test("every production plan initializes from retained assembly paths without raw
   await runtime.close();
   assert.ok(state.workers.every((worker) => worker.terminated));
 });
+
+test("preloaded ASTC stays dormant until requested, then initializes without any fetch", async () => {
+  const { prepareSealedRuntime, options } = await setup({ enabled: true });
+  const runtime = await prepareSealedRuntime({ ...options, deferOptionalInitialization: true });
+  assert.equal(state.helperCalls, 0);
+  assert.equal(runtime.initialized.astcProducer, undefined);
+  const before = [...state.fetches];
+  await runtime.prepareAstcProducer({ signal: state.signal });
+  assert.equal(state.helperCalls, 1);
+  assert.deepEqual(state.fetches, before);
+  await runtime.prepareAstcProducer({ signal: state.signal });
+  assert.equal(state.helperCalls, 1);
+  assert.equal(runtime.createAstcProducerClient(), state.client);
+  await runtime.close();
+  assert.ok(state.workers.every((worker) => worker.terminated));
+});
+
+for (const action of ["cancel", "close"])
+  test(`${action} during deferred ASTC startup retires a late client without reads or refetch`, async () => {
+    const { prepareSealedRuntime, options, assertSealedRuntime } = await setup({ enabled: true });
+    const runtime = await prepareSealedRuntime({ ...options, deferOptionalInitialization: true });
+    const before = [...state.fetches];
+    state.initializationEntered = Promise.withResolvers();
+    state.initializationPause = Promise.withResolvers();
+    const controller = new AbortController();
+    const initializing = runtime.prepareAstcProducer({ signal: controller.signal });
+    await state.initializationEntered.promise;
+    if (action === "close") await runtime.close();
+    else controller.abort();
+    assert.equal(state.initializationSignal.aborted, true);
+    // Simulate an initializer returning late despite cancellation.
+    state.initializationPause.resolve();
+    await assert.rejects(initializing, { name: "AbortError" });
+    await runtime.close();
+    assert.equal(state.producerCloses, 1);
+    assert.equal(state.privateCalls, 0);
+    assert.ok(state.workers.every((worker) => worker.terminated));
+    assert.deepEqual(state.fetches, before);
+    assert.throws(() => assertSealedRuntime(runtime), /live verified/);
+    assert.throws(() => runtime.createAstcProducerClient(), /unavailable/);
+  });

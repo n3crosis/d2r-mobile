@@ -3,8 +3,14 @@
 import { prepareIpaSigningClient } from "../ipa-signing-client.mjs";
 import { IPA_SIGNING_LIMITS, clearSigningBuffers, signingError } from "../ipa-signing-contract.mjs";
 
-export async function prepareVerifiedIpaSigningFactory({ workerBlob, wasmBytes, signal }) {
+export async function prepareVerifiedIpaSigningFactory({
+  workerBlob,
+  wasmBytes,
+  signal,
+  warmup = true,
+}) {
   if (
+    typeof warmup !== "boolean" ||
     !(workerBlob instanceof Blob) ||
     workerBlob.size < 1 ||
     workerBlob.size > IPA_SIGNING_LIMITS.wasmBytes ||
@@ -130,7 +136,7 @@ export async function prepareVerifiedIpaSigningFactory({ workerBlob, wasmBytes, 
   try {
     // 首次尝试复用已验证的初始线程，避免重复启动；后续尝试不保留旧线程。
     // Keep the verified initial worker for the first attempt, avoiding a second startup.
-    warmClient = await initialize(signal);
+    if (warmup) warmClient = await initialize(signal);
     signal?.throwIfAborted();
     signal = undefined;
   } catch (error) {

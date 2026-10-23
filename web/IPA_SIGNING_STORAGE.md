@@ -12,10 +12,11 @@ The committed unsigned IPA must remain a separate fallback. Signing is a new pos
 
 Retry orchestration is separate from storage. The independently owned public-asset
 factory in `sealed-runtime/ipa-signing-factory.mjs` prepares each one-shot worker
-before credential files are read. Its first attempt reuses the bootstrap worker;
-later attempts initialize fresh workers from verified in-memory public bytes,
-without network access. Each attempt must close even if credential-file reading
-fails. Failure/cancellation preserves the same unsigned Blob and requires fresh
+before credential files are read. The editable browser UI preloads verified public
+bytes without starting a signer; its first attempt and retries initialize workers
+from those retained bytes without network access. Eager API callers may instead
+reuse an initialized bootstrap worker for the first attempt. Each attempt must
+close even if credential-file reading fails. Failure/cancellation preserves the same unsigned Blob and requires fresh
 credential inputs; it does not repeat conversion or retain previous credentials.
 Explicit packager close/unmount disposes the factory and its retained public
 assets. These lifetime guarantees do not establish native signing or device trust.

@@ -154,11 +154,19 @@ function runtimeTransport(manifest, inventory) {
   return { files, totalBytes: transport.totalBytes, entries };
 }
 /**
- * 验证完整清单后，省略另一个内置外壳及未选可选闭包；绝不省略通用资产。
- * Validate the complete manifest before omitting the other shell and unselected optional closures, never common assets.
+ * 验证完整清单后，省略未预载的内置外壳及未选可选闭包；绝不省略通用资产。
+ * Validate the complete manifest before omitting unpreloaded shells and optional closures, never common assets.
  */
-export function validateRuntimeProfileSelection(manifest, profileId, { optionalGroups = [] } = {}) {
+export function validateRuntimeProfileSelection(
+  manifest,
+  profileId,
+  { optionalGroups = [], preloadProfileIds = [] } = {},
+) {
   const profile = resolveShellProfile(profileId);
+  if (!Array.isArray(preloadProfileIds)) fail("Invalid runtime profile preload selection");
+  const selectedShells = new Set(
+    [profile.id, ...preloadProfileIds].map((id) => resolveShellProfile(id).archivePath),
+  );
   const inventory = validateRuntimeInventory(manifest);
   validateAirCompilerRuntimeComponent(manifest);
   const transport = runtimeTransport(manifest, inventory);
@@ -175,16 +183,17 @@ export function validateRuntimeProfileSelection(manifest, profileId, { optionalG
     )
       fail("Runtime shell profile integrity mismatch");
   }
-  if (!inventory.some((asset) => asset.path === profile.archivePath))
-    fail("Selected runtime shell is unavailable");
+  for (const path of selectedShells)
+    if (!inventory.some((asset) => asset.path === path))
+      fail("Selected runtime shell is unavailable");
   const selectedInventory = groupInventory.filter(
-    (asset) => !shellPaths.has(asset.path) || asset.path === profile.archivePath,
+    (asset) => !shellPaths.has(asset.path) || selectedShells.has(asset.path),
   );
   let downloadFiles;
   if (transport.entries) {
     const keys = new Set(selectedInventory.map((asset) => `${asset.sha256}-${asset.bytes}`));
     for (const asset of inventory.filter(
-      (asset) => shellPaths.has(asset.path) && asset.path !== profile.archivePath,
+      (asset) => shellPaths.has(asset.path) && !selectedShells.has(asset.path),
     )) {
       const key = `${asset.sha256}-${asset.bytes}`;
       const entry = transport.entries.get(key);
@@ -472,10 +481,11 @@ function channel(worker, onFatal, onStage, shaderSubstep) {
   };
 }
 /**
- * 仅用于受信任的应用引导。在请求私有文件或密钥之前调用。manifestSha256 必须来自构建生成的 runtime-integrity.mjs，绝不能来自用户输入。只有所有请求的实际运行时都使用已验证公开字节初始化后才兑现。
+ * 仅用于受信任的应用引导。在请求私有文件或密钥之前调用。manifestSha256 必须来自构建生成的 runtime-integrity.mjs，绝不能来自用户输入。所有请求的公开字节均先通过验证；核心运行时立即初始化，可选运行时可延迟到使用时从内存初始化。
  * Trusted application bootstrap only. Call before asking for private files/keys.
  * manifestSha256 MUST come from the built runtime-integrity.mjs, never user input.
- * Resolves only after every requested actual runtime has initialized with verified public bytes.
+ * Verifies all requested public bytes and initializes core runtimes before resolving.
+ * Optional runtimes may defer initialization until use, exclusively from retained verified bytes.
  */
 export async function prepareSealedRuntime({
   baseUrl,
@@ -483,6 +493,8 @@ export async function prepareSealedRuntime({
   profileId,
   components = ["assets", "texture", "translator", "extraction", "program", "spirvCross"],
   optionalGroups = [],
+  preloadProfileIds = [],
+  deferOptionalInitialization = false,
   signal,
   onProgress,
 } = {}) {
@@ -499,6 +511,7 @@ export async function prepareSealedRuntime({
   )
     fail("Required clean browser capabilities unavailable");
   if (
+    typeof deferOptionalInitialization !== "boolean" ||
     !/^[a-f0-9]{64}$/.test(manifestSha256) ||
     !Array.isArray(components) ||
     !components.length ||
@@ -539,6 +552,7 @@ export async function prepareSealedRuntime({
   const { inventory, selectedInventory, transport, downloadFiles, downloadBytes } =
     validateRuntimeProfileSelection(manifest, selectedProfile.id, {
       optionalGroups: selectedGroups,
+      preloadProfileIds,
     });
   const assets = new Map();
   const downloadedAssets = new Map();
@@ -887,11 +901,57 @@ export async function prepareSealedRuntime({
     assets.clear();
     return closing;
   }
+  // 可编辑界面只预载可选字节；使用时才从内存初始化，不启动任何网络读取。
+  // Editable UI preloads optional bytes only; initialize from memory on use, without network reads.
+  async function prepareAstcProducer({ signal: operationSignal } = {}) {
+    if (closed) fail("Runtime session closed");
+    operationSignal?.throwIfAborted();
+    if (producerClient?.ready) return;
+    const plan = plans.astcProducer;
+    if (!plan || producerInitialization || producerClient || producerTaken)
+      fail("ASTC producer unavailable or already acquired");
+    const transferred = plan.assets.map(([local, value]) => [local, value.slice().buffer]),
+      buffers = transferred.map(([, buffer]) => buffer);
+    plan.assets.length = 0;
+    const url = URL.createObjectURL(new Blob([bytes(plan.entry)], { type: "text/javascript" }));
+    urls.push(url);
+    producerWorker = new Worker(url, { type: "module" });
+    producerInitialization = new AbortController();
+    try {
+      producerClient = await initializeAstcProducerClient({
+        worker: producerWorker,
+        assets: transferred,
+        signal: operationSignal
+          ? AbortSignal.any([operationSignal, producerInitialization.signal])
+          : producerInitialization.signal,
+      });
+      if (closed || operationSignal?.aborted) {
+        await producerClient?.close();
+        throw new DOMException("Runtime cancelled", "AbortError");
+      }
+      if (
+        producerClient?.initialized !== true ||
+        producerClient.ready !== true ||
+        buffers.some((buffer) => buffer.byteLength !== 0)
+      )
+        fail("Actual ASTC producer initialization/transfer failed");
+    } catch (error) {
+      try {
+        await close();
+      } catch {
+        // 保留初始化错误，不让清理失败掩盖它。 | Preserve the initialization failure.
+      }
+      throw error;
+    } finally {
+      producerInitialization = undefined;
+    }
+  }
   try {
     const initialized = {};
     for (const [name, plan] of Object.entries(plans)) {
+      if (name === "astcProducer" && deferOptionalInitialization) continue;
       const url =
-        name === "ipaSigning"
+        name === "ipaSigning" || name === "astcProducer"
           ? undefined
           : URL.createObjectURL(new Blob([bytes(plan.entry)], { type: "text/javascript" }));
       if (url !== undefined) urls.push(url);
@@ -951,6 +1011,7 @@ export async function prepareSealedRuntime({
           signingFactory = await prepareVerifiedIpaSigningFactory({
             workerBlob: new Blob([bytes(plan.entry)], { type: "text/javascript" }),
             wasmBytes: plan.assets[0][1],
+            warmup: !deferOptionalInitialization,
             signal: signal
               ? AbortSignal.any([signal, signingInitialization.signal])
               : signingInitialization.signal,
@@ -960,33 +1021,11 @@ export async function prepareSealedRuntime({
           plan.assets.length = 0;
         }
         if (closed || signal?.aborted) throw new DOMException("Runtime cancelled", "AbortError");
-        initialized.ipaSigning = { initialized: true };
+        if (!deferOptionalInitialization) initialized.ipaSigning = { initialized: true };
         continue;
       }
       if (name === "astcProducer") {
-        const transferred = plan.assets.map(([local, value]) => [local, value.slice().buffer]),
-          buffers = transferred.map(([, buffer]) => buffer);
-        plan.assets.length = 0;
-        producerWorker = new Worker(url, { type: "module" });
-        producerInitialization = new AbortController();
-        try {
-          producerClient = await initializeAstcProducerClient({
-            worker: producerWorker,
-            assets: transferred,
-            signal: signal
-              ? AbortSignal.any([signal, producerInitialization.signal])
-              : producerInitialization.signal,
-          });
-        } finally {
-          producerInitialization = undefined;
-        }
-        if (closed || signal?.aborted) throw new DOMException("Runtime cancelled", "AbortError");
-        if (
-          producerClient?.initialized !== true ||
-          producerClient.ready !== true ||
-          buffers.some((buffer) => buffer.byteLength !== 0)
-        )
-          fail("Actual ASTC producer initialization/transfer failed");
+        await prepareAstcProducer({ signal });
         initialized.astcProducer = { initialized: true };
         continue;
       }
@@ -1582,6 +1621,7 @@ export async function prepareSealedRuntime({
       retireShaderWorkers,
       createExtractionWorker,
       createAstcProducerClient,
+      prepareAstcProducer,
       takeIpaSigningFactory,
       createShaderWorkerFactory,
       workerUrls,

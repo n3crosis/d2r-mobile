@@ -152,6 +152,8 @@
     "staticOnly": true,
     "executed": false,
     "plist": {
+      "CFBundleDisplayName": "D2R Mobile",
+      "CFBundleName": "DmIOS",
       "CFBundleIdentifier": "org.d2rmobile.app",
       "CFBundleExecutable": "DmIOS",
       "CFBundleShortVersionString": "1.0",

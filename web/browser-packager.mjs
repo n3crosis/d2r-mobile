@@ -15,7 +15,7 @@ import {
   bindProductionAstcEntries,
   inspectProductionAstcEntries,
 } from "./production-profile.mjs";
-import { resolveShellProfile } from "./shell-profiles.mjs";
+import { resolveShellProfile, BUNDLED_SHELL_PROFILE_IDS } from "./shell-profiles.mjs";
 import { astcOutputPaths } from "./astc-output-validator.mjs";
 import {
   createExtractionJobAdapter,
@@ -65,31 +65,40 @@ export function assertBrowserPackagerCapabilities(environment = globalThis) {
 }
 
 /**
- * 可选补充包在公开引导阶段选择，私有输入开始后不再联网。
- * Select the optional pack during public bootstrap; no networking after private inputs begin.
- * @param {{manifestSha256?: string, signal?: AbortSignal, onProgress?: (event: any) => void, profileId?: string, legacyAstc?: boolean, signing?: boolean, astcPreset?: "thorough"|"fast", skipContentHashes?: boolean}} [options]
+ * 可编辑界面在公开引导阶段预载全部选项，私有输入开始后不再联网。
+ * Editable UI preloads every option during public bootstrap; no networking after private inputs begin.
+ * @param {{manifestSha256?: string, signal?: AbortSignal, onProgress?: (event: any) => void, profileId?: string, legacyAstc?: boolean, signing?: boolean, astcPreset?: "thorough"|"fast", skipContentHashes?: boolean, editableOptions?: boolean}} [options]
  */
 export async function prepareBrowserPackager({
   manifestSha256,
   signal,
   onProgress,
   profileId,
-  legacyAstc = false,
+  legacyAstc: initialLegacyAstc = false,
   signing = false,
-  astcPreset = "thorough",
-  skipContentHashes = false,
+  astcPreset: initialAstcPreset = "thorough",
+  skipContentHashes: initialSkipContentHashes = false,
+  editableOptions = false,
 } = {}) {
-  if (astcPreset !== "thorough" && astcPreset !== "fast") throw new Error("ASTC_PRESET_OPTION");
-  if (typeof legacyAstc !== "boolean") throw new Error("LEGACY_ASTC_OPTION");
-  if (typeof skipContentHashes !== "boolean") throw new Error("CONTENT_HASH_OPTION");
+  validateGenerationOptions(initialLegacyAstc, initialAstcPreset, initialSkipContentHashes);
+  if (typeof editableOptions !== "boolean") throw new Error("EDITABLE_OPTIONS_OPTION");
   if (typeof signing !== "boolean") throw new Error("SIGNING_OPTION");
   const selectedProfile = resolveShellProfile(profileId);
+  const preparedProfileIds = editableOptions
+    ? [...new Set([selectedProfile.id, ...BUNDLED_SHELL_PROFILE_IDS])]
+    : [selectedProfile.id];
+  const legacyReady = initialLegacyAstc || editableOptions;
   assertBrowserPackagerCapabilities();
   const runtime = await prepareSealedRuntime({
     baseUrl: "./runtime/",
     profileId: selectedProfile.id,
     manifestSha256,
-    optionalGroups: [...(legacyAstc ? ["legacy-astc"] : []), ...(signing ? ["ipa-signing"] : [])],
+    preloadProfileIds: preparedProfileIds,
+    deferOptionalInitialization: editableOptions,
+    optionalGroups: [
+      ...(legacyReady ? ["legacy-astc"] : []),
+      ...(signing || editableOptions ? ["ipa-signing"] : []),
+    ],
     signal,
     onProgress,
   });
@@ -153,35 +162,10 @@ export async function prepareBrowserPackager({
     return wholeClosePromise;
   };
   try {
-    if (signing) signingFactory = runtime.takeIpaSigningFactory();
-    if (legacyAstc && typeof runtime.createAstcProducerClient !== "function")
+    if (signing || editableOptions) signingFactory = runtime.takeIpaSigningFactory();
+    if (legacyReady && typeof runtime.createAstcProducerClient !== "function")
       throw new Error("LEGACY_ASTC_UNAVAILABLE");
     profile = await loadProductionProfile(runtime, { signal, profileId: selectedProfile.id });
-    const extraction = createExtractionJobAdapter({
-      createWorker: runtime.createExtractionWorker,
-      contentMode: profile.contentMode,
-      // 默认路径已对照 CNMT 检查完整 NCA 摘要；显式快速路径
-      // 则跳过完整性扫描，以便先尝试提取。
-      // The default path checks whole-NCA digests against CNMT. Explicit quick
-      // mode skips full-content integrity scans to attempt extraction sooner.
-      verifyRomfs: false,
-      skipContentHashes,
-    });
-    program = createProgramRewriterAdapter({
-      profileId: profile.profileId,
-      verifyProvenance: readAuthenticatedProgramModules,
-      createWorker: runtime.createProgramWorker,
-      workerOutputOwnership: "owned",
-    });
-    if (!legacyAstc) assets = createProductionAssetAdapter({ runtime, profile });
-    shaders = createProductionShaderAdapter({
-      runtime,
-      catalog: profile.catalog,
-      trustedShell: {
-        ...profile.shell.contract,
-        trustedRecipe: profile.trustedShell.trustedRecipe,
-      },
-    });
     let used = false;
     const allowed = (path) =>
       profile.trustedShell.trustedRecipe.requiredPaths.some((p) =>
@@ -205,7 +189,7 @@ export async function prepareBrowserPackager({
        * 仅允许明确跳过原始资源导出；验证及补充包导出保持不变。
        * Allow only explicit original-resource export skipping; validation and supplemental export stay unchanged.
        * Omitted inputMode detects the input route; pass a discovered mode to pin a rescan.
-       * @param {{input: any, selectedNspNames?: any, inputMode?: "packages"|"extracted", signal?: AbortSignal, onProgress?: (event: any) => void, exportResources?: boolean, appCustomization?: any}} options
+       * @param {{input: any, selectedNspNames?: any, inputMode?: "packages"|"extracted", signal?: AbortSignal, onProgress?: (event: any) => void, exportResources?: boolean, appCustomization?: any, profileId?: string, legacyAstc?: boolean, astcPreset?: "thorough"|"fast", skipContentHashes?: boolean}} options
        */
       async generate({
         input,
@@ -215,7 +199,15 @@ export async function prepareBrowserPackager({
         onProgress,
         exportResources = true,
         appCustomization,
+        profileId = selectedProfile.id,
+        legacyAstc = initialLegacyAstc,
+        astcPreset = initialAstcPreset,
+        skipContentHashes = initialSkipContentHashes,
       }) {
+        validateGenerationOptions(legacyAstc, astcPreset, skipContentHashes);
+        if (!preparedProfileIds.includes(resolveShellProfile(profileId).id))
+          throw new Error("PROFILE_NOT_PRELOADED");
+        if (legacyAstc && !legacyReady) throw new Error("LEGACY_ASTC_NOT_PRELOADED");
         validateResourceExportOption(exportResources);
         const customization = await prepareAppCustomization(appCustomization, { signal });
         if (closed || used) throw new Error("RELOAD_REQUIRED");
@@ -229,6 +221,52 @@ export async function prepareBrowserPackager({
         // Permission checks can outlive closure or another caller; recheck the single-use state on resumption.
         if (closed || used) throw new Error("RELOAD_REQUIRED");
         used = true;
+        let extraction;
+        try {
+          // 仅使用已验证内存中的公开字节；选项在整个作业期间固定。
+          // Use verified in-memory public bytes only; options are fixed for the entire job.
+          if (profile.profileId !== profileId) {
+            profile.close();
+            const replacement = await loadProductionProfile(runtime, { signal, profileId });
+            if (closed) {
+              replacement.close();
+              throw new Error("RELOAD_REQUIRED");
+            }
+            profile = replacement;
+          }
+          if (legacyAstc) await runtime.prepareAstcProducer({ signal });
+          signal?.throwIfAborted();
+          if (closed) throw new Error("RELOAD_REQUIRED");
+          extraction = createExtractionJobAdapter({
+            createWorker: runtime.createExtractionWorker,
+            contentMode: profile.contentMode,
+            // 默认路径已对照 CNMT 检查完整 NCA 摘要；显式快速路径
+            // 则跳过完整性扫描，以便先尝试提取。
+            // The default path checks whole-NCA digests against CNMT. Explicit quick
+            // mode skips full-content integrity scans to attempt extraction sooner.
+            verifyRomfs: false,
+            skipContentHashes,
+          });
+          program = createProgramRewriterAdapter({
+            profileId: profile.profileId,
+            verifyProvenance: readAuthenticatedProgramModules,
+            createWorker: runtime.createProgramWorker,
+            workerOutputOwnership: "owned",
+          });
+          if (!legacyAstc) assets = createProductionAssetAdapter({ runtime, profile });
+          shaders = createProductionShaderAdapter({
+            runtime,
+            catalog: profile.catalog,
+            trustedShell: {
+              ...profile.shell.contract,
+              trustedRecipe: profile.trustedShell.trustedRecipe,
+            },
+          });
+        } catch (error) {
+          await cleanupPackagingAdapters(() => {
+            throw error;
+          }, close);
+        }
         let authenticated,
           selected,
           output,
@@ -567,6 +605,12 @@ export async function prepareBrowserPackager({
     }
     throw error;
   }
+}
+
+function validateGenerationOptions(legacyAstc, astcPreset, skipContentHashes) {
+  if (astcPreset !== "thorough" && astcPreset !== "fast") throw new Error("ASTC_PRESET_OPTION");
+  if (typeof legacyAstc !== "boolean") throw new Error("LEGACY_ASTC_OPTION");
+  if (typeof skipContentHashes !== "boolean") throw new Error("CONTENT_HASH_OPTION");
 }
 
 // 不允许过滤器悄悄丢弃未绑定 ASTC、补充包数据或索引；这些不是 IPA 文件。

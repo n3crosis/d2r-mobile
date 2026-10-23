@@ -75,11 +75,14 @@ zsign/移植版本/OpenSSL 许可证及声明、固定源码信息、补丁报�
 组装仍检查其构建凭据。原生输出缺失、不完整、过期或不匹配时，打包必须失败；
 仅源码集成并不构成可用的签名器。没有该组的旧清单仍支持默认未签名输出。
 
-必须在选择私有输入前启用 `prepareBrowserPackager({ signing: true })`。
-公开引导验证所选闭包，并实际初始化 zsign，然后才暴露 `signingReady`。
-`session.takeIpaSigningFactory()` 仅转移一次独立工厂所有权。首次尝试复用引导阶段
-已初始化的工作线程；后续尝试从工厂保留的已验证工作线程 Blob 和有界 WASM 副本创建
-全新的一次性线程。初始化完成、失败或取消后均撤销启动 Blob URL。
+浏览器界面使用 `prepareBrowserPackager({ editableOptions: true })`，在选择私有输入前
+预加载已验证的签名闭包，但不提前启动签名器。生成前可随时启用签名，无需重新加载
+或重新选择文件夹。`signingReady` 表示独立公开资源工厂可用；`prepareSigning()` 会在
+读取凭据前初始化线程。即时模式 API `prepareBrowserPackager({ signing: true })` 仍在
+引导时初始化 zsign。`session.takeIpaSigningFactory()` 仅转移一次工厂所有权。即时模式
+首次尝试复用引导线程；延迟模式首次尝试及重试从工厂保留的已验证工作线程 Blob 和
+有界 WASM 副本创建一次性线程，不再下载资源。初始化完成、失败或取消后均撤销启动
+Blob URL。
 
 在将 P12 和描述文件读入凭据缓冲区之前，必须等待
 `packager.prepareSigning({ signal })`，获得拥有独立生命周期的 `{ sign, close }`。

@@ -94,13 +94,17 @@ asset. Assembly checks its receipt too. Missing, partial, stale or mismatched
 native outputs fail packaging; source-only integration is not a usable signer.
 Existing manifests without this group remain valid for unsigned generation.
 
-Select `prepareBrowserPackager({ signing: true })` before private input. Public
-bootstrap verifies the selected closure and actually initializes zsign before
-exposing `signingReady`. `session.takeIpaSigningFactory()` transfers ownership
-once to an independent factory. The initialized bootstrap worker is reused for
-the first attempt; subsequent attempts create fresh one-shot workers from the
-factory's retained verified worker Blob and bounded WASM copy. Startup Blob URLs
-are revoked after initialization, including failure and cancellation paths.
+The browser UI uses `prepareBrowserPackager({ editableOptions: true })` to preload
+the verified signing closure before private input, without starting a signer. The
+user can enable signing until generation without reloading or reselecting the
+folder. `signingReady` means its independent public-asset factory is available;
+`prepareSigning()` initializes a worker before credential reads. The eager API
+`prepareBrowserPackager({ signing: true })` still initializes zsign at bootstrap.
+`session.takeIpaSigningFactory()` transfers ownership once. Eager callers reuse
+the bootstrap worker for the first attempt; deferred first attempts and retries
+create one-shot workers from the factory's retained verified worker Blob and
+bounded WASM copy. No further asset downloads occur. Startup Blob URLs are revoked
+after initialization, including failure and cancellation paths.
 
 Before reading P12/profile files into credential buffers, await
 `packager.prepareSigning({ signal })` to obtain an owned `{ sign, close }` attempt.

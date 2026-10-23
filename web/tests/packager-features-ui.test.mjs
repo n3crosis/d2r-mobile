@@ -110,11 +110,20 @@ test("compatibility display derives from the actual selected profile registry", 
   assert.equal(PROGRAM_COMPATIBILITY.browserNativeSourceRebuild, false);
   assert.match(catalog.dmWebSupportedVersions[0], /only.*Other versions are not supported/);
 });
-test("advanced customization is collapsed, blank by default, and never persists private data", () => {
-  const details = customization.match(/<details\b[^>]*>/g);
-  assert.equal(details.length, 1);
-  assert.doesNotMatch(details[0], /\bopen\b/);
+test("advanced customization shows selected-shell defaults without persisting or submitting unchanged values", () => {
+  assert.match(customization, /<AccordionItem value="customize">/);
+  assert.match(customization, /<AccordionContent forceMount/);
+  assert.match(app, /useState<string\[\]>\(\(\) => \(signing \? \["signing"\] : \[\]\)\)/);
   assert.match(app, /useState<AppCustomizationDraft>\(\{\}\)/);
+  assert.match(app, /resolveAppCustomizationDefaults\(profileId\)/);
+  assert.match(app, /normalizeAppCustomizationDraft\(appCustomization, appCustomizationDefaults\)/);
+  assert.match(customization, /value=\{value\[name\] \?\? defaults\[name\]\}/);
+  assert.match(
+    customization,
+    /updateAppCustomizationDraft\(value, defaults, name, event.target.value\)/,
+  );
+  assert.match(customization, /dmWebCustomDefaultIcon/);
+  assert.match(customization, /dmWebCustomReset/);
   assert.match(
     app,
     /Object.keys\(preparedCustomization\).length\s*\? \{ appCustomization: preparedCustomization \}\s*: \{\}/,

@@ -71,9 +71,12 @@ test("stale option events cannot change configuration while a lease owns the UI"
   ]) {
     const start = source.indexOf(anchor);
     assert.ok(start >= 0);
-    const handler = source.indexOf("onChange={(event) => {", start);
-    const finish = source.indexOf("}}", handler);
-    assert.match(source.slice(handler, finish), /operationGate\.current\.busy/);
+    const control = source.slice(start, source.indexOf("/>", start));
+    const handler = control.match(
+      /on(?:Change|CheckedChange)=\{\((?:event|checked)\) => \{([\s\S]*?)\}\}/,
+    );
+    assert.ok(handler, anchor);
+    assert.match(handler[1], /operationGate\.current\.busy/);
   }
 });
 

@@ -95,7 +95,7 @@ test("invalid credential sizes fail before reading and late cancellation wipes f
 test("UI preloads signing before credentials and keeps signing errors outside packaging failure", async () => {
   const source = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
   assert.match(source, /get\("signing"\) === "1"/);
-  assert.match(source, /astcPreset,[\s\S]*?signing,\s*signal:/);
+  assert.match(source, /prepareBrowserPackager\(\{[\s\S]*?editableOptions: true,\s*signal:/);
   assert.match(source, /setSigningReady\(value.signingReady\)/);
   assert.match(
     source,

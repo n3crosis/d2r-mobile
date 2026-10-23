@@ -72,7 +72,7 @@ test("release CI retains strict canary, failure evidence and complete source-art
     runtime.indexOf("node web/runtime-build/build-air-compiler.mjs") <
       runtime.indexOf("air_compiler_verified=true"),
   );
-  assert.doesNotMatch(workflow, /continue-on-error:\s*true/);
+  assert.doesNotMatch(runtime, /continue-on-error:\s*true/);
   const failureVerify = step("air_failure_verify");
   assert(failureVerify.includes("failure() && steps.runtime.outcome == 'failure'"));
   assert(failureVerify.includes("air-compiler-assets.mjs verify --source-fingerprint"));

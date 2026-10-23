@@ -259,3 +259,22 @@ test("a signer failing after prepare rejects promptly and clears the attempt's c
   (await factory.prepare()).close();
   assert.equal(state.workers.length, 2);
 });
+
+test("dormant signer owns verified bytes without creating a worker until prepare", async (t) => {
+  const state = setup(t);
+  const factory = await prepareVerifiedIpaSigningFactory({
+    workerBlob: new Blob(["verified worker"]),
+    wasmBytes: new Uint8Array(8),
+    warmup: false,
+  });
+  t.after(() => factory.close());
+  assert.equal(state.workers.length, 0);
+  await assert.rejects(factory.sign(options()), /SIGNING_CLOSED/);
+  assert.equal(state.workers.length, 0);
+  const attempt = await factory.prepare();
+  assert.equal(state.workers.length, 1);
+  attempt.close();
+  assert.ok(state.workers[0].terminations > 0);
+  (await factory.prepare()).close();
+  assert.equal(state.workers.length, 2);
+});

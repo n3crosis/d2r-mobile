@@ -1,11 +1,14 @@
 # Browser production flow
 
 `prepareBrowserPackager` verifies the complete manifest against the build-substituted
-HTML digest, preloads the selected shell profile and required same-origin runtime
-assets, and initializes the requested runtimes before permitting folder selection.
-Experimental older-GPU ASTC support is selected during this public bootstrap; its
-optional assets and producer are loaded only when enabled. The unselected shell
-payload is not downloaded, but its manifest entry remains validated. The prototype
+HTML digest. The browser UI uses `editableOptions: true` to preload both bundled
+shell profiles and the closed optional capability bytes before folder selection.
+Core runtimes initialize during bootstrap; optional ASTC and signing workers start
+only when needed, using verified in-memory bytes without further downloads. Target,
+hash-check, ASTC preset and signing choices can change without a reload or loss of
+the selected folder. Generation snapshots the chosen options and binds the selected
+profile locally. API callers without editable options retain selected-only preload.
+The prototype
 no longer imposes a CSP network lockdown; local processing and no-upload behavior
 remain. Public shell bytes and metadata are included in the runtime inventory.
 The selected shell ZIP

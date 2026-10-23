@@ -23,8 +23,12 @@ Developer/native-reference tooling can still require Python and .NET.
    access. Root-only discovery ignores generated resource subfolders. The
    application must not overwrite original NSPs or key files.
 3. The flow verifies and preloads the pinned same-origin public runtime and app
-   template before private input selection, then authenticates content and
-   chooses compatible base/update/optional DLC from metadata, not filenames.
+   templates for both bundled targets and optional capability bytes before private
+   input selection. Options remain editable until generation without a page reload
+   or losing the selected folder. ASTC and signing workers start only when used,
+   from these verified in-memory bytes with no further asset downloads. Generation
+   fixes the chosen options, authenticates content and chooses compatible
+   base/update/optional DLC from metadata, not filenames.
 4. Conversion performs extraction, program rewriting, Guest.framework generation,
    native art/HUD and table generation, overlays and shader translation. The app
    template is prebuilt iOS build input, not a command-line shell or ready IPA.
