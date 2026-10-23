@@ -74,7 +74,15 @@ test("all three local file inputs remain mounted when their option section close
         node.tagName.getText() === "Input" && attribute(node, "type")?.initializer?.text === "file",
     )) {
       count++;
-      assert.ok(attribute(enclosing(input, "AccordionContent"), "forceMount"));
+      const accordionContent = enclosing(input, "AccordionContent");
+      if (accordionContent) assert.ok(attribute(accordionContent, "forceMount"));
+      else {
+        const appElements = elements(documents[0]);
+        const customization = appElements.find(
+          (node) => node.tagName.getText() === "AppCustomizationFields",
+        );
+        assert.ok(attribute(enclosing(customization, "AccordionContent"), "forceMount"));
+      }
       assert.ok(attribute(input, "ref"));
       assert.ok(attribute(enclosing(input, "FieldSet"), "disabled"));
     }
@@ -131,6 +139,16 @@ test("existing Tailwind pipeline emits file, focus, closed-content and numbered-
   assert.match(input, /border-input/);
   assert.match(input, /disabled:opacity-50/);
   assert.match(input, /focus-visible:ring/);
+  assert.match(input, /type === "file"/);
+  assert.match(input, /file:bg-secondary/);
+  assert.match(input, /file:px-3/);
+  assert.match(input, /hover:file:bg-accent/);
+  const accordion = componentSources.find((source) =>
+    source.includes('data-slot="accordion-content"'),
+  );
+  assert.match(accordion, /cn\("px-1 pt-0 pb-4", className\)/);
+  assert.match(sources[0], /native-select-wrapper\]\]:max-w-xs/);
+  assert.match(sources[0], /sm:grid-cols-\[11rem_minmax\(0,1fr\)\]/);
   assert.match(css, /--primary: oklch\(0\.511 0\.096 186\.391\)/);
 });
 

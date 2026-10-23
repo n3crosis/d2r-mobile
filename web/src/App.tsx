@@ -12,6 +12,9 @@ import {
   AccordionContent,
 } from "@/components/ui/accordion";
 import { InstallationGuide } from "@/components/InstallationGuide";
+import { PreparationFaq } from "@/components/PreparationFaq";
+import { PostGenerationGuide } from "@/components/PostGenerationGuide";
+import { createPostGenerationGuide } from "../post-generation-guide.mjs";
 import { GenerationProgress } from "@/components/GenerationProgress";
 import { createGenerationProgress } from "../generation-progress.mjs";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -34,6 +37,7 @@ import { prepareAppCustomization } from "../app-customization.mjs";
 import {
   normalizeAppCustomizationDraft,
   resolveAppCustomizationDefaults,
+  resolveAppIdentityPreview,
 } from "../app-customization-defaults.mjs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { prepareBrowserPackager, takeCommittedDownload } from "../browser-packager.mjs";
@@ -44,6 +48,7 @@ import { createDownloadPreparation, attemptAutomaticDownload } from "../download
 import { signWithLocalFiles } from "../signing-input.mjs";
 import { IPA_SIGNING_LIMITS } from "../ipa-signing-contract.mjs";
 import { createUiOperationGate } from "../ui-operation-gate.mjs";
+import { getGenerationReadiness } from "../generation-readiness.mjs";
 import { readOpfsStorageAdvisory } from "../opfs-storage-advisory.mjs";
 import {
   packagingActivity,
@@ -128,7 +133,8 @@ export default function App() {
   const identityInput = useRef<HTMLInputElement>(null);
   const profileInput = useRef<HTMLInputElement>(null);
   const passwordInput = useRef<HTMLInputElement>(null);
-  const [credentialsSelected, setCredentialsSelected] = useState(false);
+  const [signingFiles, setSigningFiles] = useState({ identity: false, profile: false });
+  const credentialsSelected = signingFiles.identity && signingFiles.profile;
   const [legacyStatus, setLegacyStatus] = useState("");
   const [skipResources, setSkipResources] = useState(false);
   const [resourceOutcome, setResourceOutcome] = useState("");
@@ -147,6 +153,10 @@ export default function App() {
   const appCustomizationDefaults = useMemo(
     () => resolveAppCustomizationDefaults(profileId),
     [profileId],
+  );
+  const identityPreview = useMemo(
+    () => resolveAppIdentityPreview(appCustomization, appCustomizationDefaults),
+    [appCustomization, appCustomizationDefaults],
   );
   const [customizationError, setCustomizationError] = useState("");
   const customizationValidation = useMemo(() => {
@@ -197,11 +207,30 @@ export default function App() {
   const [folder, setFolder] = useState<FileSystemDirectoryHandle | null>(null);
   const [nspNames, setNspNames] = useState<string[]>([]);
   const [download, setDownload] = useState<{ url: string; fileName: string } | null>(null);
+  const [completedOutput, setCompletedOutput] =
+    useState<ReturnType<typeof createPostGenerationGuide>>(null);
   const signedDownload = download?.fileName === "D2RMobile-signed.ipa";
   const [finished, setFinished] = useState(false);
   const downloadPreparation = useRef(createDownloadPreparation());
   const [downloadPreparationFailed, setDownloadPreparationFailed] = useState(false);
   const [originalIdentityDownload, setOriginalIdentityDownload] = useState(false);
+  const generationReadiness = getGenerationReadiness({
+    ready,
+    busy,
+    finished,
+    hasDownload: download !== null,
+    hasFolder: folder !== null,
+    inputMode,
+    packageCount: nspNames.length,
+    customizationError: customizationValidation.error || customizationError,
+    signing,
+    signingReady,
+    identitySelected: signingFiles.identity,
+    profileSelected: signingFiles.profile,
+  });
+  const generationReadinessMessage = generationReadiness.messageKey
+    ? [t(generationReadiness.messageKey), generationReadiness.detail].filter(Boolean).join(" ")
+    : "";
   const mounted = useRef(true);
   const operationGate = useRef(createUiOperationGate());
   const flushActivity = useCallback(() => {
@@ -472,7 +501,7 @@ export default function App() {
     if (identityInput.current) identityInput.current.value = "";
     if (profileInput.current) profileInput.current.value = "";
     if (passwordInput.current) passwordInput.current.value = "";
-    if (mounted.current) setCredentialsSelected(false);
+    if (mounted.current) setSigningFiles({ identity: false, profile: false });
   }
   async function runSigning(
     jobPackager: Packager,
@@ -583,17 +612,7 @@ export default function App() {
     }
   }
   async function generate() {
-    if (
-      !ready ||
-      busy ||
-      !folder ||
-      !inputMode ||
-      !packager.current ||
-      customizationValidation.error ||
-      customizationError ||
-      (inputMode === "packages" && !nspNames.length)
-    )
-      return;
+    if (!generationReadiness.canGenerate || !packager.current || !folder || !inputMode) return;
     if (
       signing &&
       (!signingReady || !identityInput.current?.files?.[0] || !profileInput.current?.files?.[0])
@@ -664,6 +683,7 @@ export default function App() {
     tracker.prepared();
     publishProgress(tracker);
     setResourceOutcome("");
+    setCompletedOutput(null);
     setCancelling(false);
     setReady(false);
     setStatus(t("dmWebStarting"));
@@ -767,6 +787,12 @@ export default function App() {
       });
       if (!current()) return;
       generationCompleted = true;
+      setCompletedOutput(
+        createPostGenerationGuide(
+          result,
+          preparedCustomization.displayName ?? appCustomizationDefaults.displayName,
+        ),
+      );
       tracker.generated(result);
       publishProgress(tracker);
       if (jobOptions.legacyAstc && result.legacyPack?.status === "complete")
@@ -776,9 +802,12 @@ export default function App() {
       if (result.resources.status === "skipped") {
         setResourceOutcome(t("dmWebResourcesSkipped"));
         setStatus(t("dmWebUnsignedReady"));
-      } else {
+      } else if (result.resources.status === "complete") {
         setResourceOutcome(t("dmWebResourcesSaved", result.resources.directoryName));
         setStatus(t("dmWebDownloadReady", folder.name, result.resources.directoryName));
+      } else {
+        setResourceOutcome(t("dmWebResultIncomplete"));
+        setStatus(t("dmWebUnsignedReady"));
       }
       // 下载准备失败只提供重试，不重新运行转换或覆盖已完成导出状态。
       // Download preparation failures offer retry only, without rerunning conversion or overwriting completed exports.
@@ -829,6 +858,7 @@ export default function App() {
         // Every recovery before successful generation is the original IPA; cleanup can fail before customization starts.
         const originalIdentity = Object.keys(preparedCustomization).length > 0;
         setOriginalIdentityDownload(originalIdentity);
+        setCompletedOutput(createPostGenerationGuide(report, appCustomizationDefaults.displayName));
         const warning = originalIdentity
           ? `${report?.stage === "customization" ? "" : `${committedCleanupWarning()} `}${t("dmWebCustomOriginalRetained")}`
           : committedCleanupWarning();
@@ -881,6 +911,9 @@ export default function App() {
               {t("dmWebTitle")}
             </CardTitle>
           </div>
+          <CardDescription className="font-medium text-foreground">
+            {t("dmWebBrowserOnly")}
+          </CardDescription>
           <CardDescription>{t("dmWebAutoInstructions")}</CardDescription>
           <CardDescription className="text-xs">
             {t(
@@ -893,6 +926,16 @@ export default function App() {
         </CardHeader>
         <CardContent className="space-y-4">
           <InstallationGuide />
+          <dl className="grid gap-x-6 gap-y-2 rounded-md border bg-muted/30 px-3 py-2 text-sm sm:grid-cols-2">
+            <div className="min-w-0">
+              <dt className="text-xs text-muted-foreground">{t("dmWebCustomName")}</dt>
+              <dd className="break-words font-medium">{identityPreview.displayName}</dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="text-xs text-muted-foreground">{t("dmWebCustomBundle")}</dt>
+              <dd className="break-all font-medium">{identityPreview.bundleIdentifier}</dd>
+            </div>
+          </dl>
           <div className="grid gap-3 sm:grid-cols-2">
             <Button
               variant="outline"
@@ -912,14 +955,9 @@ export default function App() {
             <Button
               className="h-auto min-h-20 justify-start gap-3 rounded-xl p-4 text-left whitespace-normal"
               onClick={() => void generate()}
-              disabled={
-                !ready ||
-                !folder ||
-                !inputMode ||
-                Boolean(customizationValidation.error || customizationError) ||
-                (inputMode === "packages" && !nspNames.length) ||
-                busy ||
-                (signing && (!signingReady || !credentialsSelected))
+              disabled={!generationReadiness.canGenerate}
+              aria-describedby={
+                generationReadinessMessage ? "generation-readiness" : "packager-status"
               }
               aria-busy={generating}
             >
@@ -958,8 +996,23 @@ export default function App() {
               </Button>
             )}
           </div>
+          {generationReadinessMessage && (
+            <p
+              id="generation-readiness"
+              className="text-sm text-muted-foreground"
+              role="status"
+              aria-live="polite"
+            >
+              {generationReadinessMessage}
+            </p>
+          )}
           <GenerationProgress progress={overallProgress} />
-          <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
+          <p
+            id="packager-status"
+            className="text-sm text-muted-foreground"
+            role="status"
+            aria-live="polite"
+          >
             {status}
           </p>
           {folder && (
@@ -1034,6 +1087,13 @@ export default function App() {
               </p>
             </div>
           )}
+          {download && completedOutput && !busy && (
+            <PostGenerationGuide
+              output={completedOutput}
+              downloadFileName={download.fileName}
+              signed={signedDownload}
+            />
+          )}
           {legacyAstc && legacyStatus && (
             <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
               {legacyStatus}
@@ -1049,13 +1109,12 @@ export default function App() {
               <AccordionTrigger className="min-h-11 py-3">
                 {t("dmWebAdvancedOptions")}
               </AccordionTrigger>
-              <AccordionContent forceMount>
+              <AccordionContent forceMount className="space-y-4">
                 <FieldGroup className="gap-4">
-                  <Field className="gap-2 [&>[data-slot=native-select-wrapper]]:w-full">
+                  <Field className="gap-2 [&>[data-slot=native-select-wrapper]]:w-full [&>[data-slot=native-select-wrapper]]:max-w-xs">
                     <FieldLabel htmlFor="ios-target">{t("dmWebTarget")}</FieldLabel>
                     <NativeSelect
                       id="ios-target"
-                      className="h-10"
                       aria-describedby="ios-target-help"
                       value={target}
                       disabled={busy || generating || finished || download !== null}
@@ -1139,11 +1198,10 @@ export default function App() {
                     </FieldContent>
                   </Field>
                   {legacyAstc && (
-                    <Field className="gap-2 [&>[data-slot=native-select-wrapper]]:w-full">
+                    <Field className="gap-2 [&>[data-slot=native-select-wrapper]]:w-full [&>[data-slot=native-select-wrapper]]:max-w-xs">
                       <FieldLabel htmlFor="astc-preset">{t("dmWebAstcPreset")}</FieldLabel>
                       <NativeSelect
                         id="astc-preset"
-                        className="h-10"
                         value={astcPreset}
                         aria-describedby="astc-preset-help"
                         disabled={busy || generating || finished || download !== null}
@@ -1198,6 +1256,24 @@ export default function App() {
                     </Field>
                   )}
                 </FieldGroup>
+                <AppCustomizationFields
+                  value={appCustomization}
+                  defaults={appCustomizationDefaults}
+                  disabled={!ready || busy || finished || download !== null}
+                  error={customizationValidation.error || customizationError}
+                  onChange={(value) => {
+                    if (
+                      operationGate.current.busy ||
+                      !ready ||
+                      busy ||
+                      finished ||
+                      download !== null
+                    )
+                      return;
+                    setAppCustomization(value);
+                    setCustomizationError("");
+                  }}
+                />
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="signing">
@@ -1230,13 +1306,13 @@ export default function App() {
                 </Field>
                 {signing && (
                   <FieldSet
-                    className="gap-3"
+                    className="max-w-xl gap-3"
                     disabled={!signingReady || (!ready && !signingRetryAvailable) || busy}
                   >
                     <FieldLegend className="sr-only">{t("dmWebSigningCredentials")}</FieldLegend>
                     <FieldGroup className="gap-3">
-                      <Field className="gap-2">
-                        <FieldLabel htmlFor="signing-identity">
+                      <Field className="gap-1.5 sm:grid sm:grid-cols-[11rem_minmax(0,1fr)] sm:items-center">
+                        <FieldLabel htmlFor="signing-identity" className="font-normal">
                           {t("dmWebSigningIdentity")}
                         </FieldLabel>
                         <Input
@@ -1244,20 +1320,17 @@ export default function App() {
                           ref={identityInput}
                           type="file"
                           accept=".p12,.pfx"
-                          className="h-10 file:mr-3"
                           onChange={() => {
                             if (!operationGate.current.busy)
-                              setCredentialsSelected(
-                                Boolean(
-                                  identityInput.current?.files?.[0] &&
-                                  profileInput.current?.files?.[0],
-                                ),
-                              );
+                              setSigningFiles({
+                                identity: Boolean(identityInput.current?.files?.[0]),
+                                profile: Boolean(profileInput.current?.files?.[0]),
+                              });
                           }}
                         />
                       </Field>
-                      <Field className="gap-2">
-                        <FieldLabel htmlFor="signing-password">
+                      <Field className="gap-1.5 sm:grid sm:grid-cols-[11rem_minmax(0,1fr)] sm:items-center">
+                        <FieldLabel htmlFor="signing-password" className="font-normal">
                           {t("dmWebSigningPassword")}
                         </FieldLabel>
                         <Input
@@ -1266,11 +1339,10 @@ export default function App() {
                           type="password"
                           autoComplete="off"
                           maxLength={IPA_SIGNING_LIMITS.passwordCharacters}
-                          className="h-10"
                         />
                       </Field>
-                      <Field className="gap-2">
-                        <FieldLabel htmlFor="signing-profile">
+                      <Field className="gap-1.5 sm:grid sm:grid-cols-[11rem_minmax(0,1fr)] sm:items-center">
+                        <FieldLabel htmlFor="signing-profile" className="font-normal">
                           {t("dmWebSigningProfile")}
                         </FieldLabel>
                         <Input
@@ -1278,15 +1350,12 @@ export default function App() {
                           ref={profileInput}
                           type="file"
                           accept=".mobileprovision"
-                          className="h-10 file:mr-3"
                           onChange={() => {
                             if (!operationGate.current.busy)
-                              setCredentialsSelected(
-                                Boolean(
-                                  identityInput.current?.files?.[0] &&
-                                  profileInput.current?.files?.[0],
-                                ),
-                              );
+                              setSigningFiles({
+                                identity: Boolean(identityInput.current?.files?.[0]),
+                                profile: Boolean(profileInput.current?.files?.[0]),
+                              });
                           }}
                         />
                       </Field>
@@ -1295,19 +1364,8 @@ export default function App() {
                 )}
               </AccordionContent>
             </AccordionItem>
-            <AppCustomizationFields
-              value={appCustomization}
-              defaults={appCustomizationDefaults}
-              disabled={!ready || busy || finished || download !== null}
-              error={customizationValidation.error || customizationError}
-              onChange={(value) => {
-                if (operationGate.current.busy || !ready || busy || finished || download !== null)
-                  return;
-                setAppCustomization(value);
-                setCustomizationError("");
-              }}
-            />
           </Accordion>
+          <PreparationFaq />
           {storageAdvisory && <p className="text-xs text-muted-foreground">{storageAdvisory}</p>}
           <Accordion type="single" collapsible className="text-muted-foreground">
             <AccordionItem value="activity" className="border-0">

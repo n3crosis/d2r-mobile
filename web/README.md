@@ -41,9 +41,15 @@ does not establish all-device compatibility or numerical equivalence to Xcode.
 No game content or keys are bundled or uploaded. Public dependencies load before
 private data is read; there is no remote conversion service or runtime CDN fallback.
 Generation is single-use: cancellation closes the session and requires a reload.
-Signing and installation are separate user steps. The IPA alone does not contain
-all game resources; copy the completed resource folder into the installed app's
-Files folder as described in the native instructions.
+Signing is optional: the existing local zsign path accepts a user-owned P12/PFX,
+its export password, and a matching provisioning profile. See
+[signing preparation](SIGNING_PREPARATION.md) for certificate/profile setup. These
+files are processed locally, not sent to a signing server. The signed IPA embeds
+the provisioning profile, never the private signing identity or its password.
+Signing and installation remain separate user steps. The IPA alone does not contain
+all game resources; after installing, copy the completed resource folders into the
+app's Files folder. The result panel names the actual IPA and completed export folders.
+Preparation stays visible; a short FAQ uses the existing Accordion.
 
 See [production flow](PRODUCTION_FLOW.md), [resource export](RESOURCE_EXPORT_SCOPE.md)
 and [optional DLC behavior](D2R_RUNTIME_CONTENT_MODE.md) for the detailed contracts.

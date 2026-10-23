@@ -7,7 +7,9 @@ import vm from "node:vm";
 import ts from "typescript";
 import { PROGRAM_COMPATIBILITY } from "../program-compatibility.mjs";
 import { catalog } from "../i18n-catalog.mjs";
+import { createPostGenerationGuide } from "../post-generation-guide.mjs";
 import { createGenerationProgress } from "../generation-progress.mjs";
+import { getGenerationReadiness } from "../generation-readiness.mjs";
 import {
   appCustomizationFailureMessage,
   gameFolderFailureMessage,
@@ -89,7 +91,8 @@ test("folder auto-detection includes all packages and preserves the detected gen
     app,
     /jobOptions.inputMode === "packages" \? \{ selectedNspNames: nspNames \} : \{\}/,
   );
-  assert.equal((app.match(/inputMode === "packages" && !nspNames.length/g) ?? []).length, 2);
+  assert.match(app, /packageCount: nspNames.length/);
+  assert.match(app, /disabled=\{!generationReadiness.canGenerate\}/);
   assert.match(app, /dmWebIncludedPackages", nspNames.length/);
   assert.match(
     catalog.dmWebAutoInstructions[0],
@@ -118,8 +121,13 @@ test("compatibility display derives from the actual selected profile registry", 
   assert.match(catalog.dmWebSupportedVersions[0], /only.*Other versions are not supported/);
 });
 test("advanced customization shows selected-shell defaults without persisting or submitting unchanged values", () => {
-  assert.match(customization, /<AccordionItem value="customize">/);
-  assert.match(customization, /<AccordionContent forceMount/);
+  const advanced = app.slice(
+    app.indexOf('<AccordionItem value="advanced">'),
+    app.indexOf('<AccordionItem value="signing">'),
+  );
+  assert.match(advanced, /<AppCustomizationFields/);
+  assert.match(advanced, /<AccordionContent forceMount/);
+  assert.doesNotMatch(customization, /<AccordionItem|<AccordionContent/);
   assert.match(app, /useState<string\[\]>\(\(\) => \(signing \? \["signing"\] : \[\]\)\)/);
   assert.match(app, /useState<AppCustomizationDraft>\(\{\}\)/);
   assert.match(app, /resolveAppCustomizationDefaults\(profileId\)/);
@@ -283,6 +291,18 @@ async function runPreflight(options, makeIcon) {
   const state = { ready: true, finished: false, busy: false, generating: false };
   const context = {
     ...state,
+    generationReadiness: getGenerationReadiness({
+      ...state,
+      hasFolder: true,
+      hasDownload: false,
+      inputMode: "extracted",
+      packageCount: 0,
+      customizationError: "",
+      signing: false,
+      signingReady: false,
+      identitySelected: false,
+      profileSelected: false,
+    }),
     folder: {},
     inputMode: "extracted",
     nspNames: [],
@@ -393,6 +413,9 @@ test("every requested-customization recovery stays manual and labels the origina
         preparedCustomization: requested ? { displayName: "Custom" } : {},
         downloadPreparation: { current: { retain: (value) => assert.equal(value, retained) } },
         setOriginalIdentityDownload: (value) => calls.push(["original", value]),
+        createPostGenerationGuide,
+        appCustomizationDefaults: { displayName: "Original app" },
+        setCompletedOutput: (value) => calls.push(["completedOutput", value]),
         t: (key) => key,
         committedCleanupWarning: () => "cleanup warning",
         appendActivity: (value) => calls.push(["warning", value]),
@@ -408,6 +431,10 @@ test("every requested-customization recovery stays manual and labels the origina
         calls.find(([kind]) => kind === "automatic"),
         ["automatic", !requested],
       );
+      const output = calls.find(([kind]) => kind === "completedOutput")[1];
+      assert.equal(output.appName, "Original app");
+      assert.equal(output.resourcesStatus, "incomplete");
+      assert.equal(output.resourcesDirectory, null);
       const warning = calls.find(([kind]) => kind === "warning")[1];
       if (requested) assert.match(warning, /dmWebCustomOriginalRetained/);
       if (stage === "cleanup" || !requested) assert.match(warning, /cleanup warning/);

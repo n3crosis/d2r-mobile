@@ -50,3 +50,20 @@ export function normalizeAppCustomizationDraft(draft, defaults) {
     if (overrides[field] === defaults[field]) delete overrides[field];
   return normalizeAppCustomization(overrides);
 }
+
+/** Show valid proposed identity values only; an invalid field still blocks generation separately. */
+export function resolveAppIdentityPreview(draft, defaults) {
+  const identity = {
+    displayName: defaults.displayName,
+    bundleIdentifier: defaults.bundleIdentifier,
+  };
+  for (const field of Object.keys(identity)) {
+    try {
+      const normalized = normalizeAppCustomizationDraft({ [field]: draft[field] }, defaults);
+      identity[field] = normalized[field] ?? defaults[field];
+    } catch {
+      // Keep this field's true shell default, never present an invalid draft as a usable identity.
+    }
+  }
+  return Object.freeze(identity);
+}

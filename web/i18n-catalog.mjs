@@ -738,24 +738,24 @@ export const catalog = Object.freeze({
     "可选：在本地签名 IPA"
   ],
   "dmWebSigningHelp": [
-    "Unsigned IPA by default. Enable local signing before generating. Credentials stay on this device.",
-    "默认输出未签名 IPA。可在生成前启用本地签名；凭据仅在本设备使用。"
+    "Unsigned IPA by default. Enable local signing before generating. Your P12 and password are processed locally, not uploaded.",
+    "默认输出未签名 IPA。可在生成前启用本地签名；P12 与密码仅在本地处理，不会上传。"
   ],
   "dmWebSigningCredentials": [
     "Local signing credentials",
     "本地签名凭据"
   ],
   "dmWebSigningIdentity": [
-    "P12 / PFX identity (up to 4 MiB)",
-    "P12 / PFX 证书（最多 4 MiB）"
+    "P12 certificate",
+    "P12 证书"
   ],
   "dmWebSigningPassword": [
     "Identity password (may be empty)",
     "证书密码（可留空）"
   ],
   "dmWebSigningProfile": [
-    "Provisioning profile (.mobileprovision, up to 4 MiB)",
-    "描述文件（.mobileprovision，最多 4 MiB）"
+    "Provisioning profile (.mobileprovision)",
+    "描述文件（.mobileprovision）"
   ],
   "dmWebSigningWorking": [
     "Unsigned IPA retained; signing and checking the archive locally.",
@@ -826,8 +826,8 @@ export const catalog = Object.freeze({
     "已选择合并的基础游戏与更新文件夹；DLC 元数据未经认证。"
   ],
   "dmWebExtractedReady": [
-    "%s: %s Ready.",
-    "%s：%s 已就绪。"
+    "%s: %s Extracted files found.",
+    "%s：%s 已找到提取后的文件。"
   ],
   "dmWebExtractedMissingInput": [
     "Choose a folder containing ExeFS/main, ExeFS/sdk, and RomFS/data/build_manifest.psv.",
@@ -1006,8 +1006,8 @@ export const catalog = Object.freeze({
     "包含全部 %s 个软件包"
   ],
   "dmWebPackagesReady": [
-    "%s: %s All packages included. Ready to generate.",
-    "%s：%s 全部软件包已包含，可生成 IPA。"
+    "%s: %s All packages included.",
+    "%s：%s 全部软件包已包含。"
   ],
   "dmWebSigningApplicationIdTooLong": [
     "The profile prefix plus bundle ID exceeds this signer's 255-character limit. Unsigned IPA retained; use it with another signer, or reload and generate with a shorter bundle ID.",
@@ -1022,56 +1022,36 @@ export const catalog = Object.freeze({
     "恢复外壳默认值"
   ],
   "dmWebGuideTitle": [
-    "Preparation & installation guide",
-    "准备与安装指南"
-  ],
-  "dmWebGuideIntro": [
-    "The IPA and game resources are separate. Select a step for details; browsing this guide does not mark installation or copying complete.",
-    "IPA 与游戏资源分开保存。选择步骤查看说明；浏览指南不代表已完成安装或复制。"
+    "Before you start",
+    "开始前的准备"
   ],
   "dmWebGuidePrepare": [
-    "Prepare",
-    "准备文件"
-  ],
-  "dmWebGuideGenerate": [
-    "Generate",
-    "生成文件"
-  ],
-  "dmWebGuideInstall": [
-    "Install IPA",
-    "安装 IPA"
-  ],
-  "dmWebGuideCopy": [
-    "Copy resources",
-    "复制资源"
+    "Prepare one game folder",
+    "准备一个游戏文件夹"
   ],
   "dmWebGuidePackages": [
-    "Put the supported base game and compatible update NSP/XCI files together with prod.keys at the root of one folder. Add title.keys only if a matching external title key is needed; compatible known DLC is optional.",
-    "将支持版本的基础游戏及兼容更新 NSP/XCI 与 prod.keys 放在同一文件夹的根目录。仅在需要外部匹配密钥时提供 title.keys；兼容的已知 DLC 为可选内容。"
+    "Put supported base and compatible update NSP/XCI files with prod.keys at the root of one folder. Add title.keys only if a matching external title key is needed; compatible known DLC is optional.",
+    "将支持的基础游戏与兼容更新 NSP/XCI、prod.keys 放在同一文件夹根目录。仅在需要外部匹配密钥时添加 title.keys；兼容的已知 DLC 为可选内容。"
   ],
   "dmWebGuideExtracted": [
-    "Alternatively, use already-merged ExeFS/RomFS folders without keys. This route supports base/update only, not expansion content. The input format is detected automatically.",
-    "也可使用已合并的 ExeFS/RomFS 文件夹，无需密钥；此方式仅支持基础游戏及更新，不支持扩展内容。无需手动选择输入模式。"
+    "Already-merged ExeFS/RomFS folders also work without keys, for base/update only, not expansion content. The format is detected automatically.",
+    "也可使用已合并的 ExeFS/RomFS 文件夹，无需密钥，仅支持基础游戏及更新，不支持扩展内容。输入格式会自动识别。"
   ],
   "dmWebGuideFolderAccess": [
-    "Use a desktop Chromium browser, choose that folder and allow read/write access. Leave space for the resource export and browser temporary files.",
-    "使用桌面 Chromium 浏览器，选择该文件夹并允许读写。预留资源导出与浏览器临时文件所需的空间。"
+    "Use desktop Chrome or Edge, allow read/write access to the folder, and leave space for exported resources and temporary files.",
+    "使用桌面版 Chrome 或 Edge，允许读写所选文件夹，并预留资源导出与临时文件所需空间。"
   ],
   "dmWebGuideExport": [
-    "For a first install, leave “Skip resource export” off. Skip only when matching game, update and DLC resources are already on the device; the browser cannot check them.",
-    "首次安装请勿勾选“跳过资源导出”。仅在设备上已有完全匹配的游戏、更新及 DLC 资源时跳过；浏览器无法检查设备上的资源。"
+    "For a first install, leave “Skip resource export” off. Skip only when matching resources are already on the device; the browser cannot check them.",
+    "首次安装请勿勾选“跳过资源导出”。仅在设备上已有完全匹配的资源时跳过；浏览器无法检查设备上的资源。"
   ],
   "dmWebGuideOutputs": [
-    "Generation provides D2RMobile-unsigned.ipa, or D2RMobile-signed.ipa after successful local signing. Resources are saved separately inside the input folder as D2R-resources-<UUID>/data/…, not inside the IPA.",
-    "生成后可下载 D2RMobile-unsigned.ipa（本地签名成功后为 D2RMobile-signed.ipa）。资源另存到输入文件夹内的 D2R-resources-<UUID>/data/…，不在 IPA 中。"
+    "You will download an IPA; resources are saved separately inside the selected input folder, not inside the IPA. After generation, follow the instructions with your actual output names to install the app and copy the completed resources.",
+    "生成后可下载 IPA；资源另存到所选输入文件夹内，不在 IPA 中。完成后，请按显示的实际文件名安装应用，并复制已完整导出的资源。"
   ],
   "dmWebGuideLegacy": [
-    "The older-GPU option also exports LegacyDevicePack-<UUID> alongside the resources. Keep and copy that supplemental folder too.",
-    "若启用旧 GPU 选项，还会在旁边生成 LegacyDevicePack-<UUID>。请保留并复制此补充包。"
-  ],
-  "dmWebGuideSignInstall": [
-    "Unsigned IPA: install Sideloadly for Mac or Windows from its official site below. It signs the IPA and installs it on your device.",
-    "未签名 IPA：从下方 Sideloadly 官网安装 Mac 或 Windows 版工具。它可为 IPA 签名并安装到设备。"
+    "The older-GPU option also exports a separate supplemental folder. Copy it alongside the completed resources when the result says it is ready.",
+    "旧 GPU 选项还会导出单独的补充文件夹。结果显示已完成时，将其与完整资源一同复制。"
   ],
   "dmWebGuideFirstLaunch": [
     "On first launch, “No game resources yet” is expected until the separate resources are copied. The install package does not contain the full game resources.",
@@ -1082,8 +1062,8 @@ export const catalog = Object.freeze({
     "打开“文件”→“我的 iPhone / iPad”→应用文件夹（D2R Mobile 或自定义应用名）。"
   ],
   "dmWebGuideCopyWhole": [
-    "Copy the entire completed D2R-resources-<UUID> folder there, preserving its name and inner data folder. If generated, copy LegacyDevicePack-<UUID> to the same app folder too. Do not use an incomplete export.",
-    "将已完成的 D2R-resources-<UUID> 文件夹整体复制到此处，保持名称和内部 data 文件夹结构不变。若已生成 LegacyDevicePack-<UUID>，也将其复制到同一应用文件夹；不要复制未完成的导出。"
+    "Copy the entire completed resource folder, preserving its name and inner data folder. Copy any completed older-device pack to the same app folder too. Do not use an incomplete export.",
+    "请整体复制已完成的资源文件夹，保留名称及内部 data 文件夹结构。已完成的旧设备补充包也应复制到同一应用文件夹；不要使用未完成的导出。"
   ],
   "dmWebGuideRetry": [
     "Wait for copying to finish, then return to the app and tap Retry. The phone does not need NSP/XCI or key files.",
@@ -1154,44 +1134,28 @@ export const catalog = Object.freeze({
     "签名步骤 %s/%s"
   ],
   "dmWebGuideTargets": [
-    "Choose the default iOS 26+ target or iOS 18+ compatibility in Advanced before generating. The standard output requires BC texture support; the older-GPU option is experimental and device compatibility is unverified.",
-    "生成前可在高级选项中选择默认的 iOS 26+ 目标或 iOS 18+ 兼容模式。标准输出需要 GPU 支持 BC 纹理；旧 GPU 选项为实验性功能，设备兼容性未经验证。"
-  ],
-  "dmWebGuideConnect": [
-    "Connect and unlock your iPhone/iPad by USB, tap Trust if prompted, then select the device in Sideloadly.",
-    "用 USB 连接并解锁 iPhone/iPad，按提示点“信任”，然后在 Sideloadly 中选择该设备。"
-  ],
-  "dmWebGuideSideload": [
-    "Drag the IPA into Sideloadly, keep Apple ID Sideload selected, enter your own Apple Account and click Start to sign and install. Complete account prompts in the installer, never on this page.",
-    "将 IPA 拖入 Sideloadly，保留 Apple ID Sideload 模式，输入自己的 Apple 账户并点 Start 进行签名及安装。账户验证只在安装工具中完成，不在本网页输入。"
+    "The default target is iOS 26+; iOS 18+ compatibility is also available. Standard output requires BC texture support. The older-GPU option is experimental, with device compatibility unverified.",
+    "默认目标为 iOS 26+，也支持选择 iOS 18+ 兼容模式。标准输出需要 GPU 支持 BC 纹理；旧 GPU 选项仍为实验性功能，设备兼容性未经验证。"
   ],
   "dmWebGuideTrust": [
     "If requested, enable Settings → Privacy & Security → Developer Mode, restart and confirm. For Untrusted Developer, trust your signing account in Settings → General → VPN & Device Management.",
     "若提示启用开发者模式：设置 → 隐私与安全性 → 开发者模式，然后重新启动并确认。若提示开发者不受信任：设置 → 通用 → VPN 与设备管理，信任用于签名的账户。"
   ],
   "dmWebGuideRefresh": [
-    "Free Apple Accounts need signing refreshed every 7 days. Use the same account and bundle ID, and back up saves. Do not delete the app to refresh it: its saves and resources can be removed.",
-    "免费 Apple 账户需每 7 天刷新签名。沿用同一账户与应用标识，并备份存档；不要为了刷新而删除应用，否则可能删除其中的存档与资源。"
+    "Renew expired signing credentials using the same team and bundle ID, and back up saves. Do not delete the app just to renew its signature: its saves and resources can be removed.",
+    "签名凭据到期后，请沿用同一团队和 Bundle ID 更新签名，并备份存档。不要仅为更新签名而删除应用，否则其中的存档与资源可能一并删除。"
   ],
   "dmWebGuideSigned": [
-    "Already signed IPA: its signature and provisioning profile must cover your device. On Mac, use Apple Configurator: select device → Add → Apps → Choose from my Mac → select the IPA.",
-    "已有签名的 IPA：签名与描述文件必须适用于该设备。Mac 可使用 Apple Configurator：选择设备 → 添加 → App → 从我的 Mac 中选取 → 选择 IPA。"
+    "For a signed IPA, the signature and profile must cover your device. On Mac, connect your device and use Apple Configurator → Add → Apps → Choose from my Mac → select the IPA. Signing alone does not install it.",
+    "已签名 IPA 的签名与描述文件必须适用于该设备。Mac 可连接设备，使用 Apple Configurator → 添加 → App → 从我的 Mac 中选取 → 选择 IPA。签名本身不会安装应用。"
   ],
   "dmWebGuideTransfer": [
-    "Mac: connect by USB, select your device in Finder → Files, and drag the whole resource folder onto the app name. Windows: choose the app in Apple Devices → device → Files; if folders are not accepted, expand the ZIP instructions below. File sharing transfers resources, not signing/installing an unsigned IPA.",
-    "Mac：用 USB 连接设备，在 Finder 中选择设备 → 文件，将完整资源文件夹拖到应用名上。Windows：在 Apple Devices → 设备 → 文件中选择应用；若不接受文件夹，请展开下方 ZIP 传输说明。文件共享只用于传资源，不会为未签名 IPA 签名安装。"
+    "Mac: connect by USB, select your device in Finder → Files, and drag the whole resource folder onto the app name. Windows: choose the app in Apple Devices → device → Files; use the ZIP method if folders are not accepted. File sharing transfers resources, not signing/installing an unsigned IPA.",
+    "Mac：用 USB 连接设备，在 Finder 中选择设备 → 文件，将完整资源文件夹拖到应用名上。Windows：在 Apple Devices → 设备 → 文件中选择应用；若不接受文件夹，可使用 ZIP 方式。文件共享用于传资源，不会为未签名 IPA 签名安装。"
   ],
   "dmWebGuideZip": [
     "If whole-folder transfer is unavailable, zip the complete folder, drag the ZIP into the app’s file-sharing area, then tap it in the app folder in Files to extract. Move the resource folder out of any extra ZIP wrapper so it sits directly in the app folder. Allow space for both ZIP and extracted files.",
     "若不能直接传整个文件夹，可将完整文件夹压成 ZIP，拖入上述应用文件共享区，再到手机的应用文件夹中点 ZIP 解压。将资源文件夹移出多余的 ZIP 外层目录，保持其直接位于应用文件夹内；预留 ZIP 与解压文件所需空间。"
-  ],
-  "dmWebGuideSideloadlyLink": [
-    "Sideloadly official site",
-    "Sideloadly 官网"
-  ],
-  "dmWebGuideInstallerHelpLink": [
-    "Installation & signing help",
-    "安装与签名帮助"
   ],
   "dmWebGuideConfiguratorLink": [
     "Signed IPA installation",
@@ -1209,16 +1173,152 @@ export const catalog = Object.freeze({
     "Unzip in Files",
     "在“文件”中解压 ZIP"
   ],
-  "dmWebGuideWindowsSetup": [
-    "For Sideloadly on Windows, follow its setup links for Apple’s web-download iTunes and iCloud, not the Microsoft Store versions.",
-    "Windows 的 Sideloadly 请按官网要求安装 Apple 网页下载版 iTunes 与 iCloud，而不是 Microsoft Store 版本。"
+  "dmWebBrowserOnly": [
+    "Build your IPA entirely in your browser. No Xcode, Python, .NET installation, or command-line tools required.",
+    "直接在浏览器中生成 IPA，无需安装 Xcode、Python 或 .NET，也不用操作命令行。"
   ],
-  "dmWebGuideSigningDetails": [
-    "Signing, trust & refresh details",
-    "签名、信任与刷新说明"
+  "dmWebGuideOptionalSigning": [
+    "Prepare signing files, only if you want to sign here",
+    "若要在此签名，再准备签名文件"
   ],
-  "dmWebGuideTransferDetails": [
-    "Folder transfer unavailable? Use ZIP",
-    "不支持文件夹传输？使用 ZIP"
+  "dmWebGuideSigningIntro": [
+    "Signing is optional; unsigned IPA output is the default. If you already have your own P12/PFX and matching profile, go straight to the signing inputs.",
+    "签名为可选功能，默认生成未签名 IPA。若已有自己的 P12/PFX 及匹配的描述文件，可直接选择签名文件。"
+  ],
+  "dmWebGuideIdentity": [
+    "Use a signing certificate with its private key, not a .cer file alone. On Mac, select both in Keychain Access → File → Export Items and save as a password-protected P12.",
+    "签名需要证书及其私钥，只有 .cer 文件不够。Mac 可在“钥匙串访问”中选中两者，通过“文件”→“导出项目”保存为设有密码的 P12。"
+  ],
+  "dmWebGuideNewCertificate": [
+    "For a new identity, use your Apple Developer Program team with Account Holder/Admin access: create a private key and CSR locally, submit only the CSR for an Apple Distribution certificate, then export the certificate with that same key as P12. Without a Mac, this preparation can use OpenSSL.",
+    "若需新建身份，请使用 Apple Developer Program 团队的持有人或管理员权限：在本地创建私钥与 CSR，仅向 Apple 提交 CSR 以申请 Apple Distribution 证书，再将证书与原私钥导出为 P12。没有 Mac 时，可使用 OpenSSL 完成这项准备。"
+  ],
+  "dmWebGuideProfile": [
+    "Register your device’s UDID and an App ID under that team. In Profiles → + → Ad Hoc, select that App ID, the same certificate and your device, then download .mobileprovision. Match the app’s Bundle ID in customization to the profile’s App ID.",
+    "在该团队下注册设备 UDID 与 App ID。在 Profiles → + → Ad Hoc 中选择该 App ID、同一证书及设备，下载 .mobileprovision。自定义设置中的应用 Bundle ID 必须与描述文件的 App ID 匹配。"
+  ],
+  "dmWebGuideSigningInputs": [
+    "Enable local signing, choose the P12/PFX and profile, and enter the P12 export password, not your Apple Account password. Leave it empty only for a passwordless identity. The browser cannot verify device eligibility.",
+    "启用本地签名，选择 P12/PFX 与描述文件，并输入 P12 导出密码，而非 Apple 账户密码。仅无密码的身份文件可留空。浏览器无法验证设备是否获准安装。"
+  ],
+  "dmWebGuidePrivateKey": [
+    "Keep your private key and export password local. Do not upload them to online certificate converters or signing services.",
+    "请将私钥与导出密码保留在本地，不要上传到在线证书转换或签名服务。"
+  ],
+  "dmWebGuideExpect": [
+    "Generate, then install and copy",
+    "生成后再安装并复制资源"
+  ],
+  "dmWebGuideCertificateLink": [
+    "Apple: create a CSR",
+    "Apple：创建 CSR"
+  ],
+  "dmWebGuideP12Link": [
+    "Mac: export a P12",
+    "Mac：导出 P12"
+  ],
+  "dmWebGuideOpenSslLink": [
+    "OpenSSL: P12 export",
+    "OpenSSL：导出 P12"
+  ],
+  "dmWebGuideProfileLink": [
+    "Apple: Ad Hoc profile",
+    "Apple：Ad Hoc 描述文件"
+  ],
+  "dmWebFaqTitle": [
+    "FAQ",
+    "常见问题"
+  ],
+  "dmWebFaqSigningQuestion": [
+    "Do I have to sign the IPA here?",
+    "必须在这里为 IPA 签名吗？"
+  ],
+  "dmWebFaqSigningAnswer": [
+    "No. Unsigned output is the default. Optional local signing uses your own P12/PFX, export password and provisioning profile through the bundled zsign signer. A signed IPA still needs installation; signing does not guarantee your device will accept it.",
+    "不必，默认生成未签名 IPA。可选本地签名使用自带的 zsign，配合你自己的 P12/PFX、导出密码与描述文件。已签名 IPA 仍需安装；签名成功并不保证设备一定接受。"
+  ],
+  "dmWebFaqInputsQuestion": [
+    "Which game files and keys are supported?",
+    "支持哪些游戏文件与密钥？"
+  ],
+  "dmWebFaqInputsAnswer": [
+    "Use supported base/update NSP/XCI with prod.keys; title.keys is needed only when a matching external title key is required. Compatible known DLC is optional. Already-merged ExeFS/RomFS needs no keys but supports base/update only.",
+    "可使用支持的基础游戏及更新 NSP/XCI，配合 prod.keys；仅需外部匹配标题密钥时才提供 title.keys。兼容的已知 DLC 为可选内容。已合并的 ExeFS/RomFS 无需密钥，但仅支持基础游戏及更新。"
+  ],
+  "dmWebFaqIosQuestion": [
+    "Is iOS 18 supported too?",
+    "也支持 iOS 18 吗？"
+  ],
+  "dmWebFaqAssetsQuestion": [
+    "Where are the resources, and when do I copy them?",
+    "资源在哪里，什么时候复制？"
+  ],
+  "dmWebFaqAssetsAnswer": [
+    "Resources are separate from the IPA, inside your selected input folder. Install and open the app first, then copy the completed folders into its Files app folder. The result panel shows the actual names, including any completed older-device pack. Your phone does not need the original NSP/XCI or keys.",
+    "资源与 IPA 分开，保存在所选输入文件夹内。先安装并打开应用，再将已完成的文件夹复制到“文件”中的应用目录。结果区域会显示实际名称，包括已完成的旧设备补充包。手机不需要原始 NSP/XCI 或密钥。"
+  ],
+  "dmWebFaqPrivacyQuestion": [
+    "Are my files or signing credentials uploaded?",
+    "文件或签名凭据会上传吗？"
+  ],
+  "dmWebFaqPrivacyAnswer": [
+    "No. Public runtime files are downloaded, but game files, keys and signing inputs are processed locally in your browser. The P12 and password are not uploaded or included in the IPA. The provisioning profile is embedded in the signed IPA, so be careful when sharing it.",
+    "不会。网页会下载公开运行组件，但游戏文件、密钥和签名输入均在浏览器本地处理。P12 与密码不会上传，也不会写入 IPA；描述文件会嵌入已签名 IPA，因此分享 IPA 时请留意。"
+  ],
+  "dmWebResultTitle": [
+    "Next: install and copy files",
+    "下一步：安装并复制文件"
+  ],
+  "dmWebResultInstall": [
+    "Install %s on your device. Signing and installation are separate.",
+    "将 %s 安装到设备。签名与安装是分开的操作。"
+  ],
+  "dmWebResultUnsigned": [
+    "This IPA is unsigned. Sign it with your own certificate and provisioning profile before installing; you can enable local signing here.",
+    "此 IPA 尚未签名。安装前请使用自己的证书与描述文件签名；也可在此启用本地签名。"
+  ],
+  "dmWebResultLaunch": [
+    "Open %s once, then close it. Its folder should appear in Files → On My iPhone / iPad.",
+    "打开 %s 一次，然后关闭。它的文件夹应出现在“文件”→“我的 iPhone / iPad”中。"
+  ],
+  "dmWebResultCopy": [
+    "Copy the whole %s folder into %s’s app folder. Keep its name and contents unchanged.",
+    "将整个 %s 文件夹复制到 %s 的应用文件夹中，保留原有名称和内容。"
+  ],
+  "dmWebResultSkipped": [
+    "No new resource folder was exported. Keep the complete matching resources already on your device.",
+    "此次未导出新的资源文件夹，请保留设备上已有的完整匹配资源。"
+  ],
+  "dmWebResultIncomplete": [
+    "The resource export is incomplete. Do not copy or use its partial folder; generate a complete export first.",
+    "资源导出未完成，请勿复制或使用不完整的文件夹；请先完成资源导出。"
+  ],
+  "dmWebResultLegacyIncomplete": [
+    "The older-device pack did not finish. Do not copy its partial folder.",
+    "旧设备补充包未完成，请勿复制其中不完整的文件夹。"
+  ],
+  "dmWebGenerateSigningFilesNeeded": [
+    "To generate with local signing, choose a .p12/.pfx certificate and a .mobileprovision profile in Signing, or turn local signing off to generate an unsigned IPA.",
+    "若要在本地签名后生成，请在“签名”中选择 .p12/.pfx 证书与 .mobileprovision 描述文件；也可关闭本地签名，生成未签名 IPA。"
+  ],
+  "dmWebGenerateSigningIdentityNeeded": [
+    "Choose a .p12/.pfx certificate in Signing, or turn local signing off to generate an unsigned IPA.",
+    "请在“签名”中选择 .p12/.pfx 证书；也可关闭本地签名，生成未签名 IPA。"
+  ],
+  "dmWebGenerateSigningProfileNeeded": [
+    "Choose a .mobileprovision profile in Signing, or turn local signing off to generate an unsigned IPA.",
+    "请在“签名”中选择 .mobileprovision 描述文件；也可关闭本地签名，生成未签名 IPA。"
+  ],
+  "dmWebGenerateSigningUnavailable": [
+    "Local signing is not available. Turn it off in Signing to generate an unsigned IPA.",
+    "本地签名不可用。请在“签名”中将其关闭，以生成未签名 IPA。"
+  ],
+  "dmWebGenerateChooseFolder": [
+    "Choose a valid game folder first.",
+    "请先选择有效的游戏文件夹。"
+  ],
+  "dmWebGenerateReady": [
+    "Ready to generate.",
+    "可以生成。"
   ]
 });

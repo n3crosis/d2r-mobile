@@ -1,132 +1,69 @@
-// 浏览器生成前后的操作指南；阅读某一步不代表已在设备上完成。
-// Preparation and installation guidance; viewing a step never marks device work complete.
+// 准备说明始终可见；签名是可选操作，不代表已安装到设备。
+// Preparation stays visible; optional signing never implies device installation.
 import { t } from "../../i18n.mjs";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
 
-const steps = [
+const references = [
   {
-    title: "dmWebGuidePrepare",
-    details: [
-      "dmWebGuidePackages",
-      "dmWebGuideExtracted",
-      "dmWebGuideFolderAccess",
-      "dmWebGuideTargets",
-    ],
+    label: "dmWebGuideCertificateLink",
+    href: "https://developer.apple.com/help/account/certificates/create-a-certificate-signing-request",
   },
   {
-    title: "dmWebGuideGenerate",
-    details: ["dmWebGuideExport", "dmWebGuideOutputs", "dmWebGuideLegacy"],
+    label: "dmWebGuideP12Link",
+    href: "https://support.apple.com/guide/keychain-access/import-and-export-keychain-items-kyca35961/mac",
   },
   {
-    title: "dmWebGuideInstall",
-    details: [
-      "dmWebGuideSignInstall",
-      "dmWebGuideConnect",
-      "dmWebGuideSideload",
-      "dmWebGuideFirstLaunch",
-    ],
+    label: "dmWebGuideOpenSslLink",
+    href: "https://docs.openssl.org/3.0/man1/openssl-pkcs12/",
   },
   {
-    title: "dmWebGuideCopy",
-    details: [
-      "dmWebGuideDestination",
-      "dmWebGuideTransfer",
-      "dmWebGuideCopyWhole",
-      "dmWebGuideRetry",
-    ],
+    label: "dmWebGuideProfileLink",
+    href: "https://developer.apple.com/help/account/provisioning-profiles/create-an-ad-hoc-provisioning-profile/",
   },
 ] as const;
 
-const extraDetails: Record<number, { title: string; details: string[] }> = {
-  3: {
-    title: "dmWebGuideSigningDetails",
-    details: ["dmWebGuideWindowsSetup", "dmWebGuideTrust", "dmWebGuideRefresh", "dmWebGuideSigned"],
-  },
-  4: { title: "dmWebGuideTransferDetails", details: ["dmWebGuideZip"] },
-};
-
-const references: Record<number, { label: string; href: string }[]> = {
-  3: [
-    { label: "dmWebGuideSideloadlyLink", href: "https://sideloadly.io/" },
-    { label: "dmWebGuideInstallerHelpLink", href: "https://sideloadly.io/faq" },
-    {
-      label: "dmWebGuideConfiguratorLink",
-      href: "https://support.apple.com/guide/apple-configurator-mac/add-apps-to-a-device-cad4cd08c03/mac",
-    },
-  ],
-  4: [
-    { label: "dmWebGuideMacTransferLink", href: "https://support.apple.com/en-us/119585" },
-    {
-      label: "dmWebGuideWindowsTransferLink",
-      href: "https://support.apple.com/guide/devices-windows/transfer-files-between-your-devices-mchl4bd77d3a/windows",
-    },
-    { label: "dmWebGuideUnzipLink", href: "https://support.apple.com/en-us/102532" },
-  ],
-};
-
 export function InstallationGuide() {
   return (
-    <Accordion type="single" collapsible className="rounded-xl border bg-muted/30 px-3 sm:px-4">
-      <AccordionItem value="installation-guide" className="border-0">
-        <AccordionTrigger className="min-h-11 py-3">{t("dmWebGuideTitle")}</AccordionTrigger>
-        <AccordionContent className="space-y-4 pb-4">
-          <p className="text-xs text-muted-foreground">{t("dmWebGuideIntro")}</p>
-          <Accordion type="single" collapsible defaultValue="dmWebGuidePrepare">
-            {steps.map((step, index) => (
-              <AccordionItem key={step.title} value={step.title}>
-                <AccordionTrigger className="min-h-11 py-3 text-sm">
-                  <span>
-                    {index + 1}. {t(step.title)}
-                  </span>
-                </AccordionTrigger>
-                <AccordionContent className="pb-4 text-xs leading-relaxed text-muted-foreground">
-                  <ul className="list-disc space-y-2 pl-4">
-                    {step.details.map((key) => (
-                      <li key={key}>{t(key)}</li>
-                    ))}
-                  </ul>
-                  {extraDetails[index + 1] && (
-                    <Accordion type="single" collapsible className="mt-3 border-t">
-                      <AccordionItem value="more" className="border-0">
-                        <AccordionTrigger className="min-h-11 py-2 text-xs">
-                          {t(extraDetails[index + 1].title)}
-                        </AccordionTrigger>
-                        <AccordionContent className="pb-0 text-xs leading-relaxed">
-                          <ul className="list-disc space-y-2 pl-4">
-                            {extraDetails[index + 1].details.map((key) => (
-                              <li key={key}>{t(key)}</li>
-                            ))}
-                          </ul>
-                        </AccordionContent>
-                      </AccordionItem>
-                    </Accordion>
-                  )}
-                  {references[index + 1] && (
-                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 border-t pt-3">
-                      {references[index + 1].map(({ label, href }) => (
-                        <a
-                          key={href}
-                          href={href}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-primary underline underline-offset-4 focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                          {t(label)}
-                        </a>
-                      ))}
-                    </div>
-                  )}
-                </AccordionContent>
-              </AccordionItem>
+    <section aria-labelledby="preparation-heading" className="space-y-3 text-sm">
+      <h2 id="preparation-heading" className="font-semibold">
+        {t("dmWebGuideTitle")}
+      </h2>
+      <ol className="list-decimal space-y-4 pl-5 text-xs leading-relaxed text-muted-foreground">
+        <li className="space-y-2 pl-1">
+          <h3 className="font-medium text-foreground">{t("dmWebGuidePrepare")}</h3>
+          <p>{t("dmWebGuidePackages")}</p>
+          <p>{t("dmWebGuideExtracted")}</p>
+          <p>{t("dmWebGuideFolderAccess")}</p>
+          <p>{t("dmWebGuideExport")}</p>
+        </li>
+        <li className="space-y-2 pl-1">
+          <h3 className="font-medium text-foreground">{t("dmWebGuideOptionalSigning")}</h3>
+          <p>{t("dmWebGuideSigningIntro")}</p>
+          <ol className="list-decimal space-y-2 pl-4">
+            <li>{t("dmWebGuideIdentity")}</li>
+            <li>{t("dmWebGuideNewCertificate")}</li>
+            <li>{t("dmWebGuideProfile")}</li>
+            <li>{t("dmWebGuideSigningInputs")}</li>
+          </ol>
+          <p>{t("dmWebGuidePrivateKey")}</p>
+          <div className="flex flex-wrap gap-x-4 gap-y-2">
+            {references.map(({ label, href }) => (
+              <a
+                key={href}
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline underline-offset-4 focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {t(label)}
+              </a>
             ))}
-          </Accordion>
-        </AccordionContent>
-      </AccordionItem>
-    </Accordion>
+          </div>
+        </li>
+        <li className="space-y-2 pl-1">
+          <h3 className="font-medium text-foreground">{t("dmWebGuideExpect")}</h3>
+          <p>{t("dmWebGuideOutputs")}</p>
+        </li>
+      </ol>
+    </section>
   );
 }

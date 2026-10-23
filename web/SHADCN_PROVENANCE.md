@@ -6,6 +6,9 @@ These are upstream component sources, not lookalike reimplementations.
 Source adaptations are `from "cn"` → `from "@/lib/utils"` for the standard local
 clsx/tailwind-merge helper, and registry-local imports → `@/components/ui/`.
 No alternate UI library or hand-written replacement primitives are used.
+The existing Input uses secondary/accent theme utilities for its native file-picker
+button, and AccordionContent adds a small inline inset so keyboard focus rings are
+not clipped by the upstream overflow-hidden animation container.
 已移除未使用的组件与导出；下方来源记录保留作历史归属。
 Unused scaffold was removed: `alert.tsx`, `CardAction`, `CardFooter`, and the public
 `buttonVariants` export. The registry records below remain as historical attribution.
@@ -52,10 +55,9 @@ locally formatted files. Formatting does not introduce custom component styles.
 
 ## Installation guide
 
-The preparation and installation guide uses the existing official shadcn Accordion
-with plain numbered labels. Each step expands to its instructions; signing and
-transfer alternatives remain optional disclosures. Opening a step does not mark
-installation or copying complete. No additional component library is used.
+Preparation uses plain, always-visible numbered text, with no extra UI primitive.
+The FAQ reuses the existing official shadcn Accordion; it does not hide preparation
+or mark manual installation/copying complete. No additional component library is used.
 
 ## Overall generation Progress
 
