@@ -59,3 +59,48 @@ output records this bounded variant in `dm/content_mode.json`; all other shell
 bytes stay unchanged. The existing executable signature becomes stale and the
 IPA must be re-signed before installation, as with any unsigned output. This is
 source-backed behavior, not proof of base-only gameplay or runtime loading.
+
+## Adapter contracts
+
+- [Packaging coordinator](packaging-job.mjs): required capabilities are checked
+  before discovery, key reads or output creation. The browser uses serial
+  generation and `secretLifetime: "archive"`, retaining the isolated extraction
+  worker only for bounded authenticated lazy reads. Generators receive no keys
+  or secret-session handles. Started work drains before disposal; secrets are
+  disposed before archive validation, cleanup and the sole commit boundary,
+  `output.close()`. Disposal/cleanup failures prevent commit. Close rejection
+  does not prove rollback, and cancellation cannot undo a completed commit.
+  Only `PackagingJobError.report` is safe to display; never display or log its
+  original `.cause`.
+- [Shell loader](shell-loader.mjs) and [inventory contract](shell-contract.mjs):
+  [production profiles](production-profile.mjs) supply independently pinned
+  release inventories and recipes, not assertions copied from the ZIP. Actual
+  ZIP metadata must match; entry reads verify decoded size, CRC and SHA-256.
+  [Target inspection](shell-target.mjs) reads verified Mach-O/plist bytes rather
+  than copying expected values. Required paths, allowed generated paths, target
+  versions, modes and collision checks bind the final assembly. Embedded ad-hoc
+  signature metadata is structural, not signing authorization. Native format
+  references remain [shell_build.sh](../dm/ios/tools/shell_build.sh) and
+  [d2rm_pack.py](../dm/tools/d2rm_pack.py).
+- Shell streams verify one bounded entry before yielding chunks of at most
+  64 KiB; consumers must close abandoned iterators. Only redundant directory
+  records are omitted, never files. The browser uses STORE ZIP32 with the
+  existing 512 MiB archive / 256 MiB member ceilings. The coordinator's separate
+  ZIP64 option requires an explicit output budget; it is not a browser default
+  or evidence of iOS installer compatibility. Exact limits remain in
+  [zip-reader.mjs](zip-reader.mjs), [zip-writer.mjs](zip-writer.mjs) and
+  [zip64-writer.mjs](zip64-writer.mjs).
+- [RomFS indexing](romfs-tree.mjs) requires the same immutable, authenticated
+  final IVFC data level throughout its lifetime; authentication and rejection of
+  stale reads belong to the extraction boundary. It preserves BigInt offsets,
+  bounds member reads to 64 KiB, metadata to 16 MiB, entries to 100,000 and depth
+  to 64. Traversal, malformed names, collisions, overlapping or unreachable
+  records fail. Consumers still own aggregate backpressure. Lookup hash tables
+  do not authenticate content. Layout provenance is pinned hactool commit
+  `1d64a83450e025622f3468c28fc4164dad2c5ef6`:
+  [ivfc.h](https://github.com/SciresM/hactool/blob/1d64a83450e025622f3468c28fc4164dad2c5ef6/ivfc.h)
+  and [romfs.c](https://github.com/SciresM/hactool/blob/1d64a83450e025622f3468c28fc4164dad2c5ef6/romfs.c).
+
+These are implementation contracts, not additional browser or device acceptance
+results. Cancellation cannot interrupt an in-flight synchronous native call;
+JavaScript cleanup is not proof of secure erasure.

@@ -1,5 +1,5 @@
 {
-  "sourceFingerprint": "5c540b15ce21ecf6067e3c4d802def13d4765ea8732ad077417a32c51dddcd0a",
+  "sourceFingerprint": "30281de0426f999beb17b23caab722db3c1eba84c0285c8aecf3388b6e3d308d",
   "normalizedSources": {
     "dm/android/tools/stage_touch_assets.py": "03a98e98708a7a14fbc6385daaaf8e2987afffa32dd088086a307a168ddcc26d",
     "dm/data/casc_overlay/borrowed_paths.tsv": "16f5a8eb0d4288d1afa14189ff9e29ea8ce2fe19575ff5cb02265bd87a6d91c7",
@@ -16,7 +16,7 @@
     "dm/ios/tools/annot_ranges.py": "a37f9a89fd25befe6e844d0911d38ad562d55e3565157a5d7b330c25419db228",
     "dm/ios/tools/annot_strings.py": "c11d6752962af3a9476f6aa23172da2c6161a6ef46ee327668118e34ae74c090",
     "dm/ios/tools/annot_world.py": "2517bc142a45d80df400ef51c755f11f7b4203b4ed34b63d691e4daa67b14c81",
-    "dm/ios/tools/dm_i18n.py": "e6a171da276db60770e762b3142af65c6bff59d976ae31c170687d1c47ec6895",
+    "dm/ios/tools/dm_i18n.py": "582acfbb75512d09634b7d729a40b39af5575d1a4301fce947aa395600733cad",
     "dm/ios/tools/drop_light.py": "98b6d465c5b3835c99e0a10da46a5421f176f2cefdaff23a636e12b2923a782d",
     "dm/ios/tools/gen_assets.py": "8e93fd5219a106d6944f230e18fc69cb2d6baaa93f053383f77718d73a9b0cb3",
     "dm/ios/tools/gen_close_btn.py": "4130dcaf0d313f0539d9fb860577d430a344a9d82d7e879c567ccb22f6527dd4",

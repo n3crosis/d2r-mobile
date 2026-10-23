@@ -59,7 +59,7 @@
   },
   "mergedSourceOverrides": {
     "dm/ios/tools/dm_i18n.py": {
-      "sha256": "e6a171da276db60770e762b3142af65c6bff59d976ae31c170687d1c47ec6895",
+      "sha256": "582acfbb75512d09634b7d729a40b39af5575d1a4301fce947aa395600733cad",
       "reason": "Only build/header change for browser integration; extracted HUD rows function is AST-identical to both revisions"
     }
   }

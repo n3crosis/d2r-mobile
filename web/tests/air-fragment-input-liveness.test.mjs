@@ -180,34 +180,4 @@ test("authored fixture keeps identical live/dead interfaces and out-of-scope res
   assert.match(source, /#elif LIVENESS_KEEP_POSITION\s+color \+= input.position;/);
 });
 
-// Wiring assertions remain source-only; the CI runner executes the actual WASM.
-test("canary checks all four independent liveness states in both real output paths", () => {
-  const source = readFileSync(
-    new URL("../toolchain/metal-air-compiler/ci-compile-canary.mjs", import.meta.url),
-    "utf8",
-  );
-  for (const variant of [
-    '{ name: "dead", keepVarying: false, keepPosition: false }',
-    '{ name: "live", keepVarying: true, keepPosition: true }',
-    '{ name: "varying-dead", keepVarying: false, keepPosition: true }',
-    '{ name: "position-dead", keepVarying: true, keepPosition: false }',
-  ])
-    assert(source.includes(variant));
-  const loop = source.slice(
-    source.indexOf("for (const { name, keepVarying, keepPosition } of livenessVariants)"),
-  );
-  assert.match(
-    loop,
-    /output: "metallib"[\s\S]*inspectCompiledMetalLibrary\(output.bytes,[\s\S]*metadataLengthIncludesPrefix: false/,
-  );
-  assert.match(
-    loop,
-    /output: "llvm-text"[\s\S]*checkFragmentInputLiveness\(ir, \{ keepVarying, keepPosition \}\)/,
-  );
-  assert.match(
-    loop,
-    /checkFragmentInputReflection\(output.bytes, \{ keepVarying, keepPosition \}\)/,
-  );
-  assert.match(loop, /output\?\.bytes.fill\(0\)/);
-  assert.match(loop, /irOutput\?\.bytes.fill\(0\)/);
-});
+// Canary wiring remains covered by air-header-operations.test.mjs.

@@ -25,23 +25,6 @@ test("scalar i1 conversion hardening retains its exact authenticated fork source
     manifest.patchedFiles["llvm/lib/Transforms/LibFloor/MetalFinal.cpp"],
     "b7f8c3d17df3fddea4e87cd8a6fc2ac6ed0d53531714f9403b73ab72f3c39973",
   );
-  for (const invariant of [
-    "llvm::Value* conv_instr = nullptr",
-    "cast_op == Instruction::SIToFP || cast_op == Instruction::UIToFP",
-    "from->getType()->isIntegerTy(1)",
-    "to_type->isHalfTy() || to_type->isFloatTy() || to_type->isDoubleTy()",
-    "ConstantFP::get(to_type, cast_op == Instruction::SIToFP ? -1.0 : 1.0)",
-    "ConstantFP::get(to_type, 0.0)",
-    "conv_instr = call_conversion_func<cast_op>(I.getOperand(0), I.getDestTy())",
-    "if (auto* inst = dyn_cast<Instruction>(conv_instr))",
-    "inst->setDebugLoc(I.getDebugLoc())",
-  ])
-    assert(source.includes(invariant), invariant);
-  assert.match(
-    source,
-    /I\.replaceAllUsesWith\(conv_instr\);\s*I\.eraseFromParent\(\);\s*was_modified = true;/,
-  );
-  assert(source.includes("was_modified = true"));
   assert.equal(
     hash(await readForkSource("wasm/api/air_compiler.cpp")),
     "5d06207b69e57435934bec8e4e67e71c014d6c890fe2ff625e96cc1d4dc7a448",

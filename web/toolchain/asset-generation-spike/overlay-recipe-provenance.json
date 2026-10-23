@@ -3,7 +3,7 @@
   "dm/ios/tools/touch_layout.py": "600e17649f2e3163add19b8d7b15b52b23e658f5e668e9bbb6c480cbde1fca86",
   "dm/ios/tools/merc_slots.py": "79f5d786bdf36e30c0b115a4e2caab4ac460c817afdd27ca2fab4c7d34553e6b",
   "dm/ios/tools/touch_strings.py": "6d27e4408de51373a9d26b4fb36d422ae478f89eb3c5a82e7cd93fbdd8aba85e",
-  "dm/ios/tools/dm_i18n.py": "e6a171da276db60770e762b3142af65c6bff59d976ae31c170687d1c47ec6895",
+  "dm/ios/tools/dm_i18n.py": "582acfbb75512d09634b7d729a40b39af5575d1a4301fce947aa395600733cad",
   "dm/ios/tools/drop_light.py": "98b6d465c5b3835c99e0a10da46a5421f176f2cefdaff23a636e12b2923a782d",
   "dm/ios/tools/pouch_layout.py": "56429f4f578954a693a080c10887408339a1d73f2f59a3f76078c9bb5c4f32cf",
   "dm/ios/tools/wide_stash.py": "80e9250950926d36ea3928ed64ca3f1f616cc9109051f1c6af4a9f737796bdf3",

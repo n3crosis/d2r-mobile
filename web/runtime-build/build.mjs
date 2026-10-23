@@ -22,12 +22,6 @@ const stages = [
     "node",
     ["web/toolchain/zsign-wasm/wasm-smoke.mjs"],
   ],
-  [
-    "program dependencies",
-    "web/toolchain/program-rewrite-spike",
-    "npm",
-    ["ci", "--ignore-scripts"],
-  ],
   ["texture decoder and BC3 encoder", ".", "bash", ["web/toolchain/texture-spike/build-wasm.sh"]],
   ["Rust BC3 encoder", ".", "node", ["web/toolchain/texture-spike/build-bc3.mjs"]],
   // 编译可选 ASTC 并在 Node 工作线程中检查 WASM；默认不下载，不代表浏览器或设备验证。
@@ -108,7 +102,7 @@ if (option === "--plan") {
           dotnet: sdk,
           workload: "wasm-tools 10.0.402",
           bun: "1.4.3",
-          commands: ["git", "cmake", "make", "python3", "node", "npm", "bun"],
+          commands: ["git", "cmake", "make", "python3", "node", "bun"],
         },
         crossCommit,
         airCompiler: {

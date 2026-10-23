@@ -27,5 +27,5 @@ if (html.split(marker).length !== 2)
 await writeFile(htmlUrl, html.replace(marker, expected));
 await createPreviewManifest(preview, process.env.GITHUB_SHA || null, expected);
 console.log(
-  `Staged ${inventory.files.length} verified public runtime files; production remains disabled.`,
+  `Staged ${inventory.files.length} verified public runtime files; staging does not establish browser or device acceptance.`,
 );

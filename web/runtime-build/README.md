@@ -4,9 +4,9 @@ This is a **build path**, not another test workflow. It joins the existing exact
 builds into one bounded public runtime directory. No game files, keys,
 real shader inputs or private-input fixtures are read or packaged. The public
 v2.0.0 iOS 26 and iOS 18 shell archives are downloaded from their exact official release URLs and
-verified against the recorded byte count and publisher-pinned SHA-256; including
-it does not assert production compatibility. It does not enable
-the application or claim an end-to-end IPA.
+verified against the recorded byte count and publisher-pinned SHA-256. Assembling
+these assets does not establish browser startup, full-title conversion or device
+compatibility for this revision.
 
 ```sh
 node web/runtime-build/build.mjs --plan
@@ -29,19 +29,19 @@ The fixed local `d2r_air_wasm.*` names are byte-identical aliases of generic rel
 
 Install and activate the official Emscripten **4.0.20** SDK, commit
 `e4fe26ef59168ff44f4c23c466e497bf60b3411e`, and .NET SDK/workload set **10.0.402**
-with `wasm-tools`. Git, CMake, make, Python 3, Node and npm must be on PATH.
+with `wasm-tools`. Git, CMake, make, Python 3, Node, Bun **1.4.3** and Rust
+**1.99.1** must be on PATH.
 The script checks compiler versions before changing output. It does not install
 SDKs, use sudo, launch a browser or run the proof suites.
 
 The build reuses these implementations, without copying their logic:
 
-1. The pinned nested program lockfile, installed with lifecycle scripts disabled.
-2. Existing texture/BC3, production-trust-root extraction and ARM64 rewrite WASM builds.
-3. SPIRV-Cross at `f11ba9f0b21ba8fc15153d50a2a1ae31ab1cf8f7`, using the existing Wasm build script.
-4. Exact PNG/zlib, image-kernel and font WASM builds, assembled with source-pinned
+1. Existing texture/BC3, production-trust-root extraction and ARM64 rewrite WASM builds.
+2. SPIRV-Cross at `f11ba9f0b21ba8fc15153d50a2a1ae31ab1cf8f7`, using the existing Wasm build script.
+3. Exact PNG/zlib, image-kernel and font WASM builds, assembled with source-pinned
    JavaScript asset recipes. No Pyodide runtime is prepared for release.
-5. The sealed texture packager and closed production worker bundles.
-6. The browser shader project, with external boot config,
+4. The sealed texture packager and closed production worker bundles.
+5. The browser shader project, with external boot config,
    pinned SDK/workload set, analyzers and warnings-as-errors, then its sealed packager.
 
 Native Python build/audit tools, hash-gated recipe sources and explicitly invoked
@@ -72,22 +72,17 @@ and stages the complete inventory before replacing its fixed generated output.
 It never recursively copies a toolchain/build tree. Licenses and source notices are
 retained; synthetic inputs, test harnesses and proof HTML are excluded.
 
-The manifest explicitly retains `productionEnabled: false` and
-`sealedJobAdapter: false` until real job clients can consume the bundled bytes.
-The ordinary NSP, program, Cross, asset and BC3 workers still use module/fetch
-loading; including their bytes is **not** proof that they can execute after the
-network is sealed. Existing sealed proof bootstraps are preserved as provenance,
-not imported into the end-user page or mistaken for complete job clients.
+The manifest retains `productionEnabled: false` as legacy build metadata and an
+inventory-validation invariant, not a browser enablement switch. The application
+verifies the trusted manifest and selected public assets, then initializes the
+requested runtime clients before private input selection. Generate additionally
+requires supported browser APIs, valid input selection and customization, an idle
+session, and optional signing readiness.
 
-Required next integration remains:
-
-- A trusted application preload phase that verifies all manifest bytes before
-  accepting any private file, followed by in-memory/blob module linking and
-  sealed job clients. Do not weaken the current preview CSP to hide missing wiring.
-- Complete production asset and shader recipes, including the unresolved shader
-  stages, compatible shell provenance, and full-title output validation.
-- Actual browser startup and full-chain verification of the assembled clients.
-  Having public runtime bytes in the artifact is not a usable-game proof.
+This implemented wiring and the assembled public bytes do not establish
+current-revision browser, real-input/native-parity or signed device/gameplay
+acceptance. See [production flow](../PRODUCTION_FLOW.md) and
+[acceptance boundaries](../../docs/WEB_IPA_PACKAGER.md).
 
 ## Content-addressed public transport
 
@@ -104,7 +99,7 @@ files remain separate. Gzip is used only when it reduces bytes. Payloads live at
 `payloads/<encoded-sha256>.gz` or `.bin`. Staging checks both physical payload
 hashes and every logical slice hash, bounded decompression, exact contiguous pack
 coverage, and rejects extra files, missing mappings and symlinks. Browser loading
-uses the same manifest-bound mapping before sealing the network; no game inputs
+uses the same manifest-bound mapping before reading private inputs; no game inputs
 or keys are included. Legacy unpacked manifests remain readable.
 
 ## One GitHub browser-build job
@@ -123,8 +118,9 @@ Disk availability is logged before and after.
 The uploaded `web-preview` includes the frontend and public runtime files only.
 No game inputs, keys, toolchain caches or proof fixtures are uploaded. The only
 native app content is the exact pinned public shell ZIP required by packaging;
-it is never executed by the build. The build still leaves the production UI disabled and makes no claim
-that a bundle alone satisfies all remaining runtime and release gates.
+it is never executed by the build. The build does not exercise the production UI
+or establish that the bundle satisfies all remaining browser, runtime and
+release-validation gates.
 
 ## Validation boundary
 
@@ -132,7 +128,7 @@ Local JavaScript syntax, scoped Oxc checks and non-mutating planning/fingerprint
 commands pass. The real WASM receipt probe has run for an earlier source snapshot;
 that does not authenticate a later compiler revision. Final packaging requires
 the exact current module and source receipt. Cold builds of non-AIR runtimes, byte-identical
-reproducibility, browser startup and post-seal full-chain success remain separate
+reproducibility, browser startup and full-chain success remain separate
 validation boundaries. Missing evidence is never a reason to substitute
 synthetic binaries, accept a stale cache or silently omit a component.
 

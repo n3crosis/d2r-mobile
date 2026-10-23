@@ -1,6 +1,6 @@
 # 可选本地签名存储
 
-此隔离适配器并不表示签名界面已经启用或原生签名发布版本已经验证。它不修改未签名外壳合同。合成检查没有使用凭据、私有游戏输入、实际原生签名或设备安装。
+此存储适配器支持应用的可选本地签名流程。其合成检查不验证实际原生签名或设备安装，也不修改未签名外壳合同。这些检查没有使用凭据或私有游戏输入。
 
 - `ipa-signing-zip.mjs` 中的 `inspectUnsignedSigningArchive(blob, { signal })` 从有界中央目录推导清单，然后通过 `validateStagedZip` 独立检查整个规范 STORE ZIP32。返回冻结的 `{ appRoot, entries }`，条目使用不可变 Blob 切片。上限：归档 512 MiB、单文件 256 MiB、20,000 个条目、ZIP 元数据 8 MiB。拒绝多个应用、已有签名文件、PlugIns 和 Watch 目录。有意不支持 ZIP64、压缩、符号链接和非规范归档。
 - `ipa-signing-fs.mjs` 中的 `createSigningFileStore(archive, { readBlobSync })` 保持资源为 Blob。默认同步读取器是专用工作线程中的 `FileReaderSync`，不能在主线程使用。每次资源读取最多 64 KiB。经过魔数检查的 Mach-O 候选文件才允许修改，单个最多 128 MiB，原始可执行文件合计最多 256 MiB。可变后备数组容量合计最多 256 MiB；数组扩容期间，旧数组和替换数组可能暂时同时存在，直到垃圾回收。这些是逻辑存储上限，不是浏览器进程内存保证。

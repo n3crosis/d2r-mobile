@@ -26,17 +26,6 @@ test("typed pointer-slot correction retains its authenticated fork source bounda
   );
   const source = await readForkSource("llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp");
   assert.equal(hash(source), "bd857274c61741b968bbc5c9d7fc9a849b99757fba93290f260031e54ca65c06");
-  for (const invariant of [
-    "bool get_constant_pointer_slot(LoadInst& load, constant_pointer_slot& slot)",
-    "!load.isSimple() || !value_type || value_type->isOpaque()",
-    "value_type->getAddressSpace() != 2 || !slot_cast",
-    "src->getAddressSpace() != dst->getAddressSpace()",
-    "dst->getPointerElementType() != value_type",
-    "DL->getStructLayout(st)->getElementOffset(0) != 0",
-    "DL->getTypeStoreSize(original_type) != DL->getTypeStoreSize(value_type)",
-    "DL->getTypeAllocSize(original_type) != DL->getTypeAllocSize(value_type)",
-  ])
-    assert(source.includes(invariant), invariant);
 });
 
 test("exact inverse merges retain authenticated nominal-root and cycle proofs", async () => {
@@ -47,17 +36,6 @@ test("exact inverse merges retain authenticated nominal-root and cycle proofs", 
   assert.equal(receipt.sourceInputs[path], expected);
   const source = await readForkSource("llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp");
   assert.equal(hash(source), "bd857274c61741b968bbc5c9d7fc9a849b99757fba93290f260031e54ca65c06");
-  for (const invariant of [
-    "struct native_view_proof",
-    "original_type != proof.recast->getDestTy()",
-    'reject("inverse root nominal type mismatch", node)',
-    "isa<ConstantPointerNull>(original) || isa<UndefValue>(original) || isa<PoisonValue>(original)",
-    'reject("unproved inverse native root", node)',
-    '"inverse root depends on rewritten native graph"',
-    '"unanchored inverse pointer cycle"',
-    "merged_native_recasts",
-  ])
-    assert(source.includes(invariant), invariant);
   assert.equal(
     hash(await read("ci-compile-canary.mjs")),
     "19415766142c77a9443478e74d5413a300397c28a1a0395b2f99d22d3547eeca",
@@ -224,17 +202,6 @@ test("canonical GEP restoration retains its exact authenticated fork invariants"
   assert.equal(receipt.sourceInputs[path], expected);
   const source = await readForkSource("llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp");
   assert.equal(hash(source), "bd857274c61741b968bbc5c9d7fc9a849b99757fba93290f260031e54ca65c06");
-  for (const invariant of [
-    "native_type->getPointerElementType() == canonical_element",
-    "auto gep = dyn_cast<GetElementPtrInst>(ptr)",
-    'if (!gep) return reject("canonical inverse input is not a GEP", ptr)',
-    "canonical_gep_recasts.emplace(recast, gep)",
-    "auto value = replacements.at(recast.second)",
-    "if (replacement.second == recast.first) replacement.second = value",
-    "recast.first->replaceAllUsesWith(value)",
-    "canonical_gep_recasts.count(pending)",
-  ])
-    assert(source.includes(invariant), invariant);
 });
 
 test("canonical GEP matrix retains nine symbolic positives and eighteen isolated rejections", async () => {

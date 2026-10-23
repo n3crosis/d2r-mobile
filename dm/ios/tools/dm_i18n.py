@@ -86,7 +86,8 @@ def header():
     out = ['// 生成文件，勿手改：python3 dm/ios/tools/dm_i18n.py --header > dm/host/dm_i18n_tab.h（表 dm/i18n/ui_text.tsv）',
            '// Generated; do not edit: python3 dm/ios/tools/dm_i18n.py --header > dm/host/dm_i18n_tab.h (source dm/i18n/ui_text.tsv)', '#pragma once',
            'static const struct { const char *k, *zh, *en, *es, *mx, *ru, *ko; } k_dm_i18n[] = {']
-    out += ['    { %s, %s, %s, %s, %s, %s, %s },' % (c(k), c(zh), c(en), c(es), c(mx), c(ru), c(ko)) for k, zh, en, es, mx, ru, ko in rows()]
+    # 浏览器专用文字不编入原生宿主。 | Keep browser-only text out of the native host.
+    out += ['    { %s, %s, %s, %s, %s, %s, %s },' % (c(k), c(zh), c(en), c(es), c(mx), c(ru), c(ko)) for k, zh, en, es, mx, ru, ko in rows() if not k.startswith("dmWeb")]
     return '\n'.join(out + ['};', ''])
 
 if __name__ == '__main__':
