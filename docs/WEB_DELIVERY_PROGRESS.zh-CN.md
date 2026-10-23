@@ -2,7 +2,13 @@
 
 English: [WEB_DELIVERY_PROGRESS.md](WEB_DELIVERY_PROGRESS.md)
 
-## 最近一次已验证的发布
+## 当前验证状态（2026-10-23）
+
+维护者确认生成的 IPA 已在真实 iOS 设备上运行成功。报告未注明具体构建、设备/iOS 版本、输入格式或游戏测试矩阵，不应据此推断更广泛的兼容性或与 Xcode 的数值行为等效。
+
+最新已验证的可下载构建为 [7d45b17，Verify 39916614716](https://github.com/n3crosis/d2r-mobile/actions/runs/39916614716)，可下载其[网页预览产物](https://github.com/n3crosis/d2r-mobile/actions/runs/39916614716/artifacts/12484754768)。此记录未指定维护者实际测试的是哪一份产物，也不代表新增站点部署。下方发布凭据及加权评分保留为历史记录，不是当前总体完成度。
+
+## 历史预览发布
 
 [提交 155fd76](https://github.com/n3crosis/d2r-mobile/commit/155fd764add607adf9070fafd5fdf58e40296408)
 已发布到既有的私有[预览站点](https://d2r-ipa-packager.nicekrill34.chatgpt.site)。

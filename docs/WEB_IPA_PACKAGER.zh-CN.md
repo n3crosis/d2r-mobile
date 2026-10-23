@@ -4,11 +4,7 @@ English: [WEB_IPA_PACKAGER.md](WEB_IPA_PACKAGER.md)
 
 ## 状态与边界
 
-当前源码实现了面向 Windows 和 macOS 桌面 Chromium 的本地输入打包流程。
-移除浏览器 Python 运行时的改动目前只是源码改动，不代表已经完成新的构建或部署。
-历史上的 [158d6cf Verify 运行](https://github.com/n3crosis/d2r-mobile/actions/runs/39415236827)
-只能证明该版本，不能证明这些新改动。本次文档对齐没有执行编译、构建、测试、截图、
-真实游戏转换或设备验证。见[交付状态](WEB_DELIVERY_PROGRESS.zh-CN.md)。
+本地浏览器打包流程已有成功的公开 [7d45b17 CI 构建](https://github.com/n3crosis/d2r-mobile/actions/runs/39916614716)。2026-10-23，维护者确认生成的 IPA 已在真实 iOS 设备上运行成功。这是用户报告的真机测试，不只是构建或合成检查；报告未注明具体构建、设备/iOS 版本、输入格式或游戏覆盖范围。见[交付状态](WEB_DELIVERY_PROGRESS.zh-CN.md)。
 
 这不是让游戏在浏览器里运行。产物经过另行签名和安装后，在兼容的 Apple 设备上原生运行。
 最终用户无需安装 Python、.NET、编译器、Xcode 或 Bun。当前生产浏览器运行路径已移除
@@ -38,7 +34,7 @@ Python；着色器翻译仍保留 .NET WASM。开发工具和原生参考工具�
    生成的 IPA 配套。两套资源均不包含在 IPA 内。不要复制未完成的产物。
    如果明确跳过原始资源导出，请保留设备上相同游戏、更新和 DLC 的现有资源；
    浏览器没有验证这些文件。启用较旧 GPU 选项时，新生成的 Legacy Device Pack
-   仍须复制。真实游戏和设备兼容性仍未验证。
+   仍须复制。该次真机测试不代表更广泛的游戏/设备兼容性或此旧 GPU 选项已全部验证。
 
 ## 有源码依据的架构
 

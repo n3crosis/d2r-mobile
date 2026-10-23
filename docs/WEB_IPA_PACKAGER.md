@@ -4,13 +4,7 @@
 
 ## Status and boundaries
 
-The current source implements a local-input packaging flow for desktop Chromium
-on Windows and macOS. The Python-free browser runtime changes are source changes,
-not a newly built or deployed release. The historical
-[Verify run at 158d6cf](https://github.com/n3crosis/d2r-mobile/actions/runs/39415236827)
-is evidence only for that revision, not these changes. No compilation, build,
-tests, screenshots, real-game conversion or device verification were performed
-for this documentation alignment. See [delivery status](WEB_DELIVERY_PROGRESS.md).
+The local browser packaging flow has a successful public [7d45b17 CI build](https://github.com/n3crosis/d2r-mobile/actions/runs/39916614716). On 2026-10-23, the maintainer reported that the generated IPA works on a real iOS device. This is user-reported physical-device testing, not merely a build or synthetic check. The report did not specify the exact tested build, device/iOS version, input format or gameplay coverage. See [delivery status](WEB_DELIVERY_PROGRESS.md).
 
 This is not a browser port of the game. The output runs natively on a compatible
 Apple device after separate signing and installation. End users do not install
@@ -49,7 +43,7 @@ Developer/native-reference tooling can still require Python and .NET.
    If you explicitly skipped original-resource export, keep the existing resources
    for the same game, update and DLC; they have not been verified by the browser.
    The newly generated Legacy Device Pack still needs copying when that option is
-   enabled. Real game and device compatibility remain unverified.
+   enabled. Broader real-game/device compatibility, including this older-GPU option, is not established by the reported device test.
 
 ## Source-backed architecture
 

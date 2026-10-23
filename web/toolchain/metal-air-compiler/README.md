@@ -1,8 +1,14 @@
 # Experimental Metal AIR compiler / 实验性 Metal AIR 编译器
 
-This is an **experimental compiler integrated into the browser IPA shader path**. The authenticated CI artifact for `440eb1a7eedbde6f8c95e037260aed1006365d99` has sealed compiler-only Node WASM acceptance: all 7,212 supplied original shaders compile. Chrome, Apple/GPU/device acceptance, numerical behavior and full-game equivalence remain unverified. It adapts a pinned open-source Clang/floor fork: source parsing and semantic analysis → LLVM/AIR lowering → actual MTLB serialization. No Apple compiler executable, SDK headers, simulator, device or remote compilation service is used by this package.
+This is an **experimental compiler integrated into the browser IPA shader path**. The authenticated CI artifact for `440eb1a7eedbde6f8c95e037260aed1006365d99` has sealed compiler-only Node WASM acceptance: all 7,212 supplied original shaders compile. The maintainer reported successful generated-IPA execution on a real iOS device on 2026-10-23. Controlled browser-corpus validation, broader device/GPU coverage, numerical behavior and full-game equivalence remain separate work. It adapts a pinned open-source Clang/floor fork: source parsing and semantic analysis → LLVM/AIR lowering → actual MTLB serialization. No Apple compiler executable, SDK headers, simulator, device or remote compilation service is used by this package.
 
-这是已接入浏览器 IPA 着色器流程的实验性编译器。上述 440eb1a 版本的已认证 CI 产物已通过仅限编译器的 Node WASM 验收：所提供的 7,212 个原始着色器全部编译成功。Chrome、Apple/GPU/设备验收、数值行为及完整游戏等效性仍未验证。流程包含真实的语法解析、语义分析、AIR 降级和 MTLB 输出，不是容器重打包或固定示例输出。本工具包不调用 Apple 编译器、模拟器、设备或远程编译服务。
+这是已接入浏览器 IPA 着色器流程的实验性编译器。上述 440eb1a 版本的已认证 CI 产物已通过仅限编译器的 Node WASM 验收：所提供的 7,212 个原始着色器全部编译成功。维护者于 2026-10-23 确认生成的 IPA 已在真实 iOS 设备上运行成功。受控浏览器目录验证、更广泛的设备/GPU 覆盖、数值行为及完整游戏等效性仍属于独立工作。流程包含真实的语法解析、语义分析、AIR 降级和 MTLB 输出，不是容器重打包或固定示例输出。本工具包不调用 Apple 编译器、模拟器、设备或远程编译服务。
+
+## Real-device report / 真机测试报告
+
+On 2026-10-23, the maintainer reported that the generated IPA works and explicitly confirmed testing on a real device. The report did not identify an exact artifact, device/iOS version or gameplay test matrix. This records that successful user test without attributing it to every compiler fixture or claiming Xcode-equivalent numerical behavior.
+
+2026-10-23，维护者报告生成的 IPA 可用，并明确确认已进行真机测试。报告未注明具体产物、设备/iOS 版本或游戏测试矩阵。此处记录该次用户测试成功，不把它扩展为每个编译器测试项均通过设备验证，也不宣称与 Xcode 的数值行为等效。
 
 ## Upstream migration / 上游迁移
 
@@ -56,18 +62,18 @@ fixtures in [CORPUS_FIXES.md](CORPUS_FIXES.md) have not been executed.
 
 ## Not ready / 尚未完成
 
-- Real Chrome execution of the supplied corpus and browser/GPU/device acceptance.
+- Controlled execution of the complete supplied corpus in Chrome and broader browser/GPU/device coverage beyond the reported successful real-device run.
 - Complete MSL compatibility beyond the implemented resource, builtin, function-constant and language subset; passing the supplied corpus does not establish general MSL support.
 - Xcode-equivalent numerical shader behavior and full-game equivalence across the supplied corpus.
 - The historical gzorin domain milestone retained unsupported control-point records requiring padding and implicit vector `llvm.fmuladd`. Those old focused checks are not current proof of support for every input in these categories.
 
 历史 gzorin 域着色器检查保留了两个未支持的输入类别：需要填充的控制点记录，以及隐式向量 `llvm.fmuladd`。旧接口检查或当前所提供目录的编译通过，均不代表这些类别的所有输入已获支持。
 
-尚未完成浏览器/设备执行、完整游戏等效性、完整 MSL 库和高级功能验证。`api/CMakeLists.txt` now builds a real WASM target tested under Node with Worker shims; production wiring does not by itself establish a finished or fully validated browser compiler. The migrated a2flo frontend uses Metal 3.2 syntax mode with iOS 18 / AIR 2.7 / MSL 3.2 output. Selecting that mode does not establish complete MSL 3.2 support. Earlier native/Node milestones in this document describe the prior gzorin-based baseline unless explicitly identified as a2flo results; the separately sealed 440eb1a acceptance does not execute the unrun native fixtures.
+已记录用户报告的真机运行成功；受控浏览器目录测试、更广泛设备覆盖、完整游戏等效性、完整 MSL 库和高级功能验证仍未完成。`api/CMakeLists.txt` now builds a real WASM target tested under Node with Worker shims; production wiring does not by itself establish a finished or fully validated browser compiler. The migrated a2flo frontend uses Metal 3.2 syntax mode with iOS 18 / AIR 2.7 / MSL 3.2 output. Selecting that mode does not establish complete MSL 3.2 support. Earlier native/Node milestones in this document describe the prior gzorin-based baseline unless explicitly identified as a2flo results; the separately sealed 440eb1a acceptance does not execute the unrun native fixtures.
 
-GPU-specific pipeline archives and iPhone verification are outside this task. Do not invoke an iOS simulator. The target is the Xcode-built IPA's precompiled shader-library behavior, not eliminating all device-side pipeline work.
+GPU-specific pipeline archives and additional agent-run iPhone verification remain outside this task; the maintainer's real-device test is recorded above. Do not invoke an iOS simulator. The target is the Xcode-built IPA's precompiled shader-library behavior, not eliminating all device-side pipeline work.
 
-设备专属管线缓存及 iPhone 验证不属于本任务，禁止调用 iOS 模拟器。目标是匹配 Xcode 构建 IPA 的预编译着色器库行为，并非消除设备端所有管线工作。
+设备专属管线缓存及额外由助手执行的 iPhone 验证不属于本任务；维护者的真机测试已在上文记录。禁止调用 iOS 模拟器。目标是匹配 Xcode 构建 IPA 的预编译着色器库行为，并非消除设备端所有管线工作。
 
 ## Browser smoke harness / 浏览器冒烟工具
 

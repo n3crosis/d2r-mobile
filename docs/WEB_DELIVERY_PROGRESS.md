@@ -2,7 +2,13 @@
 
 中文: [WEB_DELIVERY_PROGRESS.zh-CN.md](WEB_DELIVERY_PROGRESS.zh-CN.md)
 
-## Latest verified publication
+## Current validation (2026-10-23)
+
+The maintainer reports that the generated IPA works on a real iOS device. The report does not specify an exact tested build, device/iOS version, input format or gameplay matrix, so broader compatibility and Xcode numerical equivalence are not implied.
+
+The latest verified downloadable build is [7d45b17, Verify 39916614716](https://github.com/n3crosis/d2r-mobile/actions/runs/39916614716), with its [web preview artifact](https://github.com/n3crosis/d2r-mobile/actions/runs/39916614716/artifacts/12484754768). This does not identify which artifact the maintainer tested and is not a new Site deployment. The publication receipts and weighted scoring below are historical records, not the current overall completion score.
+
+## Historical preview publication
 
 [Commit 155fd76](https://github.com/n3crosis/d2r-mobile/commit/155fd764add607adf9070fafd5fdf58e40296408)
 is published to the existing private [preview Site](https://d2r-ipa-packager.nicekrill34.chatgpt.site).

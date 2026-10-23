@@ -1,5 +1,16 @@
 # Corpus-driven compiler source corrections
 
+## Real-device update (2026-10-23) / 真机测试更新
+
+The maintainer reported that the generated IPA works on a real iOS device. This
+user-reported result is separate from the compiler-only evidence below; no exact
+build, device/iOS version or gameplay coverage was specified. Historical statements
+about what a source, Node or ABI check proves remain scoped to that check.
+
+维护者确认生成的 IPA 已在真实 iOS 设备上运行成功。此用户报告与下方仅限编译器的
+证据分开记录；报告未注明具体构建、设备/iOS 版本或游戏覆盖范围。历史源码、Node
+或 ABI 检查的证明范围不因该报告而扩大。
+
 `patches/0106-a2flo-corpus-compiler-fixes.patch` follows the five unchanged
 `0101` through `0105` migration patches. The a2flo repository, commit and
 archive SHA256 are unchanged, as is the complete historical

@@ -7,10 +7,16 @@ access to this one folder, then generate a downloadable unsigned IPA and a fresh
 game-resource subfolder inside the selected folder. End users do not install a
 compiler, Python, .NET, Xcode or Bun.
 
-The production conversion flow is implemented and the complete public runtime
-build passed [Verify at 158d6cf](https://github.com/n3crosis/d2r-mobile/actions/runs/39415236827).
-**A real game-input-to-IPA run and device execution have not been demonstrated.**
-A successful build is not proof that a particular game input completes or plays.
+The production conversion flow is implemented. The latest verified public runtime
+build passed [Verify at 7d45b17](https://github.com/n3crosis/d2r-mobile/actions/runs/39916614716).
+**On 2026-10-23, the maintainer reported that the generated IPA works on a real iOS device.**
+This is user-reported device testing, separate from CI. The report did not specify
+the exact tested build, device/iOS version, input format or gameplay coverage; it
+does not establish all-device compatibility or numerical equivalence to Xcode.
+
+**2026-10-23：维护者确认生成的 IPA 已在真实 iOS 设备上运行成功。**
+这是用户报告的真机测试，与 CI 检查分开记录；报告未注明具体构建、设备/iOS 版本、
+输入格式或游戏覆盖范围，不代表全设备兼容性或与 Xcode 的数值行为完全一致。
 
 ## Implemented flow
 

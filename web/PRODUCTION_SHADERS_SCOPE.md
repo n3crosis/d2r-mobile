@@ -65,11 +65,14 @@ compiled libraries rather than the whole catalog's source text. It still returns
 no entries until the complete original source-set proof passes. Compiler leases
 are released after generation and aborts terminate in-flight worker work.
 
-This integration is implementation, not proof that all 7,212 libraries compile
-or that a generated IPA matches Xcode behavior. The earlier compiler subset ran
-under Node WASM, but full browser/game validation remains deferred. No simulator,
-device, remote compiler, source rewriting or weaker source-digest checks are used.
+The authenticated 440eb1a compiler artifact compiled all 7,212 supplied original
+shaders under Node WASM. Separately, on 2026-10-23 the maintainer reported that
+the generated IPA works on a real iOS device. The exact tested build, device/iOS
+version and gameplay coverage were not specified. These results do not establish
+Xcode-equivalent numerical behavior or complete game/device coverage. The browser
+compiler does not invoke a simulator, device or remote compiler, rewrite shader
+sources, or weaken source-digest checks.
 
 ## 中文说明
 
-生产路径现已接入真实 WASM 编译服务，基础与可读瓦片变体均输出 MTLB 库；没有编译器或遇到未支持源码时必须报错，不能把源代码当成编译结果。原有完整目录与源码摘要校验保持不变，全部证明通过前不发布输出。回放记录使用实际编译器和源码/输出收据，不伪装执行过 Xcode。此处说明代码接入范围，不代表完整游戏或设备运行验证已完成。
+生产路径现已接入真实 WASM 编译服务，基础与可读瓦片变体均输出 MTLB 库；没有编译器或遇到未支持源码时必须报错，不能把源代码当成编译结果。原有完整目录与源码摘要校验保持不变，全部证明通过前不发布输出。回放记录使用实际编译器和源码/输出收据，不伪装执行过 Xcode。440eb1a 的已认证编译器已在 Node WASM 下编译全部 7,212 个原始着色器。另于 2026-10-23，维护者确认生成的 IPA 已在真实 iOS 设备上运行成功；报告未注明具体构建、设备/iOS 版本或游戏覆盖范围。这不代表完整游戏/全设备验证或与 Xcode 的数值行为等效。
