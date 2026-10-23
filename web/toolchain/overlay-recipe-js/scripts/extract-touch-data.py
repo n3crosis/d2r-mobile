@@ -39,7 +39,10 @@ def string(function, contains):
 
 
 module._rw_children_check()
-data = {"sourceSha256": PINS, "environment": {"DM_OVERLAY_MAC": False, "DM_CUSTOM_TEST_ROWS": 0, "MOVIE_FFMPEG": False}}
+data = {
+    "sourceSha256": PINS,
+    "environment": {"DM_OVERLAY_MAC": False, "DM_CUSTOM_TEST_ROWS": 0, "MOVIE_FFMPEG": False},
+}
 for name in (
     "OFF",
     "FRONTEND",

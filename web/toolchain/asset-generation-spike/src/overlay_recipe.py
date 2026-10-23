@@ -133,7 +133,9 @@ def generate(payload, options):
             sys.path.insert(0, str(tools))
             for name in MODULES:
                 sys.modules.pop(name, None)
-            sys.modules["gen_assets"] = types.SimpleNamespace(ensure=lambda _, overlay_only=False: None)
+            sys.modules["gen_assets"] = types.SimpleNamespace(
+                ensure=lambda _, overlay_only=False: None
+            )
             sys.modules["gen_merc_art"] = types.SimpleNamespace(
                 ART=str(gen / "NativeHUD/mercslots"),
                 # Pinned gen_merc_art.py (0d65f6f3...b7b179), also used by

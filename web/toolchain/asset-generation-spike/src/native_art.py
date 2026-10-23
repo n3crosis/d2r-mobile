@@ -91,7 +91,8 @@ def generate(payload, options):
             # Keep the browser's existing encoded-byte guard in addition to v2's RGBA guard.
             for asset in assets:
                 require(
-                    hashlib.sha256(files[asset["asset"]]).hexdigest() == asset["decoded_png_sha256"],
+                    hashlib.sha256(files[asset["asset"]]).hexdigest()
+                    == asset["decoded_png_sha256"],
                     "NATIVE_ART_PNG_HASH",
                 )
             files["dm_touch_native_art.c"] = (root / "Sources/dm_touch_native_art.c").read_bytes()

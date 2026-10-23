@@ -94,7 +94,9 @@ assert len(files) == 195
         ensure_ascii=False,
     )
 )
-(OUT / "options.json").write_text(json.dumps({"names": "current", "revision": "e3756f8942b40eba6c851e881828a5b1bda17fd6"}))
+(OUT / "options.json").write_text(
+    json.dumps({"names": "current", "revision": "e3756f8942b40eba6c851e881828a5b1bda17fd6"})
+)
 print(
     "Original map-goal: 195 outputs, 31 labels x six languages, seven symbols and alpha-halved cross"
 )

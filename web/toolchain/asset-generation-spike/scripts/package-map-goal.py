@@ -26,14 +26,18 @@ class KoreanBranch(ast.NodeTransformer):
     def visit_Assign(self, node):
         if any(isinstance(t, ast.Name) and t.id == "ko" for t in node.targets):
             self.changes += 1
-            return ast.If(test=ast.Name(id="_include_korean", ctx=ast.Load()), body=[node], orelse=[])
+            return ast.If(
+                test=ast.Name(id="_include_korean", ctx=ast.Load()), body=[node], orelse=[]
+            )
         return self.generic_visit(node)
 
     def visit_Expr(self, node):
         text = ast.unparse(node)
         if text.startswith("label(ko,"):
             self.changes += 1
-            return ast.If(test=ast.Name(id="_include_korean", ctx=ast.Load()), body=[node], orelse=[])
+            return ast.If(
+                test=ast.Name(id="_include_korean", ctx=ast.Load()), body=[node], orelse=[]
+            )
         return self.generic_visit(node)
 
     def visit_Dict(self, node):

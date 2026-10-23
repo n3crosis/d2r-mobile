@@ -31,7 +31,10 @@ def generate(payload, options):
         "MAP_GOAL_CURRENT_NAMES_REQUIRED",
     )
     revision = options.get("revision", LEGACY_REVISION)
-    require(revision in (LEGACY_REVISION, RELEASE_REVISION, UPSTREAM_REVISION), "OVERLAY_RECIPE_REVISION")
+    require(
+        revision in (LEGACY_REVISION, RELEASE_REVISION, UPSTREAM_REVISION),
+        "OVERLAY_RECIPE_REVISION",
+    )
     upstream = revision != LEGACY_REVISION
     languages = ("zhCN", "enUS", "esES", "esMX", "ruRU") + (("koKR",) if upstream else ())
     bundle = json.loads(payload.decode())
@@ -126,7 +129,10 @@ def generate(payload, options):
                 for suffix in ("", "_en", "_es", "_mx", "_ru") + (("_ko",) if upstream else ())
             }
             paths = {p.name: p for p in (root / "out").iterdir() if p.is_file()}
-            require(set(paths) == expected and len(expected) == (195 if upstream else 164), "MAP_GOAL_OUTPUT_SET")
+            require(
+                set(paths) == expected and len(expected) == (195 if upstream else 164),
+                "MAP_GOAL_OUTPUT_SET",
+            )
             require(
                 sum(p.stat().st_size for p in paths.values()) <= 16 * 1024 * 1024,
                 "MAP_GOAL_OUTPUT_LIMIT",

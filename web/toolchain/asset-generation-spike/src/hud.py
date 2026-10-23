@@ -30,7 +30,10 @@ def generate(payload, options):
     bundle = json.loads(payload.decode())
     require(options.get("mode") == "switch-upscaled", "HUD_MODE_REQUIRED")
     revision = options.get("revision", LEGACY_REVISION)
-    require(revision in (LEGACY_REVISION, RELEASE_REVISION, UPSTREAM_REVISION), "OVERLAY_RECIPE_REVISION")
+    require(
+        revision in (LEGACY_REVISION, RELEASE_REVISION, UPSTREAM_REVISION),
+        "OVERLAY_RECIPE_REVISION",
+    )
     upstream = revision != LEGACY_REVISION
     metadata = bundle["metadata"]
     require(set(metadata) == {"patch", "i18n", "manifest"}, "HUD_METADATA_SET")

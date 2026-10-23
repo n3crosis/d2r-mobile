@@ -19,7 +19,8 @@ script = ast.parse((ROOT / "dm/ios/tools/gen_romfs_overlay.py").read_text())
 # 清单在真实 CASC 字节产生后由浏览器边界封装；捕获器不能替假归档签清单。
 # Finalize manifests after real CASC bytes at the browser boundary, never over captured placeholders.
 footer = next(
-    i for i, node in enumerate(script.body)
+    i
+    for i, node in enumerate(script.body)
     if isinstance(node, ast.Import) and any(name.name == "overlay_contract" for name in node.names)
 )
 if len(script.body[footer:]) != 5 or not isinstance(script.body[footer + 3], ast.For):
