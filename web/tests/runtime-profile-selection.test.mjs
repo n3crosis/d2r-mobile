@@ -6,16 +6,23 @@ import {
   validateRuntimeProfileSelection,
   prepareSealedRuntime,
 } from "../sealed-runtime/clients.mjs";
-import { resolveShellProfile, SHELL_PROFILE_IDS } from "../shell-profiles.mjs";
+import {
+  resolveShellProfile,
+  SHELL_PROFILE_IDS,
+  BUNDLED_SHELL_PROFILE_IDS,
+} from "../shell-profiles.mjs";
 import { OPTIONAL_RUNTIME_ASSET_GROUPS } from "../runtime-asset-groups.mjs";
 
 const common = ["assets", "texture", "translator", "extraction", "program", "spirvCross"].map(
   (name, i) => ({ path: `workers/${name}.mjs`, bytes: 32, sha256: String(i + 1).repeat(64) }),
 );
-function fixture({ legacy = true, packed = true, optional = false, shared = false } = {}) {
-  const profiles = (legacy ? SHELL_PROFILE_IDS : SHELL_PROFILE_IDS.slice(0, 1)).map(
-    resolveShellProfile,
-  );
+function fixture({
+  profileIds = BUNDLED_SHELL_PROFILE_IDS,
+  packed = true,
+  optional = false,
+  shared = false,
+} = {}) {
+  const profiles = profileIds.map(resolveShellProfile);
   const assets = [
     ...common.map((asset) => ({ ...asset })),
     ...profiles.map((profile) => ({
@@ -68,9 +75,9 @@ function fixture({ legacy = true, packed = true, optional = false, shared = fals
   return manifest;
 }
 
-test("both profiles retain every common asset and download exactly their own shell", () => {
+test("both bundled profiles retain every common asset and download exactly their own shell", () => {
   for (const packed of [true, false]) {
-    for (const profileId of [undefined, ...SHELL_PROFILE_IDS]) {
+    for (const profileId of [undefined, ...BUNDLED_SHELL_PROFILE_IDS]) {
       const manifest = fixture({ packed });
       const before = structuredClone(manifest);
       const selected = resolveShellProfile(profileId);
@@ -88,17 +95,78 @@ test("both profiles retain every common asset and download exactly their own she
   }
 });
 
-test("default-only inventories remain unchanged and absent legacy fails closed", () => {
+test("default-only inventories remain unchanged and absent profiles fail closed", () => {
   for (const packed of [true, false]) {
-    const manifest = fixture({ legacy: false, packed });
+    const manifest = fixture({ profileIds: BUNDLED_SHELL_PROFILE_IDS.slice(0, 1), packed });
     const result = validateRuntimeProfileSelection(manifest);
     assert.deepEqual(result.selectedInventory, manifest.assets);
     assert.deepEqual(result.downloadFiles, manifest.transport?.files ?? manifest.assets);
     assert.equal(result.downloadBytes, manifest.totalBytes);
-    assert.throws(
-      () => validateRuntimeProfileSelection(manifest, SHELL_PROFILE_IDS[1]),
-      /unavailable/,
+    for (const id of SHELL_PROFILE_IDS.filter((id) => id !== resolveShellProfile().id))
+      assert.throws(() => validateRuntimeProfileSelection(manifest, id), /unavailable/);
+  }
+});
+
+test("the default runtime carries only the v2 pair; legacy selection needs explicit archives", () => {
+  const legacyIds = ["v1.0.18-ios26", "v1.0.18-ios18"];
+  assert.deepEqual(BUNDLED_SHELL_PROFILE_IDS, ["v2.0.0-ios26", "v2.0.0-ios18"]);
+  for (const packed of [false, true]) {
+    const bundled = fixture({ packed });
+    assert.deepEqual(
+      bundled.assets
+        .filter((asset) => asset.path.startsWith("profile/"))
+        .map((asset) => asset.path),
+      ["profile/shell.zip", "profile/shell-ios18.zip"],
     );
+    for (const profileId of legacyIds)
+      assert.throws(() => validateRuntimeProfileSelection(bundled, profileId), /unavailable/);
+    const explicit = fixture({ packed, profileIds: SHELL_PROFILE_IDS });
+    for (const profileId of SHELL_PROFILE_IDS) {
+      const selected = validateRuntimeProfileSelection(explicit, profileId);
+      assert.deepEqual(
+        selected.selectedInventory.map((asset) => asset.path),
+        [...common.map((asset) => asset.path), resolveShellProfile(profileId).archivePath],
+      );
+      assert.equal(selected.downloadFiles.length, common.length + 1);
+    }
+  }
+});
+
+test("legacy-only runtime reuse requires a legacy ID and never falls back for v2", () => {
+  for (const packed of [false, true]) {
+    const manifest = fixture({ packed, profileIds: ["v1.0.18-ios26", "v1.0.18-ios18"] });
+    for (const profileId of [undefined, ...BUNDLED_SHELL_PROFILE_IDS])
+      assert.throws(() => validateRuntimeProfileSelection(manifest, profileId), /unavailable/);
+    for (const profileId of ["v1.0.18-ios26", "v1.0.18-ios18"]) {
+      const selected = validateRuntimeProfileSelection(manifest, profileId);
+      assert.equal(
+        selected.selectedInventory.at(-1).path,
+        resolveShellProfile(profileId).archivePath,
+      );
+      assert.match(selected.selectedInventory.at(-1).path, /^profile\/legacy-shell/);
+    }
+  }
+});
+
+test("old shell identities at reused current paths fail integrity instead of being relabeled", () => {
+  for (const profileId of [undefined, ...BUNDLED_SHELL_PROFILE_IDS]) {
+    for (const [current, legacy] of [
+      ["v2.0.0-ios26", "v1.0.18-ios26"],
+      ["v2.0.0-ios18", "v1.0.18-ios18"],
+    ]) {
+      const manifest = fixture({ packed: false });
+      const record = manifest.assets.find(
+        (asset) => asset.path === resolveShellProfile(current).archivePath,
+      );
+      const evidence = resolveShellProfile(legacy).evidence;
+      manifest.totalBytes += evidence.archiveBytes - record.bytes;
+      record.bytes = evidence.archiveBytes;
+      record.sha256 = evidence.sha256;
+      assert.throws(
+        () => validateRuntimeProfileSelection(manifest, profileId),
+        /shell profile integrity/,
+      );
+    }
   }
 });
 
@@ -116,7 +184,7 @@ test("selected and omitted shell records must match their closed registry", () =
   for (const profileId of SHELL_PROFILE_IDS) {
     for (const changedId of SHELL_PROFILE_IDS) {
       for (const field of ["sha256", "bytes"]) {
-        const manifest = fixture({ packed: false });
+        const manifest = fixture({ packed: false, profileIds: SHELL_PROFILE_IDS });
         const record = manifest.assets.find(
           (asset) => asset.path === resolveShellProfile(changedId).archivePath,
         );
@@ -189,9 +257,9 @@ test("packed progress reports selected wire bytes, not decoded logical bytes", (
   assert.ok(result.downloadBytes < manifest.totalBytes);
 });
 
-test("both shell selections omit optional codec downloads unless explicitly selected", () => {
+test("both bundled shell selections omit optional codec downloads unless explicitly selected", () => {
   for (const packed of [false, true])
-    for (const profileId of SHELL_PROFILE_IDS) {
+    for (const profileId of BUNDLED_SHELL_PROFILE_IDS) {
       const manifest = fixture({ optional: true, packed }),
         baseline = validateRuntimeProfileSelection(fixture({ packed }), profileId),
         before = structuredClone(manifest),

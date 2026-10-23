@@ -16,6 +16,7 @@ import {
   inspectProductionAstcEntries,
 } from "./production-profile.mjs";
 import { resolveShellProfile } from "./shell-profiles.mjs";
+import { astcOutputPaths } from "./astc-output-validator.mjs";
 import {
   createExtractionJobAdapter,
   readAuthenticatedProgramModules,
@@ -588,8 +589,12 @@ export function selectProductionAstcEntries(entries, binding) {
     if (path.startsWith("romfs_overlay_astc")) selected.push(entry);
   }
   if (binding === undefined && selected.length) throw new Error("PRODUCTION_ASTC_UNBOUND");
-  if (binding !== undefined && (!binding || selected.length !== 11))
-    throw new Error("PRODUCTION_ASTC_INVENTORY");
+  if (binding !== undefined) {
+    if (!binding) throw new Error("PRODUCTION_ASTC_INVENTORY");
+    const expected = astcOutputPaths(binding);
+    if (JSON.stringify(selected.map((entry) => entry.path).sort()) !== JSON.stringify(expected))
+      throw new Error("PRODUCTION_ASTC_INVENTORY");
+  }
   return selected;
 }
 

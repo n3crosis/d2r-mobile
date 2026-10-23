@@ -7,6 +7,11 @@ import { generateMercenaryArt } from "./mercenary-art-generator.mjs";
 import { generateMapGoal } from "./map-goal-generator.mjs";
 import { writeCascOverlay } from "./casc-overlay-writer.mjs";
 import { validateAstcOutputs, validateLegacyPackMetadata } from "./astc-output-validator.mjs";
+import { LEGACY_ART_REVISION, requireArtRevision } from "./toolchain/art-recipes-js/revision.mjs";
+import {
+  LEGACY_OVERLAY_REVISION,
+  requireOverlayRevision,
+} from "./toolchain/overlay-recipe-js/revision.mjs";
 import { validateEncodeRequest } from "./toolchain/texture-spike/browser-texture-encoder.mjs";
 
 export const ASSET_PIPELINE_LIMITS = Object.freeze({
@@ -97,6 +102,8 @@ export function snapshotPrebuiltPackMetadata(value) {
  * adapter emits only overlay delta files, never clones the bulk RomFS.
  */
 export function createAssetPipelineAdapter({
+  artRecipeRevision = LEGACY_ART_REVISION,
+  overlayRecipeRevision = LEGACY_OVERLAY_REVISION,
   mapGoal = false,
   mercenaryArt = false,
   remainingArt = false,
@@ -108,6 +115,8 @@ export function createAssetPipelineAdapter({
   createTextureClient,
   createTextureEncoder,
 } = {}) {
+  requireArtRevision(artRecipeRevision);
+  requireOverlayRevision(overlayRecipeRevision);
   if (
     typeof mapGoal !== "boolean" ||
     typeof mercenaryArt !== "boolean" ||
@@ -318,6 +327,7 @@ export function createAssetPipelineAdapter({
       if (mapGoal) {
         const generated = await run(() =>
           generateMapGoal({
+            recipeRevision: artRecipeRevision,
             logicalAssets: assets.logicalAssets,
             assetWorker: worker,
             decodeAtlas,
@@ -469,6 +479,7 @@ export function createAssetPipelineAdapter({
       if (nativeOverlayGenerated !== null) {
         const overlay = await run(() =>
           generateNativeOverlay({
+            recipeRevision: overlayRecipeRevision,
             extracted,
             selection,
             generated: generatedArt,
@@ -493,6 +504,7 @@ export function createAssetPipelineAdapter({
             fail("ASSET_PIPELINE_ASTC_BINDING");
           const checked = validateAstcOutputs({
             files: astcFiles,
+            recipeRevision: overlayRecipeRevision,
             pack: overlay.astc.pack,
             overlayArchives: overlay.astc.overlayArchives,
           });
@@ -504,6 +516,7 @@ export function createAssetPipelineAdapter({
             fail("ASSET_PIPELINE_ASTC_BINDING");
           pendingAstcBinding = Object.freeze({
             count: overlay.astc.count,
+            recipeRevision: overlayRecipeRevision,
             pack: checked.pack,
             overlayArchives: Object.freeze({ ...overlay.astc.overlayArchives }),
           });

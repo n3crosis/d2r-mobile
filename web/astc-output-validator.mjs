@@ -1,9 +1,17 @@
 // 依据 gen_romfs_overlay.py 的 ASTC 基础与 item_notes 文件集合验证独立产物；不修改默认 BC 输出。
 // Validate isolated ASTC base and item_notes outputs against gen_romfs_overlay.py without changing default BC outputs.
+import {
+  LEGACY_OVERLAY_REVISION,
+  RELEASE_OVERLAY_REVISION,
+} from "./toolchain/overlay-recipe-js/revision.mjs";
+import releaseSource from "./toolchain/overlay-recipe-js/release-contract-source.json" with { type: "json" };
+
 export const ASTC_OUTPUT_LIMITS = Object.freeze({
   fileBytes: 64 * 1024 * 1024,
   totalBytes: 128 * 1024 * 1024,
   packJsonBytes: 512,
+  markerBytes: 64,
+  manifestBytes: 4096,
 });
 const fail = () => {
   throw new Error("ASTC_OUTPUT_INVALID");
@@ -41,19 +49,18 @@ export function validateLegacyPackMetadata(pack) {
     fail();
   return Object.freeze({ name, size, sha256 });
 }
-export function validateAstcOutputs({ files, pack, overlayArchives } = {}) {
-  const bound = validateLegacyPackMetadata(pack);
+export function astcOutputPaths({
+  overlayArchives,
+  recipeRevision = LEGACY_OVERLAY_REVISION,
+} = {}) {
   if (
-    !files ||
-    typeof files !== "object" ||
-    Array.isArray(files) ||
+    ![LEGACY_OVERLAY_REVISION, RELEASE_OVERLAY_REVISION].includes(recipeRevision) ||
     !overlayArchives ||
     Object.keys(overlayArchives).sort().join(",") !== "base,item_notes"
   )
     fail();
   const baseName = validateCascArchiveName(overlayArchives.base),
     notesName = validateCascArchiveName(overlayArchives.item_notes);
-  if (baseName === bound.name || notesName === bound.name) fail();
   const base = "romfs_overlay_astc",
     notes = "romfs_overlay_astc_variants/item_notes";
   const expected = [
@@ -68,7 +75,50 @@ export function validateAstcOutputs({ files, pack, overlayArchives } = {}) {
     `${notes}/touch_strings.tsv`,
     `${notes}/dm_textbox_plain.tsv`,
     `${notes}/features.txt`,
+    ...(recipeRevision === RELEASE_OVERLAY_REVISION
+      ? [base, notes].flatMap((root) => [`${root}/xbox_glyphs`, `${root}/overlay.manifest`])
+      : []),
   ].sort();
+  return Object.freeze(expected);
+}
+
+function releaseManifest(files, root, expected) {
+  const bytes = files[`${root}/overlay.manifest`];
+  if (bytes.length > ASTC_OUTPUT_LIMITS.manifestBytes) fail();
+  let text;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  } catch {
+    fail();
+  }
+  const members = expected
+    .filter((path) => path.startsWith(root + "/") && path !== `${root}/overlay.manifest`)
+    .map((path) => path.slice(root.length + 1));
+  const lines = text.split("\n");
+  if (
+    lines.shift() !== `DM_OVERLAY_V1 ${releaseSource.sourceFingerprint}` ||
+    lines.pop() !== "" ||
+    lines.length !== members.length
+  )
+    fail();
+  for (const [index, name] of members.entries()) {
+    const match = /^([a-f0-9]{64}) (.+)$/.exec(lines[index]);
+    if (!match || match[2] !== name) fail();
+  }
+}
+
+export function validateAstcOutputs({
+  files,
+  pack,
+  overlayArchives,
+  recipeRevision = LEGACY_OVERLAY_REVISION,
+} = {}) {
+  const bound = validateLegacyPackMetadata(pack);
+  const expected = astcOutputPaths({ overlayArchives, recipeRevision });
+  if (!files || typeof files !== "object" || Array.isArray(files)) fail();
+  if (Object.values(overlayArchives).includes(bound.name)) fail();
+  const base = "romfs_overlay_astc",
+    notes = "romfs_overlay_astc_variants/item_notes";
   if (JSON.stringify(Object.keys(files).sort()) !== JSON.stringify(expected)) fail();
   let totalBytes = 0;
   for (const path of expected) {
@@ -102,5 +152,19 @@ export function validateAstcOutputs({ files, pack, overlayArchives } = {}) {
     fail();
   const features = new TextDecoder("utf-8", { fatal: true }).decode(files[`${notes}/features.txt`]);
   if (!features.startsWith("item_notes\n")) fail();
-  return Object.freeze({ paths: Object.freeze(expected), totalBytes, pack: bound });
+  if (recipeRevision === RELEASE_OVERLAY_REVISION) {
+    for (const root of [base, notes]) {
+      const marker = files[`${root}/xbox_glyphs`];
+      if (
+        marker.length > ASTC_OUTPUT_LIMITS.markerBytes ||
+        new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(marker) !==
+          "ztouch_controller_buttons_ui/switchx*.sprite\n"
+      )
+        fail();
+      releaseManifest(files, root, expected);
+    }
+  }
+  // 清单检查只验证源码指纹与精确行结构，不认证不透明归档的内容摘要。
+  // Manifest checks bind the source fingerprint and exact row structure, not opaque archive content hashes.
+  return Object.freeze({ paths: expected, totalBytes, pack: bound, recipeRevision });
 }

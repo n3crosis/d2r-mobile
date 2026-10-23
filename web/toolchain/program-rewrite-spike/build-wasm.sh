@@ -41,7 +41,11 @@ done
 cp ../../program-rewriter-adapter.mjs ../../program-release-catalog.mjs ../../guest-framework.mjs dist/
 # 保留独立适配器的相对模块路径，并完整复制封闭外壳配置的公开依赖。
 # Preserve standalone adapter module paths and copy the closed shell registry's complete public closure.
-for file in shell-profiles.mjs \
+for file in shell-profiles.mjs shell-v2-evidence.mjs \
+  toolchain/shell-release-evidence/v2.0.0.json \
+  toolchain/shell-release-evidence/v2.0.0-derived-capacities.json \
+  toolchain/shell-release-evidence/v2.0.0-ios18.json \
+  toolchain/shell-release-evidence/v2.0.0-ios18-derived-capacities.json \
   toolchain/shell-release-evidence/v1.0.18.json \
   toolchain/shell-release-evidence/v1.0.18-derived-capacities.mjs \
   toolchain/shell-release-evidence/v1.0.18-ios18.json \

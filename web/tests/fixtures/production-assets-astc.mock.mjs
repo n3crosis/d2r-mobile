@@ -1,6 +1,7 @@
 // 生产组合层使用隔离测试依赖验证发布时机；不增加生产注入或认证绕过接口。
 // Test publication timing in production composition with isolated dependencies, without production injection or authentication bypass APIs.
 import assert from "node:assert/strict";
+import { SHELL_PROFILE_IDS, resolveShellProfile } from "../../shell-profiles.mjs";
 import { mock, test } from "node:test";
 const pack = { name: "00-00000008.data", size: 20, sha256: "a".repeat(64) };
 const prebuilt = {
@@ -27,7 +28,7 @@ const pipelineEntry = Object.freeze({
     yield new Uint8Array([1]);
   },
 });
-let forwarded, failure, pipelineDisposed;
+let forwarded, failure, pipelineDisposed, hudRevision, pipelineRevisions;
 mock.module("../../extraction-job-adapter.mjs", {
   namedExports: {
     readAuthenticatedAssets: () => ({ logicalAssets: { read: async () => new Uint8Array(40) } }),
@@ -40,13 +41,16 @@ mock.module("../../native-art-generator.mjs", {
 });
 mock.module("../../hud-generator.mjs", {
   namedExports: {
-    generateHud: async () => ({
-      files: {
-        "base.png": new Uint8Array([1]),
-        "hud.json": new Uint8Array([1]),
-        "hud_v4_ui/ui.json": new Uint8Array([1]),
-      },
-    }),
+    generateHud: async ({ recipeRevision }) => {
+      hudRevision = recipeRevision;
+      return {
+        files: {
+          "base.png": new Uint8Array([1]),
+          "hud.json": new Uint8Array([1]),
+          "hud_v4_ui/ui.json": new Uint8Array([1]),
+        },
+      };
+    },
   },
 });
 mock.module("../../production-derived.mjs", {
@@ -61,7 +65,11 @@ mock.module("../../frontend-panel-transform.mjs", {
 mock.module("../../asset-pipeline-adapter.mjs", {
   namedExports: {
     snapshotPrebuiltPackMetadata: (value) => value,
-    createAssetPipelineAdapter: ({ prebuiltPack }) => {
+    createAssetPipelineAdapter: ({ prebuiltPack, artRecipeRevision, overlayRecipeRevision }) => {
+      pipelineRevisions = {
+        artRevision: artRecipeRevision,
+        overlayRevision: overlayRecipeRevision,
+      };
       forwarded = prebuiltPack;
       pipelineDisposed = false;
       return {
@@ -104,7 +112,11 @@ function adapter(enabled = true, options = {}) {
   };
   return createProductionAssetAdapter({
     runtime,
-    profile: { nativeArt: { manifest: "{}" }, derivedCounts: {} },
+    profile: {
+      profileId: options.profileId ?? "v1.0.18-ios26",
+      nativeArt: { manifest: "{}" },
+      derivedCounts: {},
+    },
     ...(enabled ? { prebuiltPack: prebuilt } : {}),
   });
 }
@@ -180,4 +192,27 @@ test("cleanup annotation never replaces an error with a readonly cleanupCode", a
   assert.deepEqual(closed, ["worker", "texture", "encoder"]);
   failure = undefined;
   assets.dispose();
+});
+
+test("production forwards closed b811 and explicit legacy recipes, never caller revisions", async () => {
+  failure = undefined;
+  for (const profileId of SHELL_PROFILE_IDS) {
+    const assets = adapter(false, { profileId });
+    await assets.generateAssets({});
+    const expected = resolveShellProfile(profileId).assetRecipe;
+    assert.equal(hudRevision, expected.artRevision);
+    assert.deepEqual(pipelineRevisions, {
+      artRevision: expected.artRevision,
+      overlayRevision: expected.overlayRevision,
+    });
+    assets.dispose();
+  }
+  assert.throws(
+    () => adapter(false, { profileId: "e3756f8942b40eba6c851e881828a5b1bda17fd6" }),
+    /SHELL_PROFILE_UNKNOWN/,
+  );
+  assert.throws(
+    () => createProductionAssetAdapter({ runtime: {}, profile: {} }),
+    /PRODUCTION_ASSET_PROFILE/,
+  );
 });

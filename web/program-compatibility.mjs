@@ -1,7 +1,7 @@
 // 从封闭目录导出版本与外壳诊断；不把目录就绪等同于新版本或设备验证。
 // Derive version and shell diagnostics from closed catalogs, never equating catalog readiness with new-version or device verification.
 import { REGISTERED_PROGRAM_CATALOG } from "./program-release-catalog.mjs";
-import { SHELL_PROFILE_IDS, resolveShellProfile } from "./shell-profiles.mjs";
+import { BUNDLED_SHELL_PROFILE_IDS, resolveShellProfile } from "./shell-profiles.mjs";
 
 export const PROGRAM_COMPATIBILITY = Object.freeze({
   catalogScope: "repository-registered",
@@ -15,7 +15,7 @@ export const PROGRAM_COMPATIBILITY = Object.freeze({
     ),
   ),
   shellProfiles: Object.freeze(
-    SHELL_PROFILE_IDS.map((id) => {
+    BUNDLED_SHELL_PROFILE_IDS.map((id) => {
       const profile = resolveShellProfile(id);
       return Object.freeze({
         id,

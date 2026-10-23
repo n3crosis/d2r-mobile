@@ -14,6 +14,7 @@ python_sources=(
   web/toolchain/synthetic-signed-nca/verify-build-isolation.py
   web/toolchain/spirv-cross-spike/native-oracle.py
   web/toolchain/spirv-cross-spike/provenance.py
+  web/toolchain/shell-release-evidence/verify-v2-shell-evidence.py
   web/toolchain/shell-release-evidence/compare-source.py
   web/toolchain/shell-release-evidence/test-source-comparison.py
   web/toolchain/asset-generation-spike/scripts/package-core.py

@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import {
   DEFAULT_SHELL_PROFILE_ID,
   SHELL_PROFILE_IDS,
+  BUNDLED_SHELL_PROFILE_IDS,
   resolveShellProfile,
 } from "../shell-profiles.mjs";
 import {
@@ -13,12 +14,12 @@ import {
 } from "../d2r-runtime-content-mode.mjs";
 
 test("closed shell registry preserves default binding and separates legacy metadata", () => {
-  const current = resolveShellProfile(),
+  const current = resolveShellProfile("v1.0.18-ios26"),
     legacy = resolveShellProfile("v1.0.18-ios18");
-  assert.equal(current.id, DEFAULT_SHELL_PROFILE_ID);
+  assert.equal(current.id, "v1.0.18-ios26");
   assert.equal(current.releaseId, "v1.0.18");
-  assert.equal(current.archivePath, "profile/shell.zip");
-  assert.equal(current.contentPin, D2R_RUNTIME_CONTENT_PIN);
+  assert.equal(current.archivePath, "profile/legacy-shell.zip");
+  assert.notEqual(current.contentPin, D2R_RUNTIME_CONTENT_PIN);
   assert.deepEqual(current.guestTarget, {
     platform: "ios",
     minimumVersion: "26.0.0",
@@ -29,7 +30,7 @@ test("closed shell registry preserves default binding and separates legacy metad
     minimumVersion: "18.0.0",
     sdkVersion: "26.0.0",
   });
-  assert.equal(legacy.archivePath, "profile/shell-ios18.zip");
+  assert.equal(legacy.archivePath, "profile/legacy-shell-ios18.zip");
   assert.deepEqual(current.contentPin, {
     release: "v1.0.18",
     executablePath: "DmIOS",
@@ -110,5 +111,18 @@ test("synthetic wrong and mixed-profile executable identities reject", async () 
         /D2R_RUNTIME_CONTENT_BINDING/,
       );
     }
+  }
+});
+
+test("only the matched v2 pair is bundled by default, while explicit old profiles remain closed", () => {
+  assert.equal(resolveShellProfile().id, DEFAULT_SHELL_PROFILE_ID);
+  assert.equal(DEFAULT_SHELL_PROFILE_ID, "v2.0.0-ios26");
+  assert.equal(resolveShellProfile().contentPin, D2R_RUNTIME_CONTENT_PIN);
+  assert.deepEqual(BUNDLED_SHELL_PROFILE_IDS, ["v2.0.0-ios26", "v2.0.0-ios18"]);
+  assert.equal(new Set(SHELL_PROFILE_IDS.map((id) => resolveShellProfile(id).archivePath)).size, 4);
+  for (const id of ["v1.0.18-ios26", "v1.0.18-ios18"]) {
+    const profile = resolveShellProfile(id);
+    assert.deepEqual(profile.assetRecipe, { artRevision: "v1.0.18", overlayRevision: "v1.0.18" });
+    assert.ok(!BUNDLED_SHELL_PROFILE_IDS.includes(id));
   }
 });

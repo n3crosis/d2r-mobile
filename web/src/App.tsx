@@ -10,7 +10,7 @@ import {
 import { normalizeAppCustomization, prepareAppCustomization } from "../app-customization.mjs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { prepareBrowserPackager, takeCommittedDownload } from "../browser-packager.mjs";
-import { DEFAULT_SHELL_PROFILE_ID } from "../shell-profiles.mjs";
+import { DEFAULT_SHELL_PROFILE_ID, IOS18_SHELL_PROFILE_ID } from "../shell-profiles.mjs";
 import { discoverGameFolder } from "../game-input.mjs";
 import { PROGRAM_COMPATIBILITY } from "../program-compatibility.mjs";
 import { createDownloadPreparation, attemptAutomaticDownload } from "../download-preparation.mjs";
@@ -99,7 +99,7 @@ export default function App() {
   const [skipResources, setSkipResources] = useState(false);
   const [resourceOutcome, setResourceOutcome] = useState("");
   const [storageAdvisory, setStorageAdvisory] = useState("");
-  const profileId = target === "ios18" ? "v1.0.18-ios18" : DEFAULT_SHELL_PROFILE_ID;
+  const profileId = target === "ios18" ? IOS18_SHELL_PROFILE_ID : DEFAULT_SHELL_PROFILE_ID;
   const supportedVersions = PROGRAM_COMPATIBILITY.releases
     .filter((release) =>
       PROGRAM_COMPATIBILITY.shellProfiles

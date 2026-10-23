@@ -62,6 +62,7 @@ function syntheticProfile() {
     id: "synthetic-profile",
     releaseId: "synthetic-release",
     archivePath: "profile/synthetic.zip",
+    assetRecipe: { artRevision: "v1.0.18", overlayRevision: "v1.0.18" },
     guestTarget: { platform: "ios", minimumVersion: "18.0.0", sdkVersion: "26.0.0" },
     contentPin: { executablePath: "Synthetic", originalSha256: digest(syntheticBytes) },
     capacities: {
@@ -178,6 +179,7 @@ test("synthetic selection binds recipe, capacities, content pin, target and life
     { profileId: selected.id, signal },
   );
   assert.equal(result.profileId, selected.id);
+  assert.deepEqual(result.assetRecipe, selected.assetRecipe);
   assert.equal(result.contentMode, "optional-warlock");
   assert.deepEqual(result.derivedCounts, selected.capacities.counts);
   assert.deepEqual(result.contentPin, selected.contentPin);

@@ -2,14 +2,21 @@
 // Verify optional ASTC contract binding with synthetic entries, without enabling UI or reading game/shell binaries.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { bindProductionAstcEntries, inspectProductionAstcEntries } from "../production-profile.mjs";
 import { selectProductionAstcEntries } from "../browser-packager.mjs";
+import { ASTC_OUTPUT_LIMITS } from "../astc-output-validator.mjs";
+import {
+  LEGACY_OVERLAY_REVISION,
+  RELEASE_OVERLAY_REVISION,
+  UPSTREAM_OVERLAY_REVISION,
+} from "../toolchain/overlay-recipe-js/revision.mjs";
 const encode = (s) => new TextEncoder().encode(s);
 const binding = {
   pack: { name: "00-00000008.data", size: 123, sha256: "a".repeat(64) },
   overlayArchives: { base: "00-00000009.data", item_notes: "00-00000009.data" },
 };
-function fixture() {
+function fixture(recipeRevision = LEGACY_OVERLAY_REVISION) {
   const files = {};
   for (const [prefix, archive, sides] of [
     [
@@ -34,6 +41,22 @@ function fixture() {
             : "content",
       );
   }
+  if (recipeRevision === RELEASE_OVERLAY_REVISION) {
+    for (const root of ["romfs_overlay_astc", "romfs_overlay_astc_variants/item_notes"]) {
+      files[`${root}/xbox_glyphs`] = encode("ztouch_controller_buttons_ui/switchx*.sprite\n");
+      files[`${root}/overlay.manifest`] = encode(
+        "DM_OVERLAY_V1 243ab3eec668192415561f806ebbf2e670ea5a8a83aee8b72f92021a23989763\n" +
+          Object.keys(files)
+            .filter((path) => path.startsWith(root + "/"))
+            .sort()
+            .map(
+              (path) =>
+                `${createHash("sha256").update(files[path]).digest("hex")} ${path.slice(root.length + 1)}\n`,
+            )
+            .join(""),
+      );
+    }
+  }
   return Object.entries(files).map(([path, bytes]) => ({
     path,
     size: bytes.length,
@@ -43,7 +66,7 @@ function fixture() {
     },
   }));
 }
-function profileFixture() {
+function profileFixture(profileId) {
   const targetOS = { platform: "ios", minimumVersion: "26.0.0" };
   const recipe = {
     schemaVersion: 1,
@@ -59,6 +82,7 @@ function profileFixture() {
     (p) => ({ path: `Payload/DmIOS.app/${p}`, size: 1, mode: 0o100644 }),
   );
   return {
+    ...(profileId === undefined ? {} : { profileId }),
     trustedShell: { trustedRecipe: recipe },
     shell: {
       entries,
@@ -81,6 +105,126 @@ test("default selection preserves BC entries and requires no binding", () => {
   ];
   assert.deepEqual(selectProductionAstcEntries(entries), []);
   assert.equal(entries.length, 2);
+});
+test("b811 binding preserves exact closure and recipe identity through final selection", async () => {
+  const entries = fixture(RELEASE_OVERLAY_REVISION),
+    releaseBinding = { ...binding, recipeRevision: RELEASE_OVERLAY_REVISION },
+    original = profileFixture("v2.0.0-ios26");
+  assert.equal(selectProductionAstcEntries(entries, releaseBinding).length, 15);
+  const result = await bindProductionAstcEntries(original, entries, releaseBinding);
+  assert.equal(result.astcOutput.recipeRevision, RELEASE_OVERLAY_REVISION);
+  assert.equal(result.astcOutput.paths.length, 15);
+  assert.equal(selectProductionAstcEntries(entries, result.astcOutput).length, 15);
+  assert.equal(
+    result.astcOutput.totalBytes,
+    entries.reduce((total, entry) => total + entry.size, 0),
+  );
+  assert.deepEqual(result.trustedShell.trustedRecipe.extraFiles, [
+    ...original.trustedShell.trustedRecipe.extraFiles,
+    ...entries.map((entry) => entry.path).sort(),
+  ]);
+  assert.equal(original.astcOutput, undefined);
+  assert.equal(original.trustedShell.trustedRecipe.extraFiles.length, 2);
+});
+test("closed profile and binding revisions cannot cross or opt into later-source ASTC", async () => {
+  const releaseBinding = { ...binding, recipeRevision: RELEASE_OVERLAY_REVISION };
+  for (const profileId of [undefined, "v1.0.18-ios26", "v1.0.18-ios18"])
+    await assert.rejects(
+      bindProductionAstcEntries(
+        profileFixture(profileId),
+        fixture(RELEASE_OVERLAY_REVISION),
+        releaseBinding,
+      ),
+      /RECIPE_BINDING/,
+    );
+  for (const profileId of ["v2.0.0-ios26", "v2.0.0-ios18"])
+    await assert.rejects(
+      bindProductionAstcEntries(profileFixture(profileId), fixture(), binding),
+      /RECIPE_BINDING/,
+    );
+  for (const recipeRevision of [null, "v2", UPSTREAM_OVERLAY_REVISION, {}]) {
+    const bad = { ...binding, recipeRevision };
+    await assert.rejects(inspectProductionAstcEntries(fixture(RELEASE_OVERLAY_REVISION), bad));
+    assert.throws(() => selectProductionAstcEntries(fixture(RELEASE_OVERLAY_REVISION), bad));
+  }
+  const legacy = await bindProductionAstcEntries(
+    profileFixture("v1.0.18-ios26"),
+    fixture(),
+    binding,
+  );
+  assert.equal(legacy.astcOutput.recipeRevision, LEGACY_OVERLAY_REVISION);
+});
+test("b811 selection and streamed metadata reject missing, duplicate, unsupported and oversized members", async () => {
+  const releaseBinding = { ...binding, recipeRevision: RELEASE_OVERLAY_REVISION };
+  assert.throws(() => selectProductionAstcEntries(fixture(RELEASE_OVERLAY_REVISION), binding));
+  assert.throws(() => selectProductionAstcEntries(fixture(), releaseBinding));
+  for (const changedPath of ["romfs_overlay_astc/ps_glyphs", "romfs_overlay_astc/xbox_glyphs"]) {
+    const entries = fixture(RELEASE_OVERLAY_REVISION);
+    entries[0] = { ...entries[0], path: changedPath };
+    assert.throws(() => selectProductionAstcEntries(entries, releaseBinding));
+    await assert.rejects(inspectProductionAstcEntries(entries, releaseBinding));
+  }
+  for (const [suffix, size] of [
+    ["/xbox_glyphs", ASTC_OUTPUT_LIMITS.markerBytes + 1],
+    ["/overlay.manifest", ASTC_OUTPUT_LIMITS.manifestBytes + 1],
+  ]) {
+    const entries = fixture(RELEASE_OVERLAY_REVISION),
+      index = entries.findIndex((entry) => entry.path.endsWith(suffix));
+    entries[index] = {
+      ...entries[index],
+      size,
+      chunks() {
+        assert.fail("oversized metadata must reject before reading");
+      },
+    };
+    await assert.rejects(inspectProductionAstcEntries(entries, releaseBinding), /METADATA/);
+  }
+  for (const suffix of ["/xbox_glyphs", "/overlay.manifest"]) {
+    const entries = fixture(RELEASE_OVERLAY_REVISION),
+      index = entries.findIndex((entry) => entry.path.endsWith(suffix)),
+      data = encode("wrong\n");
+    entries[index] = {
+      ...entries[index],
+      size: data.length,
+      async *chunks() {
+        yield data;
+      },
+    };
+    await assert.rejects(inspectProductionAstcEntries(entries, releaseBinding));
+  }
+});
+test("b811 streams still enforce modes, complete sizes, late errors and cancellation", async () => {
+  const releaseBinding = { ...binding, recipeRevision: RELEASE_OVERLAY_REVISION };
+  for (const change of [
+    (entry) => ({ ...entry, mode: 0o100755 }),
+    (entry) => ({ ...entry, size: entry.size + 1 }),
+    (entry) => ({
+      ...entry,
+      async *chunks() {
+        yield new Uint8Array(entry.size);
+        throw new Error("LATE_PRODUCER");
+      },
+    }),
+  ]) {
+    const entries = fixture(RELEASE_OVERLAY_REVISION);
+    entries[1] = change(entries[1]);
+    await assert.rejects(inspectProductionAstcEntries(entries, releaseBinding));
+  }
+  const entries = fixture(RELEASE_OVERLAY_REVISION),
+    controller = new AbortController(),
+    last = entries.at(-1),
+    chunks = last.chunks;
+  entries[entries.length - 1] = {
+    ...last,
+    async *chunks() {
+      yield* chunks();
+      controller.abort();
+    },
+  };
+  await assert.rejects(
+    inspectProductionAstcEntries(entries, releaseBinding, { signal: controller.signal }),
+    { name: "AbortError" },
+  );
 });
 test("binding extends only exact eleven extras and does not mutate default profile", async () => {
   const entries = fixture(),

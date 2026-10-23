@@ -4,6 +4,7 @@
  * 原生资源顺序；所有读取器均来自已认证提取。
  * Native asset ordering; all readers come from authenticated extraction.
  */
+import { resolveShellProfile } from "./shell-profiles.mjs";
 import { readAuthenticatedAssets } from "./extraction-job-adapter.mjs";
 import { generateNativeArt } from "./native-art-generator.mjs";
 import { generateHud } from "./hud-generator.mjs";
@@ -30,6 +31,8 @@ const failCleanup = () => {
 };
 
 export function createProductionAssetAdapter({ runtime, profile, prebuiltPack }) {
+  if (typeof profile?.profileId !== "string") throw new Error("PRODUCTION_ASSET_PROFILE");
+  const { assetRecipe } = resolveShellProfile(profile.profileId);
   prebuiltPack = snapshotPrebuiltPackMetadata(prebuiltPack);
   let astcBinding;
   const owned = [],
@@ -83,6 +86,7 @@ export function createProductionAssetAdapter({ runtime, profile, prebuiltPack })
           metadata: profile.hud,
           metadataSha256: profile.hudSha256,
           mode: "switch-upscaled",
+          recipeRevision: assetRecipe.artRevision,
           signal,
         });
         const hudFiles = fileViews(hud.files);
@@ -126,6 +130,8 @@ export function createProductionAssetAdapter({ runtime, profile, prebuiltPack })
         };
         pipeline = createAssetPipelineAdapter({
           mapGoal: true,
+          artRecipeRevision: assetRecipe.artRevision,
+          overlayRecipeRevision: assetRecipe.overlayRevision,
           mercenaryArt: true,
           remainingArt: true,
           nativeOverlayGenerated: generated,

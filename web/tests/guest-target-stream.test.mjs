@@ -224,6 +224,9 @@ test("expected SDK and parsed plist minimum must agree with the executable", asy
 test("canonical generated plist streams exactly and binds to the closed profile", async () => {
   for (const [profileId, minimumVersion] of [
     [undefined, "26.0.0"],
+    ["v2.0.0-ios26", "26.0.0"],
+    ["v2.0.0-ios18", "18.0.0"],
+    ["v1.0.18-ios26", "26.0.0"],
     ["v1.0.18-ios18", "18.0.0"],
   ]) {
     const bytes = new TextEncoder().encode(guestInfoPlist(undefined, { profileId }));
@@ -231,7 +234,7 @@ test("canonical generated plist streams exactly and binds to the closed profile"
       assert.deepEqual(await inspectGuestPlist(entry(bytes, split), { profileId }), {
         minimumVersion,
       });
-    const otherProfile = profileId ? undefined : "v1.0.18-ios18";
+    const otherProfile = minimumVersion === "18.0.0" ? "v2.0.0-ios26" : "v2.0.0-ios18";
     await assert.rejects(
       inspectGuestPlist(entry(bytes), { profileId: otherProfile }),
       /GUEST_PLIST/,

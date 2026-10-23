@@ -176,3 +176,34 @@ test("shared signing and ASTC bytes cannot drag an unselected optional payload i
   ])
     assert.equal(validateRuntimeAssetGroups(records).get(runtimeContentKey(shared)), "");
 });
+
+test("two v2-sized synthetic archives each own one transport payload, without legacy archives", () => {
+  const assets = [],
+    contents = new Map();
+  for (const [path, size, fill] of [
+    ["common/metadata.json", 32, 1],
+    ["profile/shell.zip", 4856775, 2],
+    ["profile/shell-ios18.zip", 4852823, 3],
+  ]) {
+    const data = Buffer.alloc(size, fill),
+      record = { path, bytes: data.length, sha256: sha(data) };
+    assets.push(record);
+    contents.set(runtimeContentKey(record), { ...record, data });
+  }
+  const { transport, payloads } = createRuntimeTransport(contents, { assets });
+  const files = validateRuntimeTransport(manifest(assets, transport));
+  for (const file of files.values()) verifyTransportPayload(file, payloads.get(file.path));
+  assert.equal(files.size, 3);
+  const archiveFiles = new Set();
+  for (const asset of assets.filter((asset) => asset.path.startsWith("profile/"))) {
+    const entry = transport.entries.find(
+      (entry) => runtimeContentKey(entry) === runtimeContentKey(asset),
+    );
+    assert.equal(entry.offset, 0);
+    assert.equal(files.get(entry.file).entries.length, 1);
+    assert.equal(files.get(entry.file).decodedBytes, asset.bytes);
+    archiveFiles.add(entry.file);
+  }
+  assert.equal(archiveFiles.size, 2);
+  assert.ok(!assets.some((asset) => asset.path.includes("legacy-shell")));
+});

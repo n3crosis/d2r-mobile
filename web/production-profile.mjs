@@ -4,8 +4,10 @@ import {
   validateAstcOutputs,
   validateLegacyPackMetadata,
   validateCascArchiveName,
+  astcOutputPaths,
   ASTC_OUTPUT_LIMITS,
 } from "./astc-output-validator.mjs";
+import { LEGACY_OVERLAY_REVISION } from "./toolchain/overlay-recipe-js/revision.mjs";
 import { validateShellContract } from "./shell-contract.mjs";
 import { resolveShellProfile } from "./shell-profiles.mjs";
 import { loadShaderCatalog } from "./shader-catalog-adapter.mjs";
@@ -94,6 +96,7 @@ export async function loadProductionProfile(runtime, { signal, profileId } = {})
   );
   return {
     profileId: selected.id,
+    assetRecipe: selected.assetRecipe,
     guestTarget,
     contentPin,
     contentMode: "optional-warlock",
@@ -123,8 +126,11 @@ export async function loadProductionProfile(runtime, { signal, profileId } = {})
  */
 export async function inspectProductionAstcEntries(entries, binding, { signal } = {}) {
   signal?.throwIfAborted();
-  if (!Array.isArray(entries) || entries.length !== 11 || !binding?.overlayArchives)
+  if (!Array.isArray(entries) || !binding?.overlayArchives)
     throw new Error("PRODUCTION_ASTC_INVENTORY");
+  const { recipeRevision = LEGACY_OVERLAY_REVISION } = binding;
+  const expected = astcOutputPaths({ overlayArchives: binding.overlayArchives, recipeRevision });
+  if (entries.length !== expected.length) throw new Error("PRODUCTION_ASTC_INVENTORY");
   const pack = validateLegacyPackMetadata(binding.pack);
   const overlayArchives = Object.freeze({
     base: validateCascArchiveName(binding.overlayArchives.base),
@@ -152,17 +158,28 @@ export async function inspectProductionAstcEntries(entries, binding, { signal } 
         (totalBytes += entry.size) > ASTC_OUTPUT_LIMITS.totalBytes
       )
         throw new Error("PRODUCTION_ASTC_ENTRY");
-      const metadata = entry.path === "romfs_overlay_astc/pack.json";
+      const metadata = entry.path === "romfs_overlay_astc/pack.json",
+        marker = entry.path.endsWith("/xbox_glyphs"),
+        manifest = entry.path.endsWith("/overlay.manifest");
       if (metadata && entry.size > ASTC_OUTPUT_LIMITS.packJsonBytes)
         throw new Error("PRODUCTION_ASTC_PACK_JSON");
+      if (
+        (marker && entry.size > ASTC_OUTPUT_LIMITS.markerBytes) ||
+        (manifest && entry.size > ASTC_OUTPUT_LIMITS.manifestBytes)
+      )
+        throw new Error("PRODUCTION_ASTC_METADATA");
       const prefix = new Uint8Array(
         Math.min(
           entry.size,
           metadata
             ? ASTC_OUTPUT_LIMITS.packJsonBytes
-            : entry.path.endsWith("/features.txt")
-              ? 11
-              : 1,
+            : marker
+              ? ASTC_OUTPUT_LIMITS.markerBytes
+              : manifest
+                ? ASTC_OUTPUT_LIMITS.manifestBytes
+                : entry.path.endsWith("/features.txt")
+                  ? 11
+                  : 1,
         ),
       );
       files[entry.path] = prefix;
@@ -186,7 +203,7 @@ export async function inspectProductionAstcEntries(entries, binding, { signal } 
     }
     // 验证器只检查这些内容前缀；真实大小和总预算已在上面独立验证。
     // The validator examines only these content prefixes; actual sizes and total budgets were independently checked above.
-    const validation = validateAstcOutputs({ files, pack, overlayArchives });
+    const validation = validateAstcOutputs({ files, pack, overlayArchives, recipeRevision });
     return Object.freeze({ ...validation, totalBytes, overlayArchives });
   } finally {
     for (const bytes of Object.values(files)) bytes.fill(0);
@@ -194,11 +211,18 @@ export async function inspectProductionAstcEntries(entries, binding, { signal } 
 }
 
 /**
- * 生成完成后才扩展外壳契约，只加入通过清单、流边界和前缀结构检查的十一个精确文件名；这不是归档内容认证，原配置保持不变。
- * Extend the shell contract only after inventory, stream-boundary and prefix-structure checks on eleven exact filenames; this does not authenticate archive contents and leaves the original profile unchanged.
+ * 生成完成后才扩展外壳契约，只加入与封闭配方匹配并通过清单、流边界和结构检查的精确文件名；这不是归档内容认证，原配置保持不变。
+ * Extend the shell contract only after exact closed-recipe inventory, stream and structure checks; this does not authenticate archive contents and leaves the original profile unchanged.
  */
 export async function bindProductionAstcEntries(profile, entries, binding, options) {
   if (profile.astcOutput) throw new Error("PRODUCTION_ASTC_ALREADY_BOUND");
+  const expectedRevision =
+    profile.profileId === undefined
+      ? LEGACY_OVERLAY_REVISION
+      : resolveShellProfile(profile.profileId).assetRecipe.overlayRevision;
+  const recipeRevision =
+    binding?.recipeRevision === undefined ? LEGACY_OVERLAY_REVISION : binding.recipeRevision;
+  if (recipeRevision !== expectedRevision) throw new Error("PRODUCTION_ASTC_RECIPE_BINDING");
   const astcOutput = await inspectProductionAstcEntries(entries, binding, options);
   const trustedRecipe = Object.freeze({
     ...profile.trustedShell.trustedRecipe,

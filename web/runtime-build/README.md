@@ -3,7 +3,7 @@
 This is a **build path**, not another test workflow. It joins the existing exact-source
 builds into one bounded public runtime directory. No game files, keys,
 real shader inputs or private-input fixtures are read or packaged. The public
-v1.0.18 shell archive is downloaded from its exact official release URL and
+v2.0.0 iOS 26 and iOS 18 shell archives are downloaded from their exact official release URLs and
 verified against the recorded byte count and publisher-pinned SHA-256; including
 it does not assert production compatibility. It does not enable
 the application or claim an end-to-end IPA.

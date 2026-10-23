@@ -66,9 +66,9 @@ test("static import checks accept equivalent formatting but not comments, types 
     );
 });
 
-test("only the 88 audited source-only assets are rejected; live assets and proof records remain", () => {
-  assert.equal(SOURCE_ONLY_RUNTIME_ASSETS.length, 88);
-  assert.equal(new Set(SOURCE_ONLY_RUNTIME_ASSETS).size, 88);
+test("only the 90 audited source-only assets are rejected; live assets and proof records remain", () => {
+  assert.equal(SOURCE_ONLY_RUNTIME_ASSETS.length, 90);
+  assert.equal(new Set(SOURCE_ONLY_RUNTIME_ASSETS).size, 90);
   assert.ok(Object.isFrozen(SOURCE_ONLY_RUNTIME_ASSETS));
   for (const path of SOURCE_ONLY_RUNTIME_ASSETS)
     assert.throws(() => assertNoSourceOnlyRuntimeAsset(path), /Source-only module/);
@@ -83,6 +83,14 @@ test("only the 88 audited source-only assets are rejected; live assets and proof
     "toolchain/offline-runtime-spike/dotnet-dist/worker.mjs",
     "toolchain/offline-runtime-spike/dotnet-dist/manifest.json",
     "toolchain/asset-runtime-js/dist/licenses/spark-md5-LICENSE.txt",
+    "toolchain/shell-release-evidence/v2.0.0.json",
+    "toolchain/shell-release-evidence/v2.0.0-ios18.json",
+    "toolchain/shell-release-evidence/v2.0.0-derived-capacities.json",
+    "toolchain/shell-release-evidence/v2.0.0-ios18-derived-capacities.json",
+    "toolchain/program-rewrite-spike/dist/toolchain/shell-release-evidence/v2.0.0.json",
+    "toolchain/program-rewrite-spike/dist/toolchain/shell-release-evidence/v2.0.0-ios18.json",
+    "toolchain/program-rewrite-spike/dist/toolchain/shell-release-evidence/v2.0.0-derived-capacities.json",
+    "toolchain/program-rewrite-spike/dist/toolchain/shell-release-evidence/v2.0.0-ios18-derived-capacities.json",
     "toolchain/shell-release-evidence/v1.0.18-derived-capacities.mjs",
     "toolchain/program-rewrite-spike/dist/toolchain/shell-release-evidence/v1.0.18-derived-capacities.mjs",
   ])

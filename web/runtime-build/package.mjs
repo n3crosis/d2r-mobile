@@ -43,23 +43,23 @@ const hash = (value) => createHash("sha256").update(value).digest("hex");
 export const SHELL_BUILD_INPUTS = Object.freeze(
   [
     {
-      profileId: "v1.0.18-ios26",
+      profileId: "v2.0.0-ios26",
       sourceUrl:
-        "https://github.com/jhaizhou-ops/d2r-mobile/releases/download/v1.0.18/D2RMobile-shell-build-input.zip",
-      bytes: 4884778,
-      sha256: "a383552871851ddb5923033639358e2a3c205ae411676e6538cd098743bbe37b",
+        "https://github.com/jhaizhou-ops/d2r-mobile/releases/download/v2.0.0/D2RMobile-shell-build-input.zip",
+      bytes: 4856775,
+      sha256: "bc1152694d9a00eef680dd07f8ea31419be5ff4d0437d8298d3772e57cc92c94",
       archivePath: "profile/shell.zip",
-      evidencePath: "toolchain/shell-release-evidence/v1.0.18.json",
+      evidencePath: "toolchain/shell-release-evidence/v2.0.0.json",
       metadataPath: "profile/shell.json",
     },
     {
-      profileId: "v1.0.18-ios18",
+      profileId: "v2.0.0-ios18",
       sourceUrl:
-        "https://github.com/jhaizhou-ops/d2r-mobile/releases/download/v1.0.18/D2RMobile-shell-ios18-build-input.zip",
-      bytes: 4880624,
-      sha256: "e52c119ffacf8aaafd9457f92b8e57384ab04c7ce289eecd84972743d14570e4",
+        "https://github.com/jhaizhou-ops/d2r-mobile/releases/download/v2.0.0/D2RMobile-shell-ios18-build-input.zip",
+      bytes: 4852823,
+      sha256: "b2d1e3b48c0b15f773b4ea94290fde08039fd123c21be98c55b00da8df55ada5",
       archivePath: "profile/shell-ios18.zip",
-      evidencePath: "toolchain/shell-release-evidence/v1.0.18-ios18.json",
+      evidencePath: "toolchain/shell-release-evidence/v2.0.0-ios18.json",
       metadataPath: "profile/shell-ios18.json",
     },
   ].map((input) => {
@@ -77,9 +77,13 @@ export const SHELL_BUILD_INPUTS = Object.freeze(
     });
   }),
 );
-// 保留两处已发布的外壳来源证据；前端和封闭工作线程已包含配置模块，不再传输其原始副本。
-// Retain both published shell-provenance layouts; registry modules are already bundled into the frontend and closed workers.
+// 保留当前和显式旧配置的来源证据；只打包当前的两个外壳归档，配置模块已包含在前端和工作线程中。
+// Retain current and explicit legacy provenance; bundle only the two current archives, with registry modules already in frontend and workers.
 const shellProfileSources = [
+  "toolchain/shell-release-evidence/v2.0.0.json",
+  "toolchain/shell-release-evidence/v2.0.0-derived-capacities.json",
+  "toolchain/shell-release-evidence/v2.0.0-ios18.json",
+  "toolchain/shell-release-evidence/v2.0.0-ios18-derived-capacities.json",
   "toolchain/shell-release-evidence/v1.0.18.json",
   "toolchain/shell-release-evidence/v1.0.18-derived-capacities.mjs",
   "toolchain/shell-release-evidence/v1.0.18-ios18.json",

@@ -299,6 +299,8 @@ test("closed profiles preserve default bytes and bind legacy minimum, SDK, plist
   );
   for (const [profileId, minimum] of [
     [DEFAULT_SHELL_PROFILE_ID, "26.0"],
+    ["v2.0.0-ios18", "18.0"],
+    ["v1.0.18-ios26", "26.0"],
     ["v1.0.18-ios18", "18.0"],
   ]) {
     const bytes = await buildGuestFramework(modules, { ...options, profileId });
@@ -332,7 +334,7 @@ test("closed profiles preserve default bytes and bind legacy minimum, SDK, plist
           .digest(),
       );
     }
-    if (profileId !== DEFAULT_SHELL_PROFILE_ID) {
+    if (minimum === "18.0") {
       assert.notDeepEqual(bytes, baseline);
       assert.deepEqual(
         bytes.subarray(PAGE_SIZE, p.signatureOffset),

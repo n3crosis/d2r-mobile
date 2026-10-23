@@ -16,7 +16,11 @@ import {
   isProgramCompatibilityDiagnosticCode,
 } from "../program-compatibility.mjs";
 import { createProgramRewriterAdapter } from "../program-rewriter-adapter.mjs";
-import { resolveShellProfile, SHELL_PROFILE_IDS } from "../shell-profiles.mjs";
+import {
+  resolveShellProfile,
+  SHELL_PROFILE_IDS,
+  BUNDLED_SHELL_PROFILE_IDS,
+} from "../shell-profiles.mjs";
 import { createJavaScriptProgramRewriter } from "../toolchain/program-rewrite-spike/js/rewrite.mjs";
 
 const knownDigests = Object.fromEntries(
@@ -78,7 +82,7 @@ test("compatibility catalog stays honest, frozen and explicitly binds each shell
   );
   assert.deepEqual(
     PROGRAM_COMPATIBILITY.shellProfiles.map((profile) => profile.id),
-    SHELL_PROFILE_IDS,
+    BUNDLED_SHELL_PROFILE_IDS,
   );
   for (const summary of PROGRAM_COMPATIBILITY.shellProfiles) {
     const profile = resolveShellProfile(summary.id);
