@@ -29,9 +29,10 @@ import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { resolve, relative, sep } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { verifyAirCompilerAssets } from "./air-compiler-assets.mjs";
+import { verifyAirCompilerAssets, airCompilerProvenanceAssets } from "./air-compiler-assets.mjs";
 import {
   AIR_COMPILER_RUNTIME,
+  airCompilerReceiptOutput,
   airCompilerRuntimeComponent,
   runtimeAssetMaximumBytes,
 } from "../air-compiler-runtime-contract.mjs";
@@ -267,17 +268,13 @@ export async function assembleRuntime({ build } = {}) {
     // 实际模块、WASM 和来源凭据在同一顶层哈希闭包中；绝不接受仅含源码的替代品。
     // Actual module, WASM, and provenance share the top-level hash closure; source-only substitutes are rejected.
     for (const path of [AIR_COMPILER_RUNTIME.factory, AIR_COMPILER_RUNTIME.wasm])
-      await copy(path, airCompilerReport.files[path.split("/").at(-1)]);
+      await copy(path, airCompilerReceiptOutput(airCompilerReport, path.split("/").at(-1)));
     const airReceiptBytes = await readFile(resolve(web, AIR_COMPILER_RUNTIME.receipt));
     if (!isDeepStrictEqual(JSON.parse(airReceiptBytes), airCompilerReport))
       throw new Error("AIR compiler receipt changed during packaging");
     await add(AIR_COMPILER_RUNTIME.receipt, airReceiptBytes, AIR_COMPILER_RUNTIME.receipt);
-    await copy("toolchain/metal-air-compiler/manifest.json", {
-      bytes: (await readFile(resolve(web, "toolchain/metal-air-compiler/manifest.json"))).length,
-      sha256: airCompilerReport.sourceManifestSha256,
-    });
-    await copy("toolchain/metal-air-compiler/THIRD_PARTY_NOTICES.md");
-    await licenseDirectory("toolchain/metal-air-compiler/licenses");
+    for (const record of await airCompilerProvenanceAssets(airCompilerReport))
+      await copy(record.path, record);
     const offline = "toolchain/offline-runtime-spike";
     await sealed(`${offline}/dist`, { bootstrap: false });
     await sealed(ASSET_RUNTIME_DIRECTORY, {

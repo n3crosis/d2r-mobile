@@ -1,254 +1,109 @@
-// 同一 CI 作业交付完整对应源码；只准备公开源码，不执行 LLVM 编译或读取游戏输入。
-// Deliver complete corresponding source in the same CI job; prepare public source only, never compile LLVM or read game inputs.
+// Mirror the exact authenticated full fork source and installed SDK runtime sources.
+// Never reconstruct, patch, rebuild or execute compiler inputs here.
+import { Buffer } from "node:buffer";
 import process from "node:process";
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
-import {
-  appendFile,
-  copyFile,
-  lstat,
-  mkdir,
-  mkdtemp,
-  open,
-  readFile,
-  rename,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { isDeepStrictEqual } from "node:util";
+import { appendFile, lstat, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
-import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { airCompilerSourceIdentity, verifyAirCompilerAssets } from "./air-compiler-assets.mjs";
-
+import { readFreshAirReleaseMetadata, readFreshAirReleaseAsset } from "./air-release-loader.mjs";
+import { verifyFreshAirReceipt } from "./air-release-contract.mjs";
+import { boundedReleaseRead } from "./air-release-transport.mjs";
+import { verifyAirCompilerAssets } from "./air-compiler-assets.mjs";
 const root = fileURLToPath(new URL("../../", import.meta.url));
-const prefix = "web/toolchain/metal-air-compiler/";
-const downloads = join(root, "web/runtime-build/.build/air-compiler-source-download");
-const archive = join(downloads, "upstream.tar.gz");
 const args = process.argv.slice(2);
-const index = args.indexOf("--output");
-if (index < 0 || !args[index + 1] || args[index + 1].startsWith("--"))
-  throw new Error("Provide --output for the separate corresponding-source artifact");
-const output = resolve(args[index + 1]);
+if (args.length !== 2 || args[0] !== "--output" || args[1].startsWith("--"))
+  throw new Error("Usage: prepare-air-compiler-source.mjs --output DIRECTORY");
+const output = resolve(args[1]);
 try {
   await lstat(output);
   throw new Error("Source artifact output must not already exist");
 } catch (error) {
   if (error.code !== "ENOENT") throw error;
 }
-const identity = await airCompilerSourceIdentity();
+const metadata = await readFreshAirReleaseMetadata({ download: true });
 const compiler = await verifyAirCompilerAssets();
-if (compiler.sourceFingerprintSha256 !== identity.sourceFingerprintSha256)
-  throw new Error("Source artifact does not match the verified compiler");
-const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
-async function digestFile(path, maximum) {
-  const info = await lstat(path);
-  if (!info.isFile() || info.isSymbolicLink() || info.size < 1 || info.size > maximum)
-    throw new Error("Invalid bounded source artifact file");
-  const digest = createHash("sha256");
-  let bytes = 0;
-  for await (const chunk of createReadStream(path)) {
-    bytes += chunk.length;
-    if (bytes > maximum) throw new Error("Source artifact input grew beyond its cap");
-    digest.update(chunk);
-  }
-  if (bytes !== info.size) throw new Error("Source artifact input changed while reading");
-  return { bytes, sha256: digest.digest("hex") };
-}
-function run(command, arguments_, options = {}) {
-  const result = spawnSync(command, arguments_, {
-    cwd: root,
-    encoding: "utf8",
-    timeout: 15 * 60_000,
-    maxBuffer: 16 * 1024 * 1024,
-    ...options,
-  });
-  if (result.error || result.status !== 0)
-    throw new Error(`Source preparation failed: ${result.error?.message ?? result.stderr}`);
-  return result.stdout;
-}
-await mkdir(downloads, { recursive: true });
-const directoryInfo = await lstat(downloads);
-if (!directoryInfo.isDirectory() || directoryInfo.isSymbolicLink())
-  throw new Error("Source download cache must be a regular directory");
-let exists = true;
-try {
-  await lstat(archive);
-} catch (error) {
-  if (error.code !== "ENOENT") throw error;
-  exists = false;
-}
-if (!exists) {
-  const temporary = await mkdtemp(join(downloads, ".download-"));
-  const pending = join(temporary, "upstream.tar.gz");
-  try {
-    const response = await fetch(identity.manifest.archiveUrl, {
-      signal: AbortSignal.timeout(10 * 60_000),
-    });
-    if (!response.ok || !response.body) throw new Error("Pinned source download failed");
-    const file = await open(pending, "wx");
-    let bytes = 0;
-    try {
-      for await (const chunk of response.body) {
-        bytes += chunk.length;
-        if (bytes > 256 * 1024 * 1024) throw new Error("Pinned source archive exceeded cap");
-        await file.writeFile(chunk);
-      }
-    } finally {
-      await file.close();
-    }
-    if ((await digestFile(pending, 256 * 1024 * 1024)).sha256 !== identity.manifest.archiveSha256)
-      throw new Error("Pinned source archive digest mismatch");
-    await rename(pending, archive);
-  } finally {
-    await rm(temporary, { recursive: true, force: true });
-  }
-}
-// 缓存中的归档仍须匹配仓库固定摘要；绝不信任归档自报的哈希或静默替换损坏缓存。
-// Cached archives must match the repository pin, never a self-reported hash or silent replacement of corrupt cache data.
-const archiveRecord = await digestFile(archive, 256 * 1024 * 1024);
-if (archiveRecord.sha256 !== identity.manifest.archiveSha256)
-  throw new Error("Cached upstream source archive digest mismatch");
-const temporary = await mkdtemp(join(tmpdir(), "d2r-air-source-"));
-const staging = join(temporary, "artifact");
-try {
-  // 只从固定公开归档重建并检查补丁树；绝不打包现有工作目录的未知文件或编译对象。
-  // Reconstruct and check the patch tree from pinned public bytes; never package unknown files or objects from an existing work directory.
-  run(process.execPath, [
-    join(root, prefix, "toolchain.mjs"),
-    "prepare",
-    "--archive",
-    archive,
-    "--work",
-    join(temporary, "source-check"),
-  ]);
-  await mkdir(staging);
-  const records = [];
-  async function copy(path, source = join(root, path), maximum = 16 * 1024 * 1024) {
-    if (
-      !/^[A-Za-z0-9_.+/-]+$/.test(path) ||
-      path.split("/").some((part) => !part || part === "." || part === "..")
-    )
-      throw new Error("Invalid source artifact path");
-    const expected = await digestFile(source, maximum);
-    const target = join(staging, path);
-    await mkdir(dirname(target), { recursive: true });
-    await copyFile(source, target);
-    const actual = await digestFile(target, maximum);
-    if (actual.bytes !== expected.bytes || actual.sha256 !== expected.sha256)
-      throw new Error("Source file changed while copying");
-    records.push({ path, ...actual });
-  }
-  await copy("upstream.tar.gz", archive, 256 * 1024 * 1024);
-  const paths = new Set([
-    ...run("git", ["ls-files", "-z", "--", prefix]).split("\0").filter(Boolean),
-    "LICENSE",
-    ".github/workflows/verify.yml",
-    "web/air-compiler-runtime-contract.mjs",
-    "web/air-compiler-contract.mjs",
-    "web/shader-diagnostics.mjs",
-    "web/air-compiler-adapter.mjs",
-    "web/compiled-shader-boundary.mjs",
-    "web/runtime-build/air-compiler-assets.mjs",
-    "web/runtime-build/build-air-compiler.mjs",
-    "web/runtime-build/prepare-air-compiler-source.mjs",
-    "web/runtime-build/prepare-air-compiler-diagnostic.mjs",
-    "web/runtime-build/README.md",
-  ]);
-  for (const path of [...paths].sort()) await copy(path);
-  const copied = new Map(records.map((entry) => [entry.path, entry]));
-  for (const [path, digest] of Object.entries(identity.sourceInputs))
-    if (copied.get(prefix + path)?.sha256 !== digest)
-      throw new Error("Corresponding source input differs from compiler receipt");
-  if (copied.get(prefix + "manifest.json")?.sha256 !== identity.sourceManifestSha256)
-    throw new Error("Corresponding source manifest changed");
-  await copy("compiler-build-report.json", join(root, prefix, "dist/build-report.json"));
-  if (
-    JSON.stringify(JSON.parse(await readFile(join(staging, "compiler-build-report.json")))) !==
-    JSON.stringify(compiler)
+const source = await readFreshAirReleaseAsset(metadata, "correspondingSource", { download: true });
+const receipt = await boundedReleaseRead(
+  join(root, "web/toolchain/metal-air-compiler/dist/build-report.json"),
+  1024 ** 2,
+);
+if (
+  !isDeepStrictEqual(
+    verifyFreshAirReceipt(receipt, metadata.release, metadata.buildInputs),
+    compiler,
   )
-    throw new Error("Compiler receipt changed during source packaging");
-  const instructions = `Complete AIR compiler corresponding source / AIR 编译器完整对应源码
-
-upstream.tar.gz contains the complete pinned public upstream source archive.
-web/toolchain/metal-air-compiler contains every ordered patch, authored API/header,
-build recipe and license. All source bytes are delivered here, not promised for
-a future download. CI reconstructed the full patched tree and checked every
-manifest-listed modified file without compiling LLVM in this preparation step.
-
-upstream.tar.gz 包含完整的固定公开上游源码。工具包包含全部有序补丁、
-API/头文件、构建脚本及许可证。源码已全部交付，不以未来下载承诺代替。
-本步骤已重建并验证补丁树，不执行 LLVM 编译，不包含游戏输入或编译对象。
-
-From this extracted directory / 从解压后的本目录执行:
-node web/toolchain/metal-air-compiler/toolchain.mjs prepare --archive ./upstream.tar.gz --work ./source-work
-
-Developer rebuild only, after activating official Emscripten 4.0.20:
-仅开发者重建需要，先激活官方 Emscripten 4.0.20:
-node web/toolchain/metal-air-compiler/toolchain.mjs build-host-tools --work ./source-work --jobs 2
-node web/toolchain/metal-air-compiler/toolchain.mjs build-wasm --work ./source-work --jobs 2
-
-Linux, Node.js 24, a C++20 compiler, CMake, Ninja, Git and tar are developer tools,
-not browser-user compilation requirements. The exact SDK pin is in the included
-.github/workflows/verify.yml. Preserve all upstream notices, particularly the
-GPL-2-only compiler transforms; see THIRD_PARTY_NOTICES.md and licenses/ in the
-compiler package. No Apple SDK, Xcode or remote compiler is used.
-
-source-report.json binds every delivered file and the verified compiler source
-identity. Its independent digest is printed in the producing CI step's log.
-compiler-build-report.json matches the binary in the same run's web-preview or
-explicitly unvalidated air-compiler-diagnostic-unvalidated artifact. A diagnostic
-artifact is retained after CI failure, not a passing preview or compiler canary.
-Source availability does not establish browser, full-game or device validation.
-源码交付不代表浏览器、完整游戏或设备验证已完成。
-`;
-  await writeFile(join(staging, "BUILD_FROM_SOURCE.txt"), instructions);
-  records.push({
-    path: "BUILD_FROM_SOURCE.txt",
-    ...(await digestFile(join(staging, "BUILD_FROM_SOURCE.txt"), 16384)),
-  });
-  const current = await airCompilerSourceIdentity();
-  if (current.sourceFingerprintSha256 !== identity.sourceFingerprintSha256)
-    throw new Error("Compiler source changed while preparing corresponding source");
+)
+  throw new Error("Source mirror receipt differs from authenticated compiler");
+const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
+const revision = spawnSync("git", ["rev-parse", "HEAD"], {
+  cwd: root,
+  encoding: "utf8",
+  timeout: 10000,
+});
+if (revision.error || revision.status !== 0 || !/^[a-f0-9]{40}$/.test(revision.stdout.trim()))
+  throw new Error("Cannot determine source artifact consumer revision");
+await mkdir(dirname(output), { recursive: true });
+await mkdir(output);
+try {
+  const records = [];
+  async function put(path, bytes) {
+    await writeFile(join(output, path), bytes, { flag: "wx" });
+    const actual = await readFile(join(output, path));
+    if (actual.length !== bytes.length || sha(actual) !== sha(bytes))
+      throw new Error("Source artifact changed while copying");
+    records.push({ path, bytes: bytes.length, sha256: sha(bytes) });
+  }
+  await put(metadata.release.assets.correspondingSource.name, source.bytes);
+  await put("compiler-build-report.json", receipt);
+  await put("release-manifest.json", metadata.manifestBytes);
+  await put("build-inputs.json", metadata.buildInputsBytes);
+  await put(
+    "source-lock.json",
+    await boundedReleaseRead(
+      join(root, "web/toolchain/metal-air-compiler/dist/source-lock.json"),
+      1024 ** 2,
+    ),
+  );
+  await put("release-pin.json", Buffer.from(JSON.stringify(metadata.pin, null, 2) + "\n"));
+  await put(
+    "BUILD_FROM_SOURCE.txt",
+    Buffer.from(
+      `Complete corresponding source for AIR ${metadata.pin.version}\n\nThe included ${metadata.release.assets.correspondingSource.name} is the exact release source asset (SHA-256 ${metadata.release.assets.correspondingSource.sha256}). It includes the complete fork Git commit ${metadata.pin.commit}, artifact-only licensing notices and the installed Emscripten runtime source snapshot described by build-inputs.json. The archive preserves the producer's directory layout. Follow wasm/README.md and the pinned release workflow in that source tree to build.\n\nThe compiler was freshly built from https://github.com/${metadata.pin.repository}/tree/${metadata.pin.commit}. build-inputs.json and the unchanged compiler-build-report.json disclose the source, tooling and validation scope. release-manifest.json and release-pin.json bind every mirrored byte to the exact release. They do not claim bit-identical rebuilds or full application/device/GPU correctness.\n\nPreserve all original file-specific licenses and notices. This mirror step only verified/copied bytes; it did not compile LLVM or execute the compiler.\n`,
+    ),
+  );
   const report = {
-    version: 1,
-    sourceRevision: run("git", ["rev-parse", "HEAD"]).trim(),
-    sourceFingerprintSha256: identity.sourceFingerprintSha256,
+    version: 2,
+    kind: "pinned-release-source-mirror",
+    sourceRevision: revision.stdout.trim(),
+    sourceFingerprintSha256: compiler.sourceFingerprintSha256,
     sourceLanguage: compiler.sourceLanguage,
-    headerSha256: identity.headerSha256,
-    upstream: { url: identity.manifest.archiveUrl, ...archiveRecord },
-    reconstructedPatchedSourceVerified: true,
+    headerSha256: compiler.headerSha256,
+    completeReleaseSourceVerified: true,
+    installedSdkRuntimeSourcesIncluded: true,
     llvmCompiledByThisStep: false,
+    binaryBuiltFromNewFork: true,
+    release: metadata.pin,
+    correspondingSource: metadata.release.assets.correspondingSource,
     files: records.sort((a, b) => a.path.localeCompare(b.path)),
   };
-  const bytes = JSON.stringify(report, null, 2) + "\n";
-  const reportSha256 = sha(bytes);
-  await writeFile(join(staging, "source-report.json"), bytes);
-  await mkdir(dirname(output), { recursive: true });
-  // RUNNER_TEMP and the checkout can be different filesystems; only copied allowlisted files reach output.
-  await mkdir(output);
-  for (const path of [...records.map((entry) => entry.path), "source-report.json"]) {
-    await mkdir(dirname(join(output, path)), { recursive: true });
-    await copyFile(join(staging, path), join(output, path));
-  }
-  for (const entry of records) {
-    const actual = await digestFile(join(output, entry.path), 256 * 1024 * 1024);
-    if (actual.bytes !== entry.bytes || actual.sha256 !== entry.sha256)
-      throw new Error("Final corresponding-source artifact changed during copy");
-  }
-  if (sha(await readFile(join(output, "source-report.json"))) !== reportSha256)
-    throw new Error("Final source report digest mismatch");
+  const bytes = Buffer.from(JSON.stringify(report, null, 2) + "\n"),
+    digest = sha(bytes);
+  await writeFile(join(output, "source-report.json"), bytes, { flag: "wx" });
   if (process.env.GITHUB_OUTPUT)
-    await appendFile(process.env.GITHUB_OUTPUT, `source_report_sha256=${reportSha256}\n`);
+    await appendFile(process.env.GITHUB_OUTPUT, `source_report_sha256=${digest}\n`);
   console.log(
     JSON.stringify({
       directory: output,
-      sourceReportSha256: reportSha256,
-      files: records.length,
-      sourceFingerprintSha256: identity.sourceFingerprintSha256,
+      sourceReportSha256: digest,
+      sourceFingerprintSha256: compiler.sourceFingerprintSha256,
+      release: metadata.pin,
       llvmCompiled: false,
     }),
   );
-} finally {
-  await rm(temporary, { recursive: true, force: true });
+} catch (error) {
+  await rm(output, { recursive: true, force: true });
+  throw error;
 }

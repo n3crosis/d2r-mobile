@@ -1,3 +1,5 @@
+> Historical D2R integration evidence. Compiler implementation now lives in the [reusable fork](https://github.com/n3crosis/floor_llvm); local API/patch/build paths in this record are historical. These results do not certify a fresh release. [Current integration](README.md).
+
 # Experimental authored math/header subset / 实验性数学与头文件子集
 
 This is a native-validated addition to the experimental compiler, not a claim of full MSL support, browser completion, or Apple runtime acceptance. It does not contain Apple SDK headers or user shader material.

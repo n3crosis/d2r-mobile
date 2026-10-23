@@ -100,7 +100,7 @@ Extract the artifact and serve its contents through HTTPS static hosting. Openin
 `index.html` through `file://` is not a supported folder-picker/runtime setup.
 This artifact contains the implemented packaging webpage and its public runtimes,
 not a generated game IPA. Generation is enabled after runtime/capability checks;
-no real game-input conversion or device execution has been demonstrated.
+on 2026-10-23, the maintainer reported successful generated-IPA execution on a real iOS device. The exact tested build, device/iOS version, input format and gameplay coverage were not specified. This report does not validate a fresh fork compiler release.
 Uploading the artifact does not publish it to the private hosted Site.
 Synthetic component results do not prove complete game processing, shell/device
 compatibility, installation or execution; see the delivery checklist.
@@ -113,6 +113,8 @@ and the distinction between built runtime files and a verified usable game IPA.
 Pyodide remains available for explicitly invoked local proofs and parity oracles,
 but it is not installed or packaged by the current public-runtime build.
 
-CI caches only the pinned Emscripten SDK's public download archives, not installed
-tools or project outputs. Fresh SDK source and compiler checks still run; see
+For non-AIR SDK provisioning, CI caches only pinned Emscripten download archives,
+not installed SDK tools. Separate AIR caches contain manifest-bound release artifacts
+and installed outputs; release/source/receipt authentication and the strict canary
+remain mandatory. See
 [SDK download cache](verification/SDK_CACHE.md) for scope and validation limits.

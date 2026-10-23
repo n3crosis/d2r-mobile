@@ -1,3 +1,5 @@
+> Historical D2R integration evidence. Compiler implementation now lives in the [reusable fork](https://github.com/n3crosis/floor_llvm); local API/patch/build paths in this record are historical. These results do not certify a fresh release. [Current integration](README.md).
+
 # Corpus-driven compiler source corrections
 
 ## Real-device update (2026-10-23) / 真机测试更新

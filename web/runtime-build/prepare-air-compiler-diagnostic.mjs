@@ -10,6 +10,8 @@ import { fileURLToPath } from "node:url";
 import { verifyAirCompilerAssets } from "./air-compiler-assets.mjs";
 import {
   AIR_COMPILER_OUTPUT_NAMES,
+  airCompilerReceiptOutput,
+  isFreshAirCompilerReceipt,
   airCompilerOutputMaximumBytes,
 } from "../air-compiler-runtime-contract.mjs";
 
@@ -29,7 +31,7 @@ export function validateDiagnosticSource(
   compiler,
   receipt,
   sourceBytes,
-  { sourceReportSha256, sourceFingerprintSha256, sourceRevision },
+  { sourceReportSha256, sourceFingerprintSha256, sourceRevision, releaseManifestSha256 },
 ) {
   if (
     !/^[a-f0-9]{64}$/.test(sourceReportSha256 ?? "") ||
@@ -43,12 +45,27 @@ export function validateDiagnosticSource(
   const source = JSON.parse(sourceBytes);
   const sourceReceipt = source.files?.find((entry) => entry.path === "compiler-build-report.json");
   if (
-    source.version !== 1 ||
+    (isFreshAirCompilerReceipt(compiler)
+      ? source.version !== 2 ||
+        source.kind !== "pinned-release-source-mirror" ||
+        source.completeReleaseSourceVerified !== true ||
+        source.installedSdkRuntimeSourcesIncluded !== true ||
+        source.binaryBuiltFromNewFork !== true ||
+        source.release?.repository !== compiler.repository ||
+        source.release.commit !== compiler.commit ||
+        source.release.version !== compiler.version ||
+        !/^[a-f0-9]{64}$/.test(releaseManifestSha256 ?? "") ||
+        source.release.manifestSha256 !== releaseManifestSha256 ||
+        source.files?.find((entry) => entry.path === "source-lock.json")?.sha256 !==
+          compiler.sourceLockSha256 ||
+        source.correspondingSource?.name !== `air-wasm-${compiler.version}-source.tar.gz` ||
+        source.files?.find((entry) => entry.path === source.correspondingSource.name)?.sha256 !==
+          source.correspondingSource.sha256
+      : source.version !== 1 || source.reconstructedPatchedSourceVerified !== true) ||
     source.sourceRevision !== sourceRevision ||
     source.sourceFingerprintSha256 !== sourceFingerprintSha256 ||
     source.headerSha256 !== compiler.headerSha256 ||
     source.sourceLanguage !== compiler.sourceLanguage ||
-    source.reconstructedPatchedSourceVerified !== true ||
     source.llvmCompiledByThisStep !== false ||
     sourceReceipt?.sha256 !== sha(receipt) ||
     sourceReceipt?.bytes !== receipt.length
@@ -66,6 +83,7 @@ async function prepare(output, sourcePath, environment = process.env) {
     sourceReportSha256,
     sourceFingerprintSha256: environment.D2R_AIR_COMPILER_SOURCE_FINGERPRINT,
     sourceRevision: environment.GITHUB_SHA,
+    releaseManifestSha256: environment.D2R_AIR_COMPILER_RELEASE_MANIFEST_SHA256,
   });
   const sourceArtifactId = environment.D2R_AIR_COMPILER_SOURCE_ARTIFACT_ID;
   if (!/^[1-9][0-9]*$/.test(sourceArtifactId ?? ""))
@@ -79,7 +97,10 @@ async function prepare(output, sourcePath, environment = process.env) {
     }
     for (const name of AIR_COMPILER_OUTPUT_NAMES) {
       const bytes = await boundedRead(join(cache, name), airCompilerOutputMaximumBytes(name));
-      if (bytes.length !== compiler.files[name].bytes || sha(bytes) !== compiler.files[name].sha256)
+      if (
+        bytes.length !== airCompilerReceiptOutput(compiler, name).bytes ||
+        sha(bytes) !== airCompilerReceiptOutput(compiler, name).sha256
+      )
         throw new Error("Diagnostic compiler output receipt mismatch");
       await put(name, bytes);
     }

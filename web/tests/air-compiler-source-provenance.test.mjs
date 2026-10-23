@@ -1,15 +1,29 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFile, readdir } from "node:fs/promises";
+import {
+  readFile,
+  readdir,
+  mkdtemp,
+  mkdir,
+  writeFile,
+  rm,
+  symlink,
+  truncate,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import test from "node:test";
-import { airCompilerSourceIdentity } from "../runtime-build/air-compiler-assets.mjs";
+import {
+  readForkSource,
+  readOriginalAirProvenance,
+  readReviewedSourceLock,
+} from "./fixtures/air-fork-source/fork-source.mjs";
 
 const root = new URL("../toolchain/metal-air-compiler/", import.meta.url);
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
 test("reviewed fragment liveness API, checker and public source keep their frozen identity", async () => {
   const expected = {
-    "api/air_compiler.cpp": "fce9a24557cca900398b2e7b9afbb853297a5d8bd034616d9c80b89a9d20981b",
     "check-fragment-input-liveness.mjs":
       "803d20dff3cda4ccbf66a45c7526881146bd27b5a805098fbfa9eaa0feddf71b",
     "check-fragment-input-reflection.mjs":
@@ -19,83 +33,247 @@ test("reviewed fragment liveness API, checker and public source keep their froze
   };
   for (const [path, sha256] of Object.entries(expected))
     assert.equal(hash(await readFile(new URL(path, root))), sha256, path);
-  const identity = await airCompilerSourceIdentity();
-  assert.equal(identity.sourceInputs["api/air_compiler.cpp"], expected["api/air_compiler.cpp"]);
+  assert.equal(
+    hash(await readForkSource("wasm/api/air_compiler.cpp")),
+    "5d06207b69e57435934bec8e4e67e71c014d6c890fe2ff625e96cc1d4dc7a448",
+  );
 });
 
 // Source-only provenance checks: no compiler artifact is loaded or executed.
-test("AIR source manifest authenticates every patch and every patched source path", async () => {
-  const manifest = JSON.parse(await readFile(new URL("manifest.json", root), "utf8"));
+test("fresh fork source lock authenticates all 50 inputs without claiming API byte equivalence", async () => {
+  const { manifest, receipt } = await readOriginalAirProvenance();
+  const lock = await readReviewedSourceLock();
+  assert.deepEqual(
+    lock.compilerFiles,
+    manifest.patchedFiles,
+    "all 31 reviewed compiler-core files are unchanged",
+  );
+  const inputs = {
+    ...lock.compilerFiles,
+    ...Object.fromEntries(
+      Object.entries(lock.sdkFiles).map(([path, sha]) => [`wasm/${path}`, sha]),
+    ),
+  };
+  assert.equal(Object.keys(inputs).length, 50);
+  for (const [path, sha256] of Object.entries(inputs)) {
+    assert.match(path, /^(?:clang|llvm|wasm)\/[A-Za-z0-9_.+/-]+$/);
+    assert(!path.split("/").includes(".."));
+    assert.equal(hash(await readForkSource(path)), sha256, path);
+  }
+  const sdkApiInputs = Object.keys(lock.sdkFiles).filter((path) => path.startsWith("api/"));
+  assert.equal(sdkApiInputs.length, 18, "compiler/API sources belong to the generic fork");
+  assert.notEqual(
+    lock.sdkFiles["api/air_compiler.cpp"],
+    receipt.sourceInputs["api/air_compiler.cpp"],
+  );
+  assert.notEqual(lock.sdkFiles["api/CMakeLists.txt"], receipt.sourceInputs["api/CMakeLists.txt"]);
+  for (const name of ["control_smoke.cpp", "header_smoke.cpp", "operations_smoke.h", "smoke.cpp"]) {
+    assert.equal(Object.hasOwn(lock.sdkFiles, `api/${name}`), false);
+    assert.equal(
+      hash(await readFile(new URL(`fixtures/native-api/${name}`, root))),
+      receipt.sourceInputs[`api/${name}`],
+      `relocated authored ${name}`,
+    );
+  }
+});
+
+test("original build provenance still binds the a2flo base and ten ordered patches", async () => {
+  const { manifest, receipt } = await readOriginalAirProvenance();
+  assert.equal(manifest.repository, "https://github.com/a2flo/floor_llvm");
+  assert.equal(manifest.commit, "4b173e3db383ec7164afb11ee7dc86609c88f052");
+  assert.equal(receipt.sourceCommit, manifest.commit);
+  assert.equal(manifest.patches.length, 10);
+  assert.equal(
+    receipt.sourceManifestSha256,
+    hash(
+      await readFile(new URL("fixtures/air-release-history/source-manifest.json", import.meta.url)),
+    ),
+  );
   const patchPaths = manifest.patches.map(({ path }) => path);
   assert.equal(new Set(patchPaths).size, patchPaths.length);
-  assert.deepEqual(
-    (await readdir(new URL("patches/", root)))
-      .filter((name) => name.endsWith(".patch"))
-      .map((name) => `patches/${name}`)
-      .sort(),
-    [...patchPaths].sort(),
-  );
-  const sourcePaths = new Set();
   for (const patch of manifest.patches) {
     assert.match(patch.path, /^patches\/[A-Za-z0-9_.+-]+\.patch$/);
-    const bytes = await readFile(new URL(patch.path, root));
-    assert.equal(hash(bytes), patch.sha256, patch.path);
-    const targets = [...bytes.toString("utf8").matchAll(/^\+\+\+ b\/(.+)$/gm)];
-    assert(targets.length > 0, `No source targets in ${patch.path}`);
-    for (const [, path] of targets) {
-      assert.match(path, /^[A-Za-z0-9_.+/-]+$/);
-      assert(!path.split("/").includes(".."));
-      assert.match(manifest.patchedFiles[path] ?? "", /^[a-f0-9]{64}$/, path);
-      sourcePaths.add(path);
-    }
+    assert.equal(receipt.sourceInputs[patch.path], patch.sha256, patch.path);
   }
-  assert.deepEqual([...sourcePaths].sort(), Object.keys(manifest.patchedFiles).sort());
+  assert.deepEqual(
+    Object.keys(receipt.sourceInputs).filter((path) => path.startsWith("patches/")),
+    patchPaths,
+  );
   for (const patch of manifest.rebaseProvenance.previousProjectPatches) {
     assert.match(patch.sha256, /^[a-f0-9]{64}$/);
     assert(patch.rebasedInto.length > 0);
     for (const target of patch.rebasedInto) assert(patchPaths.includes(target), target);
   }
-});
-
-test("AIR runtime source identity binds the complete manifest and all ordered patches", async () => {
-  const identity = await airCompilerSourceIdentity();
-  const manifestBytes = await readFile(new URL("manifest.json", root));
-  assert.equal(identity.sourceManifestSha256, hash(manifestBytes));
-  assert.equal(identity.sourceCommit, identity.manifest.commit);
-  for (const patch of identity.manifest.patches)
-    assert.equal(identity.sourceInputs[patch.path], patch.sha256, patch.path);
-  assert.deepEqual(
-    Object.keys(identity.sourceInputs)
-      .filter((path) => path.startsWith("patches/"))
-      .sort(),
-    identity.manifest.patches.map(({ path }) => path).sort(),
-  );
   assert.equal(
-    identity.sourceFingerprintSha256,
+    receipt.sourceFingerprintSha256,
     hash(
       JSON.stringify({
-        sourceManifestSha256: identity.sourceManifestSha256,
-        sourceInputs: identity.sourceInputs,
+        sourceManifestSha256: receipt.sourceManifestSha256,
+        sourceInputs: receipt.sourceInputs,
       }),
     ),
   );
 });
 
-test("stage-decorated resource storage changes only the missing-stage-in guard", async () => {
-  const patch = await readFile(
-    new URL("patches/0106-a2flo-corpus-compiler-fixes.patch", root),
+test("source review override rejects unknown, missing, tampered and symlinked blobs without fallback", async () => {
+  const reviewDirectory = await mkdtemp(join(tmpdir(), "air-source-review-"));
+  const options = { reviewDirectory };
+  const path = "wasm/api/air_compiler.cpp";
+  const target = join(reviewDirectory, path);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () => {
+    throw new Error("source-only review must not fetch or fall back");
+  };
+  try {
+    for (const path of [
+      "../manifest.json",
+      "/wasm/build.mjs",
+      "wasm//build.mjs",
+      "wasm/./build.mjs",
+    ])
+      await assert.rejects(readForkSource(path, options), /unsafe fork path/);
+    await assert.rejects(
+      readForkSource("wasm/unreviewed.cpp", options),
+      /No reviewed source identity/,
+    );
+    await assert.rejects(readForkSource(path, options), { code: "ENOENT" });
+    await assert.rejects(
+      readForkSource(path, { reviewDirectory: "" }),
+      /empty source review directory/,
+    );
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, "unreviewed source bytes");
+    await assert.rejects(readForkSource(path, options), /Reviewed fork source mismatch/);
+    await truncate(target, 0);
+    await assert.rejects(readForkSource(path, options), /source review blob size/);
+    await truncate(target, 16 * 1024 ** 2 + 1);
+    await assert.rejects(readForkSource(path, options), /source review blob size/);
+    await rm(target);
+    await mkdir(target);
+    await assert.rejects(
+      readForkSource(path, options),
+      /source review blob must be a regular file/,
+    );
+    await rm(target, { recursive: true });
+    await symlink(new URL("check-fragment-input-liveness.mjs", root), target);
+    await assert.rejects(
+      readForkSource(path, options),
+      /source review path must not traverse symlinks/,
+    );
+    await rm(target);
+    await rm(dirname(target), { recursive: true });
+    await mkdir(join(reviewDirectory, "redirected"));
+    await writeFile(
+      join(reviewDirectory, "redirected", "air_compiler.cpp"),
+      "unreviewed source bytes",
+    );
+    await symlink(join(reviewDirectory, "redirected"), dirname(target));
+    await assert.rejects(
+      readForkSource(path, options),
+      /source review path must not traverse symlinks/,
+    );
+    await writeFile(join(reviewDirectory, "wasm", "source-lock.json"), "{}");
+    await assert.rejects(
+      readForkSource("wasm/source-lock.json", options),
+      /Reviewed fork source mismatch/,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    await rm(reviewDirectory, { recursive: true, force: true });
+  }
+});
+
+test("review source-directory override is absent from production release modules", async () => {
+  for (const name of ["contract", "transport", "loader"]) {
+    const source = await readFile(
+      new URL(`../runtime-build/air-release-${name}.mjs`, import.meta.url),
+      "utf8",
+    );
+    assert.doesNotMatch(
+      source,
+      /D2R_AIR_SOURCE_REVIEW_DIR|fixtures\/air-fork-source|generic-no-added-license-labels/,
+    );
+  }
+});
+
+test("consumer removes compiler duplication but retains authored fixtures and receipt-bound browser smoke", async () => {
+  const entries = await readdir(root);
+  for (const obsolete of [
+    "api",
+    "patches",
+    "toolchain.mjs",
+    "manifest.json",
+    "header-identity.mjs",
+    "wasm-node-preflight.mjs",
+  ])
+    assert(!entries.includes(obsolete), `obsolete local compiler implementation: ${obsolete}`);
+  for (const retained of [
+    "ci-compile-canary.mjs",
+    "check-buffer-reflection.mjs",
+    "check-fragment-input-liveness.mjs",
+    "check-fragment-input-reflection.mjs",
+    "fixtures",
+  ])
+    assert(entries.includes(retained), `D2R regression coverage retained: ${retained}`);
+  assert.deepEqual((await readdir(new URL("fixtures/native-api/", root))).sort(), [
+    "control_smoke.cpp",
+    "header_smoke.cpp",
+    "operations_smoke.h",
+    "smoke.cpp",
+  ]);
+  const server = await readFile(new URL("browser-smoke-server.mjs", root), "utf8");
+  for (const marker of [
+    'args[0] !== "--build"',
+    'args[2] !== "--sha256"',
+    "await verifyAirCompilerAssets(build, args[3])",
+    "const { apiVersion, headerSha256 } = report",
+    'airCompilerReceiptOutput(report, "d2r_air_wasm.mjs").sha256',
+    'airCompilerReceiptOutput(report, "d2r_air_wasm.wasm").sha256',
+    'server.listen(0, "127.0.0.1"',
+    '"shader-diagnostics.mjs"',
+  ])
+    assert(server.includes(marker), marker);
+  assert(
+    server.indexOf("await verifyAirCompilerAssets(") < server.indexOf("const routes = new Map()"),
+  );
+  assert.doesNotMatch(server, /readAirHeaderIdentity|--api-source|api-build-wasm/);
+});
+
+test("source delivery mirrors exact fresh source and raw receipts without reconstructing a compiler", async () => {
+  const source = await readFile(
+    new URL("../runtime-build/prepare-air-compiler-source.mjs", import.meta.url),
     "utf8",
   );
-  const target = "--- a/clang/lib/CodeGen/CodeGenModule.cpp\n";
-  assert.equal(patch.split(target).length, 2, "exactly one CodeGenModule delta");
-  const codegen = patch.slice(patch.indexOf(target)).split(/(?=^--- a\/)/m)[0];
-  const nextHunk = codegen.indexOf("\n@@", codegen.indexOf("\n@@") + 1);
-  const delta = codegen.slice(0, nextHunk + 1);
-  assert.equal(hash(delta), "0163a4fcda09f30e754babc6e66874a67413017bd2c68411a29e88b01d8822dd");
-  const removed = delta
-    .split("\n")
-    .filter((line) => line.startsWith("-") && !line.startsWith("---"));
-  assert.deepEqual(removed, ["-\t\t\tif (has_msl_io(Base->getAsCXXRecordDecl())) {"]);
+  for (const marker of [
+    "readFreshAirReleaseMetadata({ download: true })",
+    'readFreshAirReleaseAsset(metadata, "correspondingSource", { download: true })',
+    "await verifyAirCompilerAssets()",
+    "verifyFreshAirReceipt(receipt, metadata.release, metadata.buildInputs)",
+    "await put(metadata.release.assets.correspondingSource.name, source.bytes)",
+    'await put("compiler-build-report.json", receipt)',
+    'await put("release-manifest.json", metadata.manifestBytes)',
+    'await put("build-inputs.json", metadata.buildInputsBytes)',
+    'kind: "pinned-release-source-mirror"',
+    "completeReleaseSourceVerified: true",
+    "installedSdkRuntimeSourcesIncluded: true",
+    "llvmCompiledByThisStep: false",
+    "binaryBuiltFromNewFork: true",
+  ])
+    assert(source.includes(marker), marker);
+  assert(source.indexOf("verifyFreshAirReceipt(receipt") < source.indexOf("await mkdir(output)"));
+  assert(
+    source.indexOf('readFreshAirReleaseAsset(metadata, "correspondingSource"') <
+      source.indexOf("await mkdir(output)"),
+  );
+  assert.doesNotMatch(
+    source,
+    /runToolchain|build-host-tools|build-wasm|reconstructedPatchedSourceVerified|originalCompleteSourceZipVerified/,
+  );
+});
+
+test("stage-decorated resource storage retains its exact reviewed missing-stage-in guard", async () => {
+  const source = await readForkSource("clang/lib/CodeGen/CodeGenModule.cpp");
+  assert.equal(hash(source), "24a2c4602921cb219f27ed3edc2db2db924c000109177e0dc3588155879da678");
   for (const guard of [
     "!Stage && (T->isPointerType() || T->isReferenceType())",
     "HasOnlyBufferBinding &= isa<MetalBufferBindingAttr>(A)",
@@ -105,29 +283,12 @@ test("stage-decorated resource storage changes only the missing-stage-in guard",
     "P->hasAttr<MetalThreadgroupBindingAttr>() && AS == LangAS::opencl_local",
     "!IsBoundBuffer && !IsBoundThreadgroup && has_msl_io",
   ])
-    assert(delta.includes(guard), guard);
-  const manifest = JSON.parse(await readFile(new URL("manifest.json", root), "utf8"));
-  assert.equal(
-    manifest.patchedFiles["clang/lib/CodeGen/CodeGenModule.cpp"],
-    "24a2c4602921cb219f27ed3edc2db2db924c000109177e0dc3588155879da678",
-  );
+    assert(source.includes(guard), guard);
 });
 
 test("ordinary buffer reflection uses reviewed AST layout without changing special paths", async () => {
-  const patch = await readFile(
-    new URL("patches/0106-a2flo-corpus-compiler-fixes.patch", root),
-    "utf8",
-  );
-  const target = "--- a/clang/lib/CodeGen/CodeGenModule.cpp\n";
-  const codegen = patch.slice(patch.indexOf(target)).split(/(?=^--- a\/)/m)[0];
-  const nextHunk = codegen.indexOf("\n@@", codegen.indexOf("\n@@") + 1);
-  const reflection =
-    target + "+++ b/clang/lib/CodeGen/CodeGenModule.cpp\n" + codegen.slice(nextHunk + 1);
-  // Composition shifts line numbers, not the three reviewed reflection edits.
-  assert.equal(
-    hash(reflection.replace(/^@@.*@@.*$/gm, "@@")),
-    "c71665339e34fd610dddd829de28609ecb6c5bebad587094fb9ce69677290442",
-  );
+  const source = await readForkSource("clang/lib/CodeGen/CodeGenModule.cpp");
+  assert.equal(hash(source), "24a2c4602921cb219f27ed3edc2db2db924c000109177e0dc3588155879da678");
   for (const guard of [
     "!is_indirect && !indirect_buffer && !align_vectors",
     "!parent_decl.hasAttr<GraphicsStageInputAttr>() && !struct_rdecl.isUnion()",
@@ -140,76 +301,45 @@ test("ordinary buffer reflection uses reviewed AST layout without changing speci
     "Context.getTypeAlignInChars(clang_pointee_type).getQuantity()",
     "indirect_buffer ? uint64_t(8u) : uint64_t(16u)",
   ])
-    assert(reflection.includes(guard), guard);
+    assert(source.includes(guard), guard);
 });
 
-test("AIR64 starts with final vector storage alignment and preparation enforces layout equality", async () => {
-  const patch = await readFile(
-    new URL("patches/0106-a2flo-corpus-compiler-fixes.patch", root),
-    "utf8",
+test("AIR64 initial/final storage layouts match and fork preparation enforces equality", async () => {
+  const target = await readForkSource("clang/lib/Basic/Targets/SPIR.h");
+  assert.equal(hash(target), "e90c20a141c7918f6d4c922f73965bfa2e4d540b17c62305665d0460f43ed48a");
+  const finalization = await readForkSource("llvm/lib/Transforms/LibFloor/MetalFinal.cpp");
+  const initialLayout = target.match(
+    /class LLVM_LIBRARY_VISIBILITY AIR64TargetInfo\b[\s\S]*?resetDataLayout\("([^"]+)"\);/,
   );
-  const target = "--- a/clang/lib/Basic/Targets/SPIR.h\n";
-  assert.equal(patch.split(target).length, 2);
-  const delta = patch.slice(patch.indexOf(target)).split(/(?=^--- a\/)/m)[0];
-  assert.equal(hash(delta), "20b2741f94eb2108bf4cefabf4c6a8c5743575ef77d8dee011bf00de83334353");
-  const before = delta.match(/^-\s*resetDataLayout\("([^"]+)"\);/m)?.[1];
-  const after = delta.match(/^\+\s*resetDataLayout\("([^"]+)"\);/m)?.[1];
-  assert(before && after);
-  assert(after.includes("v96:128:128"));
+  const finalLayouts = [...finalization.matchAll(/\bMod\.setDataLayout\("([^"]+)"\);/g)];
+  assert(initialLayout);
+  assert.equal(finalLayouts.length, 1);
+  assert.equal(initialLayout[1], finalLayouts[0][1]);
+  assert(initialLayout[1].includes("v96:128:128"));
   assert.deepEqual(
-    after.split("-").filter((part) => !part.startsWith("v")),
-    before.split("-").filter((part) => !part.startsWith("v")),
+    initialLayout[1].split("-").filter((part) => !part.startsWith("v")),
+    "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-n8:16:32".split(
+      "-",
+    ),
     "pointer, scalar and native-width layout clauses remain unchanged",
   );
-  const manifest = JSON.parse(await readFile(new URL("manifest.json", root), "utf8"));
-  assert.equal(
-    manifest.patchedFiles["clang/lib/Basic/Targets/SPIR.h"],
-    "e90c20a141c7918f6d4c922f73965bfa2e4d540b17c62305665d0460f43ed48a",
-  );
-  const toolchain = await readFile(new URL("toolchain.mjs", root), "utf8");
-  assert(toolchain.includes('join(source, "clang/lib/Basic/Targets/SPIR.h")'));
-  assert(toolchain.includes('join(source, "llvm/lib/Transforms/LibFloor/MetalFinal.cpp")'));
-  assert(toolchain.includes("AIR64TargetInfo"));
-  assert(
-    toolchain.includes("finalLayouts.length !== 1 || initialLayout[1] !== finalLayouts[0][1]"),
-  );
-  assert(
-    toolchain.includes('throw Error("AIR64 initial and final storage DataLayouts must match")'),
-  );
+  const build = await readForkSource("wasm/build.mjs");
+  assert(build.includes('join(source, "clang/lib/Basic/Targets/SPIR.h")'));
+  assert(build.includes('join(source, "llvm/lib/Transforms/LibFloor/MetalFinal.cpp")'));
+  assert(build.includes("AIR64TargetInfo"));
+  assert(build.includes("finalLayouts.length !== 1 || initialLayout[1] !== finalLayouts[0][1]"));
+  assert(build.includes('throw Error("AIR64 initial and final storage DataLayouts must match")'));
 });
 
 test("writer consumes unused fragment and position flags without changing prior corrections", async () => {
-  const patch = await readFile(
-    new URL("patches/0106-a2flo-corpus-compiler-fixes.patch", root),
-    "utf8",
-  );
-  const target = "--- a/llvm/lib/Bitcode/MetalLib/MetalLibReflection.cpp\n";
-  assert.equal(patch.split(target).length, 2);
-  const index = patch.indexOf(target);
+  const source = await readForkSource("llvm/lib/Bitcode/MetalLib/MetalLibReflection.cpp");
+  assert.equal(hash(source), "f57d14824b7beb9fc61f1cd527c06aea830302b8f46f840e657601d1b0e4e85b");
+  const flag =
+    /\} else if \(type_str == "air\.arg_unused"\) \{\s*\/\/ A zero-operand flag; preserve it in the serialized reflection\.\s*if \(node\.unused\.has_value\(\)\) return false;\s*node\.unused = true;\s*return true;/g;
   assert.equal(
-    hash(patch.slice(0, index)),
-    "dd41adc4403392216cb5a0a4ec0eda0e932ceea2e87a61bd380edd2af76a7a73",
-  );
-  const delta = patch.slice(index);
-  assert.equal(hash(delta), "06139a298d153d9a189b0618368155b0cac547f8c4e65856872460ef2531ab96");
-  assert.equal(
-    delta.split("\n").filter((line) => line.startsWith("+") && !line.startsWith("+++")).length,
-    10,
-  );
-  assert.equal(
-    delta.split("\n").filter((line) => line.startsWith("-") && !line.startsWith("---")).length,
-    0,
-  );
-  for (const line of [
-    'type_str == "air.arg_unused"',
-    "if (node.unused.has_value()) return false;",
-    "node.unused = true;",
-  ])
-    assert.equal(delta.split(line).length - 1, 2, line);
-  const manifest = JSON.parse(await readFile(new URL("manifest.json", root), "utf8"));
-  assert.equal(
-    manifest.patchedFiles["llvm/lib/Bitcode/MetalLib/MetalLibReflection.cpp"],
-    "f57d14824b7beb9fc61f1cd527c06aea830302b8f46f840e657601d1b0e4e85b",
+    [...source.matchAll(flag)].length,
+    2,
+    "fragment and position flags reject duplicate markers",
   );
 });
 
@@ -302,6 +432,10 @@ test("stage/storage regression inventory preserves all authored source bytes and
     '"air.address_space"',
   ])
     assert(runner.includes(marker), marker);
-  const toolchain = await readFile(new URL("toolchain.mjs", root), "utf8");
-  assert(toolchain.includes('"run-msl-fixtures.mjs"'));
+  const build = await readForkSource("wasm/build.mjs");
+  assert.doesNotMatch(
+    build,
+    /run-msl-fixtures|d2r_air|D2R_AIR/,
+    "generic producer does not own or silently substitute D2R-authored fixture execution",
+  );
 });

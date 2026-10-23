@@ -15,133 +15,15 @@ node web/runtime-build/build.mjs
 
 ## Cached AIR shader compiler input
 
-New runtime builds require a real API-v2 AIR compiler, not merely translated
-Metal source. The existing CI job restores an exact-source cache or explicitly
-builds the compiler once. Developers can use that same bounded builder after
-activating Emscripten 4.0.20, or build separately with
-`web/toolchain/metal-air-compiler/toolchain.mjs`, then record and import its
-outputs. These are developer commands, not an end-user native-helper flow:
+New runtime builds require an authenticated API-v2 AIR compiler from an exact reviewed fork release. D2R imports it and runs the strict 31-call canary; it never builds LLVM or applies compiler patches. Missing release pins or corresponding source fail before installed compiler bytes are changed. Non-AIR runtime builds retain their existing SDK and source gates.
 
 ```sh
-# Verify an existing cache, or build pinned public sources when no cache exists.
-node web/runtime-build/build-air-compiler.mjs --jobs 4
-
-# Alternatively, record an independently prepared build and import it explicitly.
-node web/runtime-build/air-compiler-assets.mjs record \
-  --build /path/to/api-build-wasm \
-  --source /path/to/prepared-llvm-source \
-  --api-source /path/to/compiler-api-source
-# Use the receiptSha256 printed above, not a value fetched from an untrusted bundle.
-node web/runtime-build/air-compiler-assets.mjs import \
-  --input /path/to/api-build-wasm --sha256 RECORDED_RECEIPT_SHA256
+node web/runtime-build/build-air-compiler.mjs
 node web/runtime-build/air-compiler-assets.mjs verify
+node web/runtime-build/prepare-air-compiler-source.mjs --output /path/to/empty-source-mirror
 ```
 
-Recording checks the current source manifest and all patched files, binds the
-toolchain build recipe and all authored API files (including compiler policy includes), derives the sorted
-header-bundle fingerprint from CMake's header list, and instantiates the actual
-worker-targeted module to check API-v2 exports and its embedded header identity.
-This is a local build receipt, not a cryptographic build attestation, browser
-test, full-game shader test, or Apple GPU compatibility claim.
-
-Import requires an explicitly trusted receipt digest and verifies both generated
-files against it. The generated `toolchain/metal-air-compiler/dist/` cache is
-ignored by Git. `build.mjs` revalidates the cache against the current compiler
-source before other expensive stages; ordinary frontend changes do not rebuild
-LLVM. A source/API/header/build-recipe change makes this cache stale and requires a new
-compiler build and receipt. Alternatively, provide
-`D2R_AIR_COMPILER_ASSET_DIR` and `D2R_AIR_COMPILER_RECEIPT_SHA256` together to import
-an existing build asset before assembly. No compiler download URL, experimental
-binary hash, implicit LLVM rebuild, or source-only substitute is built in.
-The explicit import stores its trusted receipt digest separately under the
-generated runtime-build directory. A copied cache cannot authenticate itself:
-restoring only `dist/` without that trusted import requires another pinned import.
-
-The single existing CI job caches only these final outputs and the separate
-receipt anchor under an exact source/recipe fingerprint and pinned SDK identity,
-without fallback cache keys. A cache hit is verified before use and does not
-download or rebuild LLVM. On a genuine cache miss, the explicit builder verifies
-the pinned public source archive, builds only the native `llvm-tblgen` and
-`clang-tblgen` bootstrap tools, then builds and probes the actual WASM compiler.
-Its 150-minute deadline bounds all compile stages; at most four compile jobs
-(further limited by available CPUs and memory) and one link run concurrently.
-An existing stale, incomplete or tampered cache fails rather than being silently
-overwritten. Ordinary `build.mjs` still requires a verified compiler input and
-never implicitly launches LLVM. No new CI job, release publication, full native
-Clang build, proof suite or source-only substitute is introduced.
-
-The same job also produces a separate `air-compiler-source` artifact before
-uploading `web-preview`. It contains the complete SHA-256-pinned upstream source
-archive, every ordered repository patch, the exact authored API/headers, build
-recipe, source manifest, licenses and the matching binary build receipt. Nothing
-is added to the browser payload. A per-file source report and its independently
-logged digest bind the delivery to the current compiler source identity.
-
-`prepare-air-compiler-source.mjs` reconstructs the patched tree only to verify
-the archive contents and every modified source-file digest, then discards that
-temporary tree. It never compiles LLVM or packages an existing object directory.
-The original public source archive is cached separately under its exact pinned
-SHA-256; a corrupt cache fails explicitly. An older compiler-output cache without
-this source cache needs one source download/preparation, not a compiler rebuild.
-Both artifacts have the same retention period and should be retained together
-when distributing the GPL-covered compiler. See its `THIRD_PARTY_NOTICES.md`.
-
-The compiler's generated factory, WASM, receipt, source pin, licenses/notices,
-and closed Worker are included in the normal digest-verified runtime inventory
-and transport. Shader-enabled preload instantiates it before any private input;
-compilation and Worker recycling use only verified in-memory assets. The loader
-exposes `createAirCompilerClient()` (`createAirCompiler()` is an alias), and
-closing or retiring the shader runtime terminates compiler workers. Legacy
-inventories remain readable, but requesting compiled shader output without an
-authenticated compiler fails explicitly. Keeping source files is never reported
-as successful Metal library compilation.
-
-The a2flo migration uses compiler receipt/component schema version 2 and binds
-`sourceLanguage: "floor-metal-3.2"` explicitly. C API version 2 and header-bundle
-version 2 are unchanged; they alone cannot identify the frontend language.
-Old AIR schema-1 components and missing/old language identities are rejected
-rather than relabeled. Pre-AIR inventory parsing remains compatible without
-inventing compiler availability.
-
-### Reusing an unchanged pre-AIR runtime locally
-
-The legacy reuse bridge is not supported for the current a2flo migration: its
-strict source-equivalence allowlist intentionally rejects the changed transport
-and source-delivery code. Use the normal CI build/cache path below; do not widen
-the bridge's allowlist to bypass those checks.
-
-当前 a2flo 迁移不支持旧运行时复用桥。严格的源码等价白名单会拒绝已变化的传输和
-源码交付代码。请使用正常 CI 构建/缓存路径，不要放宽白名单来绕过检查。
-
-For the original AIR integration only, a narrow developer bridge could retain an existing
-CI runtime instead of rebuilding its unchanged .NET, extraction, texture,
-program, signer and shell components. Obtain the artifact from the authorized
-GitHub run, verify its ZIP digest against GitHub's artifact metadata, and take
-the runtime-manifest digest independently from that exact successful job's log.
-Extract only the bounded runtime inventory; never treat a digest found inside
-the downloaded archive as its own trust anchor.
-
-```sh
-bun web/runtime-build/reuse-runtime.mjs \
-  --runtime /path/to/verified-prior/runtime \
-  --sha256 TRUSTED_RUNTIME_MANIFEST_SHA256 \
-  --source-revision EXACT_PRIOR_COMMIT
-```
-
-The bridge verifies every old physical/logical asset, requires a clean pinned
-prior build and unchanged non-AIR source, and checks that old native-build and
-worker-build logic differs only by the known AIR additions. Unknown source
-changes are rejected. It retains every prior asset exactly, bundles only the
-new AIR worker with pinned Bun 1.4.3, appends authenticated compiler assets,
-records the old build origin plus current source-change hashes, repacks the
-inventory, and verifies the new output before replacing `runtime-build/out/`.
-It neither runs old downloaded JavaScript nor needs local copies of discarded
-generated source-only glue. Existing full-build behavior remains available.
-
-Build the current frontend normally, then pass the bridge's printed
-`manifestSha256` as `EXPECTED_RUNTIME_MANIFEST_SHA256` to `stage-preview.mjs`.
-Use the printed current revision for `GITHUB_SHA` if staging requires one.
-This produces a local public preview, not a deployment or a full-game proof.
+The fixed local `d2r_air_wasm.*` names are byte-identical aliases of generic release outputs; raw receipts are never rewritten. Complete release source and installed SDK runtime sources, lock, notices and release identity remain digest-bound. The committed pin selects authenticated v0.1.0 at its actual build commit `1bd8db2f0fefbd13636e51c209ef09292675dff5`; the strict D2R canary must still pass in CI before runtime publication. See [the integration contract](../toolchain/metal-air-compiler/README.md).
 
 ## Prerequisites and execution
 
@@ -233,9 +115,9 @@ runs the command above after the frontend build has cleaned `web/dist/`.
 `stage-preview.mjs` independently verifies the runtime build manifest against
 the producer step's digest, copies only its exact inventory, and regenerates the
 combined `build-manifest.json` before upload. No platform matrix, separate proof
-job or browser parity suite is added. The one job has a bounded 180-minute timeout
-to permit a cold compiler-cache build. Compiler builds increase its duration;
-no successful cold-run timing is claimed before the first completed CI run.
+job or browser parity suite is added. The one job retains its bounded 180-minute timeout. AIR artifacts are imported
+from the pinned release and checked by D2R’s canary; D2R does not build LLVM.
+Other runtimes still compile locally.
 Disk availability is logged before and after.
 
 The uploaded `web-preview` includes the frontend and public runtime files only.
@@ -249,7 +131,7 @@ that a bundle alone satisfies all remaining runtime and release gates.
 Local JavaScript syntax, scoped Oxc checks and non-mutating planning/fingerprint
 commands pass. The real WASM receipt probe has run for an earlier source snapshot;
 that does not authenticate a later compiler revision. Final packaging requires
-the exact current module and source receipt. The same-job cold-build path, binary
+the exact current module and source receipt. Cold builds of non-AIR runtimes, byte-identical
 reproducibility, browser startup and post-seal full-chain success remain separate
 validation boundaries. Missing evidence is never a reason to substitute
 synthetic binaries, accept a stale cache or silently omit a component.

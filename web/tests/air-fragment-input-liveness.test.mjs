@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { readForkSource } from "./fixtures/air-fork-source/fork-source.mjs";
 import { checkFragmentInputLiveness } from "../toolchain/metal-air-compiler/check-fragment-input-liveness.mjs";
 
 function syntheticIR(keepVarying, keepPosition = keepVarying) {
@@ -123,11 +124,8 @@ test("checker will not accept orphan matching descriptors or another entry/stage
     assert.throws(() => checkFragmentInputLiveness(invalid));
 });
 
-test("production source runs narrow finalization after optimization and before verifier/output", () => {
-  const source = readFileSync(
-    new URL("../toolchain/metal-air-compiler/api/air_compiler.cpp", import.meta.url),
-    "utf8",
-  );
+test("authenticated fork source runs narrow finalization after optimization and before verifier/output", async () => {
+  const source = await readForkSource("wasm/api/air_compiler.cpp");
   const helper = source.slice(
     source.indexOf("bool finalizeFragmentInputLiveness("),
     source.indexOf("bool hasEntry("),

@@ -7,8 +7,13 @@ import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import { checkReflection } from "./check-buffer-reflection.mjs";
+assert(
+  process.argv[2] && process.argv[3],
+  "Explicit external fork clang and header-directory paths are required",
+);
 const root = dirname(fileURLToPath(import.meta.url));
-const clang = process.argv[2] || join(root, "build/bin/clang");
+const clang = process.argv[2];
+const headers = process.argv[3];
 const out = process.env.AIR_TEST_OUTPUT_DIR || join(root, "msl-fixture-results");
 mkdirSync(out, { recursive: true });
 const sha = (b) => createHash("sha256").update(b).digest("hex");
@@ -25,7 +30,7 @@ function emitIR(path, input) {
       "-std=metal3.2",
       "-Werror=unknown-attributes",
       "-I",
-      join(root, "api/include"),
+      headers,
       "-emit-llvm",
       "-o",
       "-",
@@ -58,7 +63,7 @@ for (const [stage, define, values] of [
       stage,
       sourceSha256: sha(variant),
       fixtureTemplateSha256: sha(source),
-      preludeSha256: sha(readFileSync(join(root, "api/include/metal_stdlib"))),
+      preludeSha256: sha(readFileSync(join(headers, "metal_stdlib"))),
       sourceSubstitution: `${define}=${value}`,
       irSha256: sha(r.stdout),
     });
@@ -117,7 +122,7 @@ for (const fixture of storageFixtures) {
     fixture: fixture.file,
     expected: fixture.expected,
     sourceSha256: sha(source),
-    preludeSha256: sha(readFileSync(join(root, "api/include/metal_stdlib"))),
+    preludeSha256: sha(readFileSync(join(headers, "metal_stdlib"))),
     ...(fixture.expected === "compiled" ? { irSha256: sha(result.stdout) } : {}),
   });
 }
@@ -139,7 +144,7 @@ for (const fixture of reflectionFixtures) {
     fixture: fixture.file,
     expected: fixture.expected,
     sourceSha256: sha(source),
-    preludeSha256: sha(readFileSync(join(root, "api/include/metal_stdlib"))),
+    preludeSha256: sha(readFileSync(join(headers, "metal_stdlib"))),
     irSha256: sha(result.stdout),
   });
 }

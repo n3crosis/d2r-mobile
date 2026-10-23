@@ -99,3 +99,68 @@ test("retention stays failure-only and keeps source upload before diagnostic bin
   const build = await readFile(new URL("build-air-compiler.mjs", import.meta.url), "utf8");
   assert.match(build, /compileCanary: await verifyAirCompilerCanary\(\)/);
 });
+
+test("fresh diagnostic source requires exact fork, lock and complete SDK-inclusive source mirror", async () => {
+  const { createFreshAirReleaseFixture, fixtureJson, fixtureRecord } =
+    await import("../tests/fixtures/air-release-generic/fixture.mjs");
+  const f = createFreshAirReleaseFixture(),
+    sourceName = `air-wasm-${f.pin.version}-source.tar.gz`;
+  const source = {
+    version: 2,
+    kind: "pinned-release-source-mirror",
+    sourceRevision: "c".repeat(40),
+    sourceFingerprintSha256: f.receipt.sourceFingerprintSha256,
+    headerSha256: f.receipt.headerSha256,
+    sourceLanguage: f.receipt.sourceLanguage,
+    completeReleaseSourceVerified: true,
+    installedSdkRuntimeSourcesIncluded: true,
+    llvmCompiledByThisStep: false,
+    binaryBuiltFromNewFork: true,
+    release: f.pin,
+    correspondingSource: { name: sourceName, ...fixtureRecord(f.correspondingSourceBytes) },
+    files: [
+      { path: "compiler-build-report.json", ...fixtureRecord(f.receiptBytes) },
+      { path: "source-lock.json", ...fixtureRecord(f.sourceLockBytes) },
+      { path: sourceName, ...fixtureRecord(f.correspondingSourceBytes) },
+    ],
+  };
+  function check(value) {
+    const bytes = fixtureJson(value);
+    return validateDiagnosticSource(f.receipt, f.receiptBytes, bytes, {
+      sourceReportSha256: sha(bytes),
+      sourceFingerprintSha256: f.receipt.sourceFingerprintSha256,
+      sourceRevision: source.sourceRevision,
+      releaseManifestSha256: f.pin.manifestSha256,
+    });
+  }
+  assert.deepEqual(check(source), source);
+  const bytes = fixtureJson(source);
+  for (const releaseManifestSha256 of [undefined, "0".repeat(64), "bad"])
+    assert.throws(() =>
+      validateDiagnosticSource(f.receipt, f.receiptBytes, bytes, {
+        sourceReportSha256: sha(bytes),
+        sourceFingerprintSha256: f.receipt.sourceFingerprintSha256,
+        sourceRevision: source.sourceRevision,
+        releaseManifestSha256,
+      }),
+    );
+  for (const mutate of [
+    (v) => (v.version = 1),
+    (v) => (v.kind = "historical"),
+    (v) => (v.completeReleaseSourceVerified = false),
+    (v) => (v.installedSdkRuntimeSourcesIncluded = false),
+    (v) => (v.binaryBuiltFromNewFork = false),
+    (v) => (v.release.commit = "0".repeat(40)),
+    (v) => (v.release.repository = "wrong/repo"),
+    (v) => (v.release.version = "v9.9.9"),
+    (v) => (v.release.manifestSha256 = "bad"),
+    (v) => (v.release.manifestSha256 = "0".repeat(64)),
+    (v) => (v.files[1].sha256 = "0".repeat(64)),
+    (v) => (v.correspondingSource.sha256 = "0".repeat(64)),
+    (v) => (v.correspondingSource.name = "partial-source.zip"),
+  ]) {
+    const invalid = structuredClone(source);
+    mutate(invalid);
+    assert.throws(() => check(invalid));
+  }
+});

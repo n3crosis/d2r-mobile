@@ -44,7 +44,7 @@ data into the IPA. Experimental older-GPU mode additionally generates a separate
 Legacy Device Pack and matching ASTC overlays in the IPA; the bulk pack remains
 outside the IPA. Copy both completed resource and Legacy Device Pack folders
 alongside each other into the installed app’s Files folder when this option is used.
-No real game input or device run has validated this browser flow. ZIP32, in-memory stage budgets, OPFS quota and
+On 2026-10-23, the maintainer reported that the generated IPA works on a real iOS device. This is user-reported physical-device testing, not merely a build or synthetic check. The report did not specify the exact tested build, device/iOS version, input format or gameplay coverage. This report does not certify a new compiler release or broader device/GPU compatibility. ZIP32, in-memory stage budgets, OPFS quota and
 adapter limits can reject a genuine large build rather than silently truncate it.
 Production runtime compilation and initialization must still succeed in the
 published artifact; a successful source bundle is not game-compatibility proof.

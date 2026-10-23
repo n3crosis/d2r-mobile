@@ -6,7 +6,8 @@ import { fileURLToPath } from "node:url";
 import { join, dirname } from "node:path";
 import assert from "node:assert/strict";
 const root = dirname(fileURLToPath(import.meta.url));
-const clang = process.argv[2] || join(root, "build/bin/clang");
+assert(process.argv[2], "An explicit externally built fork clang path is required");
+const clang = process.argv[2];
 const out = process.env.AIR_TEST_OUTPUT_DIR || join(root, "fixture-results");
 mkdirSync(out, { recursive: true });
 const base = [

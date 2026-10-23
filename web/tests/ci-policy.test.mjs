@@ -163,119 +163,66 @@ finish
   }
 });
 
-test("AIR object cache is bounded and separate from exact authenticated finished outputs", async () => {
+test("AIR release cache is exact and the consumer cannot fall back to a compiler build", async () => {
   const text = await readFile(new URL("verify.yml", workflows), "utf8");
-  const steps = text.split(/\n {6}- /).slice(1);
-  const step = (id) => {
-    const matches = steps.filter((value) => value.includes(`\n        id: ${id}\n`));
-    assert.equal(matches.length, 1, id);
-    return matches[0];
-  };
-  const setup = step("air_objects_setup");
-  const restore = step("air_objects");
-  const verified = step("air_objects_verified");
-  const finished = step("air_cache");
-  const save = steps.find((value) =>
-    value.startsWith("name: Save source-specific public AIR object snapshot\n"),
+  const finished = text
+    .split(/\n {6}- /)
+    .find((value) => value.includes("\n        id: air_cache\n"));
+  assert(
+    finished.includes(
+      "public-air-release-v1-${{ steps.air_source.outputs.release_manifest_sha256 }}",
+    ),
   );
-  assert(setup.includes("if: ${{ steps.air_cache.outputs.cache-hit != 'true' }}"));
-  for (const token of [
-    "runner.os",
-    "runner.arch",
-    "ubuntu-24.04",
-    "emsdk4.0.20-e4fe26ef59168ff44f4c23c466e497bf60b3411e",
-    "steps.air_source.outputs.upstream_archive_sha256",
-    "web/toolchain/metal-air-compiler/toolchain.mjs",
-    "web/toolchain/metal-air-compiler/api/CMakeLists.txt",
-    "web/runtime-build/build-air-compiler.mjs",
-    "max_size = 2GiB",
-    "compiler_check = content",
-    "direct_mode = false",
-    "depend_mode = false",
+  for (const path of [
+    "web/toolchain/metal-air-compiler/dist",
+    "web/runtime-build/.build/air-compiler-receipt.sha256",
   ])
-    assert(setup.includes(token), token);
-  assert.match(setup, /sloppiness =\s*\n\s*remote_storage =\s*\n/);
-  assert(setup.includes("ccache_sha256=\"$(sha256sum /usr/bin/ccache | cut -d ' ' -f1)\""));
-  assert(setup.includes('[[ "$ccache_sha256" =~ ^[a-f0-9]{64}$ ]]'));
+    assert(finished.includes(path));
+  const assetCache = text
+    .split(/\n {6}- /)
+    .find((value) => value.includes("path: web/runtime-build/.build/air-compiler-release"));
   assert(
-    setup.includes('printf \'prefix=%s-ccache%s-\\n\' "$AIR_OBJECT_CACHE_PREFIX" "$ccache_sha256"'),
-  );
-  assert(restore.includes("if: ${{ steps.air_objects_setup.outcome == 'success' }}"));
-  assert(restore.includes("path: ${{ runner.temp }}/air-compiler-ccache\n"));
-  assert(
-    restore.includes(
-      "key: ${{ steps.air_objects_setup.outputs.prefix }}${{ steps.air_source.outputs.source_fingerprint }}",
+    assetCache.includes(
+      "public-air-release-assets-v1-${{ steps.air_source.outputs.release_manifest_sha256 }}",
     ),
   );
-  assert(restore.includes("restore-keys: ${{ steps.air_objects_setup.outputs.prefix }}"));
-  assert.doesNotMatch(restore, /ccache\.conf|metal-air-compiler\/dist|receipt/);
-  assert.doesNotMatch(finished, /restore-keys:/);
-  assert(finished.includes("public-air-compiler-v1-"));
-  assert(finished.includes("steps.air_source.outputs.source_fingerprint"));
-  assert.equal(steps.filter((value) => value.includes("restore-keys:")).length, 1);
-  assert(
-    verified.includes(
-      "if: ${{ !cancelled() && steps.air_objects.outcome == 'success' && steps.runtime.outputs.air_compiler_verified == 'true' && (steps.runtime.outcome == 'success' || steps.air_failure_verify.outcome == 'success') }}",
-    ),
+  assert.doesNotMatch(
+    text,
+    /restore-keys:|ccache|EM_COMPILER_WRAPPER|air_objects|build-air-compiler\.mjs --(?:work|jobs)/,
   );
-  assert(verified.includes("/usr/bin/ccache --cleanup\n"));
-  assert.match(verified, /\/usr\/bin\/ccache --show-stats(?:\n|$)/);
-  assert(
-    save.includes(
-      "if: ${{ !cancelled() && steps.air_objects_verified.outcome == 'success' && steps.air_objects.outputs.cache-hit != 'true' }}",
-    ),
+  const build = await readFile(
+    new URL("../runtime-build/build-air-compiler.mjs", import.meta.url),
+    "utf8",
   );
-  assert(save.includes("key: ${{ steps.air_objects.outputs.cache-primary-key }}"));
-  assert(save.includes("path: ${{ runner.temp }}/air-compiler-ccache"));
-  for (const value of [restore, save])
-    assert.match(
-      value,
-      /uses: actions\/cache\/(restore|save)@55cc8345863c7cc4c66a329aec7e433d2d1c52a9/,
-    );
+  assert.match(build, /importPinnedAirCompiler/);
+  assert.match(build, /compileCanary: await verifyAirCompilerCanary\(\)/);
+  assert.doesNotMatch(build, /spawn|runToolchain|build-host-tools|build-wasm|emsdk.*install/);
+  // Existing non-AIR builds still need the pinned SDK.
+  assert(text.includes('source "$RUNNER_TEMP/browser-emsdk/emsdk_env.sh"'));
+  assert(text.includes('"$RUNNER_TEMP/browser-emsdk/emsdk" install 4.0.20'));
+  assert(text.includes("node web/runtime-build/build.mjs"));
 });
-
-test("AIR cache wrapper stays scoped and never authenticates a failed build or canary", async () => {
+test("AIR import and canary failures never authenticate the runtime", async () => {
   const text = await readFile(new URL("verify.yml", workflows), "utf8");
   const runtime = text.split(/\n {6}- /).find((value) => value.includes("\n        id: runtime\n"));
   const segment = runtime.slice(
-    runtime.indexOf("          (\n"),
+    runtime.indexOf("          node web/runtime-build/build-air-compiler.mjs"),
     runtime.indexOf("          rustup toolchain install"),
   );
-  assert(segment.includes("node web/runtime-build/build-air-compiler.mjs"));
-  assert(
-    runtime.indexOf('source "$RUNNER_TEMP/browser-emsdk/emsdk_env.sh"') <
-      runtime.indexOf("EM_COMPILER_WRAPPER="),
-  );
-  assert.equal((text.match(/export EM_COMPILER_WRAPPER=/g) ?? []).length, 1);
-  const temp = await mkdtemp(join(tmpdir(), "air-cache-wrapper-"));
+  assert(segment.includes("air_compiler_verified=true"));
+  const temp = await mkdtemp(join(tmpdir(), "air-release-gate-"));
   try {
-    for (const [outcome, airStatus, cacheStatus, expectedStatus] of [
-      ["success", 0, 0, 0],
-      ["skipped", 0, 0, 0],
-      ["success", 7, 0, 7],
-      ["success", 2, 0, 2],
-      ["success", 0, 4, 4],
-    ]) {
-      const output = join(temp, `output-${outcome}-${airStatus}-${cacheStatus}`);
-      // These are inert shell functions. No node compiler, ccache, package manager or workflow runs.
-      const script =
-        `stub_ccache() { return ${cacheStatus}; }\nnode() { test "\${EM_COMPILER_WRAPPER:-unset}" = "${outcome === "success" ? "stub_ccache" : "unset"}" || return 97; return ${airStatus}; }\n` +
-        segment
-          .replaceAll("${{ steps.air_objects_setup.outcome }}", outcome)
-          .replaceAll("/usr/bin/ccache", "stub_ccache") +
-        'test -z "${EM_COMPILER_WRAPPER:-}"\ntest -z "${CCACHE_CONFIGPATH:-}"\n';
-      const env = { ...process.env, GITHUB_OUTPUT: output, RUNNER_TEMP: temp };
-      delete env.EM_COMPILER_WRAPPER;
-      delete env.CCACHE_CONFIGPATH;
+    for (const status of [0, 2, 7]) {
+      const output = join(temp, `output-${status}`);
       const result = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail"], {
-        input: script,
-        env,
+        input: `node() { return ${status}; }\n` + segment,
+        env: { ...process.env, GITHUB_OUTPUT: output },
         encoding: "utf8",
       });
       assert.equal(result.error, undefined);
       assert.equal(result.signal, null);
-      assert.equal(result.status, expectedStatus, result.stderr);
-      if (expectedStatus === 0)
+      assert.equal(result.status, status, result.stderr);
+      if (status === 0)
         assert.equal(await readFile(output, "utf8"), "air_compiler_verified=true\n");
       else await assert.rejects(readFile(output), { code: "ENOENT" });
     }

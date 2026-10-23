@@ -2,24 +2,25 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import {
+  readForkSource,
+  readOriginalAirProvenance,
+} from "./fixtures/air-fork-source/fork-source.mjs";
 
 const root = new URL("../toolchain/metal-air-compiler/", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
 const hash = (data) => createHash("sha256").update(data).digest("hex");
 
 // Source-only assertions: no compiler, LLVM parser/verifier or generated shader runs.
-test("scalar i1 conversion hardening has an exact isolated 0110 source boundary", async () => {
-  const manifest = JSON.parse(await read("manifest.json"));
+test("scalar i1 conversion hardening retains its exact authenticated fork source boundary", async () => {
+  const { manifest, receipt } = await readOriginalAirProvenance();
   const path = "patches/0110-a2flo-scalar-i1-conversions.patch";
   const sha256 = "1e41886634d829084a3752d56723e38b55ff20dd75649510be6c4be446ca0c82";
-  const patch = await read(path);
+  const source = await readForkSource("llvm/lib/Transforms/LibFloor/MetalFinal.cpp");
   assert.equal(manifest.patches.length, 10);
   assert.deepEqual(manifest.patches[9], { path, sha256 });
-  assert.equal(hash(patch), sha256);
-  assert.deepEqual(
-    [...patch.matchAll(/^\+\+\+ b\/(.+)$/gm)].map((match) => match[1]),
-    ["llvm/lib/Transforms/LibFloor/MetalFinal.cpp"],
-  );
+  assert.equal(receipt.sourceInputs[path], sha256);
+  assert.equal(hash(source), "b7f8c3d17df3fddea4e87cd8a6fc2ac6ed0d53531714f9403b73ab72f3c39973");
   assert.equal(
     manifest.patchedFiles["llvm/lib/Transforms/LibFloor/MetalFinal.cpp"],
     "b7f8c3d17df3fddea4e87cd8a6fc2ac6ed0d53531714f9403b73ab72f3c39973",
@@ -35,20 +36,91 @@ test("scalar i1 conversion hardening has an exact isolated 0110 source boundary"
     "if (auto* inst = dyn_cast<Instruction>(conv_instr))",
     "inst->setDebugLoc(I.getDebugLoc())",
   ])
-    assert(patch.includes(invariant), invariant);
-  assert(patch.indexOf("I.replaceAllUsesWith(conv_instr)") < patch.indexOf("I.eraseFromParent()"));
-  assert(patch.includes("was_modified = true"));
+    assert(source.includes(invariant), invariant);
+  assert.match(
+    source,
+    /I\.replaceAllUsesWith\(conv_instr\);\s*I\.eraseFromParent\(\);\s*was_modified = true;/,
+  );
+  assert(source.includes("was_modified = true"));
   assert.equal(
-    hash(await read("api/air_compiler.cpp")),
-    "fce9a24557cca900398b2e7b9afbb853297a5d8bd034616d9c80b89a9d20981b",
+    hash(await readForkSource("wasm/api/air_compiler.cpp")),
+    "5d06207b69e57435934bec8e4e67e71c014d6c890fe2ff625e96cc1d4dc7a448",
   );
   assert.equal(
     hash(await read("ci-compile-canary.mjs")),
     "19415766142c77a9443478e74d5413a300397c28a1a0395b2f99d22d3547eeca",
   );
-  assert.equal(
-    hash(await readFile(new URL("../../.github/workflows/verify.yml", import.meta.url))),
-    "12aad45d6fa09d8c9b9a74752f5d4d9526659d44402e7bf779dd20b83eacbe73",
+});
+
+test("release CI retains strict canary, failure evidence and complete source-artifact safeguards", async () => {
+  const workflow = await readFile(
+    new URL("../../.github/workflows/verify.yml", import.meta.url),
+    "utf8",
+  );
+  const steps = workflow.split(/^ {6}- /m).slice(1);
+  const step = (id) => {
+    const matches = steps.filter((text) => text.includes(`\n        id: ${id}\n`));
+    assert.equal(matches.length, 1, `exactly one ${id} step`);
+    return matches[0];
+  };
+  const build = await readFile(
+    new URL("../runtime-build/build-air-compiler.mjs", import.meta.url),
+    "utf8",
+  );
+  assert(build.includes("compileCanary: await verifyAirCompilerCanary()"));
+  assert(build.includes("await prepareAirCompilerAssets()"));
+  assert(build.includes("await importPinnedAirCompiler()"));
+  assert(
+    build.indexOf("await prepareAirCompilerAssets()") <
+      build.indexOf("compileCanary: await verifyAirCompilerCanary()"),
+  );
+  assert(
+    build.indexOf("await importPinnedAirCompiler()") <
+      build.indexOf("compileCanary: await verifyAirCompilerCanary()"),
+  );
+  const runtime = step("runtime");
+  assert(runtime.includes("node web/runtime-build/build-air-compiler.mjs"));
+  assert(
+    runtime.indexOf("node web/runtime-build/build-air-compiler.mjs") <
+      runtime.indexOf("air_compiler_verified=true"),
+  );
+  assert.doesNotMatch(workflow, /continue-on-error:\s*true/);
+  const failureVerify = step("air_failure_verify");
+  assert(failureVerify.includes("failure() && steps.runtime.outcome == 'failure'"));
+  assert(failureVerify.includes("air-compiler-assets.mjs verify --source-fingerprint"));
+  const failureSource = step("air_failure_source");
+  assert(failureSource.includes("!cancelled() && steps.air_failure_verify.outcome == 'success'"));
+  assert(failureSource.includes("prepare-air-compiler-source.mjs --output"));
+  const failureUpload = step("air_failure_source_upload");
+  assert(failureUpload.includes("!cancelled() && steps.air_failure_source.outcome == 'success'"));
+  assert(failureUpload.includes("include-hidden-files: true"));
+  assert(failureUpload.includes("if-no-files-found: error"));
+  const bundle = step("air_failure_bundle");
+  assert(bundle.includes("!cancelled() && steps.air_failure_source_upload.outcome == 'success'"));
+  assert(bundle.includes("steps.air_failure_source_upload.outputs.artifact-id"));
+  assert(bundle.includes("steps.air_failure_source.outputs.source_report_sha256"));
+  assert(bundle.includes("prepare-air-compiler-diagnostic.mjs"));
+  const diagnostic = steps.find((text) =>
+    text.includes("name: air-compiler-diagnostic-unvalidated"),
+  );
+  assert(diagnostic?.includes("!cancelled() && steps.air_failure_bundle.outcome == 'success'"));
+  assert(diagnostic.includes("if-no-files-found: error"));
+  const completeSource = steps.find((text) => text.includes("name: air-compiler-source\n"));
+  assert(completeSource?.includes("include-hidden-files: true"));
+  assert(completeSource.includes("if-no-files-found: error"));
+  assert.doesNotMatch(completeSource, /failure\(\)|always\(\)|!cancelled\(\)/);
+  assert(
+    workflow.includes(
+      'prepare-air-compiler-source.mjs --output "$RUNNER_TEMP/air-compiler-source-artifact"',
+    ),
+  );
+  const preview = steps.find((text) => text.includes("name: web-preview\n"));
+  assert(preview?.includes("if-no-files-found: error"));
+  assert.doesNotMatch(preview, /failure\(\)|always\(\)|!cancelled\(\)/);
+  assert(workflow.indexOf("name: air-compiler-source\n") < workflow.indexOf("name: web-preview\n"));
+  assert(
+    workflow.indexOf("node web/runtime-build/stage-preview.mjs") <
+      workflow.indexOf("name: web-preview\n"),
   );
 });
 

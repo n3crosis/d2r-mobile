@@ -1,3 +1,5 @@
+> Historical D2R integration evidence. Compiler implementation now lives in the [reusable fork](https://github.com/n3crosis/floor_llvm); local API/patch/build paths in this record are historical. These results do not certify a fresh release. [Current integration](README.md).
+
 # NaN classification correction / NaN 分类修正
 
 The experimental header now classifies float NaNs with an IEEE-754 bit test, rather than a builtin that the selected fast-math profile can optimize away. The generated comparison is `absBits > 0x7f800000`, matching the operation observed in the supplied reference compiler output. This preserves the source's explicit NaN sanitization.

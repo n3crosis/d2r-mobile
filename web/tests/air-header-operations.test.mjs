@@ -2,11 +2,21 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
-import { readAirHeaderIdentity } from "../toolchain/metal-air-compiler/header-identity.mjs";
+import { readForkSource, readReviewedSourceLock } from "./fixtures/air-fork-source/fork-source.mjs";
 
-const api = new URL("../toolchain/metal-air-compiler/api/", import.meta.url);
-const read = (path) => readFile(new URL(path, api), "utf8");
+const compiler = new URL("../toolchain/metal-air-compiler/", import.meta.url);
+const nativeFixtures = new Set([
+  "control_smoke.cpp",
+  "header_smoke.cpp",
+  "operations_smoke.h",
+  "smoke.cpp",
+]);
+const read = (path) => {
+  if (path.startsWith("../")) return readFile(new URL(path.slice(3), compiler), "utf8");
+  if (nativeFixtures.has(path))
+    return readFile(new URL(`fixtures/native-api/${path}`, compiler), "utf8");
+  return readForkSource(`wasm/api/${path}`);
+};
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 
 // These are source-contract checks only. Actual frontend/IR behavior is checked
@@ -14,7 +24,7 @@ const digest = (value) => createHash("sha256").update(value).digest("hex");
 test("scalar sin, cos and ceil use exact AIR labels and explicit fast exports", async () => {
   const math = await read("include/metal_math");
   const apiSource = await read("air_compiler.cpp");
-  const profileStart = math.indexOf("#if defined(D2R_AIR_FAST_MATH)");
+  const profileStart = math.indexOf("#if defined(AIR_FAST_MATH)");
   const profileEnd = math.indexOf("#endif", profileStart);
   assert(profileStart >= 0 && profileEnd > profileStart);
   for (const operation of ["sin", "cos", "ceil"]) {
@@ -26,7 +36,7 @@ test("scalar sin, cos and ceil use exact AIR labels and explicit fast exports", 
     assert(math.includes(`template<class T> T ${operation}(T) = delete;`));
     assert(
       math.includes(
-        `D2R_INLINE float ${operation}(float x) { return __air_detail::${operation}(x); }`,
+        `AIR_INLINE float ${operation}(float x) { return __air_detail::${operation}(x); }`,
       ),
     );
     const exports = [...math.matchAll(new RegExp(`using fast::${operation};`, "g"))];
@@ -100,12 +110,10 @@ test("the guarded standard umbrella exposes atomic and barrier declarations", as
   assert.match(stdlib, /#include <metal_atomic>\s*#endif\s*$/);
   assert(stdlib.indexOf("#include <metal_atomic>") > stdlib.indexOf("#include <metal_control>"));
   assert(
-    stdlib.indexOf("#define D2R_EXPERIMENTAL_METAL_STDLIB") <
-      stdlib.indexOf("#include <metal_atomic>"),
+    stdlib.indexOf("#define FLOOR_AIR_METAL_STDLIB") < stdlib.indexOf("#include <metal_atomic>"),
   );
   assert(
-    atomic.indexOf("#define D2R_EXPERIMENTAL_METAL_ATOMIC") <
-      atomic.indexOf("#include <metal_stdlib>"),
+    atomic.indexOf("#define FLOOR_AIR_METAL_ATOMIC") < atomic.indexOf("#include <metal_stdlib>"),
   );
   assert(atomic.includes("enum class mem_flags { mem_threadgroup = 2 };"));
   assert(atomic.includes("void threadgroup_barrier(mem_flags flags)"));
@@ -165,9 +173,9 @@ test("the authenticated Metal umbrella enables fp16 during parsing after semanti
   const fixtures = await read("operations_smoke.h");
   const activation = "#pragma OPENCL EXTENSION cl_khr_fp16 : enable";
   assert.equal(stdlib.split(activation).length - 1, 1);
-  assert(stdlib.indexOf(activation) > stdlib.indexOf("#define D2R_EXPERIMENTAL_METAL_STDLIB"));
+  assert(stdlib.indexOf(activation) > stdlib.indexOf("#define FLOOR_AIR_METAL_STDLIB"));
   assert(stdlib.indexOf(activation) < stdlib.indexOf("namespace metal"));
-  assert(stdlib.indexOf(activation) < stdlib.indexOf("D2R_VECTOR_TYPES(half)"));
+  assert(stdlib.indexOf(activation) < stdlib.indexOf("AIR_VECTOR_TYPES(half)"));
   assert.doesNotMatch(stdlib, /#pragma OPENCL EXTENSION (?!cl_khr_fp16\s*: enable)/);
   // CreateASTConsumer is too early: Metal's C++20 module reader subsequently
   // overwrites OpenCLFeatures during Sema::Initialize. Do not restore that hook.
@@ -275,14 +283,13 @@ test("real-WASM CI canary includes all five live operations in a fourth authored
   );
   assert(fragmentFixture.includes("float4(previous == input[2] ? 1.0f : 0.0f)"));
 
-  // Source delivery already includes every tracked file under the compiler
-  // prefix, including this fixture once committed; no archive exception needed.
-  const sourceArtifact = await readFile(
-    new URL("../runtime-build/prepare-air-compiler-source.mjs", import.meta.url),
-    "utf8",
+  // D2R-owned fixtures stay local; the release archive is mirrored separately.
+  // Do not claim that the generic compiler's source archive contains these probes.
+  assert.equal(
+    digest(canary),
+    "19415766142c77a9443478e74d5413a300397c28a1a0395b2f99d22d3547eeca",
+    "the strict 31-call D2R canary remains byte-identical",
   );
-  assert(sourceArtifact.includes('const prefix = "web/toolchain/metal-air-compiler/";'));
-  assert(sourceArtifact.includes('run("git", ["ls-files", "-z", "--", prefix])'));
 });
 
 test("real-WASM canaries retain named entries and public compiler regression inputs", async () => {
@@ -391,8 +398,8 @@ test("real-WASM canaries retain named entries and public compiler regression inp
     assert(source.includes("constant VectorStorage* second [[id(1)]]"));
   }
 
-  // All fixed fixture paths stay within the tracked compiler-prefix source
-  // copy closure; this does not execute or import the WASM canary.
+  // All D2R-authored fixture paths remain local and readable; this does not
+  // execute or import the WASM canary.
   for (const entry of cases) {
     assert.match(entry[2], /^[A-Za-z0-9_-]+\.metal$/);
     assert((await read(`../fixtures/${entry[2]}`)).includes("#include <metal_stdlib>"));
@@ -468,7 +475,7 @@ test("real-WASM canary preserves strict containers and binary flags for four liv
   assert.match(loop, /finally \{\s*output\?\.bytes.fill\(0\);\s*irOutput\?\.bytes.fill\(0\);/);
 });
 
-test("header identity still fingerprints the full fixed bundle without a pinned replacement", async () => {
+test("generic header identity fingerprints all ten authenticated headers in its own domain", async () => {
   const cmake = await read("CMakeLists.txt");
   const paths = cmake
     .match(/set\(AIR_HEADER_PATHS\s+([^)]*)\)/)[1]
@@ -477,7 +484,20 @@ test("header identity still fingerprints the full fixed bundle without a pinned 
     .sort();
   for (const header of ["metal_math", "metal_integer", "metal_simd"])
     assert(paths.includes(header));
-  let fingerprint = "d2r-air-header-bundle-v2\n";
+  assert.equal(paths.length, 10);
+  let fingerprint = "floor-air-header-bundle-v2\n";
   for (const path of paths) fingerprint += `${path}:${digest(await read(`include/${path}`))}\n`;
-  assert.equal(await readAirHeaderIdentity(fileURLToPath(api), 2), digest(fingerprint));
+  assert.equal(
+    digest(fingerprint),
+    "694371baef693289d23f75c9b5721227b8290281c513dc81cc6f8f696b3ec7eb",
+  );
+  const lock = await readReviewedSourceLock();
+  assert.deepEqual(
+    paths,
+    Object.keys(lock.sdkFiles)
+      .filter((path) => path.startsWith("api/include/"))
+      .map((path) => path.slice(12))
+      .sort(),
+  );
+  assert(cmake.includes('set(AIR_HEADER_FINGERPRINT "floor-air-header-bundle-v2\\n")'));
 });

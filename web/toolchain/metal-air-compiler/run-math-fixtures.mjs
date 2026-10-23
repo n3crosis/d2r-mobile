@@ -3,9 +3,17 @@ import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
+assert(
+  process.argv[2] && process.argv[3],
+  "Explicit external fork clang and header-directory paths are required",
+);
 const root = dirname(fileURLToPath(import.meta.url));
 const clang = resolve(process.argv[2] || "");
-assert(process.argv[2], "Usage: node run-math-fixtures.mjs /path/to/clang [api-build-directory]");
+assert(
+  process.argv[2],
+  "Usage: node run-math-fixtures.mjs /path/to/clang /path/to/fork/headers [authored-api-test-build-directory]",
+);
+const headers = resolve(process.argv[3]);
 const base = [
   "-cc1",
   "-triple",
@@ -17,7 +25,7 @@ const base = [
   "-flegacy-pass-manager",
   "-Werror=unknown-attributes",
   "-I",
-  join(root, "api/include"),
+  headers,
   "-emit-llvm",
   "-o",
   "-",
@@ -25,7 +33,7 @@ const base = [
 for (const name of ["math-scalar", "math-vector", "integer-preservation"]) {
   const r = spawnSync(
     clang,
-    [...base, "-DD2R_AIR_FAST_MATH=1", join(root, "fixtures", name + ".metal")],
+    [...base, "-DAIR_FAST_MATH=1", join(root, "fixtures", name + ".metal")],
     { encoding: "utf8", maxBuffer: 8 * 1024 * 1024 },
   );
   assert.equal(r.status, 0, r.stderr);
@@ -72,12 +80,12 @@ for (const source of [
   assert(r.stderr.includes("error:"));
   assert(!/Assertion|PLEASE submit a bug report/.test(r.stderr));
 }
-if (process.argv[3])
+if (process.argv[4])
   for (const name of ["d2r_air_api_smoke", "d2r_air_header_smoke"]) {
-    const r = spawnSync(join(resolve(process.argv[3]), name), [], { encoding: "utf8" });
+    const r = spawnSync(join(resolve(process.argv[4]), name), [], { encoding: "utf8" });
     assert.equal(r.status, 0, r.stdout + "\n" + r.stderr);
   }
 console.log(
   "Nine authored math fixtures passed" +
-    (process.argv[3] ? ", with API baseline and header/profile regression suites." : "."),
+    (process.argv[4] ? ", with API baseline and header/profile regression suites." : "."),
 );

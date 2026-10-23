@@ -3,10 +3,14 @@ import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+assert(
+  process.argv[2] && process.argv[3],
+  "Explicit external fork clang and header-directory paths are required",
+);
 const root = dirname(fileURLToPath(import.meta.url));
 assert(process.argv[2], "Usage: node run-nan-fixtures.mjs /path/to/clang [header-directory]");
 const clang = resolve(process.argv[2]);
-const headers = resolve(process.argv[3] || join(root, "api/include"));
+const headers = resolve(process.argv[3]);
 const args = [
   "-cc1",
   "-triple",
@@ -19,7 +23,7 @@ const args = [
   "-Werror=unknown-attributes",
   "-I",
   headers,
-  "-DD2R_AIR_FAST_MATH=1",
+  "-DAIR_FAST_MATH=1",
   "-cl-single-precision-constant",
   "-ffast-math",
   "-ffp-contract=fast",

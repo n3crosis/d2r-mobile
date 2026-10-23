@@ -69,26 +69,26 @@ jobs:
           bun-version: "1.4.3"
       - name: Build frontend and enforce requested code-quality gates
         run: node web/verification/verify.mjs quick
-      - name: Fingerprint exact public AIR compiler sources
+      - name: Authenticate pinned AIR release identity
         id: air_source
         run: node web/runtime-build/build-air-compiler.mjs --fingerprint
-      - name: Cache only source-bound public AIR compiler outputs
+      - name: Cache only release-bound public AIR compiler outputs
         id: air_cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             web/toolchain/metal-air-compiler/dist
             web/runtime-build/.build/air-compiler-receipt.sha256
-          key: public-air-compiler-v1-${{ runner.os }}-${{ runner.arch }}-ubuntu-24.04-emsdk4.0.20-${{ steps.air_source.outputs.source_fingerprint }}
+          key: public-air-release-v1-${{ steps.air_source.outputs.release_manifest_sha256 }}
       - name: Cache pinned public compiler source archive separately
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: web/runtime-build/.build/air-compiler-source-download
-          key: public-air-source-archive-v1-${{ steps.air_source.outputs.upstream_archive_sha256 }}
+          path: web/runtime-build/.build/air-compiler-release
+          key: public-air-release-assets-v1-${{ steps.air_source.outputs.release_manifest_sha256 }}
       - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         with:
           dotnet-version: "10.0.402"
-      - name: Prepare pinned Emscripten SDK source
+      - name: Prepare pinned SDK for non-AIR browser runtimes
         run: |
           git clone --depth 1 --branch 4.0.20 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/browser-emsdk"
           test "$(git -C "$RUNNER_TEMP/browser-emsdk" rev-parse HEAD)" = e4fe26ef59168ff44f4c23c466e497bf60b3411e
@@ -97,36 +97,6 @@ jobs:
         with:
           path: ${{ runner.temp }}/browser-emsdk/downloads
           key: public-emsdk-downloads-v1-${{ runner.os }}-${{ runner.arch }}-ubuntu-24.04-4.0.20-e4fe26ef59168ff44f4c23c466e497bf60b3411e
-      - name: Prepare bounded public AIR object cache
-        id: air_objects_setup
-        if: ${{ steps.air_cache.outputs.cache-hit != 'true' }}
-        env:
-          AIR_OBJECT_CACHE_PREFIX: public-air-objects-v1-${{ runner.os }}-${{ runner.arch }}-ubuntu-24.04-emsdk4.0.20-e4fe26ef59168ff44f4c23c466e497bf60b3411e-${{ steps.air_source.outputs.upstream_archive_sha256 }}-${{ hashFiles('web/toolchain/metal-air-compiler/toolchain.mjs', 'web/toolchain/metal-air-compiler/api/CMakeLists.txt', 'web/runtime-build/build-air-compiler.mjs') }}
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends ccache
-          /usr/bin/ccache --version
-          # Keep configuration outside restored data; do not relax source/header checks.
-          cat > "$RUNNER_TEMP/air-compiler-ccache.conf" <<EOF
-          cache_dir = $RUNNER_TEMP/air-compiler-ccache
-          max_size = 2GiB
-          compiler_check = content
-          direct_mode = false
-          depend_mode = false
-          sloppiness =
-          remote_storage =
-          EOF
-          ccache_sha256="$(sha256sum /usr/bin/ccache | cut -d ' ' -f1)"
-          [[ "$ccache_sha256" =~ ^[a-f0-9]{64}$ ]]
-          printf 'prefix=%s-ccache%s-\n' "$AIR_OBJECT_CACHE_PREFIX" "$ccache_sha256" >> "$GITHUB_OUTPUT"
-      - name: Restore compatible public AIR objects, never finished outputs
-        id: air_objects
-        if: ${{ steps.air_objects_setup.outcome == 'success' }}
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ runner.temp }}/air-compiler-ccache
-          key: ${{ steps.air_objects_setup.outputs.prefix }}${{ steps.air_source.outputs.source_fingerprint }}
-          restore-keys: ${{ steps.air_objects_setup.outputs.prefix }}
       - name: Build pinned public browser runtimes
         id: runtime
         env:
@@ -135,21 +105,14 @@ jobs:
           DOTNET_NOLOGO: "1"
           DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE: "true"
           D2R_AIR_COMPILER_SOURCE_FINGERPRINT: ${{ steps.air_source.outputs.source_fingerprint }}
+          D2R_AIR_COMPILER_RELEASE_MANIFEST_SHA256: ${{ steps.air_source.outputs.release_manifest_sha256 }}
         run: |
           df -h .
           "$RUNNER_TEMP/browser-emsdk/emsdk" install 4.0.20
           "$RUNNER_TEMP/browser-emsdk/emsdk" activate 4.0.20
           source "$RUNNER_TEMP/browser-emsdk/emsdk_env.sh"
           emcc --version | grep -E '^emcc .* 4[.]0[.]20([[:space:]]|$)'
-          (
-            if [ "${{ steps.air_objects_setup.outcome }}" = "success" ]; then
-              export CCACHE_CONFIGPATH="$RUNNER_TEMP/air-compiler-ccache.conf"
-              /usr/bin/ccache --zero-stats
-              /usr/bin/ccache --show-config
-              export EM_COMPILER_WRAPPER=/usr/bin/ccache
-            fi
-            node web/runtime-build/build-air-compiler.mjs --work "$RUNNER_TEMP/air-compiler" --jobs 4
-          )
+          node web/runtime-build/build-air-compiler.mjs
           # Written only after source/receipt authentication and the compile canary pass.
           printf 'air_compiler_verified=true\n' >> "$GITHUB_OUTPUT"
           rustup toolchain install 1.99.1 --profile minimal --target wasm32-unknown-unknown --component rustfmt --component clippy
@@ -168,21 +131,7 @@ jobs:
           path: |
             web/toolchain/metal-air-compiler/dist
             web/runtime-build/.build/air-compiler-receipt.sha256
-          key: public-air-compiler-v1-${{ runner.os }}-${{ runner.arch }}-ubuntu-24.04-emsdk4.0.20-${{ steps.air_source.outputs.source_fingerprint }}
-      - name: Report and bound verified public AIR object cache
-        id: air_objects_verified
-        if: ${{ !cancelled() && steps.air_objects.outcome == 'success' && steps.runtime.outputs.air_compiler_verified == 'true' && (steps.runtime.outcome == 'success' || steps.air_failure_verify.outcome == 'success') }}
-        env:
-          CCACHE_CONFIGPATH: ${{ runner.temp }}/air-compiler-ccache.conf
-        run: |
-          /usr/bin/ccache --cleanup
-          /usr/bin/ccache --show-stats
-      - name: Save source-specific public AIR object snapshot
-        if: ${{ !cancelled() && steps.air_objects_verified.outcome == 'success' && steps.air_objects.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ runner.temp }}/air-compiler-ccache
-          key: ${{ steps.air_objects.outputs.cache-primary-key }}
+          key: public-air-release-v1-${{ steps.air_source.outputs.release_manifest_sha256 }}
       - name: Prepare matching diagnostic compiler source after runtime failure
         id: air_failure_source
         if: ${{ !cancelled() && steps.air_failure_verify.outcome == 'success' }}
@@ -203,6 +152,7 @@ jobs:
         if: ${{ !cancelled() && steps.air_failure_source_upload.outcome == 'success' }}
         env:
           D2R_AIR_COMPILER_SOURCE_FINGERPRINT: ${{ steps.air_source.outputs.source_fingerprint }}
+          D2R_AIR_COMPILER_RELEASE_MANIFEST_SHA256: ${{ steps.air_source.outputs.release_manifest_sha256 }}
           D2R_AIR_COMPILER_SOURCE_REPORT_SHA256: ${{ steps.air_failure_source.outputs.source_report_sha256 }}
           D2R_AIR_COMPILER_SOURCE_ARTIFACT_ID: ${{ steps.air_failure_source_upload.outputs.artifact-id }}
         run: node web/runtime-build/prepare-air-compiler-diagnostic.mjs "$RUNNER_TEMP/air-compiler-diagnostic" "$RUNNER_TEMP/air-compiler-diagnostic-source/source-report.json"

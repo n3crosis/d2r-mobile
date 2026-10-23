@@ -6,20 +6,17 @@ import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readAirHeaderIdentity } from "./header-identity.mjs";
+import { verifyAirCompilerAssets } from "../../runtime-build/air-compiler-assets.mjs";
+import { airCompilerReceiptOutput } from "../../air-compiler-runtime-contract.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
-if (
-  ![2, 4].includes(args.length) ||
-  args[0] !== "--build" ||
-  (args.length === 4 && args[2] !== "--api-source")
-)
-  throw new Error(
-    "Usage: node browser-smoke-server.mjs --build /path/to/API-WASM-build [--api-source /path/to/matching/API-source]",
+if (args.length !== 4 || args[0] !== "--build" || args[2] !== "--sha256")
+  throw Error(
+    "Usage: browser-smoke-server.mjs --build /authenticated/release/dist --sha256 RECEIPT_SHA256",
   );
 const build = resolve(args[1]);
-const apiSource = args[3] ? resolve(args[3]) : resolve(here, "api");
+const report = await verifyAirCompilerAssets(build, args[3]);
 const routes = new Map();
 async function add(url, path, type) {
   const data = await readFile(path);
@@ -29,9 +26,12 @@ async function add(url, path, type) {
 const factory = await add("/compiler.mjs", resolve(build, "d2r_air_wasm.mjs"), "text/javascript");
 const wasm = await add("/compiler.wasm", resolve(build, "d2r_air_wasm.wasm"), "application/wasm");
 const hash = (data) => createHash("sha256").update(data).digest("hex");
-const apiHeader = await readFile(resolve(apiSource, "air_compiler.h"), "utf8");
-const apiVersion = apiHeader.includes("air_compiler_header_bundle_version(") ? 2 : 1;
-const headerSha256 = await readAirHeaderIdentity(apiSource, apiVersion);
+if (
+  hash(factory) !== airCompilerReceiptOutput(report, "d2r_air_wasm.mjs").sha256 ||
+  hash(wasm) !== airCompilerReceiptOutput(report, "d2r_air_wasm.wasm").sha256
+)
+  throw Error("Compiler bytes changed after authentication");
+const { apiVersion, headerSha256 } = report;
 routes.set("/manifest.json", {
   type: "application/json",
   data: JSON.stringify({

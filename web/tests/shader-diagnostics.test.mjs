@@ -81,20 +81,19 @@ test("expected punctuation remains useful without accepting shader excerpt block
   );
 });
 
-test("compiler helper staging includes the diagnostics import without changing compiler identity inputs", async () => {
+test("runtime staging keeps diagnostics while generic compiler identity excludes D2R helpers", async () => {
   const { readFile } = await import("node:fs/promises");
-  for (const file of [
-    "../runtime-build/prepare-air-compiler-source.mjs",
-    "../toolchain/metal-air-compiler/browser-smoke-server.mjs",
-    "../runtime-build/payload-policy.mjs",
-  ])
-    assert.match(
-      await readFile(new URL(file, import.meta.url), "utf8"),
-      /"(?:web\/)?shader-diagnostics\.mjs"/,
-    );
-  const { airCompilerSourceIdentity } = await import("../runtime-build/air-compiler-assets.mjs");
-  const identity = await airCompilerSourceIdentity();
-  assert.equal(Object.hasOwn(identity.sourceInputs, "shader-diagnostics.mjs"), false);
+  const policy = await readFile(
+    new URL("../runtime-build/payload-policy.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(policy, /"shader-diagnostics\.mjs"/);
+  const adapter = await readFile(new URL("../air-compiler-adapter.mjs", import.meta.url), "utf8");
+  assert.match(adapter, /shader-diagnostics\.mjs/);
+  const { readReviewedSourceLock } = await import("./fixtures/air-fork-source/fork-source.mjs");
+  const lock = await readReviewedSourceLock();
+  assert(Object.keys(lock.compilerFiles).every((path) => !path.includes("shader-diagnostics")));
+  assert(Object.keys(lock.sdkFiles).every((path) => !path.includes("shader-diagnostics")));
 });
 
 test("native frontend prose keeps privacy filtering, bounds and idempotence without a phrase whitelist", async () => {

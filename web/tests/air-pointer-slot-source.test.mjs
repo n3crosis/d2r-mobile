@@ -2,46 +2,62 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import {
+  readForkSource,
+  readOriginalAirProvenance,
+} from "./fixtures/air-fork-source/fork-source.mjs";
 
 const root = new URL("../toolchain/metal-air-compiler/", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
 const hash = (source) => createHash("sha256").update(source).digest("hex");
 
 // Source identity/coverage checks only: no native opt, verifier or compiler is run.
-test("typed pointer-slot correction is a separately authenticated 0107 delta", async () => {
-  const manifest = JSON.parse(await read("manifest.json"));
+test("typed pointer-slot correction retains its authenticated fork source boundary", async () => {
+  const { manifest, receipt } = await readOriginalAirProvenance();
   const path = "patches/0107-a2flo-typed-constant-pointer-slots.patch";
-  const patch = await read(path);
   const expected = "a347fbee6ebebf76a8eae835d3bcbfaff8a4082651c2e42d6a0f980b867c27ec";
   assert.equal(manifest.patches.length, 10);
   assert.deepEqual(manifest.patches[6], { path, sha256: expected });
-  assert.equal(hash(patch), expected);
-  assert.deepEqual(
-    [...patch.matchAll(/^\+\+\+ b\/(.+)$/gm)].map((match) => match[1]),
-    ["llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp"],
-  );
+  assert.equal(receipt.sourceInputs[path], expected);
   assert.equal(
-    hash(await read("patches/0106-a2flo-corpus-compiler-fixes.patch")),
+    receipt.sourceInputs["patches/0106-a2flo-corpus-compiler-fixes.patch"],
     "70e7f251eb79ef54d6725d314d0199fe813d11bba0294e349e6a9c3008976867",
-    "writer and earlier corrections remain byte-identical",
+    "writer and earlier corrections retain their original provenance",
   );
+  const source = await readForkSource("llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp");
+  assert.equal(hash(source), "bd857274c61741b968bbc5c9d7fc9a849b99757fba93290f260031e54ca65c06");
+  for (const invariant of [
+    "bool get_constant_pointer_slot(LoadInst& load, constant_pointer_slot& slot)",
+    "!load.isSimple() || !value_type || value_type->isOpaque()",
+    "value_type->getAddressSpace() != 2 || !slot_cast",
+    "src->getAddressSpace() != dst->getAddressSpace()",
+    "dst->getPointerElementType() != value_type",
+    "DL->getStructLayout(st)->getElementOffset(0) != 0",
+    "DL->getTypeStoreSize(original_type) != DL->getTypeStoreSize(value_type)",
+    "DL->getTypeAllocSize(original_type) != DL->getTypeAllocSize(value_type)",
+  ])
+    assert(source.includes(invariant), invariant);
 });
 
-test("exact inverse merges are an additive authenticated 0108 correction", async () => {
-  const manifest = JSON.parse(await read("manifest.json"));
+test("exact inverse merges retain authenticated nominal-root and cycle proofs", async () => {
+  const { manifest, receipt } = await readOriginalAirProvenance();
   const path = "patches/0108-a2flo-exact-inverse-pointer-merges.patch";
   const expected = "f64c9fcbdae68aa36438cadce6fdc3d034a9c8a994b78e6125c594150ccbbb6f";
-  const patch = await read(path);
   assert.deepEqual(manifest.patches[7], { path, sha256: expected });
-  assert.equal(hash(patch), expected);
-  assert.deepEqual(
-    [...patch.matchAll(/^\+\+\+ b\/(.+)$/gm)].map((match) => match[1]),
-    ["llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp"],
-  );
-  assert.equal(
-    manifest.patchedFiles["llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp"],
-    "bd857274c61741b968bbc5c9d7fc9a849b99757fba93290f260031e54ca65c06",
-  );
+  assert.equal(receipt.sourceInputs[path], expected);
+  const source = await readForkSource("llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp");
+  assert.equal(hash(source), "bd857274c61741b968bbc5c9d7fc9a849b99757fba93290f260031e54ca65c06");
+  for (const invariant of [
+    "struct native_view_proof",
+    "original_type != proof.recast->getDestTy()",
+    'reject("inverse root nominal type mismatch", node)',
+    "isa<ConstantPointerNull>(original) || isa<UndefValue>(original) || isa<PoisonValue>(original)",
+    'reject("unproved inverse native root", node)',
+    '"inverse root depends on rewritten native graph"',
+    '"unanchored inverse pointer cycle"',
+    "merged_native_recasts",
+  ])
+    assert(source.includes(invariant), invariant);
   assert.equal(
     hash(await read("ci-compile-canary.mjs")),
     "19415766142c77a9443478e74d5413a300397c28a1a0395b2f99d22d3547eeca",
@@ -200,17 +216,14 @@ test("demonstrated pointer-slot MSL input is authenticated in the strict real-WA
   );
 });
 
-test("canonical GEP restoration is an exact additive 0109 delta", async () => {
-  const manifest = JSON.parse(await read("manifest.json"));
+test("canonical GEP restoration retains its exact authenticated fork invariants", async () => {
+  const { manifest, receipt } = await readOriginalAirProvenance();
   const path = "patches/0109-a2flo-canonical-gep-recasts.patch";
   const expected = "52724314a6e3095290fdd933ceb0caa51e057162216d523a8c62a5a73b906e85";
-  const patch = await read(path);
   assert.deepEqual(manifest.patches[8], { path, sha256: expected });
-  assert.equal(hash(patch), expected);
-  assert.deepEqual(
-    [...patch.matchAll(/^\+\+\+ b\/(.+)$/gm)].map((match) => match[1]),
-    ["llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp"],
-  );
+  assert.equal(receipt.sourceInputs[path], expected);
+  const source = await readForkSource("llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp");
+  assert.equal(hash(source), "bd857274c61741b968bbc5c9d7fc9a849b99757fba93290f260031e54ca65c06");
   for (const invariant of [
     "native_type->getPointerElementType() == canonical_element",
     "auto gep = dyn_cast<GetElementPtrInst>(ptr)",
@@ -221,11 +234,7 @@ test("canonical GEP restoration is an exact additive 0109 delta", async () => {
     "recast.first->replaceAllUsesWith(value)",
     "canonical_gep_recasts.count(pending)",
   ])
-    assert(patch.includes(invariant), invariant);
-  assert.equal(
-    manifest.patchedFiles["llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp"],
-    "bd857274c61741b968bbc5c9d7fc9a849b99757fba93290f260031e54ca65c06",
-  );
+    assert(source.includes(invariant), invariant);
 });
 
 test("canonical GEP matrix retains nine symbolic positives and eighteen isolated rejections", async () => {

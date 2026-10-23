@@ -3,6 +3,8 @@ import test from "node:test";
 import { airCompilerIdentity, AIR_COMPILER_SOURCE_LANGUAGE } from "../air-compiler-contract.mjs";
 import {
   AIR_COMPILER_RUNTIME,
+  airCompilerReceiptOutput,
+  airCompilerReceiptSourceRecord,
   airCompilerRuntimeComponent,
   assertAirCompilerReceiptMatchesComponent,
   validateAirCompilerBuildReceipt,
@@ -66,4 +68,48 @@ test("old API-v2 AIR metadata cannot be relabeled by a new loader", () => {
 test("pre-AIR inventory parsing remains compatible without inventing compilation", () => {
   assert.equal(validateAirCompilerRuntimeComponent({ assets: [] }), undefined);
   assert.throws(() => validateAirCompilerRuntimeComponent({ assets: [] }, { required: true }));
+});
+
+test("fresh fork receipt preserves identity and only aliases the two existing output paths", async () => {
+  const { createFreshAirReleaseFixture } =
+    await import("./fixtures/air-release-generic/fixture.mjs");
+  const { receipt } = createFreshAirReleaseFixture(),
+    before = JSON.stringify(receipt);
+  assert.equal(validateAirCompilerBuildReceipt(receipt), receipt);
+  const component = airCompilerRuntimeComponent(receipt);
+  assert.equal(component.id, AIR_COMPILER_RUNTIME.id);
+  assert.equal(component.factorySha256, receipt.files["air_wasm.mjs"].sha256);
+  assert.equal(component.wasmSha256, receipt.files["air_wasm.wasm"].sha256);
+  assert.equal(
+    airCompilerReceiptOutput(receipt, "d2r_air_wasm.wasm"),
+    receipt.files["air_wasm.wasm"],
+  );
+  assert.throws(() => airCompilerReceiptOutput(receipt, "another.wasm"));
+  assert.deepEqual(airCompilerReceiptSourceRecord(receipt), {
+    path: "toolchain/metal-air-compiler/dist/source-lock.json",
+    sha256: receipt.sourceLockSha256,
+  });
+  assert.equal(JSON.stringify(receipt), before);
+  for (const change of [
+    (r) => (r.apiVersion = 1),
+    (r) => (r.buildTool.jobs = 0),
+    (r) => (r.buildTool.versions.node = "v22.0.0"),
+    (r) => (r.verification.smoke.cases = []),
+    (r) => (r.verification.smoke.cases[1].status = 0),
+    (r) => (r.files["air_wasm.wasm"].bytes = 128 * 1024 ** 2 + 1),
+    (r) => (r.headerBundleVersion = 1),
+    (r) => (r.sourceTreeClean = false),
+    (r) => (r.sourceLockSha256 = "bad"),
+    (r) => (r.sourceInputs = {}),
+    (r) => (r.sourceInputs["../escape"] = "a".repeat(64)),
+    (r) => (r.sourceManifestSha256 = "a".repeat(64)),
+    (r) => (r.files["d2r_air_wasm.wasm"] = r.files["air_wasm.wasm"]),
+    (r) => (r.buildTool.emscriptenVersion = "4.0.21"),
+    (r) => (r.verification.headerSha256 = "0".repeat(64)),
+    (r) => (r.verification.deviceExecutionVerified = true),
+  ]) {
+    const invalid = structuredClone(receipt);
+    change(invalid);
+    assert.throws(() => validateAirCompilerBuildReceipt(invalid));
+  }
 });

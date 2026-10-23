@@ -2,16 +2,17 @@
 // Developer incremental bridge: reuse only digest-pinned public runtimes with unchanged source inputs, then append the current real AIR closure.
 import process from "node:process";
 import { createHash } from "node:crypto";
-import { readFile, writeFile, mkdir, mkdtemp, lstat, readdir, rm, rename } from "node:fs/promises";
+import { readFile, writeFile, mkdir, mkdtemp, lstat, rm, rename } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { resolve, join } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { verifyRuntimeInventory } from "./inventory.mjs";
 import { createRuntimeTransport } from "./transport.mjs";
-import { verifyAirCompilerAssets } from "./air-compiler-assets.mjs";
+import { verifyAirCompilerAssets, airCompilerProvenanceAssets } from "./air-compiler-assets.mjs";
 import {
   AIR_COMPILER_RUNTIME,
+  airCompilerReceiptOutput,
   airCompilerRuntimeComponent,
   runtimeAssetMaximumBytes,
 } from "../air-compiler-runtime-contract.mjs";
@@ -73,7 +74,13 @@ async function verifySourceBridge(baseRevision) {
       !path.startsWith("web/toolchain/metal-air-compiler/")
     )
       throw new Error(`Cannot reuse prior runtime after an unrelated source change: ${path}`);
-    const info = await lstat(join(root, path));
+    const info = await lstat(join(root, path)).catch((error) => {
+      if (error.code === "ENOENT")
+        throw Error(
+          `Runtime reuse is intentionally unavailable after a source deletion: ${path}; build the unchanged non-AIR runtimes normally`,
+        );
+      throw error;
+    });
     if (!info.isFile() || info.isSymbolicLink() || info.size > 16 * 1024 * 1024)
       throw new Error(`Invalid source-bridge input: ${path}`);
     changedSourceSha256[path] = hash(await readFile(join(root, path)));
@@ -169,23 +176,15 @@ export async function reuseRuntimeWithAir({ directory, manifestSha256, sourceRev
     contents.set(key(identity), { ...identity, data: bytes });
   }
   for (const path of [AIR_COMPILER_RUNTIME.factory, AIR_COMPILER_RUNTIME.wasm])
-    await add(path, path, report.files[path.split("/").at(-1)]);
+    await add(path, path, airCompilerReceiptOutput(report, path.split("/").at(-1)));
   await add(AIR_COMPILER_RUNTIME.receipt);
   const receipt = JSON.parse(
     contents.get(key(assets.find((asset) => asset.path === AIR_COMPILER_RUNTIME.receipt))).data,
   );
   if (JSON.stringify(receipt) !== JSON.stringify(report))
     throw new Error("AIR build receipt changed during reuse");
-  const sourceManifest = "toolchain/metal-air-compiler/manifest.json";
-  await add(sourceManifest, sourceManifest, {
-    bytes: (await boundedBytes(join(web, sourceManifest))).length,
-    sha256: report.sourceManifestSha256,
-  });
-  await add("toolchain/metal-air-compiler/THIRD_PARTY_NOTICES.md");
-  for (const name of await readdir(join(web, "toolchain/metal-air-compiler/licenses"))) {
-    if (!/^[A-Za-z0-9_.+-]+$/.test(name)) throw new Error("Invalid AIR license path");
-    await add(`toolchain/metal-air-compiler/licenses/${name}`);
-  }
+  for (const record of await airCompilerProvenanceAssets(report))
+    await add(record.path, record.path, record);
   // 仅构建新增工作线程；旧已密封字节继续受先前清单认证，不依赖本地缺失的原生胶水。
   // Build only the new worker; existing sealed bytes retain their prior authentication and need no missing local native glue.
   if (typeof globalThis.Bun?.build !== "function")
