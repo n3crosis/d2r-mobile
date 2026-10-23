@@ -58,7 +58,7 @@
 ; RUN: not opt -enable-new-pm=0 -PointerBCFixup -disable-output %t/inverse_unknown_arm.ll 2>&1 | FileCheck %s --check-prefix=REJECT-INVERSE-UNKNOWN-ARM
 ; REJECT-INVERSE-UNKNOWN-ARM: constant-vector graph: unmapped argument or constant pointer root
 ; RUN: not opt -enable-new-pm=0 -PointerBCFixup -disable-output %t/inverse_scalar_view.ll 2>&1 | FileCheck %s --check-prefix=REJECT-INVERSE-SCALAR-VIEW
-; REJECT-INVERSE-SCALAR-VIEW: constant-vector graph: scalar or non-aggregate inverse pointer cast (select)
+; REJECT-INVERSE-SCALAR-VIEW: constant-vector graph: scalar-to-aggregate inverse pointer cast (select)
 ; RUN: not opt -enable-new-pm=0 -PointerBCFixup -disable-output %t/inverse_merged_escape.ll 2>&1 | FileCheck %s --check-prefix=REJECT-INVERSE-MERGED-ESCAPE
 ; REJECT-INVERSE-MERGED-ESCAPE: constant-vector graph: unsupported native-view user (call)
 ; RUN: not opt -enable-new-pm=0 -PointerBCFixup -disable-output %t/inverse_merged_write.ll 2>&1 | FileCheck %s --check-prefix=REJECT-INVERSE-MERGED-WRITE

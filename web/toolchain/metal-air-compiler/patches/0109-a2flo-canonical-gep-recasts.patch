@@ -1,0 +1,100 @@
+--- a/llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp
++++ b/llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp
+@@ -798,6 +798,7 @@
+ 			std::unordered_map<LoadInst*, constant_pointer_slot> slot_loads;
+ 			std::unordered_map<BitCastInst*, LoadInst*> native_recasts;
+ 			std::unordered_map<BitCastInst*, Instruction*> merged_native_recasts;
++			std::unordered_map<BitCastInst*, GetElementPtrInst*> canonical_gep_recasts;
+ 			SmallVector<Instruction*, 8> native_pointers;
+ 			SmallPtrSet<Instruction*, 32> native_seen;
+ 			bool has_native_load = false;
+@@ -811,6 +812,7 @@
+ 				constant_vector_rejections[&BC] = detail;
+ 				for (auto& recast : native_recasts) constant_vector_rejections[recast.first] = detail;
+ 				for (auto& recast : merged_native_recasts) constant_vector_rejections[recast.first] = detail;
++				for (auto& recast : canonical_gep_recasts) constant_vector_rejections[recast.first] = detail;
+ 				for (auto node : seen) {
+ 					if (auto root = dyn_cast<BitCastInst>(node)) constant_vector_rejections[root] = detail;
+ 				}
+@@ -921,11 +923,36 @@
+ 							native_recasts.emplace(recast, load);
+ 						} else {
+ 							auto native_type = dyn_cast<PointerType>(recast->getDestTy());
+-							if (ptr->getType()->getPointerElementType() != dst_vec || !native_type ||
+-								native_type->isOpaque() || native_type->getAddressSpace() != 2 ||
+-								!native_type->getPointerElementType()->isStructTy())
+-								return reject("scalar or non-aggregate inverse pointer cast", ptr);
+-							merged_native_recasts.emplace(recast, ptr);
++							if (!native_type || native_type->isOpaque() || native_type->getAddressSpace() != 2)
++								return reject("inverse pointer type or address-space mismatch", ptr);
++							const bool vector_input = ptr->getType()->getPointerElementType() == dst_vec;
++							auto canonical_element = vector_input ? static_cast<Type*>(src_vec) : src_scalar;
++							if (native_type->getPointerElementType() == canonical_element) {
++								// The validated GEP already has an exact canonical storage
++								// replacement. Preserve every original index and inbounds
++								// flag; do not infer zero offset or an aggregate object.
++								auto gep = dyn_cast<GetElementPtrInst>(ptr);
++								if (!gep) return reject("canonical inverse input is not a GEP", ptr);
++								canonical_gep_recasts.emplace(recast, gep);
++							} else if (!vector_input) {
++								auto destination = native_type->getPointerElementType();
++								if (destination->isAggregateType()) return reject("scalar-to-aggregate inverse pointer cast", ptr);
++								if (destination->isVectorTy()) return reject("scalar-to-vector inverse pointer cast", ptr);
++								if (destination->isPointerTy()) return reject("scalar-to-pointer inverse pointer cast", ptr);
++								if (destination->isIntegerTy() || destination->isFloatingPointTy())
++									return reject("noncanonical scalar inverse pointer cast", ptr);
++								return reject("scalar inverse destination category mismatch", ptr);
++							} else if (!native_type->getPointerElementType()->isStructTy()) {
++								auto destination = native_type->getPointerElementType();
++								if (destination->isVectorTy()) return reject("noncanonical vector inverse pointer cast", ptr);
++								if (destination->isPointerTy()) return reject("vector-to-pointer inverse pointer cast", ptr);
++								if (destination->isArrayTy()) return reject("vector-to-array inverse pointer cast", ptr);
++								if (destination->isIntegerTy() || destination->isFloatingPointTy())
++									return reject("vector-to-scalar inverse pointer cast", ptr);
++								return reject("vector inverse destination category mismatch", ptr);
++							} else {
++								merged_native_recasts.emplace(recast, ptr);
++							}
+ 						}
+ 						if (!check_native_users(recast)) return false;
+ 					} else if (isa<GetElementPtrInst>(user) || isa<PHINode>(user) || isa<SelectInst>(user)) {
+@@ -1141,6 +1168,17 @@
+ 					typed_phi->addIncoming(replacements.at(phi->getIncomingValue(i)), phi->getIncomingBlock(i));
+ 				}
+ 			}
++			// Unlike wrapper recovery, this path uses the existing canonical GEP
++			// itself, including nonzero/dynamic signed indices. Wait until all
++			// typed nodes exist, then update cached root aliases as well as IR uses:
++			// a native-to-integer root may refer directly to a consumed recast.
++			for (auto& recast : canonical_gep_recasts) {
++				auto value = replacements.at(recast.second);
++				for (auto& replacement : replacements) {
++					if (replacement.second == recast.first) replacement.second = value;
++				}
++				recast.first->replaceAllUsesWith(value);
++			}
+ 			for (auto ld : loads) {
+ 				auto ptr = replacements.at(ld->getPointerOperand());
+ 				auto typed_ld = new LoadInst(ptr->getType()->getPointerElementType(), ptr,
+@@ -1163,7 +1201,8 @@
+ 			// A component can consume other bitcasts from the outer worklist.
+ 			// Null their slots without invalidating the active range iterator.
+ 			for (auto& pending : ptr_bc_instrs) {
+-				if (seen.count(pending) || native_recasts.count(pending) || merged_native_recasts.count(pending)) {
++				if (seen.count(pending) || native_recasts.count(pending) || merged_native_recasts.count(pending) ||
++					canonical_gep_recasts.count(pending)) {
+ 					constant_vector_rejections.erase(pending);
+ 					pending = nullptr;
+ 				}
+@@ -1172,9 +1211,11 @@
+ 			// graph. Sever cycles before deleting any original pointer node.
+ 			for (auto& recast : native_recasts) recast.first->dropAllReferences();
+ 			for (auto& recast : merged_native_recasts) recast.first->dropAllReferences();
++			for (auto& recast : canonical_gep_recasts) recast.first->dropAllReferences();
+ 			for (auto ptr : pointers) ptr->dropAllReferences();
+ 			for (auto& recast : native_recasts) recast.first->eraseFromParent();
+ 			for (auto& recast : merged_native_recasts) recast.first->eraseFromParent();
++			for (auto& recast : canonical_gep_recasts) recast.first->eraseFromParent();
+ 			for (auto ptr : pointers) ptr->eraseFromParent();
+ 			// Slot-address casts can be shared with other loads; only erase dead
+ 			// ones, after nulling every matching raw outer-worklist entry.

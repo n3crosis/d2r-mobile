@@ -13,7 +13,7 @@ test("typed pointer-slot correction is a separately authenticated 0107 delta", a
   const path = "patches/0107-a2flo-typed-constant-pointer-slots.patch";
   const patch = await read(path);
   const expected = "a347fbee6ebebf76a8eae835d3bcbfaff8a4082651c2e42d6a0f980b867c27ec";
-  assert.equal(manifest.patches.length, 8);
+  assert.equal(manifest.patches.length, 9);
   assert.deepEqual(manifest.patches[6], { path, sha256: expected });
   assert.equal(hash(patch), expected);
   assert.deepEqual(
@@ -32,7 +32,7 @@ test("exact inverse merges are an additive authenticated 0108 correction", async
   const path = "patches/0108-a2flo-exact-inverse-pointer-merges.patch";
   const expected = "f64c9fcbdae68aa36438cadce6fdc3d034a9c8a994b78e6125c594150ccbbb6f";
   const patch = await read(path);
-  assert.deepEqual(manifest.patches.at(-1), { path, sha256: expected });
+  assert.deepEqual(manifest.patches[7], { path, sha256: expected });
   assert.equal(hash(patch), expected);
   assert.deepEqual(
     [...patch.matchAll(/^\+\+\+ b\/(.+)$/gm)].map((match) => match[1]),
@@ -40,7 +40,7 @@ test("exact inverse merges are an additive authenticated 0108 correction", async
   );
   assert.equal(
     manifest.patchedFiles["llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp"],
-    "42bcc31a0c12f8a41705e690c8bd0483e2e229e553b248253ead6765fe83bb84",
+    "bd857274c61741b968bbc5c9d7fc9a849b99757fba93290f260031e54ca65c06",
   );
   assert.equal(
     hash(await read("ci-compile-canary.mjs")),
@@ -51,7 +51,17 @@ test("exact inverse merges are an additive authenticated 0108 correction", async
 
 test("native slot matrix contains seventeen positive functions and twenty-seven isolated rejections", async () => {
   const matrix = await read("fixtures/metal-constant-pointer-slots.ll");
-  assert.equal(hash(matrix), "6348d48faad7a4e58f0dcab5c5cb61af1f169be8d418898207aa2b7c6dcefaa8");
+  assert.equal(hash(matrix), "e72ff040a72f0a8f4bb179809c6e8470e207d9dc2565ed5a4fe054d7fadeaef6");
+  assert.equal(
+    hash(
+      matrix.replace(
+        "scalar-to-aggregate inverse pointer cast (select)",
+        "scalar or non-aggregate inverse pointer cast (select)",
+      ),
+    ),
+    "6348d48faad7a4e58f0dcab5c5cb61af1f169be8d418898207aa2b7c6dcefaa8",
+    "all previous 17/27 fixture bodies and checks except one refined diagnostic are unchanged",
+  );
   const split = matrix.split(/^;--- (.+)\n/gm);
   const modules = new Map();
   for (let i = 1; i < split.length; i += 2) modules.set(split[i], split[i + 1]);
@@ -133,7 +143,7 @@ test("native slot matrix contains seventeen positive functions and twenty-seven 
     "inverse_undef_native.ll": "unproved inverse native root (bitcast)",
     "inverse_poison_native.ll": "unproved inverse native root (bitcast)",
     "inverse_unknown_arm.ll": "unmapped argument or constant pointer root",
-    "inverse_scalar_view.ll": "scalar or non-aggregate inverse pointer cast (select)",
+    "inverse_scalar_view.ll": "scalar-to-aggregate inverse pointer cast (select)",
     "inverse_merged_escape.ll": "unsupported native-view user (call)",
     "inverse_merged_write.ll": "unsupported native-view user (store)",
   };
@@ -188,4 +198,101 @@ test("demonstrated pointer-slot MSL input is authenticated in the strict real-WA
     !canary.includes("metal-constant-pointer-slots.ll"),
     "raw IR is not executed by the MSL API canary",
   );
+});
+
+test("canonical GEP restoration is an exact additive 0109 delta", async () => {
+  const manifest = JSON.parse(await read("manifest.json"));
+  const path = "patches/0109-a2flo-canonical-gep-recasts.patch";
+  const expected = "52724314a6e3095290fdd933ceb0caa51e057162216d523a8c62a5a73b906e85";
+  const patch = await read(path);
+  assert.deepEqual(manifest.patches.at(-1), { path, sha256: expected });
+  assert.equal(hash(patch), expected);
+  assert.deepEqual(
+    [...patch.matchAll(/^\+\+\+ b\/(.+)$/gm)].map((match) => match[1]),
+    ["llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp"],
+  );
+  for (const invariant of [
+    "native_type->getPointerElementType() == canonical_element",
+    "auto gep = dyn_cast<GetElementPtrInst>(ptr)",
+    'if (!gep) return reject("canonical inverse input is not a GEP", ptr)',
+    "canonical_gep_recasts.emplace(recast, gep)",
+    "auto value = replacements.at(recast.second)",
+    "if (replacement.second == recast.first) replacement.second = value",
+    "recast.first->replaceAllUsesWith(value)",
+    "canonical_gep_recasts.count(pending)",
+  ])
+    assert(patch.includes(invariant), invariant);
+  assert.equal(
+    manifest.patchedFiles["llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp"],
+    "bd857274c61741b968bbc5c9d7fc9a849b99757fba93290f260031e54ca65c06",
+  );
+});
+
+test("canonical GEP matrix retains nine symbolic positives and eighteen isolated rejections", async () => {
+  const matrix = await read("fixtures/metal-canonical-gep-recasts.ll");
+  assert.equal(hash(matrix), "6b3135d88d07acb2f51d8d9b9d7fc3c161a7025d9e0c7afdc86fbf088493e4cc");
+  const split = matrix.split(/^;--- (.+)\n/gm);
+  const modules = new Map();
+  for (let i = 1; i < split.length; i += 2) modules.set(split[i], split[i + 1]);
+  const names = [
+    "positive.ll",
+    "scalar_wrong_width.ll",
+    "vector_lane_regroup.ll",
+    "vector_to_scalar.ll",
+    "scalar_to_vector.ll",
+    "scalar_to_record.ll",
+    "scalar_to_array.ll",
+    "vector_to_record.ll",
+    "canonical_write.ll",
+    "canonical_escape.ll",
+    "canonical_volatile.ll",
+    "canonical_atomic.ll",
+    "canonical_address_space.ll",
+    "canonical_select_input.ll",
+    "canonical_unknown_arm.ll",
+    "canonical_wrong_root_layout.ll",
+    "scalar_to_pointer.ll",
+    "vector_to_pointer.ll",
+    "vector_to_array.ll",
+  ];
+  assert.deepEqual([...modules.keys()], names);
+  const positives = [
+    "canonical_scalar_gep",
+    "canonical_vector_gep",
+    "canonical_chained_scalar",
+    "canonical_native_merges",
+    "canonical_loop_alias",
+    "canonical_native_gep_crosslink",
+    "canonical_shared_inverse",
+    "canonical_with_slot_inverse",
+    "canonical_integer_storage",
+  ];
+  assert.deepEqual(
+    [...modules.get("positive.ll").matchAll(/^define .+ @([^ (]+)\(/gm)].map((match) => match[1]),
+    positives,
+  );
+  assert.deepEqual(
+    [...matrix.matchAll(/^; POS-LABEL: define floor_fragment .+ @([^ (]+)\(/gm)].map(
+      (match) => match[1],
+    ),
+    positives,
+  );
+  const rejected = [
+    ...matrix.matchAll(
+      /^; RUN: not opt .+ %t\/([^ ]+) 2>&1 \| FileCheck %s --check-prefix=([^\n]+)$/gm,
+    ),
+  ];
+  assert.deepEqual(
+    rejected.map((match) => match[1]),
+    names.slice(1),
+  );
+  for (const [, name, prefix] of rejected) {
+    assert.equal([...modules.get(name).matchAll(/^define /gm)].length, 1);
+    assert(matrix.includes(`; ${prefix}: constant-vector graph: `), prefix);
+  }
+  assert(matrix.includes("opt -enable-new-pm=0 -PointerBCFixup -verify -S %t/positive.ll"));
+  assert(matrix.includes("--implicit-check-not='= load "));
+  assert(matrix.includes("--implicit-check-not='= bitcast "));
+  assert(matrix.includes("Native opt/FileCheck is NOT run by current CI"));
+  assert(!(await read("ci-compile-canary.mjs")).includes("metal-canonical-gep-recasts.ll"));
 });

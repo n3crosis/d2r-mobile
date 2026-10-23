@@ -8,8 +8,11 @@ not a new upstream rebase, ABI version or receipt format. The separate
 `0107-a2flo-typed-constant-pointer-slots.patch` adds the reviewed pointer-slot
 correction without changing any byte of `0101` through `0106`. The additive
 `0108-a2flo-exact-inverse-pointer-merges.patch` retains all seven previous patches
-and extends only proven inverse-pointer merge handling. It does not change the
-MSL API, fixed 31-call canary, zlib fixes or runtime integrity checks.
+and extends only proven inverse-pointer merge handling. The additive
+`0109-a2flo-canonical-gep-recasts.patch` preserves those eight patches and restores
+only the exact canonical scalar/vector storage pointer after a validated GEP.
+Neither extension changes the MSL API, fixed 31-call canary, zlib fixes or runtime
+integrity checks.
 
 ## Changed source files
 
@@ -55,11 +58,22 @@ MSL API, fixed 31-call canary, zlib fixes or runtime integrity checks.
   equal layouts are insufficient, and a valid surrounding arm cannot justify a
   rootless subcycle. New native merges preserve conditions, metadata, duplicate
   edges and original insertion sites. Native GEP indices/strides and load sites
-  remain unchanged. GEP/scalar inverse inputs, mismatched nominal types,
+  remain unchanged. Aggregate recovery through GEP/scalar inverse inputs, mismatched nominal types,
   null/undef/poison roots, unknown arms and hidden dependencies on the rewritten
   graph are rejected before mutation. The existing direct-slot behavior and
   native read-only closure remain intact. Rejection subreasons are fixed strings
   plus bounded opcode names, never user identifiers or IR excerpts.
+  `0109` separately accepts a GEP inverse cast only when its destination exactly
+  matches that node's canonical scalar/vector storage pointer. It reuses the
+  existing typed GEP replacement, retaining arbitrary signed/dynamic indices,
+  index widths, inbounds, metadata and native load sites. It does not reconstruct
+  aggregate objects through GEPs, infer types from equal widths, or add/move loads.
+  The entire component and native read-only closure validate before mutation;
+  cached root aliases are updated before subsequent load reconstruction.
+  Non-GEP canonical inverses (apart from the existing direct-slot path), wrong
+  layouts/types/address spaces, writes, escapes and volatile/atomic loads remain
+  outside this path. Refined rejection labels expose only fixed destination
+  categories, not source types, values or indices.
 - `clang/lib/CodeGen/CodeGenModule.cpp`: do not mistake annotations on an
   explicitly bound resource's pointed-to record for a second stage interface.
   Exempt only non-stage-input pointers/references with a sole `buffer` attribute
@@ -108,7 +122,7 @@ all 47 observed omissions are already unused before the writer.
 
 ## Authored LLVM regressions
 
-Six public pass-level fixtures are retained under `fixtures/`, separately
+Seven public pass-level fixtures are retained under `fixtures/`, separately
 from the production-source patch:
 
 - `metal-final-dso-local.ll`: verify required in-memory locality immediately
@@ -139,6 +153,17 @@ from the production-source patch:
   invalid native constants, unknown arms, escapes and writes. All retain users
   reaching the unchanged legacy rejection path. Source hashes, preserved bodies,
   split-module inventory and RUN targets are checked, not compiler behavior.
+  `0109` changes only the scalar-to-aggregate rejection expectation; all 17/27
+  bodies and every other check remain byte-identical.
+- `metal-canonical-gep-recasts.ll`: nine symbolic positives and eighteen isolated
+  negative modules. Positives cover scalar/vector storage, mixed-width dynamic
+  and signed negative indices, chained GEPs, native PHI/select users, root-alias
+  loops, native GEP crosslinks, shared inverses, existing direct-slot recovery
+  and integer canonical storage. Negatives cover noncanonical destinations,
+  vector/scalar/aggregate/pointer category mismatches, unknown roots, padded
+  layouts, non-GEP inputs, writes/escapes, volatile/atomic loads and address-space
+  changes. Exact hashes, RUN/module inventory and source-only payload exclusion
+  are checked. These are not executed native or real-WASM regression results.
 
 Their `RUN` lines require `opt`, `FileCheck` and, for split fixtures,
 `split-file` from the matching patched toolchain. They have not been executed
@@ -211,9 +236,9 @@ renamed or accepted under aliases. The bounded compilation budget includes
 the four liveness variants: 31 API calls total. Each added shader is source-only, excluded from the public runtime
 payload, and included by the existing tracked compiler-directory source copy.
 Source-only tests check fixture wiring and copy closure but do not execute the
-compiler. The green 144d3f2 CI baseline retains the 62a0097 compiler bytes and
-passes these existing canary checks. The new `0108` inverse-merge path has no
-new demonstrated MSL reproducer; its added native coverage remains static-only.
+compiler. The authenticated 75e6bd1 artifact includes `0108` and passes the
+existing canary. Neither `0108` nor `0109` adds a demonstrated natural-MSL
+reproducer for its narrow inverse case; their native coverage remains static-only.
 
 ## Authored storage/interface regressions
 
@@ -293,17 +318,18 @@ and stage-linkage or device effects are separate, unestablished claims.
 
 ## Evidence and verification boundary
 
-These corrections respond to authenticated CI artifacts. The 62a0097 compiler,
-retained unchanged by the green 144d3f2 CI baseline, includes `0106`/`0107` and
-passes the existing strict canary. A remaining original kernel reports an
-unsupported inverse pointer cast. Its diagnostic identifies the rejected user,
-not that user's input opcode or complete pre-error graph. No usable pre-error IR
-establishes that the new PHI/select case occurs in that kernel; this integration
-does not claim actual kernel recovery.
+These corrections respond to authenticated CI artifacts. The 75e6bd1 compiler
+includes `0106` through `0108` and passes the existing strict canary. The remaining
+unchanged original kernel still rejects with the bounded category
+`scalar or non-aggregate inverse pointer cast (getelementptr)`. The parenthesized
+opcode now establishes a GEP input, but neither its result/destination type,
+indices nor inbounds flag was observed. No usable pre-error IR proves that the
+exact canonical-storage case occurs in that kernel. This integration does not
+claim actual kernel recovery.
 
-`0108` is a statically reviewed correction for the precisely defined symbolic
-cases above, pending a fresh matching artifact and unchanged-source checks. Its
-native matrix has not run here or in current CI, which does not build
+`0109` is a statically reviewed correction for the precisely defined symbolic
+cases above, pending a fresh matching artifact and unchanged-source checks. The
+native matrices have not run here or in current CI, which does not build
 `opt`/FileCheck. No new natural-MSL probe, raw-IR API mode, extra job or native-tool
 build is added. Other pointer graph shapes remain unsupported. The conservative
 maximum diagnostic length is 278 characters, including the invalid-opcode
@@ -325,9 +351,30 @@ runtime source identity. None of these steps builds or invokes LLVM, Clang or
 WASM, and no private corpus source is included in this package.
 
 A new CI-built artifact and execution of authored regressions plus the
-unchanged corpus are still required to validate `0108`.
-Existing artifacts cannot contain that new inverse-merge correction. The complete manifest hash
+unchanged corpus are still required to validate `0109`.
+Existing artifacts cannot contain that canonical-GEP correction. The complete manifest hash
 and all patch hashes already participate in runtime source identity, so old
 receipts must become stale rather than being relabeled or bypassed. No source
 identity, metallib entry/stage, container-integrity or bitcode-hash check is
 weakened. No Apple runtime acceptance or rendering equivalence is established.
+
+## Bounded CI object reuse
+
+The existing single CI job retains its exact-source finished-output/receipt
+cache. Only a miss enables a separate public AIR object cache using Ubuntu's
+ccache, scoped to the AIR build subprocess. Configuration is outside restored
+cache data: compiler-content checking, preprocessing mode, no sloppiness or
+remote storage, a 2 GiB per-snapshot bound and cleanup before saving. Compatible
+object snapshots are keyed by runner/toolchain/upstream archive/build profile and
+ccache binary identity, then the exact source fingerprint. Finished outputs
+never use the compatibility-prefix restore path.
+
+Fresh source preparation, receipt authentication and the unchanged real-WASM
+canary remain mandatory. Saving objects requires successful AIR verification and
+either runtime success or successful failure reauthentication; cancellation and
+failed compiler/canary steps cannot publish an object snapshot. Inert shell tests
+check failure gating and that the wrapper cannot leak into later Rust/.NET work.
+No ccache installation, cache round-trip, CI launch or speedup was measured here.
+The next already-required cold compiler build must seed this cache; later hit/miss
+statistics are needed to establish benefit. The 2 GiB limit is per snapshot, not
+an overall repository cache quota.

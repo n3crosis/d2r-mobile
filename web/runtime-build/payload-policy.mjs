@@ -44,6 +44,7 @@ export const SOURCE_ONLY_RUNTIME_ASSETS = Object.freeze([
   "toolchain/metal-air-compiler/fixtures/loop-carried-buffer-pointer.metal",
   "toolchain/metal-air-compiler/fixtures/retyped-buffer-pointer-load.metal",
   "toolchain/metal-air-compiler/fixtures/metal-constant-pointer-slots.ll",
+  "toolchain/metal-air-compiler/fixtures/metal-canonical-gep-recasts.ll",
   "toolchain/metal-air-compiler/fixtures/msl-stage-record-threadgroup.metal",
   "toolchain/metal-air-compiler/fixtures/msl-stage-record-buffers.metal",
   "toolchain/metal-air-compiler/fixtures/msl-buffer-reflection-mixed.metal",
