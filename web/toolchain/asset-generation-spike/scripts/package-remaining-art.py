@@ -54,9 +54,7 @@ wide = (
     ]
     + [n for n in wide if isinstance(n, ast.FunctionDef) and n.name == "widen_bg"]
 )
-trove = [
-    n for n in nodes("gen_trove_art.py") if isinstance(n, (ast.Assign, ast.FunctionDef))
-]
+trove = [n for n in nodes("gen_trove_art.py") if isinstance(n, (ast.Assign, ast.FunctionDef))]
 # 语句切片由源码哈希固定，并由下方无 I/O 的 AST 检查断言。
 # Statement slices are source-hash pinned, and asserted by the I/O-free AST check below.
 vault = composition("gen_vault_cover.py", 5, -3, "crop", "vault_cover")
@@ -65,9 +63,7 @@ for tree in [wide, trove, vault, pouch]:
     ast.fix_missing_locations(ast.Module(body=tree, type_ignores=[]))
     for node in ast.walk(ast.Module(body=tree, type_ignores=[])):
         if isinstance(node, ast.Name) and node.id in {"open", "G", "dmx", "sys", "os"}:
-            raise SystemExit(
-                "Unexpected I/O or codec dependency in extracted composition"
-            )
+            raise SystemExit("Unexpected I/O or codec dependency in extracted composition")
 out = HERE / "public/generated"
 out.mkdir(parents=True, exist_ok=True)
 for name, tree in [

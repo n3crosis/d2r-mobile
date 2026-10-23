@@ -1,4 +1,5 @@
-/* 严格的旧版单根 BKTR 表，不使用上游原地哨兵解析器。表内容仍不可信，只有合并 IVFC 验证才能认证返回明文；这是 boundary.c 的私有实现。 */
+/* 严格的旧版单根 BKTR 表，不使用上游原地哨兵解析器。表内容仍不可信，只有合并 IVFC
+ * 验证才能认证返回明文；这是 boundary.c 的私有实现。 */
 /* Strict legacy single-root BKTR tables. No upstream in-place sentinel parser.
  * Table contents remain untrusted; only merged IVFC verification authenticates
  * the returned plaintext. Private implementation of boundary.c. */

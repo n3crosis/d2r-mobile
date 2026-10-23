@@ -413,7 +413,8 @@ static void draw_mask(int width, int height, int channels, int dx, int dy, uint3
         }
     }
 }
-/* 画布由调用方初始化；浮点起点遵循 ImageDraw 的 modf 转 C float。stroke 非零时，即使墨色相同，也分别绘制描边遮罩及无描边前景，ImageDraw 不合并两种遮罩。 */
+/* 画布由调用方初始化；浮点起点遵循 ImageDraw 的 modf 转 C float。stroke
+ * 非零时，即使墨色相同，也分别绘制描边遮罩及无描边前景，ImageDraw 不合并两种遮罩。 */
 /* Canvas is caller-initialized. Float starts match ImageDraw's modf -> C float.
  * stroke != 0 always draws both stroke mask and unstroked foreground, even if
  * their inks are identical. ImageDraw does NOT merge those two masks. */

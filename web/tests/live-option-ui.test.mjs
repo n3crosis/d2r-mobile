@@ -33,7 +33,6 @@ function callback(anchor) {
 const cases = [
   ['id="ios-target"', "setTarget", "ios18", "value"],
   ["checked={legacyAstc}", "setLegacyAstc", true, "checked"],
-  ["checked={!skipContentHashes}", "setSkipContentHashes", true, "checked"],
   ['id="astc-preset"', "setAstcPreset", "fast", "value"],
   ["checked={signing}", "setSigning", true, "checked"],
   ["checked={ignoreCache}", "setIgnoreCache", true, "checked"],
@@ -47,7 +46,6 @@ function context(overrides = {}) {
       legacyAstc: false,
       astcPreset: "thorough",
       signing: false,
-      skipContentHashes: true,
       ignoreCache: false,
       busy: false,
       generating: false,
@@ -75,7 +73,7 @@ test("all configuration choices remain editable after a successful folder select
   for (const [anchor, setter, value, field] of cases) {
     const state = context();
     invoke(anchor, value, field, state.value);
-    assert.deepEqual(state.writes, [[setter, setter === "setSkipContentHashes" ? false : value]]);
+    assert.deepEqual(state.writes, [[setter, value]]);
   }
 });
 test("operation ownership and terminal output protect every option from stale events", () => {
@@ -110,4 +108,12 @@ test("option changes do not restart bootstrap, consume a job or dispose retained
       callback(anchor).code,
       /prepareBrowserPackager|\.close\(|\.dispose\(|setFolder|setDownload|setSigningRetryAvailable/,
     );
+});
+
+test("the removed content-hash option has no UI, URL state or generation override", () => {
+  assert.doesNotMatch(
+    app,
+    /verify-content-hashes|setSkipContentHashes|dmWebVerifyHashOption|dmWebVerifyHashHelp|skipContentHashes/,
+  );
+  assert.match(app, /appendActivity\(t\("dmWebSkipHashActive"\), true\)/);
 });

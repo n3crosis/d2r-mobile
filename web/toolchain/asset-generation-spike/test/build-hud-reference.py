@@ -96,6 +96,4 @@ pillow = fetch(
 )
 with tarfile.open(pillow) as source:
     source.extractall(PREFIX, filter="data")
-print(
-    "Pinned native FreeType2.6.0 built; Pillow10.2.0 source verified, BASIC contract only"
-)
+print("Pinned native FreeType2.6.0 built; Pillow10.2.0 source verified, BASIC contract only")

@@ -68,11 +68,7 @@ def table(raw):
 
 
 def path_checked(path):
-    if (
-        not isinstance(path, str)
-        or len(path.encode()) > 4096
-        or original.norm_path(path) != path
-    ):
+    if not isinstance(path, str) or len(path.encode()) > 4096 or original.norm_path(path) != path:
         fail()
     if any(x in ("", ".", "..") for x in path.split("/")) or any(
         ord(c) < 32 or c in ":\\" for c in path
@@ -82,11 +78,7 @@ def path_checked(path):
 
 
 def generate(payload, options):
-    if (
-        not isinstance(payload, bytes)
-        or len(payload) > MAX_INPUT
-        or not isinstance(options, dict)
-    ):
+    if not isinstance(payload, bytes) or len(payload) > MAX_INPUT or not isinstance(options, dict):
         fail()
     parts = options.get("parts")
     jobs = options.get("jobs")
@@ -107,14 +99,8 @@ def generate(payload, options):
         fail()
     slices, cursor = [], 0
     for index, length in enumerate(parts):
-        limit = (
-            1024 * 1024 if index == 0 else MAX_TABLE if index < 3 else MAX_REPLACEMENT
-        )
-        if (
-            type(length) is not int
-            or not 0 <= length <= limit
-            or cursor + length > len(payload)
-        ):
+        limit = 1024 * 1024 if index == 0 else MAX_TABLE if index < 3 else MAX_REPLACEMENT
+        if type(length) is not int or not 0 <= length <= limit or cursor + length > len(payload):
             fail()
         slices.append(payload[cursor : cursor + length])
         cursor += length
@@ -133,9 +119,9 @@ def generate(payload, options):
             fail()
         if not re.fullmatch(r"[0-9]+ [0-9]+", values.get(name + "-size", "")):
             fail()
-        if hashlib.md5(raw).hexdigest() != values[name].split()[0].lower() or len(
-            raw
-        ) != int(values[name + "-size"].split()[0]):
+        if hashlib.md5(raw).hexdigest() != values[name].split()[0].lower() or len(raw) != int(
+            values[name + "-size"].split()[0]
+        ):
             fail()
     vfs, root = bytearray(slices[1]), bytearray(slices[2])
     cft, end, specs = table(vfs)
@@ -171,15 +157,11 @@ def generate(payload, options):
             if want_add:
                 if job.get("oldEkey") is not None:
                     fail()
-                spec_index = next(
-                    (i for i, spec in enumerate(specs) if spec == b"z"), 0
-                )
+                spec_index = next((i for i, spec in enumerate(specs) if spec == b"z"), 0)
                 pos = None
             else:
                 old = job.get("oldEkey", "")
-                if not isinstance(old, str) or not re.fullmatch(
-                    r"[0-9a-fA-F]{32}", old
-                ):
+                if not isinstance(old, str) or not re.fullmatch(r"[0-9a-fA-F]{32}", old):
                     fail()
                 row = [""] * 11
                 row[6] = old

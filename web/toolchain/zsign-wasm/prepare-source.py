@@ -20,9 +20,7 @@ if output.exists():
 shutil.copytree(source / "src", output)
 for name in ["zsign_export.cpp", "zsign_export.h"]:
     shutil.copyfile(port / "native" / name, output / name)
-shutil.copyfile(
-    here / "profile-compatibility.inc", output / "profile-compatibility.inc"
-)
+shutil.copyfile(here / "profile-compatibility.inc", output / "profile-compatibility.inc")
 
 
 def replace(path, old, new):
@@ -62,9 +60,7 @@ struct ZFileMappedInfo { string path; size_t offset; size_t size; bool ro; };
 static map<void*, ZFileMappedInfo> s_mapFilesNoMmap;
 
 """
-fs.write_text(
-    text[:start] + struct + (here / "bounded-map.inc").read_text() + "\n" + text[end:]
-)
+fs.write_text(text[:start] + struct + (here / "bounded-map.inc").read_text() + "\n" + text[end:])
 replace(
     "zsign_export.cpp",
     "#define ZSIGN_EXPORT EMSCRIPTEN_KEEPALIVE",

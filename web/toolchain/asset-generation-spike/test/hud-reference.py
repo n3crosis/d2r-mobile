@@ -60,13 +60,9 @@ pen.lineTo((440, 700))
 pen.lineTo((60, 700))
 pen.closePath()
 font.setupGlyf({".notdef": empty, "space": empty, "authored": pen.glyph()})
-font.setupHorizontalMetrics(
-    {".notdef": (500, 0), "space": (250, 0), "authored": (500, 60)}
-)
+font.setupHorizontalMetrics({".notdef": (500, 0), "space": (250, 0), "authored": (500, 60)})
 font.setupHorizontalHeader(ascent=800, descent=-200)
-codepoints = (
-    set(range(33, 127)) | set(range(160, 1024)) | set(range(0x4E00, 0xA000)) | {0xB7}
-)
+codepoints = set(range(33, 127)) | set(range(160, 1024)) | set(range(0x4E00, 0xA000)) | {0xB7}
 font.setupCharacterMap({32: "space", **{c: "authored" for c in codepoints}})
 font.setupNameTable(
     {
@@ -97,10 +93,7 @@ def skeleton(p):
     if "dict" in p:
         return {k: skeleton(p["dict"][k]) if k in p["dict"] else 0 for k in p["order"]}
     if "list" in p:
-        result = [
-            {}
-            for _ in range(1 + max((x.get("base", -1) for x in p["list"]), default=-1))
-        ]
+        result = [{} for _ in range(1 + max((x.get("base", -1) for x in p["list"]), default=-1))]
         for x in p["list"]:
             if "base" in x:
                 result[x["base"]] = skeleton(x["patch"])
@@ -192,13 +185,9 @@ bundle = {
     "metadata": metadata,
     "layout": layout_text,
     "fonts": {
-        n: b64(font_bytes)
-        for n in ("blizzardglobal-v5_81.ttf", "exocetblizzardot-medium.otf")
+        n: b64(font_bytes) for n in ("blizzardglobal-v5_81.ttf", "exocetblizzardot-medium.otf")
     },
-    "images": {
-        n: {"size": list(im.size), "rgba": b64(im.tobytes())}
-        for n, im in images.items()
-    },
+    "images": {n: {"size": list(im.size), "rgba": b64(im.tobytes())} for n, im in images.items()},
     "atlases": {a["asset"]: b64((ART / a["asset"]).read_bytes()) for a in assets},
 }
 (OUT / "bundle.json").write_text(json.dumps(bundle, ensure_ascii=False))
@@ -213,9 +202,7 @@ bundle = {
     )
 )
 files = sorted(
-    str(p.relative_to(OUT / "expected"))
-    for p in (OUT / "expected").rglob("*")
-    if p.is_file()
+    str(p.relative_to(OUT / "expected")) for p in (OUT / "expected").rglob("*") if p.is_file()
 )
 (OUT / "files.json").write_text(json.dumps(files))
 print(

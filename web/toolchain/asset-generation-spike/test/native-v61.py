@@ -16,9 +16,7 @@ if "--verify" in sys.argv:
     with Image.open(OUT / "browser.png") as image:
         assert image.size == (16, 16)
         assert image.convert("RGBA").tobytes() == (OUT / "expected.rgba").read_bytes()
-    print(
-        "v61 NVN/BC worker -> Pyodide -> packaging adapter: exact native pixel parity"
-    )
+    print("v61 NVN/BC worker -> Pyodide -> packaging adapter: exact native pixel parity")
     sys.exit(0)
 
 native = runpy.run_path(str(HERE.parent / "texture-spike/native-fixtures.py"))

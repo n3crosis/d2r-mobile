@@ -144,9 +144,5 @@ def execute(operation, payload, options):
                 raise ValueError("Unsafe logical path")
             path = path.lower()
             result.append({"source": path, "target": native.touch_path(path)})
-        return {
-            "files": {
-                "overlay-paths.json": json.dumps(result, separators=(",", ":")).encode()
-            }
-        }
+        return {"files": {"overlay-paths.json": json.dumps(result, separators=(",", ":")).encode()}}
     raise ValueError("Unsupported asset operation")

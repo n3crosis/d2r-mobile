@@ -20,17 +20,11 @@ nodes = [
     if isinstance(n, ast.FunctionDef)
     and n.name in names
     or isinstance(n, ast.Assign)
-    and any(
-        isinstance(x, ast.Name) and x.id in assigns
-        for t in n.targets
-        for x in ast.walk(t)
-    )
+    and any(isinstance(x, ast.Name) and x.id in assigns for t in n.targets for x in ast.walk(t))
 ]
 ns = {"re": re}
 exec(
-    compile(
-        ast.Module(body=nodes, type_ignores=[]), "<native-pure-reflection>", "exec"
-    ),
+    compile(ast.Module(body=nodes, type_ignores=[]), "<native-pure-reflection>", "exec"),
     ns,
 )
 assert ns["RULES"] == [], "Native MSL rewrite rules changed; port before proceeding"

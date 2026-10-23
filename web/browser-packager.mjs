@@ -69,7 +69,7 @@ export function assertBrowserPackagerCapabilities(environment = globalThis) {
 /**
  * 可编辑界面在公开引导阶段预载全部选项，私有输入开始后不再联网。
  * Editable UI preloads every option during public bootstrap; no networking after private inputs begin.
- * @param {{manifestSha256?: string, signal?: AbortSignal, onProgress?: (event: any) => void, profileId?: string, legacyAstc?: boolean, signing?: boolean, astcPreset?: "thorough"|"fast", skipContentHashes?: boolean, editableOptions?: boolean}} [options]
+ * @param {{manifestSha256?: string, signal?: AbortSignal, onProgress?: (event: any) => void, profileId?: string, legacyAstc?: boolean, signing?: boolean, astcPreset?: "thorough"|"fast", editableOptions?: boolean}} [options]
  */
 export async function prepareBrowserPackager({
   manifestSha256,
@@ -79,10 +79,9 @@ export async function prepareBrowserPackager({
   legacyAstc: initialLegacyAstc = false,
   signing = false,
   astcPreset: initialAstcPreset = "thorough",
-  skipContentHashes: initialSkipContentHashes = false,
   editableOptions = false,
 } = {}) {
-  validateGenerationOptions(initialLegacyAstc, initialAstcPreset, initialSkipContentHashes);
+  validateGenerationOptions(initialLegacyAstc, initialAstcPreset);
   if (typeof editableOptions !== "boolean") throw new Error("EDITABLE_OPTIONS_OPTION");
   if (typeof signing !== "boolean") throw new Error("SIGNING_OPTION");
   const selectedProfile = resolveShellProfile(profileId);
@@ -192,7 +191,7 @@ export async function prepareBrowserPackager({
        * 仅允许明确跳过原始资源导出；验证及补充包导出保持不变。
        * Allow only explicit original-resource export skipping; validation and supplemental export stay unchanged.
        * Omitted inputMode detects the input route; pass a discovered mode to pin a rescan.
-       * @param {{input: any, selectedNspNames?: any, inputMode?: "packages"|"extracted", signal?: AbortSignal, onProgress?: (event: any) => void, exportResources?: boolean, appCustomization?: any, profileId?: string, legacyAstc?: boolean, astcPreset?: "thorough"|"fast", skipContentHashes?: boolean, ignoreCache?: boolean}} options
+       * @param {{input: any, selectedNspNames?: any, inputMode?: "packages"|"extracted", signal?: AbortSignal, onProgress?: (event: any) => void, exportResources?: boolean, appCustomization?: any, profileId?: string, legacyAstc?: boolean, astcPreset?: "thorough"|"fast", ignoreCache?: boolean}} options
        */
       async generate({
         input,
@@ -205,11 +204,10 @@ export async function prepareBrowserPackager({
         profileId = selectedProfile.id,
         legacyAstc = initialLegacyAstc,
         astcPreset = initialAstcPreset,
-        skipContentHashes = initialSkipContentHashes,
         ignoreCache = false,
       }) {
         if (typeof ignoreCache !== "boolean") throw new Error("IGNORE_CACHE_OPTION");
-        validateGenerationOptions(legacyAstc, astcPreset, skipContentHashes);
+        validateGenerationOptions(legacyAstc, astcPreset);
         if (!preparedProfileIds.includes(resolveShellProfile(profileId).id))
           throw new Error("PROFILE_NOT_PRELOADED");
         if (legacyAstc && !legacyReady) throw new Error("LEGACY_ASTC_NOT_PRELOADED");
@@ -263,7 +261,6 @@ export async function prepareBrowserPackager({
             // The default path checks whole-NCA digests against CNMT. Explicit quick
             // mode skips full-content integrity scans to attempt extraction sooner.
             verifyRomfs: false,
-            skipContentHashes,
           });
           program = createProgramRewriterAdapter({
             profileId: profile.profileId,
@@ -548,7 +545,7 @@ export async function prepareBrowserPackager({
                 onProgress,
                 archiveFormat,
                 maxOutputBytes,
-                selectionOptions: { contentMode: profile.contentMode, skipContentHashes },
+                selectionOptions: { contentMode: profile.contentMode },
                 secretLifetime: "archive",
                 concurrency: 1,
               }),
@@ -630,10 +627,9 @@ export async function prepareBrowserPackager({
   }
 }
 
-function validateGenerationOptions(legacyAstc, astcPreset, skipContentHashes) {
+function validateGenerationOptions(legacyAstc, astcPreset) {
   if (astcPreset !== "thorough" && astcPreset !== "fast") throw new Error("ASTC_PRESET_OPTION");
   if (typeof legacyAstc !== "boolean") throw new Error("LEGACY_ASTC_OPTION");
-  if (typeof skipContentHashes !== "boolean") throw new Error("CONTENT_HASH_OPTION");
 }
 
 // 不允许过滤器悄悄丢弃未绑定 ASTC、补充包数据或索引；这些不是 IPA 文件。

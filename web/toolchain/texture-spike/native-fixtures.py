@@ -40,9 +40,7 @@ class Desc(C.Structure):
     _fields_ = [
         (
             n,
-            C.c_int
-            if n in ("target", "format", "flags", "samples", "pkg_block_h")
-            else C.c_uint32,
+            C.c_int if n in ("target", "format", "flags", "samples", "pkg_block_h") else C.c_uint32,
         )
         for n in (
             "target",
@@ -133,9 +131,7 @@ for fmt in range(0x41, 0x51):
         for level in range(levels):
             lw, lh = max(1, w >> level), max(1, h >> level)
             pitch, rows = ((lw + 3) // 4) * layout.bpb, (lh + 3) // 4
-            raw = bytes(
-                ((i * 31 + fmt * 7 + level * 13) & 255) for i in range(pitch * rows)
-            )
+            raw = bytes(((i * 31 + fmt * 7 + level * 13) & 255) for i in range(pitch * rows))
             linear = C.create_string_buffer(raw, len(raw))
             if flags:
                 alignment = 128 if flags & 0x40 else 32
@@ -147,20 +143,12 @@ for fmt in range(0x41, 0x51):
                         pitch,
                     )
             else:
-                assert (
-                    lib.nvn_swizzle(C.byref(d), level, 0, linear, pitch, storage) == 0
-                )
+                assert lib.nvn_swizzle(C.byref(d), level, 0, linear, pitch, storage) == 0
                 recovered = C.create_string_buffer(len(raw))
-                assert (
-                    lib.nvn_deswizzle(C.byref(d), level, 0, storage, recovered, pitch)
-                    == 0
-                )
+                assert lib.nvn_deswizzle(C.byref(d), level, 0, storage, recovered, pitch) == 0
                 assert recovered.raw == raw
             pixels = C.create_string_buffer(lw * lh * bpp.value)
-            assert (
-                lib.nvn_bc_decode(fmt, linear, pitch, lw, lh, pixels, lw * bpp.value)
-                == 0
-            )
+            assert lib.nvn_bc_decode(fmt, linear, pitch, lw, lh, pixels, lw * bpp.value) == 0
             expected.append(pixels.raw)
         for level, pixels in enumerate(expected):
             info = (C.c_uint32 * 8)()
@@ -168,9 +156,7 @@ for fmt in range(0x41, 0x51):
             assert info[0] == layout.size
             result = C.create_string_buffer(len(pixels))
             assert (
-                lib.texture_decode(
-                    C.byref(d), level, 0, storage, layout.size, result, len(pixels)
-                )
+                lib.texture_decode(C.byref(d), level, 0, storage, layout.size, result, len(pixels))
                 == 0
             )
             assert result.raw == pixels

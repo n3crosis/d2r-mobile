@@ -82,9 +82,7 @@ def generate(payload, options):
         result = bytes(output.buffer)
         return {
             "files": {"dm_vault_tab.h": result},
-            "sourceSha256": {
-                name: hashlib.sha256(raw).hexdigest() for name, raw in assets.items()
-            },
+            "sourceSha256": {name: hashlib.sha256(raw).hexdigest() for name, raw in assets.items()},
             "manifestSha256": hashlib.sha256(manifest.encode()).hexdigest(),
         }
     except SystemExit as exc:

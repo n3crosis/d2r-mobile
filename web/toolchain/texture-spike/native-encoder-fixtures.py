@@ -31,9 +31,7 @@ original = {
     "Layout": Layout,
 }
 for name in ("bc3", "desc", "pack"):
-    node = next(
-        n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == name
-    )
+    node = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == name)
     exec(
         compile(
             ast.Module(body=[node], type_ignores=[]),
@@ -89,9 +87,7 @@ for width, height in [(1, 1), (3, 5), (4, 4), (17, 9), (65, 33), (68, 65)]:
         dst = C.create_string_buffer(len(sprite) - 40)
         assert lib.texture_pack_bc3(C.byref(d), src, len(linear), dst, len(dst)) == 0
         assert dst.raw == sprite[40:]
-        assert (
-            lib.texture_pack_bc3(C.byref(d), src, len(linear) - 1, dst, len(dst)) == -5
-        )
+        assert lib.texture_pack_bc3(C.byref(d), src, len(linear) - 1, dst, len(dst)) == -5
         fixtures.append(
             {
                 "width": width,
@@ -121,9 +117,7 @@ for changes, code in [
     for key, value in changes.items():
         setattr(invalid, key, value)
     assert lib.texture_pack_bc3(C.byref(invalid), None, 0, None, 0) == code
-(HERE / ".build/encoder-fixtures.json").write_text(
-    json.dumps(fixtures, separators=(",", ":"))
-)
+(HERE / ".build/encoder-fixtures.json").write_text(json.dumps(fixtures, separators=(",", ":")))
 print(
     f"PASS original full-image vs bounded band encoding and C/native swizzle: {len(fixtures)} synthetic cases"
 )

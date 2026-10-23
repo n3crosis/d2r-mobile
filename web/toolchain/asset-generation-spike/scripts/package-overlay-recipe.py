@@ -22,25 +22,18 @@ script = ast.parse((ROOT / "dm/ios/tools/gen_romfs_overlay.py").read_text())
 footer = next(
     i
     for i, node in enumerate(script.body)
-    if isinstance(node, ast.Import)
-    and any(name.name == "overlay_contract" for name in node.names)
+    if isinstance(node, ast.Import) and any(name.name == "overlay_contract" for name in node.names)
 )
 if len(script.body[footer:]) != 5 or not isinstance(script.body[footer + 3], ast.For):
     raise SystemExit("Overlay manifest finalization boundary drift")
 script.body = script.body[:footer]
-emit = next(
-    n for n in ast.walk(script) if isinstance(n, ast.FunctionDef) and n.name == "emit"
-)
+emit = next(n for n in ast.walk(script) if isinstance(n, ast.FunctionDef) and n.name == "emit")
 # 保留原始 to_touch、继承重写及两项精确布局集合门槛。
 # Keep original to_touch, inheritance rewrites and both exact layout-set gates.
 cut = next(
-    i
-    for i, n in enumerate(emit.body)
-    if isinstance(n, ast.With) and "repl.tsv" in ast.unparse(n)
+    i for i, n in enumerate(emit.body) if isinstance(n, ast.With) and "repl.tsv" in ast.unparse(n)
 )
-emit.body = (
-    emit.body[:cut] + ast.parse("return __browser_capture(repl, dst, tag, TS)").body
-)
+emit.body = emit.body[:cut] + ast.parse("return __browser_capture(repl, dst, tag, TS)").body
 temporary_calls = [
     n
     for n in ast.walk(script)

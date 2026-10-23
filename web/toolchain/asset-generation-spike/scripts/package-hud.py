@@ -21,16 +21,11 @@ tree = ast.parse(source["dm/ios/tools/gen_hud_v4.py"])
 # 命令行/环境设置在 load() 前结束，计算部分保持不变。
 # CLI/environment setup ends immediately before load(). Computations remain unchanged.
 start = next(
-    i
-    for i, n in enumerate(tree.body)
-    if isinstance(n, ast.FunctionDef) and n.name == "load"
+    i for i, n in enumerate(tree.body) if isinstance(n, ast.FunctionDef) and n.name == "load"
 )
 body = []
 for node in tree.body[start:]:
-    if (
-        isinstance(node, ast.If)
-        and ast.unparse(node.test) == "args.tuning_json is not None"
-    ):
+    if isinstance(node, ast.If) and ast.unparse(node.test) == "args.tuning_json is not None":
         continue  # 浏览器发布流程不接受任意开发者调参。 | No arbitrary developer tuning in the browser release path.
     if isinstance(node, ast.If) and ast.unparse(node.test) == "not args.overlay_only":
         body.extend(
@@ -41,9 +36,7 @@ for node in tree.body[start:]:
         continue  # 提供隔离且固定来源的模块，不搜索文件系统导入。 | Supplied isolated source-pinned module, no filesystem import discovery.
     body.append(node)
 if any(
-    isinstance(n, ast.Name) and n.id in {"args", "sys"}
-    for node in body
-    for n in ast.walk(node)
+    isinstance(n, ast.Name) and n.id in {"args", "sys"} for node in body for n in ast.walk(node)
 ):
     raise SystemExit("Unexpected CLI dependency in packaged HUD recipe")
 wrapper = ast.parse("def generate(ROMFS, OUT, HERE, SRC):\n    pass\n").body[0]

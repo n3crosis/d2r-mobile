@@ -39,7 +39,13 @@ const dlc = (version = 0n) => ({
   requiredApplicationVersion: 65536n,
   contents: [c(3)],
 });
-const inv = (...rows) => rows.flatMap((r) => r.contents.map((x) => ({ ...x, hashVerified: true })));
+const inv = (...rows) => [
+  ...new Map(
+    rows
+      .flatMap((r) => r.contents)
+      .map((c) => [c.contentId, { contentId: c.contentId, size: c.size }]),
+  ).values(),
+];
 const code = (expected) => (error) =>
   error instanceof ContentSelectionError && error.code === expected;
 function fixture(type = 128, ext = type === 129 ? 24 : 16, extra = 0) {
@@ -221,14 +227,8 @@ test("duplicate equal records are idempotent; differing same-version records fai
     code("DUPLICATE_CONTENT"),
   );
 });
-test("required content existence, computed hash, size, and inventory conflicts are gates", () => {
+test("required content existence, size, and inventory conflicts are gates", () => {
   assert.throws(() => resolveContentSelection([base()], []), code("MISSING_CONTENT"));
-  assert.throws(() => resolveContentSelection([base()], [c()]), code("UNVERIFIED_CONTENT"));
-  assert.throws(
-    () =>
-      resolveContentSelection([base()], [{ ...c(), hashVerified: true, sha256: "a".repeat(64) }]),
-    code("CONTENT_IDENTITY_MISMATCH"),
-  );
   assert.throws(
     () => resolveContentSelection([base()], [{ ...c(), hashVerified: true, size: 99n }]),
     code("CONTENT_IDENTITY_MISMATCH"),
@@ -250,22 +250,15 @@ test("required content existence, computed hash, size, and inventory conflicts a
     code("INVALID_INTEGER"),
   );
 });
-test("explicit quick mode accepts only unverified unique content IDs with matching sizes", () => {
+test("selection accepts unique content IDs with matching sizes without hash claims", () => {
   const unverified = { ...c(), sha256: null, hashVerified: false };
-  assert.equal(
-    resolveContentSelection([base()], [unverified], { skipContentHashes: true }).base.titleId,
-    base().titleId,
-  );
-  assert.throws(() => resolveContentSelection([base()], [unverified]), code("INVALID_IDENTITY"));
+  assert.equal(resolveContentSelection([base()], [unverified]).base.titleId, base().titleId);
   assert.throws(
-    () => resolveContentSelection([base()], [unverified, unverified], { skipContentHashes: true }),
+    () => resolveContentSelection([base()], [unverified, unverified]),
     code("CONFLICTING_CONTENT"),
   );
   assert.throws(
-    () =>
-      resolveContentSelection([base()], [{ ...unverified, size: 99n }], {
-        skipContentHashes: true,
-      }),
+    () => resolveContentSelection([base()], [{ ...unverified, size: 99n }], {}),
     code("CONTENT_IDENTITY_MISMATCH"),
   );
 });

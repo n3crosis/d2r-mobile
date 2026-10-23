@@ -86,7 +86,6 @@ export function fixture({
   selected = selection,
   maxProgramBytes,
   contentMode,
-  skipContentHashes,
   verifyRomfs,
   failRead = false,
   inspected = inspectedFixture(),
@@ -130,7 +129,6 @@ export function fixture({
     createWorker: () => worker,
     maxProgramBytes,
     contentMode,
-    skipContentHashes,
     verifyRomfs,
   });
   return {

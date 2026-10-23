@@ -151,9 +151,7 @@ def generate(payload, options):
 
             def read(path):
                 key = logical(
-                    path
-                    if str(path).lower().startswith("data/")
-                    else "data/" + str(path)
+                    path if str(path).lower().startswith("data/") else "data/" + str(path)
                 )
                 require(key in assets, "OVERLAY_MISSING_AUTHENTICATED_ASSET:" + key)
                 return assets[key]
@@ -163,9 +161,7 @@ def generate(payload, options):
 
             def entry(_, row):
                 data = read(logical(row[9]))
-                require(
-                    hashlib.md5(data).hexdigest() == row[4], "OVERLAY_CKEY_MISMATCH"
-                )
+                require(hashlib.md5(data).hexdigest() == row[4], "OVERLAY_CKEY_MISMATCH")
                 return data
 
             def layout(_, rel, suffix=None):
@@ -210,9 +206,7 @@ def generate(payload, options):
                     require(output_size <= MAX_OUTPUT, "OVERLAY_OUTPUT_LIMIT")
                     key = f"file-{len(files)}"
                     files[key] = data
-                    inventory.append(
-                        {"path": path, "file": key, "add": path not in known}
-                    )
+                    inventory.append({"path": path, "file": key, "add": path not in known})
                 # 精确的原生附属文件表达式，这些文件不进入 CASC。
                 # Exact native sidecar expression; these files do not enter CASC.
                 (dst / "touch_strings.tsv").write_text(
@@ -221,9 +215,7 @@ def generate(payload, options):
                         % (
                             k,
                             o,
-                            v.replace("\\", "\\\\")
-                            .replace("\n", "\\n")
-                            .replace("\t", "\\t"),
+                            v.replace("\\", "\\\\").replace("\n", "\\n").replace("\t", "\\t"),
                         )
                         for k, o, v in strings
                     )
@@ -231,15 +223,9 @@ def generate(payload, options):
                 (dst / "ctrl_touch").write_text(
                     "触屏版布局在 layouts/xtouch_lay、ztouch_console_lay、0touch_console_switch_lay（dm_padmode.c 见到本文件才改写前缀）\n"
                 )
-                (dst / "xbox_glyphs").write_text(
-                    "ztouch_controller_buttons_ui/switchx*.sprite\n"
-                )
-                (dst / "ps_glyphs").write_text(
-                    "ztouch_controller_buttons_ui/switchp*.sprite\n"
-                )
-                variants.append(
-                    {"name": name, "replacements": inventory, "sidecars": []}
-                )
+                (dst / "xbox_glyphs").write_text("ztouch_controller_buttons_ui/switchx*.sprite\n")
+                (dst / "ps_glyphs").write_text("ztouch_controller_buttons_ui/switchp*.sprite\n")
+                variants.append({"name": name, "replacements": inventory, "sidecars": []})
                 return (
                     "browser-casc-pending",
                     0,
@@ -263,9 +249,7 @@ def generate(payload, options):
             )
             for variant in variants:
                 directory = (
-                    out
-                    if variant["name"] == "base"
-                    else root / "romfs_overlay_variants/item_notes"
+                    out if variant["name"] == "base" else root / "romfs_overlay_variants/item_notes"
                 )
                 for p in sorted(directory.iterdir()):
                     require(

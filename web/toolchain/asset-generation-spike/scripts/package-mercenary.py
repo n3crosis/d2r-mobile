@@ -17,9 +17,7 @@ tree = ast.parse(raw)
 constants = []
 body = None
 for node in tree.body:
-    if isinstance(node, ast.Assign) and not any(
-        isinstance(n, ast.Call) for n in ast.walk(node)
-    ):
+    if isinstance(node, ast.Assign) and not any(isinstance(n, ast.Call) for n in ast.walk(node)):
         constants.append(node)
     if isinstance(node, ast.FunctionDef) and node.name == "main":
         body = []

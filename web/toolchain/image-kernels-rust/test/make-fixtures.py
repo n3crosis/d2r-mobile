@@ -33,10 +33,7 @@ def add(op, src, result, args=None, **extra):
             src=encoded(src),
             args=args or [],
             expected=encoded(result) if isinstance(result, Image.Image) else result,
-            **{
-                k: encoded(v) if isinstance(v, Image.Image) else v
-                for k, v in extra.items()
-            },
+            **{k: encoded(v) if isinstance(v, Image.Image) else v for k, v in extra.items()},
         )
     )
 
@@ -57,16 +54,12 @@ for mode in ["L", "RGB", "RGBA"]:
             "flip",
             src,
             src.transpose(
-                Image.Transpose.FLIP_LEFT_RIGHT
-                if axis == 0
-                else Image.Transpose.FLIP_TOP_BOTTOM
+                Image.Transpose.FLIP_LEFT_RIGHT if axis == 0 else Image.Transpose.FLIP_TOP_BOTTOM
             ),
             [axis],
         )
     for target in [1, 3, 4]:
-        add(
-            "convert", src, src.convert({1: "L", 3: "RGB", 4: "RGBA"}[target]), [target]
-        )
+        add("convert", src, src.convert({1: "L", 3: "RGB", 4: "RGBA"}[target]), [target])
     for c in range(len(mode)):
         add("channel", src, src.getchannel(c), [c])
     for x, y in [(-3, -2), (0, 0), (4, 5), (20, 22), (-20, -23)]:
@@ -147,9 +140,7 @@ add("alphaComposite", src, Image.alpha_composite(dst, src), [0, 0], dst=dst)
 for mode in ["L", "RGB", "RGBA"]:
     for i in range(3):
         src = Image.new(mode, (7, 9))
-        src.putpixel(
-            (2, 3), tuple([100] * len(mode)) if len(mode) > 1 else 100
-        ) if i else None
+        src.putpixel((2, 3), tuple([100] * len(mode)) if len(mode) > 1 else 100) if i else None
         if mode == "RGBA" and i == 2:
             src.putpixel((2, 3), (100, 99, 23, 0))
         for alpha in [True, False]:

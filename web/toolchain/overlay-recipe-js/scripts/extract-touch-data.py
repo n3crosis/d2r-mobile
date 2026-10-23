@@ -29,15 +29,11 @@ tree = ast.parse(source.read_text())
 
 
 def string(function, contains):
-    node = next(
-        n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == function
-    )
+    node = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == function)
     matches = [
         n.value
         for n in ast.walk(node)
-        if isinstance(n, ast.Constant)
-        and isinstance(n.value, str)
-        and contains in n.value
+        if isinstance(n, ast.Constant) and isinstance(n.value, str) and contains in n.value
     ]
     assert len(matches) == 1, (function, contains, len(matches))
     return matches[0]
@@ -67,9 +63,7 @@ for name in (
     "_RW",
 ):
     data[name] = getattr(module, name)
-data["customPage"] = module._custom_page(
-    '"name": "VideoOptionsPanel" "name": "OptionsTable"'
-)
+data["customPage"] = module._custom_page('"name": "VideoOptionsPanel" "name": "OptionsTable"')
 data["riftPanel"] = module._rift_panel(
     '"type": "MessageLogPanel", "name": "MessageLogPanel" "name": "ListContainer" "name": "ScrollBar" "name": "ChatEntryTemplate"'
 )

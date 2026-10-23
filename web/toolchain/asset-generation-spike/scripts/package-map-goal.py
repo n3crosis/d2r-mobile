@@ -71,10 +71,7 @@ for node in tree.body:
         keep.append(node)
     elif isinstance(node, ast.Assign):
         names = {
-            n.id
-            for target in node.targets
-            for n in ast.walk(target)
-            if isinstance(n, ast.Name)
+            n.id for target in node.targets for n in ast.walk(target) if isinstance(n, ast.Name)
         }
         if names & {"NPC", "OBJ", "LABELS", "TEXT_PX", "PAD_X", "PAD_Y", "BOX_A"}:
             keep.append(node)

@@ -43,8 +43,13 @@ function fixture() {
     },
   ];
 }
-const inventory = (rows) =>
-  rows.flatMap((r) => r.contents.map((c) => ({ ...c, hashVerified: true })));
+const inventory = (rows) => [
+  ...new Map(
+    rows
+      .flatMap((r) => r.contents)
+      .map((c) => [c.contentId, { contentId: c.contentId, size: c.size }]),
+  ).values(),
+];
 const code = (expected) => (error) => error.code === expected;
 
 test("known expansion remains separate and fully required, never marked owned or compatible", () => {
@@ -88,13 +93,10 @@ test("association and required version checks are retained", () => {
   assert.throws(() => resolve(rows, inventory(rows)), code("D2R_APPLICATION_REQUIRED"));
 });
 
-test("missing, unverified, mismatched and conflicting full inventory reject", () => {
+test("missing, mismatched and conflicting inventory reject", () => {
   const rows = fixture();
   const inv = inventory(rows);
   assert.throws(() => resolve(rows, inv.slice(0, 2)), code("MISSING_CONTENT"));
-  inv[2].hashVerified = false;
-  assert.throws(() => resolve(rows, inv), code("UNVERIFIED_CONTENT"));
-  inv[2].hashVerified = true;
   inv[2].size++;
   assert.throws(() => resolve(rows, inv), code("CONTENT_IDENTITY_MISMATCH"));
   assert.throws(() => resolve(rows, [...inv, inventory(rows)[2]]), code("CONFLICTING_CONTENT"));

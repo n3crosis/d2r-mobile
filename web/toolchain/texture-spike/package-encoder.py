@@ -16,9 +16,7 @@ data = SOURCE.read_bytes()
 if hashlib.sha256(data).hexdigest() != PIN:
     raise SystemExit("gen_widestash_art.py source drift; review and revalidate encoder")
 module = ast.parse(data)
-node = next(
-    n for n in module.body if isinstance(n, ast.FunctionDef) and n.name == "bc3"
-)
+node = next(n for n in module.body if isinstance(n, ast.FunctionDef) and n.name == "bc3")
 source = ast.get_source_segment(data.decode(), node)
 # 上游只改了本机库加载；编码函数必须保持逐字节不变。
 # Upstream changed only native library loading; the encoder function stays byte-identical.

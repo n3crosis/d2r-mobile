@@ -18,9 +18,7 @@ with tempfile.TemporaryDirectory(prefix="d2r-synthetic-key-parser-") as director
     work = Path(directory)
     for name in ["extkeys.c", "utils.h", "nca.c"]:
         shutil.copyfile(source / name, work / name)
-    subprocess.run(
-        [sys.executable, str(here / "prepare-source.py"), str(work)], check=True
-    )
+    subprocess.run([sys.executable, str(here / "prepare-source.py"), str(work)], check=True)
     (work / "fixture.c").write_text(r"""
 #include <assert.h>
 #include "extkeys.c"

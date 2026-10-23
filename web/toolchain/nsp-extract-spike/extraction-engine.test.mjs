@@ -100,6 +100,7 @@ function setup({
       assert.equal(blobs.length, 6);
     },
     hashInput(index) {
+      assert(index >= 4, "Base/update full-content hashing must never run");
       hashCalls++;
       return (index === 5 && wrongHash ? "ff" : hashes[index].toString(16)).repeat(32);
     },
@@ -167,12 +168,11 @@ function setup({
     hashCalls: () => hashCalls,
   };
 }
-const initialize = (engine, fixtureOptions, skipContentHashes = false) =>
+const initialize = (engine, fixtureOptions) =>
   engine.execute("initialize", {
     nsps: [fixture(fixtureOptions)],
     prodKeys: new Blob([`header_key = ${"12".repeat(32)}\n`]),
     titleKeys: new Blob([`${"34".repeat(16)} = ${"56".repeat(16)}\n`]),
-    skipContentHashes,
   });
 
 for (const observer of ["throw", "reject", "thenable", "pending"]) {
@@ -276,7 +276,7 @@ test("engine uses catalog, independent inventory and internal selection; tokens 
   assert(env.disposed());
   await assert.rejects(engine.execute("readRomfs", { token: romfs.token, offset: 0n, count: 1 }));
 });
-test("fast RomFS mode requires measured package evidence", async () => {
+test("fast RomFS mode retains explicit boolean verification selection", async () => {
   const env = setup();
   await initialize(env.engine);
   const selected = await env.engine.execute("select", { options: {} });
@@ -291,13 +291,12 @@ test("fast RomFS mode requires measured package evidence", async () => {
   assert.equal(romfs.size, 10n);
   await env.engine.execute("dispose");
 });
-test("quick mode hashes only the small DLC and retains signed executable headers", async () => {
+test("browser always hashes only the small DLC and retains signed executable headers", async () => {
   const env = setup();
-  const inspected = await initialize(env.engine, undefined, true);
+  const inspected = await initialize(env.engine);
   assert.equal(env.hashCalls(), 2);
-  assert(inspected.inventory.every((entry) => !entry.hashVerified));
-  await assert.rejects(env.engine.execute("select", { options: {} }));
-  const selected = await env.engine.execute("select", { options: { skipContentHashes: true } });
+  assert(inspected.inventory.every((entry) => !("hashVerified" in entry)));
+  const selected = await env.engine.execute("select", { options: {} });
   const romfs = await env.engine.execute("openRomfs", {
     token: selected.token,
     verifyRomfs: false,
@@ -581,14 +580,14 @@ async function mixedPackages() {
   xci.set(root.bytes, 512);
   return [new Blob([xci]), new Blob([(await container(parts.slice(2), false)).bytes])];
 }
-test("XCI base plus NSP update/DLC retain signed headers, full hashes, CNMT selection and BKTR", async () => {
+test("XCI base plus NSP update/DLC retain signed headers, small DLC hashes, CNMT selection and BKTR", async () => {
   const { engine, hashCalls, calls } = setup();
   const inspected = await engine.execute("initialize", {
     nsps: await mixedPackages(),
     prodKeys: new Blob([`header_key = ${"12".repeat(32)}\n`]),
   });
   assert.equal(inspected.records.length, 3);
-  assert.equal(hashCalls(), 6);
+  assert.equal(hashCalls(), 2);
   const selected = await engine.execute("select", { options: {} });
   assert.equal(selected.selection.applicationId, app);
   assert.equal(selected.selection.patch.titleId, patch);
@@ -619,4 +618,15 @@ test("invalid XCI prefix and unsigned base still fail closed before content use"
     }),
     { code: "CONTENT_AUTHENTICATION_FAILED" },
   );
+});
+
+// 旧开关不能重新启用完整内容扫描。
+// The retired flag cannot re-enable whole-content scans.
+test("engine rejects retired hashing flags before reading inputs", async () => {
+  for (const skipContentHashes of [false, true]) {
+    const env = setup();
+    await assert.rejects(env.engine.execute("initialize", { skipContentHashes }));
+    assert.equal(env.hashCalls(), 0);
+    await env.engine.execute("dispose");
+  }
 });

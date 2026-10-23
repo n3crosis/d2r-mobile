@@ -27,9 +27,7 @@ def require(condition, message):
 
 
 def span(data, start, size):
-    require(
-        0 <= start <= len(data) and 0 <= size <= len(data) - start, "out-of-range data"
-    )
+    require(0 <= start <= len(data) and 0 <= size <= len(data) - start, "out-of-range data")
     return data[start : start + size]
 
 
@@ -54,8 +52,8 @@ def macho(data):
             if name.rstrip(b"\0") == b"__TEXT":
                 text_address = address
             for i in range(count):
-                name, segment, address, length, offset, _, _, _, flags, *_ = (
-                    struct.unpack("<16s16sQQ8I", span(data, pos + 72 + 80 * i, 80))
+                name, segment, address, length, offset, _, _, _, flags, *_ = struct.unpack(
+                    "<16s16sQQ8I", span(data, pos + 72 + 80 * i, 80)
                 )
                 sections.append(
                     (
@@ -85,9 +83,7 @@ def macho(data):
     require(count <= 100000, "symbol limit")
     strings = span(data, string_offset, string_size)
     for i in range(count):
-        index, typ, section, _, address = struct.unpack(
-            "<IBBHQ", span(data, offset + 16 * i, 16)
-        )
+        index, typ, section, _, address = struct.unpack("<IBBHQ", span(data, offset + 16 * i, 16))
         require(index < len(strings), "invalid symbol string")
         name = strings[index:].split(b"\0")[0].decode("utf8")
         if typ & 0xE0 or typ & 0x0E != 0x0E:
@@ -143,9 +139,7 @@ def verify_archive(archive, evidence, capacities):
         len(raw) == evidence["archiveBytes"] and digest(raw) == evidence["sha256"],
         "archive identity mismatch",
     )
-    require(
-        capacities["shellSha256"] == evidence["sha256"], "capacity archive mismatch"
-    )
+    require(capacities["shellSha256"] == evidence["sha256"], "capacity archive mismatch")
     with zipfile.ZipFile(io.BytesIO(raw)) as z:
         entries = z.infolist()
         require(
@@ -158,13 +152,11 @@ def verify_archive(archive, evidence, capacities):
         for entry in entries:
             want = expected[entry.filename]
             require(
-                entry.file_size == want["size"]
-                and entry.external_attr >> 16 == want["mode"],
+                entry.file_size == want["size"] and entry.external_attr >> 16 == want["mode"],
                 "member metadata",
             )
             require(
-                entry.file_size <= 8 * 1024**2
-                and digest(z.read(entry)) == want["sha256"],
+                entry.file_size <= 8 * 1024**2 and digest(z.read(entry)) == want["sha256"],
                 "member identity",
             )
         binary = z.read(capacities["evidence"]["executablePath"])
@@ -213,9 +205,7 @@ def verify_archive(archive, evidence, capacities):
         and symbol["offset"] == content["fileOffset"],
         "content-mode location",
     )
-    require(
-        symbol["address"] + 4 <= symbol["sectionEnd"], "content-mode section bounds"
-    )
+    require(symbol["address"] + 4 <= symbol["sectionEnd"], "content-mode section bounds")
     off = symbol["offset"]
     require(
         span(binary, off, 4).hex() == content["originalFourBytes"] == "ffffffff",
@@ -223,8 +213,7 @@ def verify_archive(archive, evidence, capacities):
     )
     require(content["replacementFourBytes"] == "00000000", "content-mode replacement")
     require(
-        digest(binary[:off] + b"\0" * 4 + binary[off + 4 :])
-        == content["derivedSha256"],
+        digest(binary[:off] + b"\0" * 4 + binary[off + 4 :]) == content["derivedSha256"],
         "content-mode derived hash",
     )
     return {
@@ -244,7 +233,5 @@ if __name__ == "__main__":
     parser.add_argument("--profile", required=True, choices=["v2.0.0", "v2.0.0-ios18"])
     args = parser.parse_args()
     evidence = json.loads((HERE / (args.profile + ".json")).read_text())
-    capacities = json.loads(
-        (HERE / (args.profile + "-derived-capacities.json")).read_text()
-    )
+    capacities = json.loads((HERE / (args.profile + "-derived-capacities.json")).read_text())
     print(json.dumps(verify_archive(args.archive, evidence, capacities), indent=2))

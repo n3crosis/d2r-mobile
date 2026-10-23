@@ -55,9 +55,7 @@ for index, (name, path) in enumerate(paths.items()):
 stub = types.ModuleType("romfs_art")
 stub.read = lambda _, path: reads[path]
 stub.dxt5 = lambda data, w, h: decoded[data].copy()
-stub.font = (
-    lambda _, name: str(font_path) if name == "BlizzardGlobal-V5_81.ttf" else None
-)
+stub.font = lambda _, name: str(font_path) if name == "BlizzardGlobal-V5_81.ttf" else None
 sys.modules["romfs_art"] = stub
 paths_module = types.ModuleType("gen_paths")
 paths_module.gen_dir = lambda *args: str(OUT / "expected")
@@ -92,9 +90,7 @@ native["main"]()
 files = sorted(p.name for p in (OUT / "expected").iterdir())
 assert len(files) == 195
 (OUT / "files.json").write_text(json.dumps(files))
-(OUT / "backend.json").write_text(
-    json.dumps({**backend, "contract": "pyodide-matched-BASIC"})
-)
+(OUT / "backend.json").write_text(json.dumps({**backend, "contract": "pyodide-matched-BASIC"}))
 (OUT / "bundle.json").write_text(
     json.dumps(
         {
@@ -106,9 +102,7 @@ assert len(files) == 195
     )
 )
 (OUT / "options.json").write_text(
-    json.dumps(
-        {"names": "current", "revision": "e3756f8942b40eba6c851e881828a5b1bda17fd6"}
-    )
+    json.dumps({"names": "current", "revision": "e3756f8942b40eba6c851e881828a5b1bda17fd6"})
 )
 print(
     "Original map-goal: 195 outputs, 31 labels x six languages, seven symbols and alpha-halved cross"

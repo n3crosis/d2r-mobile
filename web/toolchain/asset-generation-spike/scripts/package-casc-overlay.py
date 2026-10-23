@@ -28,9 +28,7 @@ names = {
     "encode_by_espec",
     "ekey_for",
 }
-nodes = [
-    n for n in ast.parse(raw).body if isinstance(n, ast.FunctionDef) and n.name in names
-]
+nodes = [n for n in ast.parse(raw).body if isinstance(n, ast.FunctionDef) and n.name in names]
 if {n.name for n in nodes} != names:
     raise SystemExit("Missing CASC pure function")
 out = HERE / "public/generated"

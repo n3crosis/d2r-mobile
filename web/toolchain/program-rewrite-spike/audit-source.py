@@ -27,27 +27,18 @@ for node in ast.parse(text).body:
             pass
 hashes = dict(
     (name, digest)
-    for digest, name in re.findall(
-        r"^([0-9a-f]{64}) (main|sdk|subsdk0)$", extract, re.M
-    )
+    for digest, name in re.findall(r"^([0-9a-f]{64}) (main|sdk|subsdk0)$", extract, re.M)
 )
 assert set(hashes) == {"main", "sdk", "subsdk0"}
 for name in ("main", "sdk"):
     registered = re.search(
         r'name:\s*"' + name + r'".*?inputSha256:\s*"([0-9a-f]{64})"', catalog, re.S
     )
-    assert registered and registered.group(1) == hashes[name], (
-        f"{name} full-file digest drift"
-    )
+    assert registered and registered.group(1) == hashes[name], f"{name} full-file digest drift"
 assert hashlib.sha256(source.read_bytes()).hexdigest() in catalog
 build = assignments["RULE_BUILD"]
 assert build in catalog
-assert (
-    set(assignments["CUTS"])
-    == set(assignments["OBS"])
-    == set(assignments["PARAMS"])
-    == {build}
-)
+assert set(assignments["CUTS"]) == set(assignments["OBS"]) == set(assignments["PARAMS"]) == {build}
 pack_assignments = {}
 for node in ast.parse(pack).body:
     if isinstance(node, ast.Assign):
@@ -81,6 +72,4 @@ report = {
     "realGameVerified": False,
 }
 (HERE / "dist/source-audit.json").write_text(json.dumps(report, indent=2) + "\n")
-print(
-    "Repository release input constants, original rule tables and binding surface verified"
-)
+print("Repository release input constants, original rule tables and binding surface verified")

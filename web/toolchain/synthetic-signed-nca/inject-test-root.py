@@ -17,9 +17,7 @@ if len(matches) != 1:
     raise SystemExit("Pinned upstream retail-root source layout mismatch")
 m = matches[0]
 old = re.findall(r"0x[0-9A-Fa-f]{2}", m.group(2))
-if len(old) != 256 or bytes(int(x, 16) for x in old)[:8] != bytes.fromhex(
-    "BFBE406CF4A780E9"
-):
+if len(old) != 256 or bytes(int(x, 16) for x in old)[:8] != bytes.fromhex("BFBE406CF4A780E9"):
     raise SystemExit("Pinned upstream retail verification root mismatch")
 modulus = modulus_file.read_bytes()
 if len(modulus) != 256 or modulus[0] < 128 or not modulus[-1] & 1:

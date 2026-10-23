@@ -153,39 +153,36 @@ test("editable bootstrap retains all public capabilities without allocating opti
   await packager.close();
 });
 
-test("generation uses changed target, hash policy, legacy choice and preset from one snapshot", async () => {
+test("generation uses changed target, legacy choice and preset from one snapshot", async () => {
   for (const profileId of BUNDLED_SHELL_PROFILE_IDS)
     for (const legacyAstc of [false, true])
-      for (const skipContentHashes of [false, true])
-        for (const astcPreset of ["thorough", "fast"]) {
-          reset();
-          const packager = await prepareBrowserPackager({ editableOptions: true });
-          const controller = new AbortController();
-          const options = {
-            input,
-            profileId,
-            legacyAstc,
-            skipContentHashes,
-            astcPreset,
-            exportResources: false,
-            signal: controller.signal,
-          };
-          const generating = packager.generate(options);
-          // 调用方修改不能改变正在运行的解构任务快照。
-          // Caller changes cannot alter an in-flight destructured job snapshot.
-          options.legacyAstc = !legacyAstc;
-          options.skipContentHashes = !skipContentHashes;
-          options.astcPreset = astcPreset === "fast" ? "thorough" : "fast";
-          await assert.rejects(generating, (error) => error === stop);
-          assert.equal(state.program.profileId, profileId);
-          assert.equal(state.loadedProfiles.at(-1), profileId);
-          assert.equal(state.extraction.skipContentHashes, skipContentHashes);
-          assert.equal(state.job.selectionOptions.skipContentHashes, skipContentHashes);
-          assert.equal(state.producerPrepares, legacyAstc ? 1 : 0);
-          assert.equal(state.preset, legacyAstc ? astcPreset : undefined);
-          await assert.rejects(packager.generate({ input }), /RELOAD_REQUIRED/);
-          await packager.close();
-        }
+      for (const astcPreset of ["thorough", "fast"]) {
+        reset();
+        const packager = await prepareBrowserPackager({ editableOptions: true });
+        const controller = new AbortController();
+        const options = {
+          input,
+          profileId,
+          legacyAstc,
+          astcPreset,
+          exportResources: false,
+          signal: controller.signal,
+        };
+        const generating = packager.generate(options);
+        // 调用方修改不能改变正在运行的解构任务快照。
+        // Caller changes cannot alter an in-flight destructured job snapshot.
+        options.legacyAstc = !legacyAstc;
+        options.astcPreset = astcPreset === "fast" ? "thorough" : "fast";
+        await assert.rejects(generating, (error) => error === stop);
+        assert.equal(state.program.profileId, profileId);
+        assert.equal(state.loadedProfiles.at(-1), profileId);
+        assert.equal(state.extraction.skipContentHashes, undefined);
+        assert.equal(state.job.selectionOptions.skipContentHashes, undefined);
+        assert.equal(state.producerPrepares, legacyAstc ? 1 : 0);
+        assert.equal(state.preset, legacyAstc ? astcPreset : undefined);
+        await assert.rejects(packager.generate({ input }), /RELOAD_REQUIRED/);
+        await packager.close();
+      }
 });
 
 test("unprepared capabilities reject instead of silently ignoring options or fetching", async () => {

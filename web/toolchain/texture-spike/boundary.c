@@ -10,7 +10,8 @@
 #define LIMIT (64u * 1024u * 1024u)
 _Static_assert(sizeof(nvn_texdesc) == 40, "NVN descriptor ABI changed");
 _Static_assert(offsetof(nvn_texdesc, pkg_block_h) == 36, "NVN descriptor ABI changed");
-/* 结果字依次为存储字节数、紧凑压缩字节数、宽、高、Metal 像素格式、每像素字节数、压缩行字节数及压缩行数。 */
+/* 结果字依次为存储字节数、紧凑压缩字节数、宽、高、Metal
+ * 像素格式、每像素字节数、压缩行字节数及压缩行数。 */
 /* Result words: storage bytes, tight compressed bytes, width, height,
  * Metal pixel format, bytes/pixel, compressed row bytes, compressed rows. */
 int texture_info(const nvn_texdesc *d, unsigned level, unsigned layer, uint32_t *out) {
@@ -54,7 +55,8 @@ int texture_info(const nvn_texdesc *d, unsigned level, unsigned layer, uint32_t 
     return 0;
 }
 
-/* Pillow 10.2 DDS/DXT5 先扩展 565 端点，再截断插值的 8 位通道；bcdec 在 565 域内插值，有效块也会得到不同 RGB 字节。原生美术固定 PNG 需要 Pillow 的结果。 */
+/* Pillow 10.2 DDS/DXT5 先扩展 565 端点，再截断插值的 8 位通道；bcdec 在 565
+ * 域内插值，有效块也会得到不同 RGB 字节。原生美术固定 PNG 需要 Pillow 的结果。 */
 /* Pillow 10.2 DDS/DXT5 expands 565 endpoints first, then truncates interpolated
  * 8-bit channels. bcdec interpolates in the 565 domain, giving different RGB
  * bytes for valid blocks. Native-art's pinned PNGs require Pillow's result. */

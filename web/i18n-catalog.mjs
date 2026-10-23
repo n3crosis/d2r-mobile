@@ -1388,5 +1388,9 @@ export const catalog = Object.freeze({
   "dmWebLanguageChinese": [
     "Simplified Chinese",
     "简体中文"
+  ],
+  "dmWebFolderAccessUnsupported": [
+    "This browser cannot read and write the selected game folder, so IPA generation is unavailable here. Open this page in desktop Chrome or Edge on Windows or macOS. You can still change the language and read the guide and FAQ.",
+    "当前浏览器无法读写所选游戏文件夹，因此无法在这里生成 IPA。请在 Windows 或 macOS 的桌面版 Chrome 或 Edge 中打开此页面。你仍可切换语言、阅读指南和常见问题。"
   ]
 });

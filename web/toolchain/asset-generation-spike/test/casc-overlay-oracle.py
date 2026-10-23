@@ -69,10 +69,7 @@ def fixture():
     old = [b"old raw", b"old zlib", b"old blte"]
     keys = [append(raw, mode) for raw, mode in zip(old, ("n", "z", "b:256K*=z"))]
     vfs = tvfs(
-        [
-            (key, size, i, len(raw))
-            for i, ((key, size), raw) in enumerate(zip(keys, old))
-        ],
+        [(key, size, i, len(raw)) for i, ((key, size), raw) in enumerate(zip(keys, old))],
         ["n", "z", "b:256K*=z"],
     )
     vk, ve = append(vfs, "b:256K*=z")
@@ -194,12 +191,8 @@ def run():
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "serialize":
         request = json.load(sys.stdin)
-        result = bounded.generate(
-            base64.b64decode(request["payload"]), request["options"]
-        )
-        result["files"] = {
-            k: base64.b64encode(v).decode() for k, v in result["files"].items()
-        }
+        result = bounded.generate(base64.b64decode(request["payload"]), request["options"])
+        result["files"] = {k: base64.b64encode(v).decode() for k, v in result["files"].items()}
         print(json.dumps(result))
     else:
         run()

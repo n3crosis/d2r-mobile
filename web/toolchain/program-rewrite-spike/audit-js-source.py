@@ -20,11 +20,7 @@ OUTPUT = HERE / "js/rule-data.mjs"
 
 
 def named_call(node, name):
-    return (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == name
-    )
+    return isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == name
 
 
 def append_call(node, name):
@@ -49,19 +45,14 @@ def extract():
             isinstance(node, ast.Assign)
             and len(node.targets) == 1
             and isinstance(node.targets[0], ast.Name)
-            and node.targets[0].id
-            in ("RULE_BUILD", "CUTS", "OBS", "PARAMS", "run_words")
+            and node.targets[0].id in ("RULE_BUILD", "CUTS", "OBS", "PARAMS", "run_words")
         ):
             tables[node.targets[0].id.upper()] = ast.literal_eval(node.value)
     tables["PRIVATE_OBS"] = [
-        ast.literal_eval(node.args[0])
-        for node in ast.walk(tree)
-        if append_call(node, "obs")
+        ast.literal_eval(node.args[0]) for node in ast.walk(tree) if append_call(node, "obs")
     ]
     tables["RUN_REASONS"] = [
-        ast.literal_eval(node.args[-1])
-        for node in ast.walk(tree)
-        if named_call(node, "run_branch")
+        ast.literal_eval(node.args[-1]) for node in ast.walk(tree) if named_call(node, "run_branch")
     ]
     branches = []
     for block in tree.body:
@@ -94,14 +85,8 @@ def extract():
                 if named_call(node, "B") and isinstance(node.args[1], ast.Constant)
             )
             values.append(ast.literal_eval(target))
-        why = next(
-            node.args[0].elts[3]
-            for node in ast.walk(block)
-            if append_call(node, "cuts")
-        )
-        kind = next(
-            node.args[0] for node in ast.walk(block) if named_call(node, "stat")
-        )
+        why = next(node.args[0].elts[3] for node in ast.walk(block) if append_call(node, "cuts"))
+        kind = next(node.args[0] for node in ast.walk(block) if named_call(node, "stat"))
         branches.append(
             values
             + [
@@ -118,9 +103,7 @@ def extract():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--write", action="store_true", help="regenerate the JS literal tables"
-    )
+    parser.add_argument("--write", action="store_true", help="regenerate the JS literal tables")
     options = parser.parse_args()
     expected = extract()
     if options.write:

@@ -43,13 +43,10 @@ counts = native["data"](str(DM), str(OUT / "expected.tsv"))
 options = {
     "expectedCounts": dict(zip(("EXP", "VTPART", "VTROW", "VTSET", "TAROW"), counts)),
     "expectedSourceSha256": {
-        name: hashlib.sha256(text.encode()).hexdigest()
-        for name, text in sources.items()
+        name: hashlib.sha256(text.encode()).hexdigest() for name, text in sources.items()
     },
 }
-(OUT / "sources.json").write_text(
-    json.dumps(sources, ensure_ascii=False), encoding="utf-8"
-)
+(OUT / "sources.json").write_text(json.dumps(sources, ensure_ascii=False), encoding="utf-8")
 (OUT / "options.json").write_text(json.dumps(options), encoding="utf-8")
 print(
     "Original shell_stubs.data produced full five-family synthetic derived.tsv oracle",
@@ -94,6 +91,4 @@ finally:
         del sys.modules["native_functions"]
     else:
         sys.modules["native_functions"] = previous
-print(
-    "Bounded UTF-8 sink rejects overflow during writes, including multibyte and large writes"
-)
+print("Bounded UTF-8 sink rejects overflow during writes, including multibyte and large writes")

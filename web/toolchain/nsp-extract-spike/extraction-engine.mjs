@@ -187,8 +187,7 @@ export function createExtractionEngine(
   let entries = [],
     romfs,
     baseIndex,
-    programIndex,
-    skipContentHashes = false;
+    programIndex;
   const revoke = () => {
     token = newToken();
     return token;
@@ -222,7 +221,7 @@ export function createExtractionEngine(
       fields(
         payload,
         operation === "initialize"
-          ? ["nsps", "prodKeys", "titleKeys", "skipContentHashes"]
+          ? ["nsps", "prodKeys", "titleKeys"]
           : operation === "select"
             ? ["options"]
             : operation === "openRomfs"
@@ -235,12 +234,6 @@ export function createExtractionEngine(
       );
       if (operation === "initialize") {
         requireState("new");
-        if (
-          payload.skipContentHashes !== undefined &&
-          typeof payload.skipContentHashes !== "boolean"
-        )
-          fail();
-        skipContentHashes = payload.skipContentHashes === true;
         state = "initializing";
         if (
           !Array.isArray(payload.nsps) ||
@@ -335,10 +328,6 @@ export function createExtractionEngine(
         checked("CONTENT_READ_FAILED", () => boundary.mount(blobs));
         for (let i = 0; i < blobs.length; i++) {
           let sha256 = null;
-          if (!skipContentHashes) {
-            progress("content-hash", i, blobs.length, blobs[i].size);
-            sha256 = checked("CONTENT_READ_FAILED", () => boundary.hashInput(i));
-          }
           progress("content-header", i, blobs.length);
           const header = checked("CONTENT_AUTHENTICATION_FAILED", () => boundary.inspect(i));
           const warlock = header.applicationId === D2R_WARLOCK_ID.toString(16).padStart(16, "0");
@@ -356,10 +345,8 @@ export function createExtractionEngine(
           if (warlock) {
             if (blobs[i].size > META_LIMIT || ![1, 5].includes(header.contentType))
               diagnostic("CONTENT_AUTHENTICATION_FAILED");
-            if (sha256 === null) {
-              progress("content-hash", i, blobs.length, blobs[i].size);
-              sha256 = checked("CONTENT_READ_FAILED", () => boundary.hashInput(i));
-            }
+            progress("content-hash", i, blobs.length, blobs[i].size);
+            sha256 = checked("CONTENT_READ_FAILED", () => boundary.hashInput(i));
             if (sha256.slice(0, 32) !== ids[i]) diagnostic("CONTENT_AUTHENTICATION_FAILED");
             warlockHashes.set(ids[i], sha256);
           }
@@ -367,12 +354,9 @@ export function createExtractionEngine(
             contentId: ids[i],
             sha256,
             size: header.size,
-            hashVerified: !skipContentHashes,
           };
           const old = contents.get(ids[i]);
-          if (old && (skipContentHashes || old.sha256 !== sha256 || old.size !== record.size))
-            diagnostic("CONTENT_METADATA_INVALID");
-          if (old) continue;
+          if (old) diagnostic("CONTENT_METADATA_INVALID");
           contents.set(ids[i], { ...record, index: i, ncaType: header.contentType });
           inventory.push(record);
           if (header.contentType === 1) {
@@ -408,9 +392,7 @@ export function createExtractionEngine(
           "patchVersion",
           "dlcVersions",
           "contentMode",
-          "skipContentHashes",
         ]);
-        if ((payload.options?.skipContentHashes ?? false) !== skipContentHashes) fail();
         selection = resolveD2rExpansionSelection(records, inventory, payload.options);
         // 要求已知附加内容的完整实测 NCA 证据与 Data 头部。
         // 这是包输入校验，并非授权或所有权检查。
@@ -457,25 +439,8 @@ export function createExtractionEngine(
         requireState("exefs");
         checkToken(payload.token);
         if (typeof payload.verifyRomfs !== "boolean") fail();
-        if (!payload.verifyRomfs && !skipContentHashes) {
-          // 只有所有选定 Program NCA 的实测全文件摘要均匹配
-          // 各自已认证的 CNMT 条目后，快速路径才有效。
-          // The fast path is valid only after every selected Program NCA's
-          // measured full-file digest matched its authenticated CNMT entry.
-          for (const row of [selection.base, selection.patch].filter(Boolean)) {
-            const program = row.contents.find((content) => content.type === 1);
-            const measured = contents.get(program?.contentId);
-            if (
-              !measured?.hashVerified ||
-              measured.sha256 !== program.sha256 ||
-              measured.size !== program.size
-            )
-              fail();
-          }
-        }
-        // 显式快速模式允许跳过这两种完整性扫描，但不放宽签名头部和结构检查。
-        // Explicit quick mode skips both full-content scans while retaining
-        // signed-header and structural checks in the native reader.
+        // 浏览器不执行完整内容摘要扫描；独立调用者仍可要求 RomFS 校验。
+        // The browser omits whole-content hashing; independent callers may still verify RomFS.
         revoke();
         const reportVerification = ({ phase, completed, total }) => {
           if (phase === "read") {

@@ -41,11 +41,7 @@ test("language remains visible while generation selectors stay in Advanced", () 
       assert.ok(select.pos < advanced.pos);
     } else assert.ok(select.pos > advanced.pos && select.end < advanced.end);
   }
-  for (const setting of [
-    "checked={legacyAstc}",
-    "checked={!skipContentHashes}",
-    "checked={skipResources}",
-  ])
+  for (const setting of ["checked={legacyAstc}", "checked={skipResources}"])
     assert.ok(advanced.getText(parsed).includes(setting));
   assert.ok(app.indexOf('{t("dmWebChoose")}') < advanced.pos);
   assert.ok(app.indexOf('t("dmWebGenerate")') < advanced.pos);

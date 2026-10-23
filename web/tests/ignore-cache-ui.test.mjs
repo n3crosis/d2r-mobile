@@ -70,7 +70,6 @@ test("both cache policies are frozen per job and reach the actual session.genera
       legacyAstc: false,
       signing: false,
       astcPreset: "thorough",
-      skipContentHashes: true,
       skipResources: false,
       inputMode: "packages",
     };

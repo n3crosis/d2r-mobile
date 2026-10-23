@@ -81,7 +81,6 @@ function harness({ signing = true, urlFails = false } = {}) {
     profileId: "v2.0.0-ios26",
     legacyAstc: false,
     astcPreset: "thorough",
-    skipContentHashes: true,
     ignoreCache: false,
     skipResources: false,
     inputMode: "packages",

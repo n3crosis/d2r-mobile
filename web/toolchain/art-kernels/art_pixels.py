@@ -19,21 +19,15 @@ def default_state(im):
 
 
 def clear_circles(im, circles):
-    return _image(
-        kernels.clearCircles(_bytes(im, "RGBA"), *im.size, to_js(circles)), im.size
-    )
+    return _image(kernels.clearCircles(_bytes(im, "RGBA"), *im.size, to_js(circles)), im.size)
 
 
 def silhouette(im, frame_width, pitch):
-    return _image(
-        kernels.silhouette(_bytes(im, "RGBA"), *im.size, frame_width, pitch), im.size
-    )
+    return _image(kernels.silhouette(_bytes(im, "RGBA"), *im.size, frame_width, pitch), im.size)
 
 
 def metal(mask, outline):
-    return _image(
-        kernels.metal(_bytes(mask, "L"), _bytes(outline, "L"), *mask.size), mask.size
-    )
+    return _image(kernels.metal(_bytes(mask, "L"), _bytes(outline, "L"), *mask.size), mask.size)
 
 
 def feather(size, n=2):
@@ -48,9 +42,7 @@ def stats(im, boxes):
 def stone(im, width, height, target, ox=90, oy=190):
     source = im.crop((ox, oy, ox + width, oy + height))
     return _image(
-        kernels.stone(
-            _bytes(source, "RGB"), width, height, to_js(target[0]), to_js(target[1])
-        ),
+        kernels.stone(_bytes(source, "RGB"), width, height, to_js(target[0]), to_js(target[1])),
         (width, height),
     )
 

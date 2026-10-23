@@ -20,11 +20,7 @@ def source(name):
 prod, test = source("prod-build"), source("test-build")
 # 比较所有被跟踪的上游源文件，而不只比较安全敏感文件。
 # Compare all tracked upstream source files, rather than just security-sensitive ones.
-tracked = (
-    subprocess.check_output(["git", "-C", str(prod), "ls-files", "-z"])
-    .decode()
-    .split("\0")
-)
+tracked = subprocess.check_output(["git", "-C", str(prod), "ls-files", "-z"]).decode().split("\0")
 for name in filter(None, tracked):
     if name == "pki.c":
         continue

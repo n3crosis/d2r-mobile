@@ -46,9 +46,7 @@ for y in range(h):
         expected.extend((r, g, b, a))
 (OUT / "frame.rgba").write_bytes(expected)
 (OUT / "frame.sprite").write_bytes(
-    b"SpA1"
-    + struct.pack("<HHIIIIIIII", 31, fw, fw, h, 0, 1, 0, 0, len(expected), 4)
-    + expected
+    b"SpA1" + struct.pack("<HHIIIIIIII", 31, fw, fw, h, 0, 1, 0, 0, len(expected), 4) + expected
 )
 table = "Level\tAmazon\tOther\nignored\t0\t0\n" + "".join(
     f"{i}\t{i * i * 123}\t{999 - i}\n" for i in range(101)

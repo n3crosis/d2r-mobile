@@ -45,15 +45,11 @@ def generate(payload, options):
             isinstance(text, str) and len(text.encode()) <= 2 * 1024 * 1024,
             "HUD_METADATA_LIMIT",
         )
-        require(
-            hashlib.sha256(text.encode()).hexdigest() == pins[name], "HUD_METADATA_HASH"
-        )
+        require(hashlib.sha256(text.encode()).hexdigest() == pins[name], "HUD_METADATA_HASH")
     require(set(bundle["images"]) == set(IMAGE_NAMES), "HUD_IMAGE_SET")
     require(set(bundle["fonts"]) == set(FONTS), "HUD_FONT_SET")
     manifest = json.loads(metadata["manifest"])
-    atlases = [
-        a for a in manifest["assets"] if a["asset"].startswith("dm_native_skill_")
-    ]
+    atlases = [a for a in manifest["assets"] if a["asset"].startswith("dm_native_skill_")]
     require(
         {a["asset"] for a in atlases} == {f"dm_native_skill_{i}.png" for i in range(9)}
         and len(atlases) == 9,
@@ -125,11 +121,7 @@ def generate(payload, options):
         support.TABLE = str(tools / "ui_text.tsv")
         try:
             original.generate(None, str(out), str(tools), Source())
-            files = {
-                str(p.relative_to(out)): p.read_bytes()
-                for p in out.rglob("*")
-                if p.is_file()
-            }
+            files = {str(p.relative_to(out)): p.read_bytes() for p in out.rglob("*") if p.is_file()}
             require(
                 len(files) <= 512 and sum(map(len, files.values())) <= 32 * 1024 * 1024,
                 "HUD_OUTPUT_LIMIT",
@@ -149,14 +141,11 @@ def generate(payload, options):
             expected.update(f"hud_v4_ui/diff_{i}.png" for i in range(1, 9))
             expected.update("hud_v4_ui/sil_" + a["asset"] for a in atlases)
             expected.update(
-                "hud_v4_ui/lbl_" + n + ".png"
-                for n in ["main"] + [f"f{i}" for i in range(1, 9)]
+                "hud_v4_ui/lbl_" + n + ".png" for n in ["main"] + [f"f{i}" for i in range(1, 9)]
             )
             for key in ("lv", "badge", "vital"):
                 expected.update(
-                    "hud_v4_ui/" + g["file"]
-                    for g in ui[key]["glyphs"].values()
-                    if g["file"]
+                    "hud_v4_ui/" + g["file"] for g in ui[key]["glyphs"].values() if g["file"]
                 )
             require(set(files) == expected, "HUD_OUTPUT_SET")
             return {

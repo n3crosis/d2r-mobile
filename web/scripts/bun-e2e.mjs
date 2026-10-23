@@ -225,7 +225,6 @@ export async function run(options) {
     };
     packager = await prepareBrowserPackager({
       manifestSha256: runtimeManifestSha256,
-      skipContentHashes: true,
       onProgress,
     });
     if (!packager.ready || workers !== 6) throw new Error("BUN_E2E_WORKER_ORDER");

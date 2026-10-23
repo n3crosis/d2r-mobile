@@ -28,8 +28,7 @@ def require(condition, code):
 def generate(payload, options):
     require(len(payload) <= 20 * 1024 * 1024, "MAP_GOAL_INPUT_LIMIT")
     require(
-        set(options) in ({"names"}, {"names", "revision"})
-        and options.get("names") == "current",
+        set(options) in ({"names"}, {"names", "revision"}) and options.get("names") == "current",
         "MAP_GOAL_CURRENT_NAMES_REQUIRED",
     )
     revision = options.get("revision", LEGACY_REVISION)
@@ -38,9 +37,7 @@ def generate(payload, options):
         "OVERLAY_RECIPE_REVISION",
     )
     upstream = revision != LEGACY_REVISION
-    languages = ("zhCN", "enUS", "esES", "esMX", "ruRU") + (
-        ("koKR",) if upstream else ()
-    )
+    languages = ("zhCN", "enUS", "esES", "esMX", "ruRU") + (("koKR",) if upstream else ())
     bundle = json.loads(payload.decode())
     require(set(bundle) == {"images", "font", "strings"}, "MAP_GOAL_INPUT_SET")
     require(set(bundle["images"]) == set(IMAGE_PATHS), "MAP_GOAL_IMAGE_SET")
@@ -85,9 +82,7 @@ def generate(payload, options):
                 "MAP_GOAL_DIMENSIONS",
             )
             require(
-                frames == (7 if name == "symbols" else 8)
-                and w % frames == 0
-                and fw <= w // frames,
+                frames == (7 if name == "symbols" else 8) and w % frames == 0 and fw <= w // frames,
                 "MAP_GOAL_FRAME_LAYOUT",
             )
             pixels += w * h
@@ -137,14 +132,11 @@ def generate(payload, options):
             finally:
                 original.sprite_png = old_sprite
                 del original.romfs_art, original.OUT, original.HERE, original.ROMFS
-            expected = {"mapgoal.json", "cross.png"} | {
-                f"sym_{i}.png" for i in range(7)
-            }
+            expected = {"mapgoal.json", "cross.png"} | {f"sym_{i}.png" for i in range(7)}
             expected |= {
                 f"label_{i}{suffix}.png"
                 for i in range(len(original.LABELS))
-                for suffix in ("", "_en", "_es", "_mx", "_ru")
-                + (("_ko",) if upstream else ())
+                for suffix in ("", "_en", "_es", "_mx", "_ru") + (("_ko",) if upstream else ())
             }
             paths = {p.name: p for p in (root / "out").iterdir() if p.is_file()}
             require(

@@ -51,9 +51,7 @@ def packed(value):
 def equal(actual, expected, label):
     if actual != expected:
         if isinstance(actual, bytes):
-            n = next(
-                (i for i, (a, b) in enumerate(zip(actual, expected)) if a != b), -1
-            )
+            n = next((i for i, (a, b) in enumerate(zip(actual, expected)) if a != b), -1)
             raise AssertionError(
                 (
                     index,
@@ -64,11 +62,7 @@ def equal(actual, expected, label):
                     len(expected),
                     actual[n : n + 16],
                     expected[n : n + 16],
-                    {
-                        k: v
-                        for k, v in case.items()
-                        if k not in ("mask", "pixels", "before")
-                    },
+                    {k: v for k, v in case.items() if k not in ("mask", "pixels", "before")},
                 )
             )
         raise AssertionError((index, label, actual, expected))

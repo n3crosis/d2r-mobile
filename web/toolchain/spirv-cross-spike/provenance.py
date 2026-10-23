@@ -11,9 +11,7 @@ import sys
 sys.dont_write_bytecode = True
 
 root = Path(__file__).resolve().parents[3]
-spec = importlib.util.spec_from_file_location(
-    "native_chain", root / "dm/gfx/tools/dmsh_chain.py"
-)
+spec = importlib.util.spec_from_file_location("native_chain", root / "dm/gfx/tools/dmsh_chain.py")
 chain = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(chain)
 version = chain.version()

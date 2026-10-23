@@ -69,9 +69,7 @@ def generate(payload, options):
             "DERIVED_COUNTS_RANGE",
         )
         require(
-            expected["EXP"] == 100
-            and expected["VTPART"] <= 256
-            and expected["VTSET"] <= 32768,
+            expected["EXP"] == 100 and expected["VTPART"] <= 256 and expected["VTSET"] <= 32768,
             "DERIVED_COUNTS_RANGE",
         )
     for name in SOURCE_NAMES:
@@ -81,9 +79,7 @@ def generate(payload, options):
         actual_hash = hashlib.sha256(encoded).hexdigest()
         require(hashes[name] == actual_hash, "DERIVED_SOURCE_HASH")
 
-    source_paths = dict(
-        zip(native.paths("/input"), (sources[name] for name in SOURCE_NAMES))
-    )
+    source_paths = dict(zip(native.paths("/input"), (sources[name] for name in SOURCE_NAMES)))
     output = BoundedOutput()
 
     def memory_open(path, mode="r", **_kwargs):
@@ -123,9 +119,7 @@ def generate(payload, options):
         )
         require(
             all(
-                0 <= r[0] <= 0xFFFFFFFF
-                and -1 <= r[1] <= 0x7FFFFFFF
-                and -1 <= r[2] <= 0x7FFFFFFF
+                0 <= r[0] <= 0xFFFFFFFF and -1 <= r[1] <= 0x7FFFFFFF and -1 <= r[2] <= 0x7FFFFFFF
                 for r in trows
             ),
             "DERIVED_SKILL_RANGE",

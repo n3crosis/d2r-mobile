@@ -6,8 +6,8 @@
     "dm/ios/tools/gen_romfs_overlay.py": "9b65ac59edfa0f85f159f70c0f6c01707803406a8f9bdbdade8fb081b970296b",
     "dm/ios/tools/shell_stubs.py": "adc25af7fb8c26a32d31f266c7a270e1338a18c573af594aa6e174318804fd16",
     "dm/ios/tools/gen_vault_table.py": "a9ed6567e4b7a0f76c2b31eb2932f085f8c3120df791526f973e39d47c810555",
-    "web/toolchain/asset-generation-spike/src/core.py": "f0c44a9d9ae1e2a65fdfd21e3a297184f66854034008e2883339a773c5adb1c2",
-    "web/toolchain/asset-generation-spike/src/derived.py": "2a1c8202357f1038261dbd935b62cb34e3e30324cd2164306abb0677bcba67d6",
-    "web/toolchain/asset-generation-spike/src/vault.py": "ba9402cfbda585314c060ed110a3629d9a7fccf57b9e0c84d01d60952631aac5"
+    "web/toolchain/asset-generation-spike/src/core.py": "f43d4e6e5fb743fd58151ff495390065b6b1f4804e99efbb44da1dd18ccdfecf",
+    "web/toolchain/asset-generation-spike/src/derived.py": "c73e31a558cbef7014ce20430effab62335aeb44b5b5f61ca035a1319d728761",
+    "web/toolchain/asset-generation-spike/src/vault.py": "7621a4fba086b2a43813a328fe5eab78224cf691b410c8bfe823208efaa45a0e"
   }
 }

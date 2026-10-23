@@ -16,9 +16,7 @@ SOURCES = {
     "dm/ios/tools/shell_stubs.py": ["unq", "paths", "parse", "data"],
 }
 manifest = json.loads((HERE / "source-provenance.json").read_text())
-parts = [
-    "import csv, io, os, re, struct, sys\nimport numpy as np\nfrom PIL import Image\n"
-]
+parts = ["import csv, io, os, re, struct, sys\nimport numpy as np\nfrom PIL import Image\n"]
 for path, names in SOURCES.items():
     raw = (ROOT / path).read_bytes()
     digest = hashlib.sha256(raw).hexdigest()
@@ -28,11 +26,7 @@ for path, names in SOURCES.items():
         )
     tree = ast.parse(raw)
     for name in names:
-        matches = [
-            n
-            for n in ast.walk(tree)
-            if isinstance(n, ast.FunctionDef) and n.name == name
-        ]
+        matches = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == name]
         if len(matches) != 1:
             raise SystemExit(f"Expected one {name} in {path}")
         node = matches[0]

@@ -106,7 +106,7 @@ test("folder auto-detection includes all packages and preserves the detected gen
   );
   assert.match(
     app,
-    /if \(jobOptions.inputMode === "packages"\)\s*appendActivity\(\s*t\(jobOptions.skipContentHashes/,
+    /if \(jobOptions.inputMode === "packages"\)\s*appendActivity\(\s*t\("dmWebSkipHashActive"/,
   );
 });
 test("compatibility display derives from the actual selected profile registry", () => {
@@ -311,7 +311,6 @@ async function runPreflight(options, makeIcon) {
     legacyAstc: false,
     signing: false,
     astcPreset: "thorough",
-    skipContentHashes: true,
     ignoreCache: false,
     skipResources: false,
     generationTracker,

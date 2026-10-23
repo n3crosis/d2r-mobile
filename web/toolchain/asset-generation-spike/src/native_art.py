@@ -53,8 +53,7 @@ def generate(payload, options):
         "NATIVE_ART_OUTPUT_NAME",
     )
     require(
-        {t["file"] for t in manifest["official_tables"]}
-        == {"skills.txt", "skilldesc.txt"}
+        {t["file"] for t in manifest["official_tables"]} == {"skills.txt", "skilldesc.txt"}
         and len(manifest["official_tables"]) == 2,
         "NATIVE_ART_TABLE_SET",
     )
@@ -87,9 +86,7 @@ def generate(payload, options):
         (root / "docs").mkdir()
         (art / "native_art_manifest.json").write_text(metadata["manifest"])
         (root / "docs/native_art_v1_geometry.json").write_text(metadata["geometry"])
-        (root / "docs/touch_layout_spec_native_binding_v5.json").write_text(
-            metadata["binding"]
-        )
+        (root / "docs/touch_layout_spec_native_binding_v5.json").write_text(metadata["binding"])
         (root / "implementation.c.inc").write_text(metadata["implementation"])
         original.IOS = root
         original.HERE = root
@@ -107,9 +104,7 @@ def generate(payload, options):
                     == asset["decoded_png_sha256"],
                     "NATIVE_ART_PNG_HASH",
                 )
-            files["dm_touch_native_art.c"] = (
-                root / "Sources/dm_touch_native_art.c"
-            ).read_bytes()
+            files["dm_touch_native_art.c"] = (root / "Sources/dm_touch_native_art.c").read_bytes()
             require(
                 sum(map(len, files.values())) <= 20 * 1024 * 1024,
                 "NATIVE_ART_OUTPUT_LIMIT",

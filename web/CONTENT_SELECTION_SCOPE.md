@@ -58,14 +58,11 @@ Integers must be BigInt or safe integral numbers in their field's unsigned range
 strings and lossy Numbers are rejected. Content entries contain `contentId`
 (32 hex), `sha256` (64 hex), `size`, `type`, `idOffset`, optional `attributes`.
 
-Inventory entries must contain `contentId`, independently computed whole-NCA
-`sha256`, measured `size`, and `hashVerified: true`. The flag is a caller contract,
-not cryptographic proof: copying hashes from CNMT or deriving IDs from filenames
-must never set it. Every required selected content is matched by ID, hash and size.
-The explicit `skipContentHashes: true` option instead accepts only unique
-`hashVerified: false` inventory entries and matches ID and size without claiming
-whole-content integrity. The browser UI enables this fast mode by default; enabling its full-content-hash
-option restores hash matching. Independent callers retain the strict default.
+Inventory entries must contain unique `contentId` values and measured `size`.
+Every required selected content is matched by ID and size, without claiming
+whole-content integrity. Full base/update NCA hashing and its browser/API option
+have been removed. The extraction engine still hashes the small known Warlock
+add-on and matches its digest against the content ID and CNMT digest.
 NCA-header identity, sections and signatures remain upstream responsibilities.
 No content ID is inferred from the filename and no NCA is chosen by array order.
 

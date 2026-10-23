@@ -63,9 +63,7 @@ manifest = {
         for name in ("skills.txt", "skilldesc.txt")
     ],
     "descriptor_index_sha256": sha(
-        json.dumps(
-            [[12, 0, 0], [21, -1, -1], [357, 8, 20]], separators=(",", ":")
-        ).encode()
+        json.dumps([[12, 0, 0], [21, -1, -1], [357, 8, 20]], separators=(",", ":")).encode()
     ),
 }
 metadata = {

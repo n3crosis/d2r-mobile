@@ -68,6 +68,7 @@ type LocalPickers = typeof globalThis & {
   }) => Promise<FileSystemDirectoryHandle>;
 };
 const browser = globalThis as LocalPickers;
+const supportsDirectoryPicker = typeof browser.showDirectoryPicker === "function";
 type Packager = Awaited<ReturnType<typeof prepareBrowserPackager>>;
 type LoadingProgress = {
   phase: string;
@@ -110,9 +111,6 @@ export default function App() {
   );
   const [legacyAstc, setLegacyAstc] = useState(
     () => new URLSearchParams(window.location.search).get("legacyAstc") === "1",
-  );
-  const [skipContentHashes, setSkipContentHashes] = useState(
-    () => new URLSearchParams(window.location.search).get("skipContentHashes") !== "0",
   );
   const [astcPreset, setAstcPreset] = useState<"thorough" | "fast">(() =>
     new URLSearchParams(window.location.search).get("astcPreset") === "fast" ? "fast" : "thorough",
@@ -300,7 +298,11 @@ export default function App() {
     const digest = document.querySelector<HTMLMetaElement>(
       'meta[name="runtime-manifest-sha256"]',
     )?.content;
-    if (!browser.showDirectoryPicker || !digest || !/^[a-f0-9]{64}$/.test(digest)) {
+    if (!supportsDirectoryPicker) {
+      setStatus(t("dmWebFolderAccessUnsupported"));
+      return;
+    }
+    if (!digest || !/^[a-f0-9]{64}$/.test(digest)) {
       setStatus(t("dmWebUnsupported"));
       return;
     }
@@ -378,14 +380,13 @@ export default function App() {
       ["target", target === "ios18" ? "ios18" : null],
       ["legacyAstc", legacyAstc ? "1" : null],
       ["astcPreset", astcPreset === "fast" ? "fast" : null],
-      ["skipContentHashes", skipContentHashes ? null : "0"],
       ["signing", signing ? "1" : null],
     ] as const) {
       if (value === null) url.searchParams.delete(key);
       else url.searchParams.set(key, value);
     }
     window.history.replaceState(window.history.state, "", url.href);
-  }, [target, legacyAstc, astcPreset, skipContentHashes, signing]);
+  }, [target, legacyAstc, astcPreset, signing]);
   async function choose() {
     if (!ready || busy || !browser.showDirectoryPicker) return;
     const operation = operationGate.current.begin();
@@ -644,7 +645,6 @@ export default function App() {
       legacyAstc,
       signing,
       astcPreset,
-      skipContentHashes,
       ignoreCache,
       exportResources: !skipResources,
       inputMode,
@@ -710,11 +710,7 @@ export default function App() {
     if (jobOptions.legacyAstc) setLegacyStatus(t("dmWebLegacyPreparing"));
     appendActivity(t("dmWebGenerationStarted"), true);
     if (jobOptions.ignoreCache) appendActivity(t("dmWebIgnoreCacheActive"), true);
-    if (jobOptions.inputMode === "packages")
-      appendActivity(
-        t(jobOptions.skipContentHashes ? "dmWebSkipHashActive" : "dmWebFastMode"),
-        true,
-      );
+    if (jobOptions.inputMode === "packages") appendActivity(t("dmWebSkipHashActive"), true);
     else appendActivity(t("dmWebExtractedChecked"), true);
     let acceptingProgress = true;
     let generationCompleted = false;
@@ -724,7 +720,6 @@ export default function App() {
         profileId: jobOptions.profileId,
         legacyAstc: jobOptions.legacyAstc,
         astcPreset: jobOptions.astcPreset,
-        skipContentHashes: jobOptions.skipContentHashes,
         ignoreCache: jobOptions.ignoreCache,
         input: folder,
         inputMode: jobOptions.inputMode,
@@ -964,6 +959,14 @@ export default function App() {
               {t("dmWebTitle")}
             </CardTitle>
           </div>
+          {!supportsDirectoryPicker && (
+            <p
+              role="alert"
+              className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-foreground"
+            >
+              {t("dmWebFolderAccessUnsupported")}
+            </p>
+          )}
           <CardDescription className="font-medium text-foreground">
             {t("dmWebBrowserOnly")}
           </CardDescription>
@@ -1327,35 +1330,6 @@ export default function App() {
                       {t("dmWebSupportedVersions", supportedVersions)}
                     </FieldDescription>
                   </Field>
-                  {inputMode !== "extracted" && (
-                    <Field orientation="horizontal">
-                      <Checkbox
-                        id="verify-content-hashes"
-                        checked={!skipContentHashes}
-                        aria-describedby="verify-content-hashes-help"
-                        disabled={busy || generating || finished || download !== null}
-                        onCheckedChange={(checked) => {
-                          if (
-                            operationGate.current.busy ||
-                            finished ||
-                            busy ||
-                            generating ||
-                            download !== null
-                          )
-                            return;
-                          setSkipContentHashes(checked !== true);
-                        }}
-                      />
-                      <FieldContent>
-                        <FieldLabel htmlFor="verify-content-hashes">
-                          {t("dmWebVerifyHashOption")}
-                        </FieldLabel>
-                        <FieldDescription id="verify-content-hashes-help" className="text-xs">
-                          {t("dmWebVerifyHashHelp")}
-                        </FieldDescription>
-                      </FieldContent>
-                    </Field>
-                  )}
                   <Field orientation="horizontal">
                     <Checkbox
                       id="legacy-textures"

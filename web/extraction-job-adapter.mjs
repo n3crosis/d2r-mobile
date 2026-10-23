@@ -232,7 +232,6 @@ export function createExtractionJobAdapter({
   createWorker,
   contentMode = "warlock",
   verifyRomfs = true,
-  skipContentHashes = false,
   maxProgramBytes = 32 * 1024 * 1024,
   timeoutMs,
   operationTimeoutMs,
@@ -242,7 +241,6 @@ export function createExtractionJobAdapter({
     typeof createWorker !== "function" ||
     !D2R_CONTENT_MODES.includes(contentMode) ||
     typeof verifyRomfs !== "boolean" ||
-    typeof skipContentHashes !== "boolean" ||
     !Number.isSafeInteger(maxProgramBytes) ||
     maxProgramBytes < 1 ||
     maxProgramBytes > 64 * 1024 * 1024
@@ -356,10 +354,7 @@ export function createExtractionJobAdapter({
       sessions.set(session, state);
       signal?.addEventListener("abort", abort, { once: true });
       try {
-        const inspected = await client.initialize(
-          { ...inputs, skipContentHashes },
-          { signal, onProgress: onDiagnostic },
-        );
+        const inspected = await client.initialize(inputs, { signal, onProgress: onDiagnostic });
         if (signal?.aborted) fail("EXTRACTION_CANCELLED");
         // 初始化回复兑现期间可能已清理会话；不能重新填充已撤销的缓存。
         // Cleanup may win after initialization settles; never repopulate a revoked session cache.
@@ -446,7 +441,6 @@ export function createExtractionJobAdapter({
         state.extracted = true;
         const options = {
           contentMode,
-          ...(skipContentHashes ? { skipContentHashes: true } : {}),
           baseVersion: selection.base.version,
           patchVersion: selection.patch?.version,
           dlcVersions: Object.fromEntries(
