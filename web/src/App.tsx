@@ -1114,6 +1114,9 @@ export default function App() {
               </Button>
             )}
           </div>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            {t("dmWebGenerationExpectation")}
+          </p>
           {generationReadinessMessage && (
             <p
               id="generation-readiness"

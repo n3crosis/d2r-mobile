@@ -1348,5 +1348,9 @@ export const catalog = Object.freeze({
   "dmWebCacheUnavailable": [
     "Saved build cache is unavailable; continuing without it.",
     "已保存的生成缓存不可用，将继续生成而不使用缓存。"
+  ],
+  "dmWebGenerationExpectation": [
+    "Keep this tab in the foreground while generating. The first build may take 30 minutes or longer, depending on your computer.",
+    "请在生成期间保持此标签页处于前台。首次生成可能需要 30 分钟或更长时间，具体取决于你的电脑。"
   ]
 });

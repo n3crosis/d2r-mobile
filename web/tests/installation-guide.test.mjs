@@ -30,6 +30,25 @@ test("preparation is visible plain numbered text, not another component or discl
   );
 });
 
+test("generation reminder stays visible beside Generate and sets expectations without a countdown", async () => {
+  const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  assert.match(
+    app,
+    /<p className="text-xs leading-relaxed text-muted-foreground">\s*\{t\("dmWebGenerationExpectation"\)\}\s*<\/p>/,
+  );
+  const reminder = app.indexOf('t("dmWebGenerationExpectation")');
+  assert.ok(reminder > app.indexOf('t("dmWebGenerate")'));
+  assert.ok(reminder < app.indexOf("{generationReadinessMessage && ("));
+  assert.equal(
+    catalog.dmWebGenerationExpectation[0],
+    "Keep this tab in the foreground while generating. The first build may take 30 minutes or longer, depending on your computer.",
+  );
+  assert.match(
+    catalog.dmWebGenerationExpectation[1],
+    /生成期间.*标签页.*前台.*首次生成可能需要 30 分钟或更长时间.*取决于你的电脑/,
+  );
+});
+
 test("only the short FAQ uses the existing Accordion, without adding a dependency", () => {
   const imports = [...faq.matchAll(/from "([^"]+)"/g)].map((match) => match[1]);
   assert.deepEqual(imports, ["../../i18n.mjs", "@/components/ui/accordion"]);
