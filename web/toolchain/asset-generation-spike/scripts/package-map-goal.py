@@ -8,7 +8,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parents[1]
 ROOT = HERE.parents[2]
-pins = json.loads((HERE / "map-goal-provenance.json").read_text())
+pins = json.loads((HERE / "packager-source-pins.json").read_text())["map-goal"]
 path = "dm/ios/tools/gen_map_goal_art.py"
 raw = (ROOT / path).read_bytes()
 if hashlib.sha256(raw).hexdigest() != pins[path]:

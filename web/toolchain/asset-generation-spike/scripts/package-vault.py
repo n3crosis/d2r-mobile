@@ -12,7 +12,7 @@ path = "dm/ios/tools/gen_vault_table.py"
 raw = (ROOT / path).read_bytes()
 if (
     hashlib.sha256(raw).hexdigest()
-    != json.loads((HERE / "vault-provenance.json").read_text())[path]
+    != json.loads((HERE / "packager-source-pins.json").read_text())["vault"][path]
 ):
     raise SystemExit("Vault source drift")
 keep = []

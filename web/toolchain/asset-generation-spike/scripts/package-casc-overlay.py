@@ -10,7 +10,7 @@ HERE = Path(__file__).resolve().parents[1]
 ROOT = HERE.parents[2]
 path = "dm/tools/casc_overlay.py"
 raw = (ROOT / path).read_bytes()
-expected = json.loads((HERE / "casc-overlay-provenance.json").read_text())[path]
+expected = json.loads((HERE / "packager-source-pins.json").read_text())["casc-overlay"][path]
 if hashlib.sha256(raw).hexdigest() != expected:
     raise SystemExit("CASC overlay source drift")
 names = {

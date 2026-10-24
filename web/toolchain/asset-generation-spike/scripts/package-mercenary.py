@@ -9,7 +9,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parents[1]
 ROOT = HERE.parents[2]
 path = "dm/ios/tools/gen_merc_art.py"
-pins = json.loads((HERE / "mercenary-provenance.json").read_text())
+pins = json.loads((HERE / "packager-source-pins.json").read_text())["mercenary"]
 raw = (ROOT / path).read_bytes()
 if hashlib.sha256(raw).hexdigest() != pins[path]:
     raise SystemExit("Mercenary source drift")
