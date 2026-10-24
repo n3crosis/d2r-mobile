@@ -3,6 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { assertIsolatedRun } from "./helpers/assert-isolated-run.mjs";
 test("production shader reuse preserves identity, validation, source proof and cancellation", () => {
   const result = spawnSync(
     process.execPath,
@@ -14,4 +15,20 @@ test("production shader reuse preserves identity, validation, source proof and c
     },
   );
   assert.equal(result.status, 0, result.stderr || result.stdout);
+});
+
+test("bounded production shader concurrency preserves ownership, cache and deterministic proof-first output", () => {
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--experimental-test-module-mocks",
+      "--test",
+      "--test-reporter=tap",
+      new URL("./fixtures/production-shader-concurrency.mock.mjs", import.meta.url).pathname,
+    ],
+    { env, encoding: "utf8", timeout: 30000, maxBuffer: 1024 * 1024 },
+  );
+  assertIsolatedRun(result);
 });

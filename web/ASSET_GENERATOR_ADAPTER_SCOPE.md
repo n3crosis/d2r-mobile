@@ -7,17 +7,16 @@
 The caller provides:
 
 - A trusted recipe list: operation `image-default-frame`, a `data/...` logical CASC asset path, a frame index and explicit output-name-to-app-relative-path mappings.
-- A factory returning the existing asset spike's `AssetWorker` (`run` and `close`). Factory injection keeps node tests independent of browser globals and does not implicitly publish WASM files in the frontend build.
+- A factory returning a compatible asset worker (`run` and `close`). Factory injection keeps node tests independent of browser globals and does not implicitly publish WASM files in the frontend build.
 - An extracted-data handle with `logicalAssets.read(path, {maxBytes, signal})`, or an explicit `resolveReader(extracted)` implementation. This must return **decoded logical CASC file bytes**. Raw NSP/NCA/RomFS range reads do not satisfy this contract.
 
-Example composition after a deployment has prepared and self-hosted the proven asset runtime:
+Example composition with a caller-provided compatible worker factory. The historical standalone Python browser client has been retired; this adapter does not create a production runtime:
 
 ```js
-import { AssetWorker } from "./toolchain/asset-generation-spike/public/client.mjs";
 import { createAssetGeneratorAdapter } from "./asset-generator-adapter.mjs";
 
 const assetAdapter = createAssetGeneratorAdapter({
-  createWorker: () => new AssetWorker(),
+  createWorker: trustedWorkerFactory,
   recipes: trustedImageRecipes,
 });
 // Compose only when the whole required recipe inventory is separately implemented.

@@ -1,5 +1,9 @@
 # Complete runtime derived-table boundary
 
+Historical Python reference contract: the standalone browser proof was retired.
+See [retained references and current verification](README.md). Statements below
+describe that reference design and historical evidence, not current CI coverage.
+
 The `derived-tables` worker operation implements the actual shell packaging boundary from `dm/tools/d2rm_pack.py`: the three generated C texts are parsed by the unchanged `dm/ios/tools/shell_stubs.py` functions and emitted as one complete runtime `derived.tsv`. No C is executed or compiled, and no header is placed into the application.
 
 ## Provenance and contract
@@ -54,6 +58,6 @@ After checking, the unchanged native `data()` emitter writes the full EXP/VTPART
 
 ## Verification and remaining gaps
 
-`test/native-derived.py` authors tiny synthetic source texts (including Unicode, unique/set rows, valid and absent skill atlas coordinates) and executes the **original** native `shell_stubs.data()` against real temporary input files. Browser CI invokes the worker and requires exact derived.tsv byte equality. Negative cases require rejection for missing source sets, absent expectations, count mismatch and source-hash mismatch. These new derived checks are pending their first pushed CI run.
+The retired native-derived fixture generator authored tiny synthetic source texts (including Unicode, unique/set rows, valid and absent skill atlas coordinates) and executes the **original** native `shell_stubs.data()` against real temporary input files. Browser CI invokes the worker and requires exact derived.tsv byte equality. Negative cases require rejection for missing source sets, absent expectations, count mismatch and source-hash mismatch. These new derived checks are pending their first pushed CI run.
 
 This boundary does not implement the missing full vault/skill generators, real-game source-manifest verification, production shell-count metadata, HUD recipes, font handling or CASC overlay packing. It emits genuine parser-derived output only when complete real inputs are provided; the committed fixtures are explicitly synthetic and never used as production fallback data.

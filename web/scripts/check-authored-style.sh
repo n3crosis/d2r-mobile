@@ -22,8 +22,6 @@ python_sources=(
   web/toolchain/asset-generation-spike/scripts/package-native-art.py
   web/toolchain/asset-generation-spike/scripts/package-hud.py
   web/toolchain/asset-generation-spike/src/hud.py
-  web/toolchain/asset-generation-spike/test/hud-reference.py
-  web/toolchain/asset-generation-spike/test/build-hud-reference.py
   web/toolchain/asset-generation-spike/scripts/package-casc-overlay.py
   web/toolchain/asset-generation-spike/src/casc_overlay.py
   web/toolchain/asset-generation-spike/test/casc-overlay-oracle.py
@@ -33,20 +31,13 @@ python_sources=(
   web/toolchain/asset-generation-spike/src/vault.py
   web/toolchain/asset-generation-spike/scripts/package-bc3.py
   web/toolchain/asset-generation-spike/src/mercenary.py
-  web/toolchain/asset-generation-spike/test/mercenary-reference.py
   web/toolchain/asset-generation-spike/scripts/package-remaining-art.py
   web/toolchain/asset-generation-spike/src/remaining_art.py
   web/toolchain/asset-generation-spike/scripts/package-overlay-recipe.py
   web/toolchain/asset-generation-spike/src/overlay_recipe.py
   web/toolchain/asset-generation-spike/src/map_goal.py
-  web/toolchain/asset-generation-spike/test/map-goal-reference.py
   web/toolchain/asset-generation-spike/src/native_art.py
-  web/toolchain/asset-generation-spike/test/native-art-reference.py
   web/toolchain/asset-generation-spike/src/derived.py
-  web/toolchain/asset-generation-spike/test/native-reference.py
-  web/toolchain/asset-generation-spike/test/native-derived.py
-  web/toolchain/asset-generation-spike/test/native-v61.py
-  web/toolchain/asset-generation-spike/test/verify-png.py
   web/toolchain/program-rewrite-spike/audit-source.py
   web/toolchain/program-rewrite-spike/make-fixtures.py
   web/toolchain/texture-spike/bounded_encoder.py

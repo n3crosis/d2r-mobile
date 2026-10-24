@@ -57,12 +57,11 @@ them or upload their artifacts. The dispatcher rejects heavy profiles in Actions
 - `extraction`: authenticated NSP boundary and actual Chromium Worker.
 - `signed-nca`: isolated synthetic signing-root proof; production trust unchanged.
 - `texture`: decode, BC3 encode, swizzle, and Chromium Worker parity.
-- `assets`: native art, HUD, map-goal, CASC overlays, and v61 cross-adapter parity.
 - `program`: original ARM64 rewrite and Guest framework parity.
 - `shader`: native/browser translator parity plus C# formatting/analyzers.
 - `spirv-cross`: native/WASM SPIRV-Cross parity.
 - `shader-pipeline`: linked translator-to-MSL pipeline proof.
-- `offline-wasm`, `offline-pyodide`, `offline-dotnet`: respective sealed-network proofs.
+- `offline-wasm`, `offline-dotnet`: respective sealed-network proofs.
 - `staged-output`: actual Chromium OPFS commit/cancel/integrity proof.
 - `zip64`: real >4 GiB synthetic CRC stream with bounded memory.
 - `desktop-build` / `desktop`: retained platform recipes for an appropriately
@@ -73,9 +72,8 @@ them or upload their artifacts. The dispatcher rejects heavy profiles in Actions
 ## Local heavyweight verification
 
 The concrete build/assertion commands live in `web/verification/recipes/*.sh`;
-`profiles.json` pins each proof's runtime, timeout and artifact boundaries. No
-workflow generator or hidden copy of old workflow files exists. One dispatcher
-validates profile names. Only the quick recipe is shared with Actions; heavy
+`profiles.json` pins each proof's runtime, timeout and artifact boundaries. One
+dispatcher validates profile names. Only the quick recipe is shared with Actions; heavy
 recipes are local-only.
 Failures skip later normal steps, retain always-run diagnostics, and fail the
 profile. Source isolation, exact hashes, assertions, and private-input exclusions
@@ -99,9 +97,8 @@ GitHub pipeline. If a sandbox cannot launch Chromium, do not retry around the
 restriction or report a pass. Record the proof as blocked until a supported
 local environment is available.
 
-Run local proofs against the exact commit under review. Do not restore CI
-fan-out to manufacture results. Repository required-check settings are separate
-and can change.
+Run local proofs against the exact commit under review. Repository required-check
+settings are separate and can change.
 
 ## Downloadable webpage
 
@@ -124,7 +121,7 @@ and the distinction between built runtime files and a verified usable game IPA.
 ### GitHub Pages
 
 Enable **Settings → Pages → Build and deployment → Source: GitHub Actions** once.
-The `github-pages` environment must permit `feature/web-ipa-packager`; do not
+The `github-pages` environment must permit `pr/web-ipa-packager`; do not
 permit pull-request deployments. Only this repository's successful pushes or
 manual runs on that branch upload `web/dist/` as the Pages artifact. The separate
 deployment job has only Pages/OIDC write permissions and does not rebuild, check
@@ -143,3 +140,5 @@ not installed SDK tools. Separate AIR caches contain manifest-bound release arti
 and installed outputs; release/source/receipt authentication and the strict canary
 remain mandatory. See
 [SDK download cache](verification/SDK_CACHE.md) for scope and validation limits.
+
+The retired Python-browser `assets` and `offline-pyodide` profiles are no longer available. Their standalone Pyodide browser, matching-BASIC/RAQM and v61 cross-adapter proofs were removed; this does not claim identical test coverage. Source-pinned Python packaging, current JavaScript parity oracles, protocol provenance and production build/release checks remain.

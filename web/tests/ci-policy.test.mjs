@@ -208,8 +208,8 @@ test("profile selection rejects arbitrary shell, paths, and prototype names", ()
   }
   for (const name of ["quick", "full", ...Object.keys(profiles)])
     assert.equal(validateProfile(name), name);
-  assert.throws(() => run("assets", {}), /--provision/);
-  assert.throws(() => run("assets", { GITHUB_ACTIONS: "true" }), /local verification only/);
+  assert.throws(() => run("texture", {}), /--provision/);
+  assert.throws(() => run("texture", { GITHUB_ACTIONS: "true" }), /local verification only/);
 });
 
 test("allowlisted metadata is emitted without executing a proof", async () => {

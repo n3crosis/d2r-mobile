@@ -1,5 +1,9 @@
 # Bounded CASC overlay serialization
 
+Historical Python reference contract: the standalone browser proof was retired.
+See [retained references and current verification](README.md). Statements below
+describe that reference design and historical evidence, not current CI coverage.
+
 This is an internal serialization primitive, not production enablement or a claim
 that all replacement assets exist. `web/casc-overlay-writer.mjs` returns real
 changed files: `data/.build.config` and one new `data/NN-MMMMMMMM.data` archive.
@@ -62,7 +66,7 @@ empty replacement), z, multi-block BLTE, and a restricted new-path addition.
 against that independent native oracle and tests duplicate lookup, short reads,
 checksums, absent paths, budgets and cancellation.
 
-`test/casc-overlay-browser.mjs` runs the actual Chromium/Pyodide worker with the
+The retired CASC browser runner exercised the actual Chromium/Pyodide worker with the
 same lazy JS boundary, blocks external origins, and requires exact native output
 bytes. The browser-asset CI workflow runs it and retains
 `test-results/casc-overlay-browser.json`. This browser evidence remains pending

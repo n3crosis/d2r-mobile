@@ -1,5 +1,9 @@
 # Complete Switch-mode HUD generator
 
+Historical Python reference contract: the standalone browser proof was retired.
+See [retained references and current verification](README.md). Statements below
+describe that reference design and historical evidence, not current CI coverage.
+
 `hud-v4` runs the complete original `gen_hud_v4.py` rendering/layout body inside an
 AST-generated function. Only CLI/environment setup, optional developer tuning and
 module import discovery are removed. `hud_v4_design.load`, layout patch functions,
@@ -79,7 +83,7 @@ A separate exact comparison targets a clearly labeled native BASIC configuration
 - [Pyodide build versions](https://github.com/pyodide/pyodide/blob/0.27.7/Makefile.envs): Emscripten3.1.58;
 - [that Emscripten FreeType port](https://github.com/emscripten-core/emscripten/blob/3.1.58/tools/ports/freetype.py): FreeType2.6.0 `version_1` source SHA512 pinned.
 
-`test/build-hud-reference.py` builds the same FreeType source list/configuration
+The retired matching-backend builder built the same FreeType source list/configuration
 natively, then Pillow10.2 with RAQM disabled. Native and browser backend versions
 must match exactly before ALL89 generated files are compared byte for byte. This
 is a new matching-backend contract, not proof of the previously failed RAQM output

@@ -22,7 +22,6 @@ JavaScript 源码纳入现有 SHA-256 运行时清单。
 
     node web/toolchain/asset-transforms-js/scripts/verify-source.mjs
     node web/toolchain/asset-transforms-js/test/parity.mjs
-    node web/toolchain/asset-transforms-js/test/worker-routing.mjs
 
 对照程序仅提取原始函数到纯标准库命名空间，使用人工合成输入，逐字节比较所有输出和回执字段。
 不会使用游戏数据、浏览器、原生应用、图片库或完整构建。

@@ -1,5 +1,9 @@
 # Complete native-art generator boundary
 
+Historical Python reference contract: the standalone browser proof was retired.
+See [retained references and current verification](README.md). Statements below
+describe that reference design and historical evidence, not current CI coverage.
+
 This named stage runs the source-pinned `native_art/generate.py:main`, AST-packaged with
 its original constants and hash checks. The source, C implementation include,
 manifest, geometry and binding documents are SHA-256 pinned in

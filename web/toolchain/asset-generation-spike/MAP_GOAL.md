@@ -1,5 +1,9 @@
 # Complete current-name map-goal generator
 
+Historical Python reference contract: the standalone browser proof was retired.
+See [retained references and current verification](README.md). Statements below
+describe that reference design and historical evidence, not current CI coverage.
+
 `generateMapGoal` reads only authenticated `logicalAssets.read(path,{maxBytes,signal})`
 inputs: TalRashaSymbol and Units sprite atlases; `hd/ui/fonts/BlizzardGlobal-V5_81.ttf`;
 and `local/lng/strings/{levels,monsters,objects,item-names,npcs}.json`. The font is

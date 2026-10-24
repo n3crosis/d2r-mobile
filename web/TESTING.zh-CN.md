@@ -54,12 +54,11 @@ D2R_AIR_SOURCE_REVIEW_DIR=/absolute/path/to/reviewed/floor_llvm bun run test
 - `extraction`：经过身份验证的 NSP 边界与实际 Chromium Worker。
 - `signed-nca`：隔离的合成签名根验证；生产信任机制不变。
 - `texture`：解码、BC3 编码、swizzle 与 Chromium Worker 一致性。
-- `assets`：原生美术资源、HUD、地图目标、CASC 覆盖层，以及 v61 跨适配器一致性。
 - `program`：原始 ARM64 重写与 Guest 框架一致性。
 - `shader`：原生/浏览器转换器一致性，以及 C# 格式检查/分析器。
 - `spirv-cross`：原生/WASM SPIRV-Cross 一致性。
 - `shader-pipeline`：串联转换器到 MSL 的流水线验证。
-- `offline-wasm`、`offline-pyodide`、`offline-dotnet`：各自的封闭网络验证。
+- `offline-wasm`、`offline-dotnet`：各自的封闭网络验证。
 - `staged-output`：实际 Chromium OPFS 提交/取消/完整性验证。
 - `zip64`：内存用量受限的真实 >4 GiB 合成 CRC 数据流。
 - `desktop-build` / `desktop`：保留的平台执行方案，供准备适当的
@@ -70,8 +69,7 @@ D2R_AIR_SOURCE_REVIEW_DIR=/absolute/path/to/reviewed/floor_llvm bun run test
 ## 本地重型验证
 
 具体的构建/断言命令位于 `web/verification/recipes/*.sh`；
-`profiles.json` 固定每项验证的运行时、超时与产物边界。不存在
-工作流生成器或旧工作流文件的隐藏副本。由统一调度器
+`profiles.json` 固定每项验证的运行时、超时与产物边界。由统一调度器
 校验配置名称。只有 quick 方案与 Actions 共用；重型
 方案仅供本地使用。
 失败时会跳过后续常规步骤，保留始终运行的诊断步骤，并将该
@@ -96,8 +94,7 @@ GitHub 流水线。如果沙箱无法启动 Chromium，不要重试绕过
 限制，也不要报告通过。在有受支持的
 本地环境之前，应将该验证记录为受阻。
 
-请针对正在评审的确切提交运行本地验证。不要恢复 CI
-多任务并行分发来制造结果。仓库的必需检查设置是独立配置，
+请针对正在评审的确切提交运行本地验证。仓库的必需检查设置是独立配置，
 可能发生变化。
 
 ## 可下载的网页
@@ -123,7 +120,7 @@ GitHub quick 任务成功后会上传 **web-preview**，其中仅包含 `web/dis
 ### GitHub Pages
 
 首次使用时，在 **Settings → Pages → Build and deployment → Source** 选择
-**GitHub Actions**。`github-pages` 环境必须允许 `feature/web-ipa-packager`
+**GitHub Actions**。`github-pages` 环境必须允许 `pr/web-ipa-packager`
 分支，不应允许拉取请求部署。只有本仓库该分支成功的推送或手动运行，才将
 `web/dist/` 作为 Pages 产物上传。独立部署任务只有 Pages/OIDC 写入权限，
 不会重新构建、检出源码或读取私有输入。原有可下载预览仍会保留。
@@ -137,3 +134,5 @@ Pyodide 仍可用于明确调用的本地验证与一致性参考，
 非 AIR 运行时的 SDK 配置只缓存固定版本 Emscripten 下载归档，不缓存已安装的工具。
 独立的 AIR 缓存包含受发布清单约束的发布资产和已安装输出；发布版本、完整源码、构建凭据验证及严格 canary 始终必需。缓存范围与验证限制见
 [SDK 下载缓存](verification/SDK_CACHE.md)。
+
+旧 Python 浏览器 `assets` 与 `offline-pyodide` 配置已移除，包括独立 Pyodide 浏览器、BASIC/RAQM 对照与 v61 跨适配器验证；不声称测试覆盖完全不变。固定来源的 Python 打包、当前 JavaScript 对照测试、协议来源记录及生产构建/发布检查仍保留。

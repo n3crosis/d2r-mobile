@@ -163,12 +163,6 @@
       }
     },
     {
-      "files": ["toolchain/asset-generation-spike/test/browser.mjs"],
-      "env": {
-        "browser": true
-      }
-    },
-    {
       "files": ["src/**/*.{ts,tsx}"],
       "plugins": ["typescript", "react"],
       "rules": {

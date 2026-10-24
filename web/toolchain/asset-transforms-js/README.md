@@ -25,7 +25,6 @@ From the repository root:
 
     node web/toolchain/asset-transforms-js/scripts/verify-source.mjs
     node web/toolchain/asset-transforms-js/test/parity.mjs
-    node web/toolchain/asset-transforms-js/test/worker-routing.mjs
 
 The parity oracle extracts only original functions into stdlib-only namespaces.
 It runs authored, synthetic inputs and compares every output byte and receipt field.

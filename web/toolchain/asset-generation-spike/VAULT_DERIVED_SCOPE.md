@@ -1,5 +1,9 @@
 # Production vault and derived tables
 
+Historical Python reference contract: the standalone browser proof was retired.
+See [retained references and current verification](README.md). Statements below
+describe that reference design and historical evidence, not current CI coverage.
+
 `package-vault.py` pins `dm/ios/tools/gen_vault_table.py` and extracts its unchanged
 functions and literal PARTS/PART_OF constants. No CLI imports or filesystem game
 reads execute. `vault-table` accepts only the ten original logical TXT/JSON inputs

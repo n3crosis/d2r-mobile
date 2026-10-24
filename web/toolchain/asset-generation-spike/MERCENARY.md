@@ -1,5 +1,9 @@
 # Mercenary image composition
 
+Historical Python reference contract: the standalone browser proof was retired.
+See [retained references and current verification](README.md). Statements below
+describe that reference design and historical evidence, not current CI coverage.
+
 `mercenary-art` executes the source-pinned pixel composition from
 `dm/ios/tools/gen_merc_art.py`. The packager extracts its constants and the 19
 original statements before codec/filesystem output, then returns the composed
@@ -37,10 +41,7 @@ those matching layout changes and replacement rules.
 
 Run preparation and one authored composition smoke from the repository root:
 
-```sh
-python3 web/toolchain/asset-generation-spike/scripts/package-mercenary.py
-python3 web/toolchain/asset-generation-spike/test/mercenary-reference.py
-```
+Prepare the retained source adapter with `python3 scripts/package-mercenary.py`; current composition parity lives in `../remaining-art-js/test/parity.mjs`.
 
 The smoke executes untouched original `main` with file/codec-boundary shims and
 compares its complete RGBA and PNG to the packaged transform. It passed on an

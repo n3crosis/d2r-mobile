@@ -46,7 +46,6 @@ The build reuses these implementations, without copying their logic:
 
 Native Python build/audit tools, hash-gated recipe sources and explicitly invoked
 Pyodide parity proofs remain development dependencies, not browser runtime files.
-Removing unused browser-only glue is source cleanup, not a new payload or RAM reduction.
 
 The build packages only after every required component succeeds. The output is
 `web/runtime-build/out/`. The logical inventory preserves original `toolchain/...`

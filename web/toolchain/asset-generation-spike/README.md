@@ -1,112 +1,51 @@
-# Browser asset-generation boundary spike
+# Source-pinned Python asset references
 
-This is an **implemented, isolated transform subset**, not the full game asset generator and not an IPA builder. Users of the deployed static directory need only Chromium (Windows/macOS target), not Python, Pillow, NumPy, Xcode, or an installer. Python runs as WASM in a dedicated worker. Build/CI tooling still uses Node/Python. No game data, fonts, secrets, analytics, uploads, or external browser fetches are included.
+This directory retains the Python reference adapters, source provenance and pinned
+packaging needed by current JavaScript parity oracles. It is not a production
+browser runtime or a deployable standalone application. Production uses
+[JavaScript/WASM](../asset-runtime-js/README.md).
 
-## Implemented
+## Retained build and reference contract
 
-- `image-default-frame`: validates SpA1 v31 raw RGBA, crops one horizontal frame, runs the **original** `gen_hud_v4.dflt` NumPy color-mask transformation, and returns raw RGBA, Pillow PNG, and the native overlay's v31 sprite header/pixels.
-- `experience-table`: runs the **original** `gen_hud_exp.main` function with an in-memory reader and captured output. The 100-entry C header is not a placeholder or a re-created approximation.
-- `derived-tables`: uses the original `shell_stubs.parse/data` to emit a complete runtime `derived.tsv` from all three genuine generated C texts, with external trusted count/hash expectations. See `DERIVED_TABLES.md`.
-- `overlay-paths`: runs the **original** `gen_romfs_overlay.touch_path` rewrite with its original `LAY`, `UI`, and `TDIR` constants. Returns a path plan only, never labels it a CASC overlay.
-- Typed-array worker transport, serialized requests, caller-buffer ownership preserved, bounded reads, error propagation, and cancellation by terminating the dedicated worker.
+`scripts/package-core.py` extracts native AST functions without importing CLI side
+effects. The remaining package scripts preserve native art, HUD, map-goal, CASC,
+mercenary, overlay and vault source contracts. Their provenance hashes remain
+build gates, including the native-art and HUD metadata consumed by production.
+The `src/` adapters and their source pins must not be removed as unused Python.
 
-`scripts/package-core.py` parses the native source AST without importing side-effectful CLI modules. It packages only the listed functions/constants. `source-provenance.json` pins SHA-256 of each original source, including the v31 adapter source. Changed source fails packaging until reviewed. No original subprocess runner, host filesystem paths, dynamic `ctypes` library loading, or native compiler invocation reaches the browser.
-
-### API / extraction contract
-
-Import `AssetWorker` from `public/client.mjs`:
-
-```js
-const worker = new AssetWorker();
-const result = await worker.run("image-default-frame", spriteUint8Array, { frame: 0 });
-// result.files: {'frame.rgba': ArrayBuffer, 'frame.png': ArrayBuffer,
-//                'frame.sprite': ArrayBuffer}
-worker.close();
-```
-
-Optional `fromReader(reader, logicalPath, operation, {frame, signal})` expects:
-
-```ts
-interface LogicalAssetReader {
-  read(
-    logicalPath: string,
-    options: {
-      maxBytes: number;
-      signal?: AbortSignal;
-    },
-  ): Promise<Uint8Array>;
-}
-```
-
-This is a **logical CASC asset byte reader**, not the NSP/NCA `readAt(offset,length)` contract. The archive reader must first resolve RomFS/CASC logical paths. No extraction reader implementation is silently assumed. `fromReader` asks for at most 20 MiB; `run` independently enforces that cap. Image transforms permit at most 4,194,304 pixels; worker computation stops through `close()`, not a misleading soft-cancel flag. Read abort is delegated to the supplied reader. Outputs are returned in memory; persisting into OPFS or packaging is the caller's responsibility. A v31 sprite is not a universal substitute for v61: native source explicitly notes that the 401×1080 frontend panel requires v61.
-
-## Native portability audit
-
-| Source                                                      | Portable core                                                    | Host-only / unimplemented boundary                                                                                 |
-| ----------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `gen_assets.py`                                             | Generator ordering, source fingerprint concept                   | subprocess orchestration, PID lock, workspace paths; must become a worker job graph                                |
-| `romfs_art.py`                                              | v31 pixels and horizontal frame crop (adapted here)              | `touch_layout._read_entry` CASC reader, v61 BC3/NVN block-linear decode, runtime clang/ctypes                      |
-| `gen_hud_v4.py`                                             | Pillow composition, NumPy masks; `dflt` packaged here            | whole HUD needs source sprites, layout configuration, locale data, fonts and rewritten input/output boundaries     |
-| `gen_widestash_art.py`                                      | Pillow tile/crop/flip, NumPy pixel processing                    | NVN descriptor/swizzle and BC3 encoder path; not built here                                                        |
-| `gen_pouch_art.py`, `gen_vault_cover.py`, `gen_merc_art.py` | Image geometry after decoding                                    | depend on `gen_widestash_art` and original sprites; v61 output needs encoder/swizzle                               |
-| `gen_fe_rightpanel.py`                                      | NumPy column copies                                              | requires exact original 401×1080 sprite; cannot replace required v61 with raw RGBA                                 |
-| `gen_map_goal_art.py`                                       | Image labels, table parsing                                      | game strings and original font retrieval; no font supplied or licensed by this spike                               |
-| `native_art/generate.py`                                    | CSV/JSON skill-index generation, image export                    | requires original manifest hashes and exact game sprites/tables; those checks must survive porting                 |
-| `gen_hud_exp.py`                                            | CSV -> exact C experience header (packaged here)                 | logical input reader supplied in memory                                                                            |
-| `gen_vault_table.py`                                        | JSON/TSV joins, type ancestry, sort, C emission                  | `dmx.get` archive reads, inventory of sprite paths; not implemented here                                           |
-| `gen_romfs_overlay.py`                                      | Sprite header encoding and touch-directory rewrite (subset here) | all layout patch builders, borrowed path registry, feature variants, CASC `.build.config` and data-archive packing |
-
-**Unsupported:** v61 decoding, BC3 encoding, NVN deswizzle/swizzle, archive extraction/decryption, CASC packaging, full HUD/skill/vault generation, font rasterization, manifest-version validation for real files, and integration into the main web UI. `casc-pack` and v61 inputs fail explicitly. A future C/WASM bridge should accept validated descriptor + compressed bytes, return linear BC3 blocks with explicit dimensions, and be compared against native `nvn_deswizzle` before connecting to Pillow's DDS decode. No fake replacement pixels are emitted.
-
-## Pinned runtime and deployment
-
-- Pyodide **0.27.7**, from its official npm distribution; `package-lock.json` pins package integrity.
-- Pillow and NumPy plus transitive WASM libraries are resolved from that exact distribution's `pyodide-lock.json`; each wheel/library download is SHA-256 checked against that lock.
-- Playwright **1.64.1** controls real Chromium in CI. Native PNG reference decoding uses Pillow **11.1.0**.
-- `scripts/vendor-runtime.mjs` downloads only at **build time**, from the documented versioned Pyodide distribution. It copies runtime files into `public/vendor/pyodide/`, includes a file SHA-256 manifest, and follows package dependencies recursively.
-- Deploy the complete prepared `public/` directory to a static HTTPS host with `.wasm` MIME `application/wasm`. All browser requests are same-origin. No runtime CDN fallback, micropip/PyPI installation, remote telemetry or API credentials.
-- The HTML CSP permits local WASM compilation but disallows remote connections. Hosting may also set the same policy as an HTTP header. No shared-memory/COOP/COEP dependency is introduced.
-
-Official references: [deployment](https://pyodide.org/en/0.27.7/usage/downloading-and-deploying.html), [package catalog](https://pyodide.org/en/0.27.7/usage/packages-in-pyodide.html), [worker usage](https://pyodide.org/en/0.27.7/usage/webworker.html).
-
-## Verification
-
-Run the optional `assets` profile in [TESTING.md](../../TESTING.md). It compares
-source-pinned transformations against independent native references using authored
-synthetic inputs. PNG pixel equality is required; compressed PNG bytes may differ
-across library versions. Synthetic parity does not establish real-game generation
-or Windows/macOS integration.
-
-Maintainer commands (not end-user steps):
+Current JavaScript parity tests consume `public/generated/` and
+`public/vendor/pyodide/`. Prepare those reference-only inputs with:
 
 ```sh
 npm ci --ignore-scripts
 npm run prepare:core
 npm run prepare:runtime
-python3 test/native-reference.py
-npx --no-install playwright install chromium
-npm run test:browser
-python3 test/verify-png.py
 ```
+
+The pinned Pyodide 0.27.7 distribution and its package lock remain unchanged.
+`scripts/vendor-runtime.mjs` verifies package hashes and retains license metadata.
+`test/casc-overlay-oracle.py` remains the independent native oracle used by current
+CASC tests. Current JS parity checks live beside the JS recipes and transforms.
+
+## Retired standalone browser proofs
+
+The old Python browser UI/client/worker, browser test runners and their dedicated
+native fixture generators have been retired together with the optional `assets`
+and `offline-pyodide` profiles. The current JS runtime, parity oracles, source pins
+and production build/release checks remain. This is a reduction in historical
+Python-browser proof coverage, not a claim that every removed assertion is
+repeated in a current test. In particular, the old matching-BASIC/RAQM and v61
+cross-adapter browser runs are no longer available.
+
+The sibling scope documents describe retained reference-adapter contracts and
+historical findings, not a currently deployed Python application. The preserved
+`HUD_BACKEND_EVIDENCE.json` records a historical backend incompatibility, not a
+successful production-fidelity certification.
 
 ## Data and licensing
 
-Synthetic pixels/tables are authored by this test. No proprietary game font or image is shipped/downloaded. Original game fonts must remain user-supplied and local, and their licenses must permit the intended use; this spike grants no redistribution rights. The prepared runtime remains subject to Pyodide and included packages' licenses. Keep package license metadata when distributing a deployment. Native adaptation retains this repository's licensing.
-
-## Optional v61 PNG bridge (separate integration)
-
-The standalone worker above still rejects v61. `web/v61-asset-worker.mjs` composes the separate real texture WASM worker with this unchanged Pyodide worker, and `web/asset-generator-adapter.mjs` exposes it only with explicit `enableV61Png: true`. Output is PNG only; native v61 sprite encoding is still unsupported. See `web/ASSET_GENERATOR_ADAPTER_SCOPE.md` for bounds and limitations.
-
-The next named generator boundary is [complete native art](NATIVE_ART.md): all
-manifest PNGs plus the actual skill-index text intermediate, original hash checks,
-and separate padded-atlas decoding.
-
-The complete [Switch-upscaled HUD stage](HUD.md) now preserves original layout,
-glyph rendering and every required image. Both fonts are read from the archive;
-the proof harness uses newly authored synthetic outlines only.
-
-The separate [complete current-name map-goal generator](MAP_GOAL.md) adds the
-original 31-label/five-language render, seven symbols, cross and exact164-file
-inventory. Its native/browser proof uses the explicitly scoped matching BASIC
-backend, not the preserved RAQM output or proprietary fonts. Production atlas
-mapping and legacy-font dependency review remain release gates.
+No proprietary game font or image is shipped or downloaded. User-supplied game
+resources must remain local and their licenses must permit the intended use.
+Pyodide and packaged dependencies keep their original licenses and metadata;
+retiring a proof does not relicense or remove required notices. Native adaptation
+retains this repository's licensing.
