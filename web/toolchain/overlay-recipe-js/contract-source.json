@@ -1,5 +1,5 @@
 {
-  "sourceFingerprint": "ee7b1cea19cc3db64cfdb4f4db2d0bea9b9785a9cd5770e0e6f1bf125fcfe2e4",
+  "sourceFingerprint": "cc309d3f71f88fb69cf92ae037bd0961ddcb3289c98b438c6be9a331db04a81c",
   "normalizedSources": {
     "dm/android/tools/stage_touch_assets.py": "03a98e98708a7a14fbc6385daaaf8e2987afffa32dd088086a307a168ddcc26d",
     "dm/data/casc_overlay/borrowed_paths.tsv": "16f5a8eb0d4288d1afa14189ff9e29ea8ce2fe19575ff5cb02265bd87a6d91c7",
@@ -8,7 +8,7 @@
     "dm/gfx/tex/nvn_deswizzle.c": "989859a8c0112ca430d4788dbe428efac6687e195a8675589a171dc8421d3b4d",
     "dm/gfx/tex/nvn_deswizzle.h": "8760c6b3327088cb51c87df7d71845c97f9b866414437a0bc41498b0746a431a",
     "dm/host/dm_kills.c": "8a0de7a29ce473621dc94eee60fc397f14058309eb1e96ba394a54835d1bb436",
-    "dm/i18n/ui_text.tsv": "440ee4dee185ae82d5a369b0ee2e97294d0a7802974217c250a61f4e1371450a",
+    "dm/i18n/ui_text.tsv": "db866857beb0fbb969115a21cb2d6e3fa8e6e9c9bbf5109fcd0c2b6816b422e0",
     "dm/ios/Sources/TouchArt/native_art_manifest.json": "334ed8adfa6d21feea33946692a1d5088b5ed39edb36545241ee543414382a5e",
     "dm/ios/docs/native_art_v1_geometry.json": "7332bf327af662259cde973d5ed6ba80af472e4f0c232ea4dfe3fcf0a17a4799",
     "dm/ios/docs/touch_layout_spec_native_binding_v5.json": "e0e649d9c0a6cb6861f166db0e705be196f69a20c40993116f591b13cdcfec1f",
@@ -16,7 +16,7 @@
     "dm/ios/tools/annot_ranges.py": "a37f9a89fd25befe6e844d0911d38ad562d55e3565157a5d7b330c25419db228",
     "dm/ios/tools/annot_strings.py": "c11d6752962af3a9476f6aa23172da2c6161a6ef46ee327668118e34ae74c090",
     "dm/ios/tools/annot_world.py": "2517bc142a45d80df400ef51c755f11f7b4203b4ed34b63d691e4daa67b14c81",
-    "dm/ios/tools/dm_i18n.py": "582acfbb75512d09634b7d729a40b39af5575d1a4301fce947aa395600733cad",
+    "dm/ios/tools/dm_i18n.py": "6fdf8c93b1c629597509a4c1ca2b6c154dbe847e9ed5c22cbcfcd00a30ca22b9",
     "dm/ios/tools/drop_light.py": "98b6d465c5b3835c99e0a10da46a5421f176f2cefdaff23a636e12b2923a782d",
     "dm/ios/tools/gen_assets.py": "8e93fd5219a106d6944f230e18fc69cb2d6baaa93f053383f77718d73a9b0cb3",
     "dm/ios/tools/gen_close_btn.py": "4130dcaf0d313f0539d9fb860577d430a344a9d82d7e879c567ccb22f6527dd4",

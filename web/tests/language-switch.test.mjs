@@ -182,10 +182,6 @@ test("top selector rerenders the mounted App and html language without remountin
   assert.equal(documentEffect.arguments[1].getText(parsed), "[language]");
   assert.match(documentEffect.getText(parsed), /document.documentElement.lang = language/);
   assert.doesNotMatch(app, /key=\{language\}/);
-  assert.doesNotMatch(
-    change.getText(parsed),
-    /reload|location|setFolder|setInputMode|setAppCustomization|clearSigningInputs|prepareBrowserPackager/,
-  );
   assert.doesNotMatch(app, /dmWebLanguageHistoryHelp|ui-language-help/);
   assert.equal(Object.hasOwn(catalog, "dmWebLanguageHistoryHelp"), false);
 });

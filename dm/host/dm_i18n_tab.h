@@ -1,5 +1,4 @@
 // 生成文件，勿手改：python3 dm/ios/tools/dm_i18n.py --header > dm/host/dm_i18n_tab.h（表 dm/i18n/ui_text.tsv）
-// Generated; do not edit: python3 dm/ios/tools/dm_i18n.py --header > dm/host/dm_i18n_tab.h (source dm/i18n/ui_text.tsv)
 #pragma once
 static const struct { const char *k, *zh, *en, *es, *mx, *ru, *ko; } k_dm_i18n[] = {
     { "dmPauseRestart", "一键重开", "Quick Restart", "Reinicio rápido", "Reinicio rápido", "Быстрый рестарт", "빠른 재시작" },

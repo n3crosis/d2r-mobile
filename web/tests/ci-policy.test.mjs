@@ -88,40 +88,110 @@ test("Pages reuses verified public output without granting deployment permission
   assert.ok(build.indexOf("node web/runtime-build/stage-preview.mjs") < build.indexOf(upload));
 });
 
-// 原生编译输入与固定配方来源变更也必须触发同一个构建作业。
-// Native compilation inputs and pinned recipe sources must trigger the same build job.
-test("both workflow triggers cover native and pinned runtime inputs", async () => {
+// 仅网页代码、验证配置及直接使用的共享来源触发自动构建；文档和无关原生代码不触发。
+// Only web code, verification configuration and consumed shared sources trigger automatic builds.
+test("both workflow triggers include web dependencies but exclude docs and unrelated native code", async () => {
   const text = await readFile(new URL("verify.yml", workflows), "utf8");
   const filters = [...text.matchAll(/paths:\s*\[([\s\S]*?)\]/g)].map((match) =>
     [...match[1].matchAll(/"([^"\n]+)"/g)].map((value) => value[1]),
   );
   assert.equal(filters.length, 2);
+  assert.deepEqual(filters[0], filters[1]);
+  assert.match(text, /^ {2}workflow_dispatch:$/m);
+  // 按声明顺序应用包含和排除规则，与工作流路径筛选一致。
+  // Apply positive and negative patterns in declaration order, as workflow filters do.
+  const triggers = (patterns, path) =>
+    patterns.reduce((included, pattern) => {
+      const excluded = pattern.startsWith("!");
+      const glob = excluded ? pattern.slice(1) : pattern;
+      const matches = glob.endsWith("/**")
+        ? path.startsWith(glob.slice(0, -2))
+        : glob.startsWith("**/*.")
+          ? path.endsWith(glob.slice(4))
+          : path === glob;
+      return matches ? !excluded : included;
+    }, false);
   const inputs = new Set([
+    "web/main.tsx",
+    "web/tests/ci-policy.test.mjs",
+    "web/package.json",
+    "web/bun.lock",
+    "web/.oxlintrc.json",
+    "web/scripts/build.mjs",
+    "web/runtime-build/build.mjs",
+    "web/toolchain/shader-spike/ShaderSpike.csproj",
+    ".github/workflows/verify.yml",
     "LICENSE",
+    "dm/i18n/scan_literals.py",
+    "dm/i18n/literal_whitelist.tsv",
+    "dm/host/dm_i18n_tab.h",
+    "dm/gfx/nvn/nvn_tex.c",
+    "dm/gfx/nvn/nvn_tex.h",
+    "dm/gfx/nvn/shader_map.tsv",
+    "dm/gfx/nvn/shader_map.tsv.conflicts.tsv",
+    "dm/gfx/nvn/shader_facts.tsv",
+    "dm/gfx/nvn/bf_want.tsv",
+    "dm/gfx/tex/nvn_bcdec.c",
+    "dm/gfx/tex/nvn_bcdec.h",
+    "dm/gfx/tex/nvn_deswizzle.c",
+    "dm/gfx/tex/nvn_deswizzle.h",
+    "dm/tools/d2rm_pack.py",
+    "dm/tools/dmx.py",
+    "dm/tools/guest_dylib.py",
+    "dm/tools/patch_nso.py",
+    "dm/tools/extract_game.sh",
+    "dm/third_party/ryujinx/LICENSE.txt",
+    "dm/third_party/ryujinx/src/Ryujinx.Graphics.Shader/Translator.cs",
+    "dm/third_party/ryujinx/src/Ryujinx.Graphics.Shader/CodeGen/Glsl/HelperFunctions/test.glsl",
+    "dm/third_party/ryujinx/src/Spv.Generator/Module.cs",
+    "dm/third_party/ryujinx/src/Ryujinx.Common/Pools/ObjectPool.cs",
     "dm/third_party/bcdec/bcdec.h",
     "dm/third_party/bcdec/LICENSE",
   ]);
   for (const name of [
+    "asset-generation-spike/source-provenance.json",
     "asset-transforms-js/source-provenance.json",
     "casc-overlay-js/source-provenance.json",
     "art-recipes-js/source-provenance.json",
     "remaining-art-js/source-provenance.json",
     "hud-recipes-js/provenance.json",
     "overlay-recipe-js/source-provenance.json",
+    "overlay-recipe-js/contract-source.json",
   ]) {
     const manifest = JSON.parse(
       await readFile(new URL(`../toolchain/${name}`, import.meta.url), "utf8"),
     );
-    for (const path of Object.keys(manifest.sources ?? manifest))
+    for (const path of Object.keys(manifest.normalizedSources ?? manifest.sources ?? manifest))
       if (path.startsWith("dm/")) inputs.add(path);
   }
-  for (const patterns of filters)
-    for (const input of inputs) {
-      const included = patterns.some((pattern) =>
-        pattern.endsWith("/**") ? input.startsWith(pattern.slice(0, -2)) : input === pattern,
+  for (const patterns of filters) {
+    for (const input of inputs)
+      assert.ok(triggers(patterns, input), `Web input does not trigger CI: ${input}`);
+    for (const unrelated of [
+      "README.md",
+      "docs/WEB_IPA_PACKAGER.md",
+      "web/README.md",
+      "web/toolchain/shader-spike/README.MD",
+      "dm/third_party/ryujinx/src/Ryujinx.Graphics.Shader/README.md",
+      "dm/host/loader.c",
+      "dm/ios/Sources/AppDelegate.m",
+      "dm/ios/project.yml",
+      "dm/ios/tools/shell_build.sh",
+      "dm/ios/tools/unrelated.py",
+      "dm/tools/unrelated.py",
+      "dm/gfx/tools/unrelated.py",
+      "dm/gfx/nvn/nvn_mtl.m",
+      "dm/gfx/tex/unrelated.c",
+      "dm/third_party/ryujinx/src/Ryujinx.Common/Unrelated.cs",
+      "dm/third_party/ryujinx/src/Ryujinx.HLE/Unrelated.cs",
+      ".gitignore",
+    ])
+      assert.equal(
+        triggers(patterns, unrelated),
+        false,
+        `Unrelated change triggers CI: ${unrelated}`,
       );
-      assert.ok(included, `Runtime input does not trigger CI: ${input}`);
-    }
+  }
 });
 
 test("profile selection rejects arbitrary shell, paths, and prototype names", () => {

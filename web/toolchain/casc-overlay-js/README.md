@@ -17,7 +17,9 @@ concatenated config + decoded TVFS tables + ordered replacements and trusted
 
 ## Supplemental-pack metadata primitives
 
-These standalone synchronous helpers are not wired into production workers:
+These standalone synchronous helpers inspect storage specs and patch references.
+The separate worker action is documented in the
+[asset runtime](../asset-runtime-js/README.md#dedicated-external-reference-casc-action):
 
 - `inspectCascPackStorageSpecs(vfs, entries)` accepts decoded TVFS bytes and ordered
   `{path, oldEkey}` requests. It returns a frozen array of frozen
@@ -62,10 +64,10 @@ use its distinct 1.3.1 backend. Browser CompressionStream or an arbitrary zlib
 version is not substituted. SparkMD5 is used for legacy format checksums, not for
 security or user-data authentication.
 
-The existing runtime build adds this codec stage before sealed asset preparation.
-The production and developer workers dispatch CASC before entering Python.
-`casc_overlay.py` and `casc_overlay_original.py` are no longer in the prepared
-runtime inventory. The upstream sources remain as build/reference material.
+Production routing, backend assembly and runtime inventory are documented in the
+[JavaScript/WASM asset runtime](../asset-runtime-js/README.md). Legacy proof and
+developer workers also dispatch CASC without entering Python. The upstream Python
+sources remain as build/reference material.
 
 ## Focused checks
 
@@ -87,13 +89,8 @@ WASM implementation end-to-end with:
     node web/toolchain/casc-overlay-js/test/parity.mjs --wasm
 
 The WASM recipe fails on source or version drift and nonempty host imports.
-It was not possible to execute that build locally because emcc is absent; the
-same existing CI build must prove this artifact before deployment. Native codec
-parity is not relabeled as a WASM/browser result. No full-game/device evidence is
-claimed, and no .NET code changes are made.
-
-Seven Python asset operations remain: image-default-frame, native-art, hud-v4,
-map-goal, mercenary-art, remaining-art and overlay-recipe.
+Native codec parity is not a WASM/browser result, and neither check establishes
+full-game or device compatibility.
 
 ## Upstream thin-overlay review
 

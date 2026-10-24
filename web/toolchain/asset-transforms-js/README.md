@@ -8,12 +8,11 @@ Pillow, npm dependencies, filesystem access, or network access:
 - `vault-table`: all seven original item tables, all three icon JSON tables, manifest existence checks, inheritance, icon fallback, ordering and generated `dm_vault_tab.h` bytes.
 - `derived-tables`: all five runtime record families, complete source hash/count checks, integer ranges, unique skills, control-character rejection, line/output limits and receipt metadata.
 
-The dispatcher has no Python fallback. It preserves the worker `files` result contract.
-`offline-runtime-spike/pyodide-worker.mjs` dispatches these operations before touching
-Python; this is the worker copied into the production runtime. The developer worker
-uses the same module. Its four pure operations do not initialize Pyodide at all.
-The production worker still initializes Pyodide for the remaining image/recipe work.
-The sealed preparer no longer packages `derived.py`, `vault.py` or `vault_original.py`.
+The dispatcher has no Python fallback and preserves the worker `files` result
+contract. Production routing and assembly are documented in the
+[JavaScript/WASM asset runtime](../asset-runtime-js/README.md). The legacy Pyodide
+proof and developer workers also use this module; these four operations do not
+initialize Python.
 
 `source-provenance.json` locks both the native implementations and the old bounded
 adapters. `scripts/verify-source.mjs` fails the runtime build on any source drift.
@@ -41,19 +40,3 @@ escapes are rejected because the source generators never produce them. This is a
 fail-closed parser, not a C compiler. JavaScript/CPython Unicode database revisions
 can differ for newly added characters; production table keys and numeric fields
 are the existing source format.
-
-## Remaining Python map
-
-- `image-default-frame`: Pillow crop, native default-frame pixels, PNG encoding.
-- `native-art`: native atlas PNG output and skill-index source generation.
-- `hud-v4`: Pillow composition, resize, font/layout work, PNG outputs.
-- `map-goal`: original icon composition and image encoding.
-- `mercenary-art`: original panel/slot image composition and metadata.
-- `remaining-art`: pouch, stash, vault/trove and remaining UI composition.
-- `overlay-recipe`: large original layout/string recipes plus image conversion.
-- `casc-overlay`: pure binary TVFS/CFT/BLTE rewrite, MD5 and zlib. This does not
-  require Pillow and is the next separate non-image migration candidate.
-
-Moving these four operations does not remove the Pyodide/Pillow download or prove
-real-game parity, image parity, browser startup, full packaging or device launch.
-.NET remains unchanged.

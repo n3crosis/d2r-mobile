@@ -21,9 +21,6 @@ The caller must supply an independently trusted release input hash. The native
 generator does not contain that hash, so this module does not invent one. This
 is an implemented transformation, not a complete production release recipe.
 
-A local patterned-pixel comparison against the source-extracted original Python
-`main` (with codec/file I/O shims) matched the entire RGBA output, including the
-401-column crop from a padded 404-column atlas. Source-hash, wrong geometry,
-pre-abort, and recipe hash validation were checked locally. The original native
-BC3 algorithm and existing encoder are reused by composition, but actual
-browser encoder/complete-game parity was not rerun for this addition.
+The transform reuses the original native BC3 algorithm and existing encoder by
+composition; this module alone does not establish browser encoder or complete-game
+parity. See [production flow](PRODUCTION_FLOW.md) for runtime integration.

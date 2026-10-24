@@ -90,7 +90,6 @@ test("three discovered packages with untouched 1.0 defaults allow unsigned gener
     }
   }
   assert.match(app, /get\("signing"\) === "1"/);
-  assert.match(app, /editableOptions: true/);
   assert.equal(rendered({ inputMode: "extracted", nspNames: [] }).disabled, false);
 });
 

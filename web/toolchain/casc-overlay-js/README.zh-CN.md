@@ -14,7 +14,8 @@
 
 ## 补充包元数据原语
 
-以下独立同步函数尚未接入生产工作线程：
+以下独立同步函数检查存储规格并修改引用。
+独立的 worker 操作见[资产运行时](../asset-runtime-js/README.zh-CN.md#专用外部引用-casc-操作)：
 
 - `inspectCascPackStorageSpecs(vfs, entries)` 接受解码的 TVFS 字节和有序
   `{path, oldEkey}` 请求，返回冻结数组，其中每个冻结记录为
@@ -50,9 +51,9 @@ CASC 仅调用其 1.2.13、级别 9、默认参数的压缩流，中间不刷新
 不替换为浏览器 CompressionStream 或任意 zlib 版本。
 SparkMD5 只用于旧格式校验，不用于安全或用户数据认证。
 
-现有运行时构建在密封资源准备前增加编解码器步骤。
-生产与开发 worker 在进入 Python 前分派 CASC；准备后的清单不再包含
-`casc_overlay.py` 或 `casc_overlay_original.py`，原始源码仍保留供构建与对照。
+生产路由、后端组装与运行时清单见 [JavaScript/WASM 资产运行时](../asset-runtime-js/README.zh-CN.md)。
+旧证明 worker 与开发 worker 也在不进入 Python 的情况下分派 CASC。
+上游 Python 源码仍保留供构建与对照。
 
 ## 聚焦检查
 
@@ -71,11 +72,7 @@ SparkMD5 只用于旧格式校验，不用于安全或用户数据认证。
     node web/toolchain/casc-overlay-js/test/parity.mjs --wasm
 
 构建配方在来源/版本漂移或出现宿主导入时失败。
-本地没有 emcc，未执行 WASM 构建；必须由现有同一 CI 构建在部署前证明该产物。
-不把原生编解码器对照当作 WASM/浏览器结果，不宣称完整游戏或真机证据，不改 .NET。
-
-尚有七个 Python 资源操作：image-default-frame、native-art、hud-v4、map-goal、
-mercenary-art、remaining-art、overlay-recipe。
+原生编解码器对照不是 WASM/浏览器结果，这两种检查也都不能证明完整游戏或真机兼容性。
 
 ## 上游薄覆盖层审查
 

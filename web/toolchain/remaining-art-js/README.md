@@ -1,8 +1,8 @@
 # Remaining image recipes
 
 Callable, source-pinned JavaScript replacements for the production `remaining-art`
-and `mercenary-art` Python operation boundaries. This directory does not change
-worker dispatch, asset hashes, vendor packaging, or the production runtime.
+and `mercenary-art` Python operation boundaries. Production routing and assembly
+are documented in the [JavaScript/WASM asset runtime](../asset-runtime-js/README.md).
 
 ## API and dependencies
 
@@ -79,6 +79,5 @@ complete replacement, including exact PNG bytes, build the pinned codec and run:
 node web/toolchain/remaining-art-js/test/parity.mjs --wasm
 ```
 
-The default comparison passed all 11 cases locally. The `--wasm` comparison
-remains pending the existing emsdk CI build; the local environment has no emcc.
-This directory alone does not remove Python from the shipped runtime.
+The default comparison does not establish WASM PNG parity. Neither mode proves
+browser execution or full-game/device compatibility.

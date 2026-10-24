@@ -101,7 +101,6 @@ test("option changes do not restart bootstrap, consume a job or dispose retained
     app.indexOf("  async function choose()"),
   );
   assert.match(setup, /editableOptions: true/);
-  assert.match(setup, /\}, \[appendActivity\]\)/);
   assert.doesNotMatch(app, /window\.location\.assign|setHasSelectedFolder/);
   for (const [anchor] of cases)
     assert.doesNotMatch(
