@@ -9,9 +9,11 @@ node toolchain/hud-recipes-js/verify-sources.mjs
 node toolchain/overlay-recipe-js/scripts/verify-source.mjs
 node toolchain/art-recipes-js/scripts/verify-source.mjs
 node toolchain/asset-transforms-js/scripts/verify-source.mjs
-node toolchain/casc-overlay-js/scripts/verify-source.mjs
 python3 toolchain/texture-spike/package-encoder.py
 bun install --frozen-lockfile
+# CASC 的固定来源包括已安装的 hash-wasm；先完成冻结锁文件安装，再校验其原始字节。
+# CASC pins include installed hash-wasm; verify its original bytes after the frozen install.
+node toolchain/casc-overlay-js/scripts/verify-source.mjs
 bun audit --audit-level=high
 bun run build
 bun run format:docs:check
