@@ -17,8 +17,8 @@
     "lint:fix": "oxlint . --fix --max-warnings 0",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
-    "format:docs": "cd .. && web/node_modules/.bin/oxfmt --config web/.oxfmtrc.json --write docs/WEB_IPA_PACKAGER.md docs/WEB_IPA_PACKAGER.zh-CN.md docs/WEB_DELIVERY_PROGRESS.md docs/WEB_DELIVERY_PROGRESS.zh-CN.md",
-    "format:docs:check": "cd .. && web/node_modules/.bin/oxfmt --config web/.oxfmtrc.json --check docs/WEB_IPA_PACKAGER.md docs/WEB_IPA_PACKAGER.zh-CN.md docs/WEB_DELIVERY_PROGRESS.md docs/WEB_DELIVERY_PROGRESS.zh-CN.md",
+    "format:docs": "cd .. && web/node_modules/.bin/oxfmt --config web/.oxfmtrc.json --write docs/WEB_IPA_PACKAGER.md docs/WEB_IPA_PACKAGER.zh-CN.md",
+    "format:docs:check": "cd .. && web/node_modules/.bin/oxfmt --config web/.oxfmtrc.json --check docs/WEB_IPA_PACKAGER.md docs/WEB_IPA_PACKAGER.zh-CN.md",
     "format:workflows:check": "cd .. && web/node_modules/.bin/oxfmt --config web/.oxfmtrc.json --check .github/workflows",
     "build:bundle": "bun scripts/build.mjs",
     "i18n:check": "python3 scripts/generate-i18n.py --check && python3 ../dm/ios/tools/dm_i18n.py --check && python3 ../dm/i18n/scan_literals.py"

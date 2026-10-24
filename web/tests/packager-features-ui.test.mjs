@@ -174,28 +174,6 @@ test("icon preflight precedes runtime consumption and invalid input remains corr
   assert.match(preflight, /operation.finish\(\);\s*return;\s*\}/);
   assert.doesNotMatch(preflight, /jobPackager.generate\(|downloadPreparation.current.retain/);
 });
-test("customization failure recovery labels original identity without automatic download or signing", () => {
-  const recovery = app.slice(
-    app.indexOf("      if (recovered) {"),
-    app.indexOf("      appendActivity(packagingFailureSummary"),
-  );
-  assert.match(
-    recovery,
-    /const originalIdentity = Object.keys\(preparedCustomization\).length > 0/,
-  );
-  assert.match(recovery, /setOriginalIdentityDownload\(originalIdentity\)/);
-  assert.match(recovery, /dmWebCustomOriginalRetained/);
-  assert.match(recovery, /prepareDownload\(!originalIdentity && !jobOptions.signing\)/);
-  assert.doesNotMatch(
-    recovery,
-    /runSigning|setSigningRetryAvailable\(true\)|unsignedForSigning.current =/,
-  );
-  assert.match(app, /originalIdentityDownload\s*\? "dmWebCustomOriginalDownload"/);
-  assert.match(
-    catalog.dmWebCustomOriginalRetained[0],
-    /not applied.*original app name, bundle ID, version, and icon.*not automatically signed/,
-  );
-});
 test("version errors are allowlisted without raw hashes, file paths or messages", () => {
   for (const detailCode of [
     "PROGRAM_UNSUPPORTED_VERSION",
@@ -400,6 +378,11 @@ test("actual icon preflight cancellation closes runtime once and releases the UI
 // 恢复分支直接来自真实界面，覆盖自定义之前发生的提交后清理失败。
 // Use the real UI recovery branch, including post-commit cleanup failures before customization.
 test("every requested-customization recovery stays manual and labels the original IPA", () => {
+  assert.match(app, /originalIdentityDownload\s*\? "dmWebCustomOriginalDownload"/);
+  assert.match(
+    catalog.dmWebCustomOriginalRetained[0],
+    /not applied.*original app name, bundle ID, version, and icon.*not automatically signed/,
+  );
   const recovery = app.slice(
     app.indexOf("      if (recovered) {"),
     app.indexOf("      appendActivity(packagingFailureSummary"),

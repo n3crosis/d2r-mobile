@@ -61,12 +61,7 @@ original Python selection, tamper/missing-input rejection, authored cs/vs/ps
 record/c1 mapping against original `job_for`, and invalid c1/SPH rejection. No
 SDK or browser build, game input, heavy CI or workflow change was used here.
 
-Still required: local archive-to-pack and main-image provider integration,
-hull/domain support or a verified native release explanation (not silent skips),
-full replay/readable-tile metadata and a genuinely matching authenticated release
-recipe. Full generated SHADER_SRC must equal `be59c864f087b377`; compiler 1.4.363.0
-parity alone does not resolve source/header/chain differences. Every mapped
-candidate remains non-installable and `productionEquivalent` remains false.
+`production-shaders.mjs` supplies authenticated pack/main-image inputs, replay metadata and the final source-digest gate. This adapter alone retains `productionEquivalent: false`; its job preparation is not a release attestation.
 
 ### Source-ported bridge changes, explicitly gated
 

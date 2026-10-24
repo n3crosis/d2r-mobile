@@ -5,7 +5,7 @@ HTML digest. The browser UI uses `editableOptions: true` to preload both bundled
 shell profiles and the closed optional capability bytes before folder selection.
 Core runtimes initialize during bootstrap; optional ASTC and signing workers start
 only when needed, using verified in-memory bytes without further downloads. Target,
-hash-check, ASTC preset and signing choices can change without a reload or loss of
+ASTC preset and signing choices can change without a reload or loss of
 the selected folder. Generation snapshots the chosen options and binds the selected
 profile locally. API callers without editable options retain selected-only preload.
 The prototype
@@ -28,29 +28,16 @@ chain, provided the complete normalized shader-source digest matches SHADER_SRC.
 The browser preserves that digest gate, pinned shell hash, and target checks.
 Relabeling cannot accept differing shader sources.
 
-Bulk RomFS is exported directly into a fresh `D2R-resources-<UUID>` child of the
-selected input folder, streaming authenticated chunks while the isolated
-extraction session is alive. The single folder picker requests read/write
-permission; original NSPs and key files are never written. Root-only input
-discovery ignores generated subtrees, and subsequent runs create new children.
-Export runs
-only after generated-content and assembly validation, and completes before IPA
-commit. The validated IPA is published as a bounded Blob for a normal browser
-download, not written to the input directory. Its destination follows browser
-settings; a visible Download IPA link retains its object URL for retries until
-the page is disposed or the URL is replaced. The resource exporter marks
-incomplete transfers; a later IPA failure
-does not invalidate an independently completed resource folder. Users copy the
-resource folder into the installed app’s Files folder. This preserves the native
-shell layout without requiring external extraction tools or bundling huge game
-data into the IPA. Experimental older-GPU mode additionally generates a separate
-Legacy Device Pack and matching ASTC overlays in the IPA; the bulk pack remains
-outside the IPA. Copy both completed resource and Legacy Device Pack folders
-alongside each other into the installed app’s Files folder when this option is used.
-On 2026-10-23, the maintainer reported that the generated IPA works on a real iOS device. This is user-reported physical-device testing, not merely a build or synthetic check. The report did not specify the exact tested build, device/iOS version, input format or gameplay coverage. This report does not certify a new compiler release or broader device/GPU compatibility. ZIP32, in-memory stage budgets, OPFS quota and
-adapter limits can reject a genuine large build rather than silently truncate it.
-Production runtime compilation and initialization must still succeed in the
-published artifact; a successful source bundle is not game-compatibility proof.
+Bulk RomFS streams directly into `data` in the selected input folder. Existing
+`data` is reused only after a complete bounded comparison; mismatches fail without
+changing it. Original packages and keys are never overwritten. Resource export
+completes before the bounded IPA Blob is offered for download. Incomplete exports
+are marked, and a later IPA failure does not invalidate completed resources.
+The optional Legacy Device Pack stays separate from the IPA and must match the
+same run. See the [installation guide](../docs/WEB_IPA_PACKAGER.md).
+
+ZIP32, staging memory, OPFS quota and adapter limits fail explicitly rather than
+truncate output. Cancellation closes the single-use session and requires reload.
 
 DLC is optional. The trusted production policy accepts base plus update packages,
 and accepts only the authenticated known DLC when supplied. The effective runtime

@@ -1,6 +1,6 @@
-# Exact BASIC font groundwork, not a production replacement
+# BASIC font rasterizer
 
-This isolated C/JS module ports the production subset of Pillow 10.2.0's `_imagingft.c` and `ImageDraw.text` onto the exact FreeType **2.6.0** source/configuration inherited from the bundled Pyodide runtime. It has no CPython API, RAQM/HarfBuzz, browser text, Canvas, PNG codec, or production imports. The source is pinned, not upgraded.
+This production C/JS module ports the production subset of Pillow 10.2.0's `_imagingft.c` and `ImageDraw.text` onto the exact FreeType **2.6.0** source/configuration inherited from the bundled Pyodide runtime. It has no CPython API, RAQM/HarfBuzz, browser text, Canvas, or PNG codec. The source is pinned, not upgraded.
 
 The user must supply fonts from their own game archive: `blizzardglobal-v5_81.ttf` and `exocetblizzardot-medium.otf`. No game font or font substitute is bundled/downloaded. Test fonts only establish narrow engine semantics; they do not establish authentic HUD/map parity.
 
@@ -32,7 +32,7 @@ Use the existing CI **emsdk 4.0.20** toolchain, not a new job:
 
     node web/toolchain/font-rasterizer-exact/build.mjs
 
-The recipe verifies the official 2,270,210-byte archive's SHA-256 and the original port's SHA-512, verifies the extracted port configuration, and compiles a standalone WASM module. It requires no JS runtime/filesystem, fixes memory to 64 MiB, uses native WASM exception support for FreeType's setjmp/longjmp, and rejects any host imports. `dist/build-report.json` records actual size/hash only after those checks pass. Compilation has **not been run here** because `emcc` is absent, so the WASM artifact, exception configuration and import-free assumption remain unverified. Do not integrate this module into production until that artifact check and the following equivalence runner pass.
+The recipe verifies the official 2,270,210-byte archive's SHA-256 and the original port's SHA-512, verifies the extracted port configuration, and compiles a standalone WASM module. It requires no JS runtime/filesystem, fixes memory to 64 MiB, uses native WASM exception support for FreeType's setjmp/longjmp, and rejects any host imports. `dist/build-report.json` records actual size/hash only after those checks pass.
 
 A native build is a bounded semantic check, not a substitute for the artifact gate:
 
@@ -42,11 +42,9 @@ A native build is a bounded semantic check, not a substitute for the artifact ga
     # After an actual WASM build:
     node web/toolchain/font-rasterizer-exact/test/wasm-equivalence.mjs
 
-Fixture generation runs the **actual source-vendor-hash-verified bundled WASM** Pillow 10.2.0/FreeType 2.6.0/RAQM=false under Node, without a browser or network. It records input font hashes, not font bytes, and validates the exact backend before rendering. Python appears only in this build/test oracle, never the proposed browser module. Fixtures are ignored.
+Fixture generation runs the **actual source-vendor-hash-verified bundled WASM** Pillow 10.2.0/FreeType 2.6.0/RAQM=false under Node, without a browser or network. It records input font hashes, not font bytes, and validates the exact backend before rendering. Python appears only in this build/test oracle, never the browser module. Fixtures are ignored.
 
-Current evidence: 94 focused comparisons pass exactly using native C compiled from the pinned FreeType sources against the bundled WASM oracle, with locally installed DejaVuSans.ttf and NimbusSans-Regular.otf. Coverage includes TTF and CFF outlines, all production sizes/anchors, spaces/empty text, bearings, kerning, accented/Cyrillic/CJK strings (including missing glyphs), fractional positions, strokes 0/1/2, L masks, transparent/opaque/partial-alpha RGBA drawing and clipping. Compiler syntax/warnings checks and input-rejection checks pass. This is **not** game-font, end-to-end output, PNG-byte, or production-runtime parity.
-
-Next gates: build/verify actual WASM in the existing compiler step; run the same fixtures against WASM; port HUD/map control flow with exact image/PNG kernels; compare authentic game-font metrics, RGBA output and encoded hashes; only then remove production Python/Pillow payloads.
+The fixtures cover font measurement, drawing, clipping and rejection behavior. Synthetic test fonts do not establish authentic game-font or complete HUD/map output parity.
 
 ## Provenance and notices
 

@@ -1,8 +1,6 @@
 # Public iOS 18 host profile evidence
 
-The closed registry in `../../shell-profiles.mjs` records two separately pinned
-profiles. This does not establish device or gameplay compatibility. The default
-profile and content-mode binding remain unchanged.
+This describes the explicit legacy v1.0.18 iOS 18 profile. Production defaults use the [v2 pair](V2_PROFILES.md).
 
 The [official v1.0.18 release](https://github.com/jhaizhou-ops/d2r-mobile/releases/tag/v1.0.18)
 provides the public, content-free `D2RMobile-shell-ios18-build-input.zip`, asset 650503648. Its 4,880,624 bytes matched the publisher SHA-256
@@ -53,23 +51,3 @@ separate acceptance. Do not lower an unknown binary's minimum or relax its hash.
 The existing source/build provenance gap, complete shader digest gates and
 private-input/device acceptance boundary remain unchanged. No game data,
 private keys, shell archive or executable is checked in with these records.
-
-## Candidate integration status
-
-The loader, content-mode derivation, Guest writer and generated-output validator
-accept the closed profile identity consistently. Default Guest executable and
-plist bytes still match the native Python fixture. Inspection checks the SDK,
-minimum target, exact canonical plist and unambiguous Mach-O command layout.
-Focused synthetic checks passed. Both content modes were also derived in memory
-from the pinned public iOS 18 executable with matching complete output hashes;
-that check did not execute the binary or use game inputs.
-
-The candidate UI selects the closed target before private inputs and reloads to
-switch runtimes. Assembly includes both public archives, while the browser validates
-the complete manifest and downloads only the selected shell plus all common assets.
-This selection passed CI and was deployed in source f4f3326 on 2026-10-20. This OS profile does not implement the separate older-GPU ASTC pipeline.
-
-A real public legacy archive was also loaded with repository metadata: all 16
-inventory entries, 13 file streams, hashes, recipe, shader catalog and art/HUD
-pins passed. Closing zeroed the archive and subsequent entry reads rejected.
-This remains packaging evidence, not binary execution or device proof.

@@ -16,8 +16,8 @@ Platforms: iPhone / iPad (iOS 26 and later; iOS 18 – 25 with the older-API bui
   <img src="https://github.com/jhaizhou-ops/d2r-mobile/releases/download/assets/ipad.jpg" width="49%" alt="True full screen on iPad">
 </p>
 
-|                           100%                            |                     60 fps                     |           about 1 s            |            about 3.8 W            |
-| :-------------------------------------------------------: | :--------------------------------------------: | :----------------------------: | :-------------------------------: |
+| 100% | 60 fps | about 1 s | about 3.8 W |
+|:---:|:---:|:---:|:---:|
 | The original gameplay, because it is the original program | Steady, with no drops once the device warms up | From the main menu into a game | Whole-device power draw at 60 fps |
 
 ## What it is, and what it is not
@@ -38,11 +38,11 @@ Platforms: iPhone / iPad (iOS 26 and later; iOS 18 – 25 with the older-API bui
 
 All **44** iPhones and iPads in the closed beta — 35 devices registered for direct install (25 iPhones and 10 iPads), plus 9 TestFlight accounts with one device each — **completed Normal, Nightmare and Hell with multiple characters**, and the experience was excellent. From an iPhone 14 Pro Max with 6 GB of memory to the latest iPad Pro, not one device fell behind.
 
-|                     | Models                                                                                  |
-| ------------------- | --------------------------------------------------------------------------------------- |
-| iPhone              | 14 Pro Max, 15, 15 Pro, 15 Pro Max, 16 Plus, 16 Pro, 16 Pro Max, 17 Pro Max and more    |
-| iPad                | iPad Air, iPad mini, iPad Pro 11-inch and 12.9 / 13-inch (including M2 and M4) and more |
-| Lowest model tested | **iPhone 14 Pro Max (A16, 6 GB): a flawless 60 fps**                                    |
+| | Models |
+|---|---|
+| iPhone | 14 Pro Max, 15, 15 Pro, 15 Pro Max, 16 Plus, 16 Pro, 16 Pro Max, 17 Pro Max and more |
+| iPad | iPad Air, iPad mini, iPad Pro 11-inch and 12.9 / 13-inch (including M2 and M4) and more |
+| Lowest model tested | **iPhone 14 Pro Max (A16, 6 GB): a flawless 60 fps** |
 
 iPhone and iPad share a single install package.
 
@@ -58,16 +58,16 @@ iPhone and iPad share a single install package.
 
 Measured on a real device (iPhone 17 Pro Max):
 
-| Item                                           | Reading                                                                                       |
-| ---------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| In-game frame rate                             | **60 fps**, steady, with no drops once the device warms up                                    |
-| App launch                                     | 0.15 s                                                                                        |
-| To the main menu                               | about 1 s                                                                                     |
-| From the main menu into a game                 | **about 1 s**                                                                                 |
-| Quick Restart, back in a game                  | about 1.2 s                                                                                   |
-| Longest frame when changing acts               | about 0.1 s                                                                                   |
-| Whole-device power, 60 fps                     | **about 3.8 W** (in camp, 50% brightness): nearly 5 hours of continuous play on a full charge |
-| Whole-device power, power saver mode at 30 fps | **about 1.85 W**, about half the 60 fps figure, for about twice the battery life              |
+| Item | Reading |
+|---|---|
+| In-game frame rate | **60 fps**, steady, with no drops once the device warms up |
+| App launch | 0.15 s |
+| To the main menu | about 1 s |
+| From the main menu into a game | **about 1 s** |
+| Quick Restart, back in a game | about 1.2 s |
+| Longest frame when changing acts | about 0.1 s |
+| Whole-device power, 60 fps | **about 3.8 W** (in camp, 50% brightness): nearly 5 hours of continuous play on a full charge |
+| Whole-device power, power saver mode at 30 fps | **about 1.85 W**, about half the 60 fps figure, for about twice the battery life |
 
 <sub>Measurement conditions: power is whole-device power measured on 2026-10-10 on an iPhone 17 Pro Max, standing in the Act I camp at 50% brightness, with 60 fps and power saver mode measured in the same scene; battery life is calculated from the measured power and the battery capacity, not by playing from full to empty. Launch and game-entry times were measured on the same model in 2026-10; frame rate and act-change readings were taken on the same model on 2026-10-12 while moving through areas and changing acts after entering a game.</sub>
 
@@ -138,17 +138,17 @@ Enter through the red portal in Harrogath after completing Hell. There are 100 l
 
 ### Effortless farming
 
-|                      |                                                                                                                                                                                                                                                                                        |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Auto-recast buffs    | Buff skills you have learned do not need a slot on the skill bar: when a buff runs out, it is recast the moment you stand still; buffs that come from your secondary weapons (such as Battle Orders from Call to Arms) swap weapons, recast and swap back on their own                 |
-| Potions and belt     | Auto-drink has two tiers: a healing potion below 50% Life, a rejuvenation potion below 30%; **your mercenary is fed automatically by the same rule**. Potions on the ground are picked up automatically when the belt has room; double-tap an empty belt slot to refill the whole belt |
-| Loot filter          | From Nightmare on, the original loot filter is switched on automatically to hide clutter: light filtering in Nightmare, heavy in Hell                                                                                                                                                  |
-| Auto-pickup          | Low runes and gems go straight into the Pouch; the high ones are left for you to pick up yourself                                                                                                                                                                                      |
-| Valuable drop alerts | High runes and Unique items raise a light beam and land with a different drop sound; the phone vibrates at one of three strengths — light, medium or heavy — according to value                                                                                                        |
-| Runeword helper      | Long-press a socketed base to list the Runewords it can make and their stats; once you have the runes, socket them all in one tap                                                                                                                                                      |
-| Minimap guidance     | Every map marks its Waypoint and exits; every quest goal is on the map; when a target is off screen, its name is written along the screen edge                                                                                                                                         |
-| Chores removed       | Free identification, free Town Portal with no scrolls needed, spawning right beside the Waypoint, Quick Restart, refreshable vendor stock                                                                                                                                              |
-| Saves                | Saved immediately when you switch apps, swipe the app away or quit; iCloud sync across devices (requires signing with a paid developer account)                                                                                                                                        |
+| | |
+|---|---|
+| Auto-recast buffs | Buff skills you have learned do not need a slot on the skill bar: when a buff runs out, it is recast the moment you stand still; buffs that come from your secondary weapons (such as Battle Orders from Call to Arms) swap weapons, recast and swap back on their own |
+| Potions and belt | Auto-drink has two tiers: a healing potion below 50% Life, a rejuvenation potion below 30%; **your mercenary is fed automatically by the same rule**. Potions on the ground are picked up automatically when the belt has room; double-tap an empty belt slot to refill the whole belt |
+| Loot filter | From Nightmare on, the original loot filter is switched on automatically to hide clutter: light filtering in Nightmare, heavy in Hell |
+| Auto-pickup | Low runes and gems go straight into the Pouch; the high ones are left for you to pick up yourself |
+| Valuable drop alerts | High runes and Unique items raise a light beam and land with a different drop sound; the phone vibrates at one of three strengths — light, medium or heavy — according to value |
+| Runeword helper | Long-press a socketed base to list the Runewords it can make and their stats; once you have the runes, socket them all in one tap |
+| Minimap guidance | Every map marks its Waypoint and exits; every quest goal is on the map; when a target is off screen, its name is written along the screen edge |
+| Chores removed | Free identification, free Town Portal with no scrolls needed, spawning right beside the Waypoint, Quick Restart, refreshable vendor stock |
+| Saves | Saved immediately when you switch apps, swipe the app away or quit; iCloud sync across devices (requires signing with a paid developer account) |
 
 Most features can be toggled one by one in game under Options → Custom.
 
@@ -179,8 +179,8 @@ flowchart LR
     X --> A
 ```
 
-| Part             | Where                   | What it does                                                                                                                                                                                   |
-| ---------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Part | Where | What it does |
+|---|---|---|
 | Program rewriter | `dm/tools/patch_nso.py` | Rewrites only the few instructions that cannot run unchanged under Apple's kernel (thread-pointer registers, system calls, timers) and leaves the rest of the program byte-for-byte as shipped |
 | Host | `dm/host` | Loads the rewritten program and provides the platform services it calls |
 | Graphics | `dm/gfx` | Implements the game's graphics API on Metal; shaders are translated offline from the game's originals |
@@ -260,12 +260,12 @@ This project is implemented and verified on the Switch release 1.0.34.0 (which c
 
 The two routes for iPhone / iPad compared:
 
-|                                                                | With a Mac                                               | Without a Mac                                                                                                                                                                                                                                       |
-| -------------------------------------------------------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Computer                                                       | An Apple silicon Mac with Xcode installed                | Windows / Linux / a Mac without Xcode                                                                                                                                                                                                               |
-| Method                                                         | A full build from source                                 | Download a "shell" with no game content, use the packaging tool to add your own game content, then install it with a sideloading tool                                                                                                               |
-| Status                                                         | The main route; everything above comes from it           | Works end to end on Windows, from making the package to playing on a device, and the game program produced on the two systems is byte-for-byte identical; the one step nobody has tried yet is signing with a sideloading tool — try it and tell us |
-| Instructions                                                   | The three steps below                                    | [docs/NO_XCODE.md](docs/NO_XCODE.md)                                                                                                                                                                                                                |
+| | With a Mac | Without a Mac |
+|---|---|---|
+| Computer | An Apple silicon Mac with Xcode installed | Windows / Linux / a Mac without Xcode |
+| Method | A full build from source | Download a "shell" with no game content, use the packaging tool to add your own game content, then install it with a sideloading tool |
+| Status | The main route; everything above comes from it | Works end to end on Windows, from making the package to playing on a device, and the game program produced on the two systems is byte-for-byte identical; the one step nobody has tried yet is signing with a sideloading tool — try it and tell us |
+| Instructions | The three steps below | [docs/NO_XCODE.md](docs/NO_XCODE.md) |
 
 The Apple account used for signing: a paid developer account gives you everything; a free Apple ID works too (no iCloud save sync, and the app has to be re-signed and reinstalled every 7 days). The full list of dependencies is in [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md).
 
@@ -399,8 +399,7 @@ The cleaner arrangement is to move these defaults into per-game configuration an
 | [dm/android/README.md](dm/android/README.md) | Android: source layout, building, the files to put on the phone, the acceptance checklist |
 | [dm/gfx/vulkan/INTEGRATION.md](dm/gfx/vulkan/INTEGRATION.md) | How the Vulkan graphics layer plugs into the shared graphics API |
 | [docs/ANDROID_COLLABORATION.md](docs/ANDROID_COLLABORATION.md) | Android / HarmonyOS collaboration: who works where, how to take part, measured status and remaining work; the notes from every round are in [docs/android-notes/](docs/android-notes/) |
-| [docs/WEB_IPA_PACKAGER.md](docs/WEB_IPA_PACKAGER.md)           | Browser packaging source contract and pending acceptance |
-| [docs/WEB_DELIVERY_PROGRESS.md](docs/WEB_DELIVERY_PROGRESS.md) | Current browser status versus historical evidence        |
+| [docs/WEB_IPA_PACKAGER.md](docs/WEB_IPA_PACKAGER.md) | Browser IPA packaging and installation |
 
 ## Legal
 

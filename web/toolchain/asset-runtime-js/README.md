@@ -4,12 +4,12 @@ This directory supplies the Python-free asset worker and a build-only assembler.
 
 ## Stages and current gates
 
-1. All 12 existing operations have source-pinned callable JS pipelines. Focused recipe parity includes 34 art cases, the full 96-file HUD output, and the full 263-file overlay output plus receipts; independent codec/font WASM proof is a separate artifact gate.
+1. All 12 existing operations have source-pinned callable JS pipelines. Build each pinned backend before assembly.
 2. In the existing compiler CI job, build `image-kernels-rust`, `png-codec-exact` and `font-rasterizer-exact`. Reuse Rust 1.99.1, emsdk 4.0.20 and Bun 1.4.3. No new job or package dependency is introduced here.
 3. Run `bun web/toolchain/asset-runtime-js/build.mjs`. It executes every recipe source guard, compares WASM bytes with their build receipts, checks zero host imports/required exports, and actually initializes each backend to enforce its pinned versions. It then bundles the complete import graph, embeds the three WASM SHA-256/size records, and writes a closed component manifest.
 4. The client/build/package switch is wired together. A missing artifact, incomplete operation, failed source guard or failed bundle prevents packaging; there is no Python fallback.
 
-`node web/toolchain/asset-runtime-js/build.mjs --plan` prints the stages, operation list and source/artifact paths without building anything. Local full assembly has not run: the environment has the pixel WASM, but no `bun` command or built PNG/font WASM artifacts. Syntax, repository formatter/linter, a small protocol/transfer check and the existing pixel-WASM ABI check can run independently. They are not full runtime or game-input verification.
+`node web/toolchain/asset-runtime-js/build.mjs --plan` prints the stages, operation list and source/artifact paths without building anything.
 
 ## Runtime contract
 

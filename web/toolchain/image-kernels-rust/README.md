@@ -1,6 +1,6 @@
-# Bounded Pillow pixel kernels, not yet a production replacement
+# Pillow-compatible pixel kernels
 
-This isolated crate directly ports the narrow pixel semantics needed by the browser asset generator. It has not been wired into the dispatcher or release bundle. Python/Pillow must remain until the remaining image orchestration, PNG, fonts and overlay work is migrated.
+This crate supplies the bounded pixel operations used by the production JavaScript/WASM asset runtime.
 
 ## Implemented contract
 
@@ -27,17 +27,8 @@ Requires the same build-only Rust 1.99.1 toolchain as the BC3 encoder. No Cargo 
     python web/toolchain/image-kernels-rust/test/make-fixtures.py
     node web/toolchain/image-kernels-rust/test/equivalence.mjs
 
-Evidence from this change:
-
-- `cargo fmt --check` and `cargo clippy --release --target wasm32-unknown-unknown -- -D warnings` pass.
-- WASM: **31,787 bytes**, **13,674 bytes gzip-9**, zero Cargo dependencies/imports.
-- 189 synthetic operation fixtures match native Pillow **10.2.0** exactly, including all 65,536 source/destination alpha pairs, transparent RGB, clipped placement, out-of-bounds crop, integer color conversion, filters, and Lanczos across up/down/one-axis sizes. This is narrow kernel evidence, not full game-art or font parity.
-- The existing bundled Pyodide runtime was inspected separately: Pillow 10.2.0; FreeType 2.6.0; RAQM false; Pillow-linked zlib **1.3.1**. Python's own zlib is **1.2.13**, a different library and not the PNG encoder target.
-
-`dist/`, build outputs and generated fixtures are ignored. `evidence.json` records this bounded result. The image pipeline is still pending; no release-payload saving is claimed yet.
+Generated artifacts and fixtures are ignored. The equivalence suite compares synthetic operations against Pillow 10.2.0; it is not full game-art or font coverage.
 
 ## Provenance and license
 
 Algorithm source is Pillow 10.2.0 (`AlphaComposite.c`, `Paste.c`, `ImagingUtils.h`, `Crop.c`, `Convert.c`, `GetBBox.c`, `RankFilter.c`, `Resample.c`, and the RGBA resize wrapper in `Image.py`). `reference/sources.json` records exact official source URLs and SHA-256 digests; downloaded source snapshots are build/review-only and ignored. The Pillow HPND copyright/license is preserved in `reference/LICENSE` and must accompany redistribution of the kernel. The Rust implementation intentionally does not compile or ship CPython/Pillow.
-
-See `MIGRATION.md` for the production operation inventory and the byte-compatible PNG/font migration order.

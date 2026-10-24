@@ -20,4 +20,4 @@ Optional browser smoke is an explicit developer action, not executed by source t
 node web/toolchain/metal-air-compiler/browser-smoke-server.mjs --build /path/to/authenticated/dist --sha256 TRUSTED_RECEIPT_SHA256
 ```
 
-The server verifies the exact pinned release before serving public authored assets. Do not add game inputs. A smoke result is not full corpus/device/GPU validation. The [old build procedure](history/PRE_FORK_WASM_BUILD.md) remains historical only.
+The server verifies the exact pinned release before serving public authored assets. Do not add game inputs. A smoke result is not full corpus/device/GPU validation.

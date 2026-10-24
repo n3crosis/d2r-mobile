@@ -1,8 +1,6 @@
 # Optional public codec assets
 
-Runtime assembly includes the complete optional producer closure, but the default
-setup does not download its codecs or create its worker. This internal setup
-option does not enable UI or establish browser, device or full-game parity.
+Runtime assembly includes the optional ASTC and signing closures. The browser UI preloads their verified bytes before private input so settings can change without reloading; workers start only when needed. Direct API callers can select only the groups they require.
 
 ## Closed inventory contract
 
@@ -64,25 +62,6 @@ establish inventory closure, default-download isolation, deduplication,
 transport integrity, startup ordering, cleanup and unchanged shell selection.
 A real Bun bundle closes the producer worker's static imports. These checks do
 not establish actual compiler output, browser execution or device parity.
-
-## Local source-build size snapshot
-
-Measured with Bun 1.4.3 on 2026-10-20 during this integration, not from a deployed
-payload: the optional producer worker is 88,216 minified bytes, or 30,767 bytes
-with gzip level 9, with zero remaining literal imports. Its dynamic factory
-import is the verified initialization Blob described above.
-
-Two isolated frontend builds differed only by substituting a measurement-only
-stub for the producer client. The real client adds 15,880 minified bytes and
-5,318 gzip bytes to the common frontend. Both builds emit one JavaScript bundle;
-ASTC/WASM codecs remain outside it. This measures shared client/ownership logic,
-not optional binary transfer size or a deployed release total. The earlier raw
-`clients.mjs` import-closure audit established dependency completeness, not a
-production consumer for those transported sources. Production imports that
-client at frontend build time; its runtime plans consume only verified worker,
-codec and data bytes. The current assembly omits 48 audited source-only copies,
-while retaining every component-submanifest asset, license, WASM and provenance
-record. See `runtime-build/payload-policy.mjs` for the exact build-only policy.
 
 ## Optional browser-local IPA signing
 

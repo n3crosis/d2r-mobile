@@ -1,59 +1,7 @@
-# Windows/macOS Chromium proof matrix
+# Desktop browser verification
 
-The `desktop-browser-checks.yml` workflow runs the existing synthetic OPFS and
-sealed Emscripten Worker browser harnesses on standard GitHub-hosted
-`windows-2022` and `macos-14` runners. It builds the public texture runtime once on
-Linux, then checks the exact downloaded file tree against a SHA-256 manifest
-whose digest is passed directly from the producing job. Negative transfer tests
-reject changed, missing, additional files and a changed manifest or digest.
+This directory supplies manifest and transfer checks used by the optional local desktop recipes. See the `desktop-build` and `desktop` profiles in [TESTING.md](../../TESTING.md). The default Verify workflow does not run a platform matrix.
 
-The existing browser harnesses retain their assertions. The matrix uses pinned
-Playwright Chromium, not installed branded Chrome or Edge. It does not request a
-save picker, read real game files or keys, or upload user content. Browser version
-and scenarios are in each proof's log; host OS/architecture are in the job summary.
-A summary existing does not imply the earlier proof steps passed.
+Build public texture assets on the compiler host, then verify the transferred file tree against the producer's SHA-256 manifest before running the browser harness on Windows or macOS. Transfer checks reject changed, missing or additional files and mismatched manifest digests.
 
-## Cost and provenance boundaries
-
-Repository visibility was checked through GitHub on 2026-10-20: public. A
-public-only job condition prevents this workflow running after a transition to
-private visibility. All runner labels are standard hosted labels, never larger,
-custom or self-hosted runners. GitHub documents free runner minutes for public
-repositories using standard runners, but artifact storage still has an allowance:
-https://docs.github.com/en/billing/concepts/product-billing/github-actions
-
-The sole transferred artifact contains generated public runtime and required
-license files, is capped at 32 MiB, and expires after one day. There are no caches,
-secrets or deployment steps. Action SHAs were checked against official tags and
-all four action definitions use Node 24 internally. The download action is
-`actions/download-artifact` v7.0.0, commit
-`37930b1c2abaa49bbe596cd826c3c89aef350131`.
-
-## Verified desktop CI evidence
-
-Run [39400065058](https://github.com/n3crosis/d2r-mobile/actions/runs/39400065058)
-passed on commit `ff42f2fcdeeed47a15f1d38d3a469b354e75bb73` (2026-10-20).
-Linux built and sealed the runtime; both consumers verified all 12 exact public
-files before execution. Both used Chromium `156.0.8078.4`:
-
-- `windows-2022`: Windows kernel `10.0.20348`, x64, Node `24.21.0`,
-  [job 118552530720](https://github.com/n3crosis/d2r-mobile/actions/runs/39400065058/job/118552530720).
-- `macos-14`: Darwin `23.6.0`, arm64, Node `24.20.0`,
-  [job 118552530677](https://github.com/n3crosis/d2r-mobile/actions/runs/39400065058/job/118552530677).
-
-Both passed ZIP32/ZIP64 commit and validator reread, cancellation during a real
-OPFS destination write preserving the original and removing the stage, and
-insufficient-estimated-quota rejection. Sealed Emscripten conversion passed with
-no post-seal HTTP receipts; invalid manifest, corrupted asset, oversized asset,
-missing asset and redirect cases failed closed before Worker execution.
-No portability fix or relaxed assertion was necessary.
-
-## Evidence limits
-
-The workflow definition alone is not Windows/macOS execution evidence. A passing
-run establishes only the specific runner/browser combinations in its logs,
-small OPFS commit/reread and cancellation behavior, estimated quota rejection,
-sealed texture conversion, and negative preload cases. It does not establish
-real OS save-picker behavior, large-file disk endurance, every consumer desktop
-configuration, full application integration, game compatibility, IPA installation
-or device behavior. Pyodide has its separate proof and is not included here.
+The harnesses use pinned Playwright Chromium and synthetic OPFS/worker inputs, not real game files, keys or a save picker. Record the actual browser and platform with each result. Preserve licenses with transferred public runtime artifacts; do not include private inputs or browser profiles.

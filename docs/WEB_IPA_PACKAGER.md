@@ -1,116 +1,39 @@
-# Local browser IPA packager: implementation and acceptance
+# Browser IPA packager
 
 中文: [WEB_IPA_PACKAGER.zh-CN.md](WEB_IPA_PACKAGER.zh-CN.md)
 
-## Status and boundaries
+Build an IPA from your own game files in desktop Chromium on Windows or macOS. Processing stays local; no game files or keys are uploaded. You do not need Xcode, Python, .NET or a compiler. The generated app runs natively on iOS, not in the browser, and the maintainer has confirmed it works on a real device.
 
-The local browser packaging flow has a successful public [7d45b17 CI build](https://github.com/n3crosis/d2r-mobile/actions/runs/39916614716). On 2026-10-23, the maintainer reported that the generated IPA works on a real iOS device. This is user-reported physical-device testing, not merely a build or synthetic check. The report did not specify the exact tested build, device/iOS version, input format or gameplay coverage. See [delivery status](WEB_DELIVERY_PROGRESS.md).
+## Prepare
 
-This is not a browser port of the game. The output runs natively on a compatible
-Apple device after separate signing and installation. End users do not install
-Python, .NET, a compiler, Xcode or Bun. Python has been removed from the current
-production browser runtime path; .NET WASM remains for shader translation.
-Developer/native-reference tooling can still require Python and .NET.
+Put these files directly in one folder:
 
-## Inputs and outputs
+- The supported base NSP and compatible update NSP(s).
+- `prod.keys`.
+- Optional compatible DLC and `title.keys`. Embedded tickets can supply title keys; rights-managed inputs still require a usable ticket or matching key.
 
-1. Put the base NSP, compatible update NSP(s) and `prod.keys` directly in one
-   folder. Compatible known DLC and `title.keys` are optional. Embedded common
-   tickets can supply title keys; rights-managed inputs without a usable ticket
-   or matching key still fail. Optional does not mean every package works without
-   `title.keys`. No game files or keys are distributed by this repository.
-2. In a secure context, use the single directory picker and grant read/write
-   access. Root-only discovery ignores generated resource subfolders. The
-   application must not overwrite original NSPs or key files.
-3. The flow verifies and preloads the pinned same-origin public runtime and app
-   templates for both bundled targets and optional capability bytes before private
-   input selection. Options remain editable until generation without a page reload
-   or losing the selected folder. ASTC and signing workers start only when used,
-   from these verified in-memory bytes with no further asset downloads. Generation
-   fixes the chosen options, authenticates content and chooses compatible
-   base/update/optional DLC from metadata, not filenames.
-4. Conversion performs extraction, program rewriting, Guest.framework generation,
-   native art/HUD and table generation, overlays and shader translation. The app
-   template is prebuilt iOS build input, not a command-line shell or ready IPA.
-5. Bulk resources stream directly to `data` inside the input folder, without a wrapper.
-   Existing `data` is reused only after a complete bounded comparison with the
-   current input; mismatches stop export without changing that folder.
-   The validated IPA is offered as a bounded Blob browser download, not saved
-   directly into that folder. A visible download link supports retry; the browser
-   controls the download destination. The IPA does not contain all resources.
-6. Sign and install the IPA separately, then copy the completed
-   `data` folder into **On My iPhone / D2R Mobile** (or the
-   corresponding app folder on iPad) in Files, keeping its name and contents intact.
-   The experimental **Older-GPU option** also generates a separate
-   `Legacy Device Pack` folder (`-2`, `-3`, etc. if the name already exists). When enabled, copy that completed folder
-   alongside the game-resource folder, keeping its `data` child and
-   `manifest.json` intact; it must match the IPA generated in the same run.
-   Neither resource set is bundled into the IPA. Do not copy incomplete outputs.
-   If you explicitly skipped original-resource export, keep the existing resources
-   for the same game, update and DLC; they have not been verified by the browser.
-   The newly generated Legacy Device Pack still needs copying when that option is
-   enabled. Broader real-game/device compatibility, including this older-GPU option, is not established by the reported device test.
+Use your own legally obtained game files and keys. This repository does not distribute them. The packager selects compatible content from authenticated metadata, not filenames.
 
-## Source-backed architecture
+## Generate and install
 
-| Concern              | Current source / contract                                                                                                                                                                      |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| UI and folder access | [`web/src/App.tsx`](../web/src/App.tsx), [`web/nsp-input.mjs`](../web/nsp-input.mjs): one read/write picker, optional title keys, root discovery                                               |
-| Orchestration        | [`web/browser-packager.mjs`](../web/browser-packager.mjs): authenticated stages, validation, resource export and IPA commit                                                                    |
-| Program conversion   | [`web/runtime-sealing/program-worker.mjs`](../web/runtime-sealing/program-worker.mjs): JavaScript rewriter with Capstone/LZ4 WASM, not browser Python                                          |
-| Art and tables       | [`web/production-assets.mjs`](../web/production-assets.mjs), [`web/production-derived.mjs`](../web/production-derived.mjs): authenticated local assets and browser transforms                  |
-| Shaders              | [`web/production-shaders.mjs`](../web/production-shaders.mjs), [`web/sealed-runtime/dotnet-worker.mjs`](../web/sealed-runtime/dotnet-worker.mjs): retained .NET shader runtime and SPIRV-Cross |
-| Resources            | [`web/resource-folder-export.mjs`](../web/resource-folder-export.mjs): direct data folder, bounded verified reuse and owned cleanup                                                            |
-| IPA                  | [`web/browser-blob-output.mjs`](../web/browser-blob-output.mjs), [`web/browser-staged-output.mjs`](../web/browser-staged-output.mjs): staged validation and bounded final Blob                 |
-| Public runtime build | [`web/runtime-build/README.md`](../web/runtime-build/README.md): developer assembly, pinned inventory and deployment artifacts                                                                 |
+1. Open the packager over HTTPS in a supported desktop browser. It checks browser capabilities and loads verified public runtimes before you select private inputs.
+2. Select the input folder and grant read/write access. Original NSPs and key files are not overwritten.
+3. Choose the target and optional settings, then generate. Settings remain editable until generation starts.
+4. Download the completed IPA. If automatic download is blocked, use the visible download link. The browser controls where the IPA is saved.
+5. Sign and install the IPA. Optional browser-local signing accepts your P12/PFX, export password and matching provisioning profile; see [signing preparation](../web/SIGNING_PREPARATION.md). Credentials are not sent to a signing server. The signed IPA includes the provisioning profile, never the private signing identity or password. Without local signing, use your preferred signing tool separately.
+6. Copy the completed `data` folder from the input folder into **On My iPhone / D2R Mobile**, or the corresponding app folder on iPad, using Files. Keep its name and contents intact. Game resources are separate from the IPA.
 
-The complete normalized shader-source digest must match the template's
-`SHADER_SRC`. Chain-label substitution alone cannot accept incompatible sources.
-The pinned template hash, inventory and actual Mach-O target remain validation
-gates. Guest.framework may carry a linker-style ad-hoc structural signature; this
-is not the user's signing identity or installation authorization. The bounded
-no-DLC executable variant also requires re-signing; see
-[content mode](../web/D2R_RUNTIME_CONTENT_MODE.md).
+An existing `data` folder is reused only after a full bounded comparison with the current input. Mismatches stop export without changing it. If you explicitly skip original-resource export, you must already have resources for the same game, update and DLC; the browser does not verify them in that mode.
 
-## Privacy, limits and failure handling
+The experimental **Older-GPU option** also produces a separate `Legacy Device Pack` folder (`-2`, `-3`, etc. if the name exists) and matching IPA overlays. Copy the completed pack alongside `data`, preserving its own `data` child and `manifest.json`. Use the IPA and pack from the same run. This option is not covered by the reported device test.
 
-Private game content and keys stay local; there is no remote conversion service
-or runtime CDN fallback. Public asset downloads are not private-input uploads.
-The prototype does not impose a CSP network lockdown. No-upload behavior and
-failure/cancel network traffic still need verification on the built release;
-source intent is not a measured network audit. Do not put key contents in logs,
-URLs or persistent caches. JavaScript memory cleanup is best effort, not secure
-erasure.
+## Limits and recovery
 
-Bounds, checksums, archive paths, input authenticity and output inventory must be
-validated before success. ZIP32, stage-memory limits, OPFS quota and output Blob
-limits can reject a large genuine input. Bulk resources stream separately, but
-the final IPA is not a streaming file-picker export. Do not claim unlimited size
-or production-size endurance. Cancellation closes the single-use session and
-requires a reload. Incomplete resources are marked; a later IPA failure does not
-invalidate an independently completed resource folder.
+- The IPA uses ZIP32 and a 512 MiB archive limit. Its final download Blob can occupy that much memory. Bulk resources stream separately; disk space, browser quota and other component limits still apply.
+- Generation is single-use. Cancellation closes the session; reload to start again.
+- Never copy an incomplete resource export. A completed resource folder may remain valid even if a later IPA step fails.
+- Public runtimes download before private processing. There is no remote conversion service or runtime CDN fallback. JavaScript cleanup is best effort, not secure memory erasure.
 
-Chromium on Windows/macOS is the intended desktop target, not proof of every
-browser/version combination. Capability detection and real destination/quota
-behavior need platform validation. Do not silently substitute upload processing
-or describe synthetic outputs as ready to play.
+## Development
 
-## Remaining acceptance gates
-
-- Build the current Python-free source and validate complete runtime inventory,
-  licenses, pinned hashes and worker initialization before deployment.
-- Run repository and browser checks with exact revision, platform and outcomes;
-  historical green runs cannot certify new changes.
-- Capture post-change UI screenshots, verify matching Chinese/English text and
-  comments, and satisfy the canonical string-table requirement.
-- Test full Windows/macOS Chromium flows, cancellation, memory/quota/disk limits,
-  browser downloads and private-data network behavior.
-- Privately compare real authenticated base/update/optional-DLC outputs against
-  the matching native reference, including complete shader digest and resources.
-- Separately sign, install and exercise supported devices, gameplay and save/load.
-  Never upload game inputs, keys or generated packages as PR evidence.
-
-Pending acceptance does not replace or weaken [CONTRIBUTING.md](../CONTRIBUTING.md)
-or the [PR template](../.github/PULL_REQUEST_TEMPLATE.md). Operational detail remains in
-[frontend overview](../web/README.md), [production flow](../web/PRODUCTION_FLOW.md)
-and [testing](../web/TESTING.md).
+See [developer commands](../web/README.md), [production architecture](../web/PRODUCTION_FLOW.md), [runtime builds](../web/runtime-build/README.md) and [testing](../web/TESTING.md).

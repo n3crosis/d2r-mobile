@@ -1,9 +1,9 @@
 # Linked asset job adapter
 
 `createAssetPipelineAdapter` is callable through the existing packaging job's
-`generateAssets({extracted, selection, signal})` interface. It composes existing
-primitives, but **does not supply a complete production asset recipe** or enable
-the Generate IPA button.
+`generateAssets({extracted, selection, signal})` interface. It composes reusable
+primitives; `production-assets.mjs` supplies the complete production recipe.
+The adapter alone does not provide a full asset pipeline.
 
 ## Provenance and source ordering
 
@@ -54,23 +54,6 @@ apply. Generated intermediate bytes are wiped once copied/consumed; failure
 removes retained output and returns a fixed sanitized error. Cleanup failure is
 reported explicitly. No browser-runtime factory silently loads remote assets;
 trusted application wiring must provide fully preloaded/sealed clients.
-
-## Local evidence
-
-`node --test tests/asset-pipeline-adapter.test.mjs tests/extraction-job-adapter.test.mjs tests/casc-overlay-writer.test.mjs`
-
-The synthetic integration uses mock texture decode/encode/transform clients and
-a fake extraction worker, but the actual extraction adapter/provenance gate,
-CASC JavaScript writer and Python
-source-pinned serializer. It verifies ordering, native paths, immutable provenance
-inventory, expected output count, source-hash rejection, cancellation, late-output
-wiping, input/output lifetime and recipe snapshots. Existing CASC tests retain
-independent original-native byte parity. The texture codec's separate native/WASM
-proof is not replaced by the mock integration.
-
-No real game inputs, complete production recipe, full end-to-end browser job,
-unsigned production IPA, sealed BC3 encoder runtime, device or UI validation is
-claimed. `completeAssetPipeline` and `productionConversion` remain false.
 
 ## Source-derived generation extensions
 

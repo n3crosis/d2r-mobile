@@ -7,7 +7,7 @@
 The caller provides:
 
 - A trusted recipe list: operation `image-default-frame`, a `data/...` logical CASC asset path, a frame index and explicit output-name-to-app-relative-path mappings.
-- A factory returning the existing asset spike's `AssetWorker` (`run` and `close`). Factory injection keeps node tests independent of browser globals and does not implicitly publish WASM files in the Vite build.
+- A factory returning the existing asset spike's `AssetWorker` (`run` and `close`). Factory injection keeps node tests independent of browser globals and does not implicitly publish WASM files in the frontend build.
 - An extracted-data handle with `logicalAssets.read(path, {maxBytes, signal})`, or an explicit `resolveReader(extracted)` implementation. This must return **decoded logical CASC file bytes**. Raw NSP/NCA/RomFS range reads do not satisfy this contract.
 
 Example composition after a deployment has prepared and self-hosted the proven asset runtime:
@@ -31,7 +31,7 @@ The transformed sprite is the worker's **default-state color mask applied to a s
 
 ## Important build-artifact distinction
 
-The existing worker also produces an experience-table **C header** and an overlay-directory **plan**. Neither is a deployable application asset by itself. This packaging adapter deliberately rejects those operations rather than placing them in the application and pretending that experience compilation or CASC overlay generation happened. For released-shell packaging, native `d2rm_pack.py` passes the generated experience/vault/skill-index C sources through `shell_stubs.data()` to produce `dm/derived.tsv`; the shell reads that TSV at runtime using `dm_derived_rt.h`. The next bridge must preserve all five record families (EXP, VTPART, VTROW, VTSET, TAROW), verify shell-compatible row counts, and package the complete TSV, not compile or bundle the header directly. A future CASC writer must consume and validate the overlay plan.
+The existing worker also produces an experience-table **C header** and an overlay-directory **plan**. Neither is a deployable application asset by itself. This packaging adapter deliberately rejects those operations rather than placing them in the application and pretending that experience compilation or CASC overlay generation happened. For released-shell packaging, native `d2rm_pack.py` passes the generated experience/vault/skill-index C sources through `shell_stubs.data()` to produce `dm/derived.tsv`; the shell reads that TSV at runtime using `dm_derived_rt.h`. The production derived-table and CASC implementations live in `production-derived.mjs` and `production-assets.mjs`; this small image adapter does not replace them.
 
 ## Bounds and lifecycle
 
@@ -47,7 +47,7 @@ The existing worker also produces an experience-table **C header** and an overla
 
 ## v61 and remaining gaps
 
-`ASSET_ADAPTER_CAPABILITIES.completeAssetPipeline` is false. v61 remains rejected by default with `ASSET_V61_NOT_CONNECTED`. After the separate texture worker passed [real Chromium/native parity on commit 1db2b64](https://github.com/n3crosis/d2r-mobile/actions/runs/39395178181), an explicit **PNG-only** composition was added in `v61-asset-worker.mjs`:
+`ASSET_ADAPTER_CAPABILITIES.completeAssetPipeline` is false. v61 remains rejected by default with `ASSET_V61_NOT_CONNECTED`. An explicit **PNG-only** composition is available in `v61-asset-worker.mjs`:
 
 ```js
 const adapter = createAssetGeneratorAdapter({
@@ -59,13 +59,4 @@ const adapter = createAssetGeneratorAdapter({
 
 The composed worker invokes the actual texture WASM worker, checks source dimensions before decode, validates decoded format/length, then passes an internal raw-RGBA sprite to the unchanged Pyodide transform. This intermediate is not an application output. Only the resulting PNG is exposed; requesting `frame.sprite` from a v61 source fails `ASSET_V61_SPRITE_UNSUPPORTED`. Both workers are terminated on close and intermediate pixel buffers are erased. This does **not** implement native v61 BC3 encoding/swizzle or make PNG interchangeable with a game sprite.
 
-The existing v31 path and independent oracle are unchanged. A new asset-CI step builds the texture bridge with the same pinned official Emscripten SDK, authors a two-frame v61 BC3 source using the real native swizzle library, runs both actual browser workers through the packaging adapter, and compares the PNG pixels against native BC decode plus the independent scalar color-mask calculation. This cross-adapter proof passed [run 39396778418](https://github.com/n3crosis/d2r-mobile/actions/runs/39396778418) on commit `fe5abb21b5527c6d230f86c94a4a7a42c6982036`; logs confirm exact native pixel parity through both actual workers and the packaging adapter.
-Missing: the real logical CASC reader connection, complete native image recipe inventory, source-manifest validation for actual game versions, original-font handling, BC encoding/swizzle where required, full HUD/skill/vault generation, complete `shell_stubs.data()` conversion to runtime `dm/derived.tsv`, CASC overlay packing, destination inventory matching against the shell, main UI integration and real-game end-to-end proof.
-
-## Evidence and tests
-
-The underlying Pyodide image/table/path subset passed real Chromium CI on commit `143e375973d4f4d5fbc770e3464f9112c2403a4b`: [asset run 39392846657](https://github.com/n3crosis/d2r-mobile/actions/runs/39392846657).
-
-`tests/asset-generator-adapter.test.mjs` covers the new adapter with **synthetic injected reader/worker doubles**: bounded logical reads, operation arguments, exact entry data, immutable ownership, chunk sizing, cleanup, cancellation, path rejection, unsupported stage rejection, error redaction and single-use lifecycle. `tests/v61-asset-worker.test.mjs` separately covers the composed worker contract and PNG-only opt-in restrictions with synthetic doubles. These tests establish the adapter contract, not new Pyodide or real-game parity. They are picked up by the existing web CI test glob; execution is deferred to CI after this coherent implementation batch.
-
-The separate `derived-tables` worker boundary now implements original `shell_stubs.parse/data` conversion with complete-source, trusted count and hash checks. Its own synthetic native/browser differential checks remain CI-pending. See `toolchain/asset-generation-spike/DERIVED_TABLES.md`; the image adapter still does not pretend this supplies the missing full asset inventory.
+Run `node --test web/tests/asset-generator-adapter.test.mjs web/tests/v61-asset-worker.test.mjs` for bounded reader, worker, ownership, cleanup and PNG-only adapter checks.

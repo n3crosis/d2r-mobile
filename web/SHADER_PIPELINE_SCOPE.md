@@ -62,7 +62,7 @@ Geometry/tessellation, readable-tile variants, full per-game shader/facts
 extraction, control-key construction, c1 index generation and final replay
 metadata remain unintegrated. Unsupported stages and translator query/default
 notes fail closed instead of falling back or silently inferring resource types.
-Authored graphics cases passed the linked CI run below; accepting this
+Accepting this
 validated input layout does not prove all game graphics shaders compatible.
 
 One conversion runs at a time. Code is copied before transfer, so caller bytes
@@ -73,81 +73,9 @@ shader, 256 MiB cumulative generated MSL and 16,384 expected shaders. Only sourc
 hashes are retained by the pipeline after return, not every MSL/SPIR-V buffer.
 These resource bounds do not certify all real shaders will fit or translate.
 
-## Evidence
+## Local verification
 
-Ten targeted Node tests cover both wire protocols, transfer behavior,
-independent native Python source-digest equivalence and ordering, incomplete
-catalogs, shell/digest mismatch, unsupported stages, missing query facts,
-malformed SPIR-V, compiler provenance/replay mismatch, timeout, cancellation,
-crash/disposal, truncated or mismatched SPH, invalid graphics type maps and
-compiled-stage mismatches. These unit tests use simulated workers; separate actual
-browser integration evidence follows.
-
-The individual actual browser stages have separate native differential CI.
-SPIRV-Cross's [verified Chromium run](https://github.com/n3crosis/d2r-mobile/actions/runs/39394114125)
-passed compute, fragment and storage synthetic cases. The separate `shader-pipeline-browser-checks.yml` and
-`toolchain/shader-pipeline-spike/capture-browser.mjs` now define the linked real
-Chromium/native differential gate.
-[Linked run 39396249823](https://github.com/n3crosis/d2r-mobile/actions/runs/39396249823)
-passed on `582d586945db659a89094a0e8a4971196f330600` (2026-10-20): real
-translator -> Cross module workers, exact MSL, resource sidecar, SPIR-V hash,
-upstream/replay reflection and the complete synthetic SHADER_SRC gate all passed.
-Artifact `12251768859` contains bounded synthetic evidence (seven-day retention).
-No game data, real-game shader coverage, Apple Metal compilation or working
-IPA output is claimed.
-
-## Observed release mismatch
-
-The independently inspected official v1.0.18 shell ZIP (SHA-256
-`a383552871851ddb5923033639358e2a3c205ae411676e6538cd098743bbe37b`)
-contains PRODUCT `3.3.94012-r44`, CHAIN `f2bc055e8f1e`, KIND `ios`,
-SHADER_SRC `be59c864f087b377` and SPIRV_CROSS `1.4.363.0`.
-The browser/native compiler is now pinned to that official 1.4.363.0 source,
-commit `f11ba9f0b21ba8fc15153d50a2a1ae31ab1cf8f7`, independently reverified
-against the official tag and fetched source. Obsolete or unknown compiler
-versions and disagreement between shell and trusted recipe still fail before
-worker startup. Full catalog equality with SHADER_SRC `be59c864f087b377` and
-all trusted release recipe gates remain mandatory. No native chain/header or
-shell metadata is rewritten. The observed source chain `c675d3fa7c90` and
-header `15cf7ca29eaf` still differ from the release chain; matching the compiler
-alone does not resolve this condition. The runs documented below used 1.4.357.0
-and are historical evidence; release-aligned compiler parity is recorded last.
-The mismatch alone is not evidence that any particular game shader renders
-incorrectly; real-game compatibility remains unestablished.
-
-## Verified authored graphics extension
-
-The new vertex fixture loads attribute0's four components with ALD, writes all
-four position components with AST, and exits. The fragment fixture writes four
-known float constants using MOV32I, enables RGBA output0 in SPH OmapTargets,
-and exits. Opcode fields, stage bits and scheduler placement are constructed
-from the vendored decoder, not game bytes. Native and browser pipelines must
-match exact MSL/resource/reflection outputs and SPIR-V hashes; additional checks
-require vertex input0 plus position and fragment color0 with no discard.
-Actual C# bridge rejection of invalid headers/type maps is exercised directly
-in Chromium, separately from the adapter guards.
-
-[Graphics run 39398141357](https://github.com/n3crosis/d2r-mobile/actions/runs/39398141357)
-passed on `44b8e64d550f3575e88ebf83f65bdcfb9673b6c5` (2026-10-20), including
-all three real linked stages and negative bridge cases. Artifact `12252583163`
-records Chromium `156.0.8078.4` and aggregate synthetic SHADER_SRC
-`bb602debeac6ca51`. Inspected vertex output/replay has `pos_attr=0`,
-`pos_w=attr`; fragment MSL writes exactly `(1.0, 0.5, 0.0, 1.0)` to color0,
-with no discard/sample mask. Existing compute-only native byte/sidecar parity
-also remained green in run `39398141113`. These synthetic semantics and parity
-results do not establish real-game, GPU-rendering or release-shell compatibility.
-
-## Verified release-aligned compiler regression
-
-[Linked run 39403162064](https://github.com/n3crosis/d2r-mobile/actions/runs/39403162064)
-passed on `664790f0b4d3cbe1082f174f0f1196164828d7f4` (2026-10-20).
-Both native and actual browser compilers used official SPIRV-Cross 1.4.363.0.
-The authored compute/vertex/fragment SPIR-V hashes, unchanged resource sidecars,
-exact MSL, upstream/native replay reflection, negative bridge cases and complete
-synthetic catalog checks all passed. Artifact `12256012556` retains bounded
-synthetic evidence for seven days. The full production digest
-`be59c864f087b377`, authenticated release recipe and remaining native asset/
-metadata requirements are not established by this regression.
+The optional `shader-pipeline` profile in [TESTING.md](TESTING.md) compares authored translator/Cross outputs with native references. Unit tests cover protocol, ownership, source-digest, validation and cancellation contracts; synthetic fixtures do not establish full game or GPU equivalence.
 
 ## Explicitly gated tessellation source port
 

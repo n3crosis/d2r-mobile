@@ -7,10 +7,7 @@ before private inputs but does not enforce a CSP network lockdown. No-upload
 behavior is not browser-enforced isolation, and this historical proof does not
 establish isolation of the current production application.
 
-The complete public runtime assembly passed Verify at `158d6cf`; that historical
-build result is not a real-input network-isolation or game-execution proof.
-Separate [Pyodide](PYODIDE_SCOPE.md) and [.NET](DOTNET_SCOPE.md) records retain their
-own evidence and limitations.
+See the separate [Pyodide](PYODIDE_SCOPE.md) and [.NET](DOTNET_SCOPE.md) harness contracts.
 
 ## Concrete boundary
 
@@ -74,22 +71,3 @@ retains this proof; the current Verify workflow does not run it. A passing resul
 proves only this texture path on the recorded Chromium build, not other runtimes,
 Windows/macOS, WebRTC, navigation, compromised code, extensions or hosting headers.
 The harness's strict CSP is separate from the production application's policy.
-
-## Verified execution (2026-10-20)
-
-[Run 39396778404](https://github.com/n3crosis/d2r-mobile/actions/runs/39396778404),
-job `118541350842`, passed on commit
-`fe5abb21b5527c6d230f86c94a4a7a42c6982036` using Chromium `156.0.8078.4`
-on Ubuntu 24.04. All five preload failures created zero Workers; the valid case
-created one Worker and passed every network-receipt, conversion, transfer and
-custom-instantiation assertion described above. No test interception supplied the
-network block.
-
-The four hashed runtime assets totaled 48,520 bytes (texture JavaScript 8,086;
-WASM 32,418; adapter 4,702; proof Worker 3,314). This excludes bootstrap, manifest,
-HTML and notices, and is not a complete production transfer/memory measurement.
-Manifest SHA-256:
-`d86630081004748cc0ff845b1752f9bb02132b0cbd17bc3af9e2305d9a7b42ba`.
-
-This result does not extend to Pyodide/.NET, Windows/macOS or deployed hosting.
-No production policy or input gate was changed.

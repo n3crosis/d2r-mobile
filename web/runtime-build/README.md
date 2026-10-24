@@ -84,7 +84,7 @@ customization, an idle session, and an available signing factory when requested.
 This implemented wiring and the assembled public bytes do not establish
 current-revision browser, real-input/native-parity or signed device/gameplay
 acceptance. See [production flow](../PRODUCTION_FLOW.md) and
-[acceptance boundaries](../../docs/WEB_IPA_PACKAGER.md).
+[packaging guide](../../docs/WEB_IPA_PACKAGER.md).
 
 ## Content-addressed public transport
 
@@ -126,13 +126,7 @@ release-validation gates.
 
 ## Validation boundary
 
-Local JavaScript syntax, scoped Oxc checks and non-mutating planning/fingerprint
-commands pass. The real WASM receipt probe has run for an earlier source snapshot;
-that does not authenticate a later compiler revision. Final packaging requires
-the exact current module and source receipt. Cold builds of non-AIR runtimes, byte-identical
-reproducibility, browser startup and full-chain success remain separate
-validation boundaries. Missing evidence is never a reason to substitute
-synthetic binaries, accept a stale cache or silently omit a component.
+Final packaging requires the exact current modules, source receipts and complete inventory. Never substitute synthetic binaries, accept stale caches or silently omit a component.
 
 The sealed worker entrypoints are bundled with Bun after native compilation.
 Public shader map/facts/conflicts are copied only after matching their source

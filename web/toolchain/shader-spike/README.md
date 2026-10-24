@@ -1,16 +1,6 @@
-# Browser shader translator spike (synthetic EXIT parity verified)
+# Browser shader translator
 
-This is isolated developer scaffolding, **not a working translator release**.
-GitHub Actions run `39387602517` passed C# restore, authored-source format,
-Release build/analyzers (zero warnings/errors), and static publish using the
-pinned .NET SDK/workload set `10.0.402`. After repairing static-asset deployment,
-[runtime run `39389720867`](https://github.com/n3crosis/d2r-mobile/actions/runs/39389720867)
-on commit `454f84865acfc740883b879b9b509698a96f20a7` passed actual Chromium worker
-execution, independent original native CLI execution, exact SPIR-V bytes and
-complete sidecar parity, and both Vulkan 1.1 SPIR-V validation checks. This proves
-only the tiny authored EXIT case on Linux Chromium, not game compatibility.
-The React/shadcn preview does not load this directory. It does not unblock IPA
-assembly by itself. There are no game bytes, keys, or generated binaries here.
+The production .NET/WASM shader bridge and its local synthetic harness use the pinned SDK/workload set 10.0.402. No game shaders or keys are distributed.
 
 ## Chosen boundary
 
@@ -19,9 +9,7 @@ A module worker calls a `JSExport` taking job JSON and shader bytes, returning
 SPIR-V as base64 and the existing resource sidecar. File paths and CLI filesystem
 operations stay out of the bridge. The original proven fixture is synthetic compute.
 The graphics extension now validates a full 0x50-byte SPH, declared-stage agreement
-and explicit attribute/output component maps for vertex and fragment. Its authored
-linked native differential corpus passed run `39398141357`; other stages remain
-rejected. Size caps
+and explicit attribute/output component maps for vertex and fragment. The production adapter also supplies explicit guarded tessellation jobs; see [catalog contract](../../SHADER_CATALOG_SCOPE.md). Size caps
 (1 MiB shader, 64 KiB metadata) and terminating the worker bound this test;
 they are not a complete hostile-input validator. The worker is single-threaded,
 not a shared-memory/pthread build. Do not expose this harness as a production API.
@@ -31,8 +19,7 @@ editing upstream. `upstream-source.sha256` records the source it was copied from
 The parity utility rejects source drift. It does not mechanically prove the copy
 is equivalent; review and parity tests remain required. Preserve c1 jump-table
 reads, resource binding allocation, debug/reduced flags and graphics-state defaults
-when extending it. The bridge accepts compute, vertex and fragment with explicit
-metadata guards, not geometry/tessellation or all possible native jobs. See the
+when extending it. The bridge accepts explicitly supported stages with metadata guards, not arbitrary native jobs. See the
 separate shader-pipeline-spike for authored graphics fixtures and evidence.
 
 ### Dependency closure
@@ -48,16 +35,7 @@ separate shader-pipeline-spike for authored graphics fixtures and evidence.
   resources from this combined assembly. The only linked caller is the GLSL
   generator; no other Common resource APIs are promised.
 
-Static inspection found the initial Common dependencies in the linked shader sources.
-The first CI compiler pass identified `ObjectPool<T>` in SPIR-V generation; its
-original Common source is now linked too.
-The original Common resource helper drags in `StreamUtils` and recyclable streams;
-its project also references MsgPack, Humanizer and Gommon and includes unrelated
-platform code. Source-linking avoids those dependencies rather than hoping the
-browser linker removes them. This closure is **compiler-confirmed by run `39387602517`**, not runtime-confirmed.
-Generic integer operations, span layout, thread-static caches, unsafe code and
-browser behavior beyond the synthetic EXIT smoke test still require tests. The single-assembly arrangement
-is deliberate; named GLSL resources retain their original logical names.
+The linked sources retain named GLSL resources in the combined assembly.
 
 Keep `dm/third_party/ryujinx/LICENSE.txt` and the vendored provenance README with
 redistributed artifacts. Linked upstream source remains upstream-licensed;
@@ -79,7 +57,7 @@ The worker approach avoids blocking React:
 Use the .NET 10 manual-worker path, not the .NET 11 template shown alongside it.
 Start with interpretation, no trimming and no AOT; measure before optimizing.
 
-Developer commands (the equivalent pinned CI compile/publish has passed; no local SDK install was performed):
+Developer commands:
 
 ```sh
 dotnet workload install wasm-tools
@@ -90,8 +68,6 @@ dotnet publish web/toolchain/shader-spike/ShaderSpike.csproj -c Release
 ```
 
 Resolve compiler/platform analyzer findings rather than suppressing them wholesale.
-The authored C# formatting gate passed in run `39387602517`.
-Prettier/ESLint checks cover only their supported web files, not C# compatibility.
 Do not include linked vendored sources in formatting changes. Keep build products
 under the spike's ignored `bin/`, `obj/` or `artifacts/` directories.
 
@@ -102,11 +78,6 @@ Use an already-approved static host/server with correct Wasm MIME type, no SPA
 fallback for missing assets, and a CSP permitting the .NET Wasm runtime. No COOP/
 COEP requirement is assumed for this single-threaded worker; verify actual hosting.
 
-An adequately provisioned remote developer build is the next practical step.
-A successful Sites npm build does **not** establish that the .NET SDK/workload is
-available there. Keep Sites deployment unchanged until a verified bundle exists.
-Do not put SDK installation in the public browser startup or ordinary preview build.
-
 ## Synthetic fixture and oracle gate
 
 `wwwroot/synthetic-fixture.mjs` constructs 16 bytes (the top-level module re-exports
@@ -115,7 +86,7 @@ little-endian `0xe30000000007000f` at byte 8. This is derived from this reposito
 `InstTable` EXIT pattern, `InstExit` predicate/condition fields (`PT=7`, `Ccc.T=15`),
 and `Decoder.FillBlock` skipping a control word each 32 bytes. It is an intentionally
 minimal encoding, now confirmed by native translation for this bounded fixture.
-No shader header is needed for compute. Native translation and browser parity for this fixture passed in run `39389720867`.
+No shader header is needed for compute.
 This is not a GPU execution correctness test.
 
 1. Prepare generated fixture files outside tracked source:
@@ -161,106 +132,4 @@ Stop on a build, runtime, parity or validation failure and diagnose it. No passi
 C# build, EXIT fixture or SPIR-V validation alone proves game compatibility, Metal
 conversion, metallib availability, correct rendering or a working unsigned IPA.
 
-## Automated runtime gate
-
-`.github/workflows/shader-runtime-parity.yml` runs a separate, bounded job on
-standard Ubuntu 24.04. It rebuilds the published bundle rather than transferring
-runtime binaries between jobs. All compiler, Python-equivalent fixture preparation,
-Playwright and validator tooling stays on developer infrastructure. End users
-install none of these tools.
-
-- `package.json` and its isolated lock pin official `playwright` **1.64.1**, verified
-  against the npm registry on 2026-10-20. Node 22 is used. `npm ci --ignore-scripts`
-  installs developer dependencies; the official Playwright CLI explicitly installs
-  Chromium with its Linux dependencies on the CI runner only.
-- The original native CLI and original Common/Shader project references remain
-  unchanged. Its embedded `--source-sha` is independently checked against the
-  original Program.cs and csproj. Commands run from the SDK-pinned spike directory,
-  including commands referring to the native project outside it.
-- `capture-browser.mjs` searches the actual reported
-  `bin/Release/net10.0/publish/` tree for exactly one complete deployment root
-  containing index.html, worker.mjs, synthetic-fixture.mjs and `_framework/dotnet.js`.
-  A loopback-only static server serves this root, with Wasm MIME and no SPA fallback.
-- Chromium opens the real harness and clicks its button. The existing module
-  worker executes the browser .NET runtime. Playwright captures the actual JSON
-  download, not a substituted Node result; it requires the expected worker URL,
-  filename and payload. Download bytes are streamed with a 256 KiB cap and saved
-  before closing the browser context. External HTTP requests are blocked.
-- Native output and browser capture must have exact SPIR-V byte equality and
-  complete parsed sidecar equality. Metadata arrays retain their order; no notes,
-  resource properties or unknown fields are discarded. The comparator rejects
-  noncanonical base64 and oversized outputs before comparing. It writes a decoded
-  browser SPIR-V file only after full parity passes.
-- Both native and browser SPIR-V are validated with `spirv-val --target-env vulkan1.1`.
-  The validator is installed from the runner's configured Ubuntu package repository;
-  its actual candidate and installed version are logged. No automatic target
-  relaxation or source modifications are allowed when validation fails.
-- The job allows 25 minutes overall, the native fixture 60 seconds, browser capture
-  120 seconds (harness worker limit 60 seconds), and each validator 30 seconds.
-  Only this tiny authored EXIT fixture is used. Source hashes, version diagnostics,
-  byte hash and step outcomes are logged. Browser diagnostics are capped at 100
-  events of 1,024 characters each; result JSON is capped at 256 KiB, and SPIR-V at
-  128 KiB. Nothing is uploaded or deployed, including binaries, browser profiles,
-  traces or credentials. The final summary explicitly preserves compatibility limits.
-
-Local lock generation first hit the workspace's disk limit. The two exact package
-entries were populated from official version-specific registry metadata (tarball URL
-and SHA-512 integrity), then successfully checked/normalized using npm's offline
-`--package-lock-only --ignore-scripts --no-audit` operation. CI must still perform
-`npm ci` and the audit; no browser or package install was attempted locally.
-
-Official references: [Playwright library](https://playwright.dev/docs/library),
-[download capture](https://playwright.dev/docs/downloads),
-[download stream API](https://playwright.dev/docs/api/class-download),
-[browser installation](https://playwright.dev/docs/browsers), and
-[Khronos SPIRV-Tools](https://github.com/KhronosGroup/SPIRV-Tools).
-
-A green runtime gate means only synthetic EXIT native/browser translation parity
-and structural SPIR-V validation on Linux Chromium. It does not mean GPU execution,
-Windows/macOS browser testing, resources, arithmetic, branch correctness, game
-compatibility, Metal conversion, or working unsigned IPA output.
-
-### First runtime failure and deployment repair
-
-Run `39388812968` found no complete published harness. The project had used legacy
-`WasmExtraFilesToDeploy` items, which are not the WebAssembly SDK's static-content
-mechanism. The pinned SDK imports StaticWebAssets, whose default content includes
-`wwwroot/**`. The single fixture source now lives beside index.html and worker.mjs
-under wwwroot; the old path re-exports it for existing native/tests imports. Legacy
-deploy items were removed. Translation code, native oracle and fixture bytes are
-unchanged. The capture runner also records bounded publish-directory inventory
-before checking its deployment-root requirements, so a remaining layout failure is
-visible without uploading any binaries.
-
-SDK source: [WebAssembly imports](https://github.com/dotnet/sdk/blob/v10.0.402/src/WasmSdk/Sdk/Sdk.props)
-and [default static content](https://github.com/dotnet/sdk/blob/v10.0.402/src/StaticWebAssetsSdk/Sdk/Sdk.StaticWebAssets.StaticAssets.ProjectSystem.props).
-
-### Verified runtime evidence
-
-The repaired gate passed in run `39389720867` with no browser diagnostic events:
-
-- Official Playwright `1.64.1`, Chromium `156.0.8078.4`, Ubuntu 24.04.
-- Actual deployable root: `bin/Release/net10.0/publish/wwwroot/`.
-- Native original-source check: `d760b2f173ee5e0c`; original native build emitted
-  zero warnings/errors and translated one fixture successfully.
-- Browser worker observed; actual downloaded result was 1,138 bytes. Capture took
-  2,542 ms including browser startup and page interaction, **not** isolated shader
-  translation time or a performance benchmark.
-- Exact 676-byte SPIR-V match, SHA-256
-  `7925f3ad17929801226064aa3fd504a268c5ca4d1a50b3f62d50541a4fd274ae`.
-- Complete JSON sidecar equality passed, with no field filtering.
-- Installed validator reported SPIRV-Tools `v2025.1`; native and decoded browser
-  bytes both passed `--target-env vulkan1.1` without relaxing the target.
-
-This historical compute-only job did not establish Windows/macOS Chromium,
-nontrivial arithmetic/resources/branches, graphics, rendering, game compatibility,
-Metal conversion or working IPA assembly. Nothing from that job was deployed or
-uploaded as a binary artifact.
-
-The later linked [graphics gate](https://github.com/n3crosis/d2r-mobile/actions/runs/39398141357)
-passed on `44b8e64d550f3575e88ebf83f65bdcfb9673b6c5`: authored vertex
-attribute0-to-position and fragment constant-color cases match original native
-SPIR-V hashes, complete sidecars, Metal source and replay reflection. Raw bridge
-SPH/type-map rejection was exercised in Chromium. The unchanged compute gate
-also passed run `39398141113`. This extends synthetic stage evidence, not game
-coverage, rendering proof or current release-shell compatibility.
+The optional `shader` profile in [TESTING.md](../../TESTING.md) runs this harness locally. Default CI builds the runtime but does not execute the parity profile.

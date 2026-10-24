@@ -15,16 +15,4 @@ Compiler implementation, compatibility headers and LLVM fixes belong to the reus
 
 `fixtures/` and `ci-compile-canary.mjs` remain D2R-owned. Four native API smoke inputs live in `fixtures/native-api/`. Optional native test drivers require explicit external fork clang/header paths; they do not download or build a compiler. Source invariant tests authenticate exact built fork inputs instead of reading local patch text.
 
-## Real-device report / 真机测试报告
-
-On 2026-10-23, the maintainer reported that the generated IPA works and explicitly confirmed testing on a real device. The report did not identify an exact artifact, device/iOS version or gameplay test matrix. This records that successful user test without attributing it to every compiler fixture or claiming Xcode-equivalent numerical behavior.
-
-2026-10-23，维护者报告生成的 IPA 可用，并明确确认已进行真机测试。报告未注明具体产物、设备/iOS 版本或游戏测试矩阵。此处记录该次用户测试成功，不把它扩展为每个编译器测试项均通过设备验证，也不宣称与 Xcode 的数值行为等效。
-
-## Historical evidence
-
-The previous authenticated compiler-only 7,212-shader result and user-reported device success are historical evidence, not validation of a new fork release. The new release has independently authenticated source and artifact provenance, but does not inherit the historical corpus or device results. No fresh browser corpus, GPU numerical or full-game equivalence claim is made.
-
-[Historical README](history/PRE_FORK_README.md), [corpus fixes](CORPUS_FIXES.md), [math profile](MATH_SUPPORT.md) and [NaN checks](NAN_CLASSIFICATION.md) retain the original scope and limitations. Raw original receipt and source manifest remain in `web/tests/fixtures/air-release-history/`; Git history retains the original source/patch recipe. [Historical build procedure](history/PRE_FORK_WASM_BUILD.md) is archival, not an active build route.
-
-See [WASM_BUILD.md](WASM_BUILD.md) for current release consumption and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for source/notice distribution.
+See [WASM_BUILD.md](WASM_BUILD.md) for release consumption and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for corresponding-source and notice requirements. Compiler implementation and math support are maintained in the linked fork.

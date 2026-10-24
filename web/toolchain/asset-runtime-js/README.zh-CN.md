@@ -4,12 +4,12 @@
 
 ## 阶段与当前门槛
 
-1. 全部 12 个现有操作已有固定来源的可调用 JS 流程。定向配方一致性包括 34 个 art 案例、完整 96 文件 HUD 输出及完整 263 文件 overlay 输出与回执；独立 codec/font WASM 证明仍是单独的产物门槛。
+1. 全部 12 个现有操作已有固定来源的可调用 JS 流程。组装前须构建各个固定版本的后端。
 2. 在现有编译 CI 作业内构建 `image-kernels-rust`、`png-codec-exact` 和 `font-rasterizer-exact`。复用 Rust 1.99.1、emsdk 4.0.20、Bun 1.4.3。本目录不增加 CI 作业或包依赖。
 3. 运行 `bun web/toolchain/asset-runtime-js/build.mjs`。它执行所有配方来源检查、对照构建回执校验 WASM 字节、检查零宿主导入和必需导出，并实际初始化每个后端以核定版本。随后打包完整导入图、嵌入三个 WASM 的 SHA-256/尺寸记录，生成闭合的组件清单。
 4. 客户端/构建/打包选择已整体接通。缺少产物、操作不完整、来源校验或打包失败均会阻止发布；不存在 Python 回退。
 
-`node web/toolchain/asset-runtime-js/build.mjs --plan` 只打印阶段、操作列表与来源/产物路径，不进行构建。本地尚未运行完整组装：环境有像素 WASM，但没有 `bun` 命令及 PNG/字体 WASM 产物。语法、仓库格式/lint、少量协议/传输检查和已有像素 WASM ABI 检查可独立运行；它们不是完整运行时或游戏输入验证。
+`node web/toolchain/asset-runtime-js/build.mjs --plan` 只打印阶段、操作列表与来源/产物路径，不进行构建。
 
 ## 运行时契约
 

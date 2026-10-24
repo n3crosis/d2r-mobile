@@ -2,7 +2,7 @@
 
 [简体中文](README.zh-CN.md)
 
-Experimental bounded encoder. The committed runtime assembly code includes it in the explicitly selected `legacy-astc` producer closure, not the default download; this internal path does not enable UI. Repository integration does not confirm a particular live deployment or establish browser/device validation or full native parity. See [optional runtime assets](../../runtime-build/OPTIONAL_ASSETS.md). No game assets, keys, generated binaries, or upstream source copies are included in source control.
+Experimental encoder used by the optional Older-GPU mode. Its bytes are preloaded with the public runtime and its worker starts on demand. See [optional runtime assets](../../runtime-build/OPTIONAL_ASSETS.md).
 
 ## Provenance
 
@@ -28,22 +28,10 @@ WASM starts at 32 MiB and has a 128 MiB linear-memory ceiling with recoverable m
 
 Use an already installed official Emscripten 4.0.20 SDK, Git, and CMake: `bash build.sh`. The recipe fetches official source only, verifies the exact clean commit, builds the scalar backend with floating-point invariance enabled, and writes ignored `dist/` artifacts plus compiler version and license. No SDK installer or downloaded executable is run. The recipe requires exactly Emscripten 4.0.20 before fetching sources and retains its version receipt. Native-vs-WASM fidelity measurements remain a future gate. Do not commit generated binaries. Optional production wiring uses verified preload and the separate bounded producer; browser/device validation remains a release gate.
 
-Run `node --test synthetic.test.mjs` for lightweight synthetic JS validation, allocation cleanup, ownership transfer, cancellation, deadline, and error handling. These tests use a fake codec/worker and do not demonstrate actual ASTC encoding, WASM build correctness, quality, speed, or game parity. Separate CI WASM evidence is recorded below; browser codec tests remain unrun.
+Run `node --test synthetic.test.mjs` for lightweight synthetic JS validation, allocation cleanup, ownership transfer, cancellation, deadline, and error handling. These tests use a fake codec/worker and do not demonstrate actual ASTC encoding, WASM build correctness, quality, speed, or game parity. Run the separate [WASM smoke harness](WASM_SMOKE.md) after building the artifact.
 
 The optional producer now connects bounded texture/descriptor transformations and CASC writing in source. Remaining evidence gates include native parity for BC3 decoding/rounding, block-grid stitching/order, mip/thumbnail rewriting and descriptor cache updates, quality verification, browser execution, and end-to-end independently owned inputs. Its streaming SHA stage also retains the [unverified greater-than-4-GiB carry boundary](../sha256-stream-wasm/README.md). A scalar source recipe is a correctness-first starting point, not a measured speed improvement.
 
 ## Native smoke evidence (not WASM)
 
 `bash native-smoke.sh` uses an already installed C++ compiler, checks out the same exact official Arm commit, reads its 22-file static-library source list, and builds only a scalar native smoke executable inside ignored `.build/`. It uses `-ffp-contract=off` to match the invariant backend configuration. It installs no compiler or SDK and fetches no executable. The test uses no game assets.
-
-Historical thorough-only run with GCC 14.2.0: all 16 real encode/decode round trips passed for linear and sRGB profiles, dimensions 1×1, 4×4, 5×7, and 17×3, with solid RGBA and synthetic color/alpha gradients. Solid opaque red was exact; nontrivial gradient four-channel PSNR ranged from 20.83 to 35.12 dB (a smoke threshold only, not a game-quality target). Invalid dimensions, overflow dimensions, profile, buffer lengths, and null input were rejected. Compiler receipt and results remain ignored under `.build/`.
-
-This verifies the actual C ABI compiles and links against the pinned upstream core and produces decodable ASTC. Source inspection confirms the upstream `astcenc-none-static` target and the selected CMake options exist. The local environment lacks Emscripten/CMake; separate CI evidence below covers actual WASM compilation. Native success alone is not WASM or full-pipeline parity. Browser execution, cancellation and full-scale memory remain unverified.
-
-## Historical CI evidence
-
-[Run 39477410207](https://github.com/n3crosis/d2r-mobile/actions/runs/39477410207), source f4f3326, compiled with pinned Emscripten 4.0.20 and passed 16 fixtures / 32 actual WASM encode calls in the explicitly shimmed Node worker. Small fixtures observed a 33,554,432-byte linear heap; this is not a peak browser-memory or maximum-heap enforcement measurement. WASM SHA-256: `518e199e5fc29f743909093d478eb3d650c0398f3c0a17dfd25fcc27a115c2ee`. Browser-worker execution, native/WASM byte equivalence, decode fidelity and full game texture-pack integration remain unverified. At that historical source revision, ASTC was not included in its published runtime payload. The current committed assembly configuration includes the optional producer closure described above; the historical run does not validate that later integration or establish its live deployment status.
-
-### Two-preset native regression
-
-The current native smoke covers 32 encode/decode fixtures across both presets and profiles. Each bridge output is compared byte-for-byte with direct pinned Arm API encoding; thorough uses the original fixed configuration. The bounded local GCC 14.2.0 rebuild passed all 32 fixtures, including exact solid-color round trips, the existing gradient smoke threshold, and invalid preset rejection. This is synthetic native evidence, not a speed benchmark, browser/WASM result, or general quality comparison. The updated WASM smoke requires a freshly compiled ABI version 2 artifact and checks both presets plus omitted-default equality; historical CI receipts do not validate this revision.

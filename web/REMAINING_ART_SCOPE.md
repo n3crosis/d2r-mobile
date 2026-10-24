@@ -31,16 +31,6 @@ are constrained per original operation; individual image output cannot exceed
 1640 by 1024. Buffers are wiped on failure, and owned intermediates are wiped when
 complete. Returned output copies belong to the caller.
 
-## Verification boundary
+## Verification
 
-Minimal local smoke execution covered all five image operation variants on
-patterned authored images. A synthetic main-panel fixture was swizzled with the
-original native NVN library, cropped/spliced using the original native Python
-block-copy expressions, and its 1,449,760 output BC3 bytes matched this JavaScript
-implementation exactly. Scoped Python/JavaScript lint, formatting and packaging
-checks pass.
-
-This is not real game-data or complete browser parity evidence. Pillow versions
-may affect resampling; full PNG/BC3 parity remains a later validation step. This
-module does not enable the production UI, establish shell compatibility, or
-change the pending choice of bulk-resource packaging layout.
+The transforms preserve source-derived image and layout rules. Synthetic fixtures do not replace complete PNG/BC3 comparisons with supported game inputs. Production composition and resource export are documented in [production flow](PRODUCTION_FLOW.md).

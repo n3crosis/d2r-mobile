@@ -9,11 +9,3 @@
 32 个微小确定性输入覆盖 thorough/fast 预设、线性与 sRGB 配置、1×1、4×4、5×7、17×3 尺寸，以及不透明红色与 RGBA 渐变。每个输入经真实 WASM C ABI 编码两次，检查确定性；thorough 输入额外省略预设编码，验证默认字节不变（共 80 次编码）。检查 ABI 版本 2、导出可用性、输出长度、非零数据、不同输入输出区别，以及无效尺寸、配置、预设、长度与空指针。现有 `encodeWithModule` 包装器负责分配清理。没有 WASM 解码导出，因此不断言解码质量或原生字节对等。
 
 唯一工作线程在成功、失败或父线程 30 秒期限到达时均被终止。缺失产物、测试失败、线程意外退出或超时均使父线程返回非零；缺失产物不被静默跳过。JSON 成功记录明确测试专用垫片 Node 环境、输入结果、产物哈希与观测到的最大堆长度。微小输入上的堆长度在配置范围内，不验证最大内存限制的强制执行，也不验证进程或浏览器总 RSS。Node JavaScript 堆资源限制也不限制 WebAssembly 线性内存。
-
-本地验证：语法、限定范围 lint 与格式检查通过。没有 `dist/` 时显式报告缺失产物，退出码为 1。没有宣称本地执行过真实 WASM 编码；独立的 CI 结果见下方真实编码证据。浏览器加载、MIME/CSP、生产工作线程取消、网络行为与端到端转码对等仍未验证。
-
-## 历史 CI 证据
-
-[运行 39477410207](https://github.com/n3crosis/d2r-mobile/actions/runs/39477410207)，源码 f4f3326，以固定 Emscripten 4.0.20 编译，并在明确使用测试垫片的 Node 工作线程中通过 16 个样本、32 次真实 WASM 编码。小样本观测到 33,554,432 字节线性堆；这不是浏览器峰值内存或最大堆强制限制的测量。WASM SHA-256：`518e199e5fc29f743909093d478eb3d650c0398f3c0a17dfd25fcc27a115c2ee`。浏览器工作线程执行、原生/WASM 字节一致性、解码保真与完整游戏纹理包集成仍未验证。在该历史源码版本中，其发布运行时载荷不包含 ASTC。当前已提交的组装配置包含校验预加载的[可选生成器闭包](../../runtime-build/OPTIONAL_ASSETS.zh-CN.md)，默认省略且没有 UI 开关。该历史运行不验证后来的工作线程集成，也不证明当前线上部署内容。
-
-仓库中的当前冒烟测试通过不透明 `data:` URL 导入生成的 JavaScript，使用与生成器相同的 `wasmBinary`、准确 `locateFile` 及字节实例化钩子。这能发现未保护的相对 URL 初始化错误，但不能把 Node 测试当成浏览器 Blob 模块加载证据。固定 Emscripten 4.0.20 的 [shell.js](https://github.com/emscripten-core/emscripten/blob/4.0.20/src/shell.js) 捕获不透明基址目录解析错误，[preamble.js](https://github.com/emscripten-core/emscripten/blob/4.0.20/src/preamble.js) 在解析 WASM 文件名之前优先使用传入的实例化钩子。

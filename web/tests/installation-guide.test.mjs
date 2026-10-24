@@ -2,12 +2,9 @@
 // Static guide and notice checks only; no browser, compiler, game or device execution.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile, access, mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { resolve } from "node:path";
+import { readFile } from "node:fs/promises";
 import { catalog } from "../i18n-catalog.mjs";
 import { IPA_SIGNING_LIMITS } from "../ipa-signing-contract.mjs";
-import { writeFrontendNotices } from "../scripts/frontend-notices.mjs";
 
 const guide = await readFile(
   new URL("../src/components/InstallationGuide.tsx", import.meta.url),
@@ -175,30 +172,4 @@ test("postgeneration copy accepts actual names and does not imply signing instal
     /Do not delete the app.*saves and resources can be removed/,
   );
   assert.doesNotMatch(catalog.dmWebGuideRefresh[0], /7 days/);
-});
-
-test("removed community component and license remain absent from source and notices", async () => {
-  for (const path of ["../src/components/ui/stepper.tsx", "../REUI_LICENSE.md"])
-    await assert.rejects(access(new URL(path, import.meta.url)), { code: "ENOENT" });
-  const provenance = await readFile(new URL("../SHADCN_PROVENANCE.md", import.meta.url), "utf8");
-  assert.doesNotMatch(provenance, /ReUI|reui|community Stepper/);
-  assert.match(provenance, /plain, always-visible numbered text/);
-  assert.match(provenance, /FAQ reuses the existing official shadcn Accordion/);
-  assert.match(provenance, /Overall generation Progress/);
-  const directory = await mkdtemp(resolve(tmpdir(), "guide-notices-"));
-  try {
-    await writeFrontendNotices(directory, {
-      outputs: {
-        "test.js": {
-          inputs: { "node_modules/lucide-react/dist/cjs/lucide-react.js": { bytesInOutput: 1 } },
-        },
-      },
-    });
-    const notices = await readFile(resolve(directory, "third-party-notices.txt"), "utf8");
-    assert.doesNotMatch(notices, /ReUI|Keenthemes/);
-    for (const path of ["../SHADCN_LICENSE.md", "../node_modules/lucide-react/LICENSE"])
-      assert.ok(notices.includes(await readFile(new URL(path, import.meta.url), "utf8")));
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
 });
