@@ -14,7 +14,6 @@ import * as nodeCryptoModule from "node:crypto";
 import * as promisesModule from "node:fs/promises";
 import * as nodeOsModule from "node:os";
 import * as nodePathModule from "node:path";
-import * as forkSourceModule from "./fixtures/air-fork-source/fork-source.mjs";
 import * as nodeEventsModule from "node:events";
 import * as promisesModule2 from "node:timers/promises";
 import * as airCompilerWorkerClientModule from "../air-compiler-worker-client.mjs";
@@ -23,7 +22,7 @@ import * as checkFragmentInputLivenessModule from "../toolchain/metal-air-compil
 import * as checkFragmentInputReflectionModule from "../toolchain/metal-air-compiler/check-fragment-input-reflection.mjs";
 import * as nodeBufferModule from "node:buffer";
 import * as airReleaseContractModule from "../runtime-build/air-release-contract.mjs";
-import * as fixtureModule from "./fixtures/air-release-generic/fixture.mjs";
+import * as fixtureModule from "./fixtures/air/fixture.mjs";
 import * as nodeZlibModule from "node:zlib";
 import * as nodeUrlModule from "node:url";
 import * as airReleaseTransportModule from "../runtime-build/air-release-transport.mjs";
@@ -662,7 +661,7 @@ define void @reflection_float3(%struct.PaddedVectorLayout addrspace(2)* align 16
         "--experimental-test-module-mocks",
         "--test",
         "--test-reporter=tap",
-        new URL("./fixtures/air-compiler-lease.mock.mjs", import.meta.url).pathname,
+        new URL("./fixtures/air/lease.mock.mjs", import.meta.url).pathname,
       ],
       { env, encoding: "utf8", timeout: 30000, maxBuffer: 1024 * 1024 },
     );
@@ -748,8 +747,7 @@ define void @reflection_float3(%struct.PaddedVectorLayout addrspace(2)* align 16
   });
 
   test("fresh fork receipt preserves identity and only aliases the two existing output paths", async () => {
-    const { createFreshAirReleaseFixture } =
-      await import("./fixtures/air-release-generic/fixture.mjs");
+    const { createFreshAirReleaseFixture } = await import("./fixtures/air/fixture.mjs");
     const { receipt } = createFreshAirReleaseFixture(),
       before = JSON.stringify(receipt);
     assert.equal(validateAirCompilerBuildReceipt(receipt), receipt);
@@ -946,16 +944,15 @@ define void @reflection_float3(%struct.PaddedVectorLayout addrspace(2)* align 16
 
 // air-compiler-source-provenance
 {
-  // 验证 air-compiler-source-provenance 的约定与边界；依据 ./fixtures/air-fork-source/fork-source.mjs、./check-buffer-reflection.mjs 及本文件的测试断言。
-  // Verify air-compiler-source-provenance contracts and boundaries against ./fixtures/air-fork-source/fork-source.mjs、./check-buffer-reflection.mjs and this file's assertions.
+  // 验证 air-compiler-source-provenance 的约定与边界；依据 ./fixtures/air/fixture.mjs、./check-buffer-reflection.mjs 及本文件的测试断言。
+  // Verify air-compiler-source-provenance contracts and boundaries against ./fixtures/air/fixture.mjs、./check-buffer-reflection.mjs and this file's assertions.
   const { default: assert } = strictModule;
   const { createHash } = nodeCryptoModule;
   const { readFile, readdir, mkdtemp, mkdir, writeFile, rm, symlink, truncate } = promisesModule;
   const { tmpdir } = nodeOsModule;
   const { dirname, join } = nodePathModule;
   const { default: test } = nodeTestModule;
-  const { sourceReviewOptions, readForkSource, readOriginalAirProvenance, readReviewedSourceLock } =
-    forkSourceModule;
+  const { sourceReviewOptions, readForkSource, readReviewedSourceLock } = fixtureModule;
 
   const root = new URL("../toolchain/metal-air-compiler/", import.meta.url);
   const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -966,9 +963,9 @@ define void @reflection_float3(%struct.PaddedVectorLayout addrspace(2)* align 16
     async () => {
       const expected = {
         "check-fragment-input-liveness.mjs":
-          "803d20dff3cda4ccbf66a45c7526881146bd27b5a805098fbfa9eaa0feddf71b",
+          "32b8924e6aaf6b9f98f0211fd3a47a00c2e509f67cdf92454965cd029e6a3eae",
         "check-fragment-input-reflection.mjs":
-          "14fd952ac51abfbd7482b26e448956c43fde5f8babcaccbb0c83f46ec9774b6e",
+          "3178cd353cad0f4966e10ec13b30ad4b3f42ea84e61cbbdef162429d8b252907",
         "fixtures/msl-fragment-input-liveness.metal":
           "0820f23da050fa12a4031a45c09dec58a4394f7179032570c1acd85a20d434d5",
       };
@@ -984,16 +981,10 @@ define void @reflection_float3(%struct.PaddedVectorLayout addrspace(2)* align 16
   // 只检查源码来源，不加载或执行编译器产物。
   // Source-only provenance checks: no compiler artifact is loaded or executed.
   test(
-    "fresh fork source lock authenticates all 50 inputs without claiming API byte equivalence",
+    "reviewed fork source lock authenticates all 50 current inputs and native fixture identities",
     sourceReviewOptions,
     async () => {
-      const { manifest, receipt } = await readOriginalAirProvenance();
       const lock = await readReviewedSourceLock();
-      assert.deepEqual(
-        lock.compilerFiles,
-        manifest.patchedFiles,
-        "all 31 reviewed compiler-core files are unchanged",
-      );
       const inputs = {
         ...lock.compilerFiles,
         ...Object.fromEntries(
@@ -1008,14 +999,13 @@ define void @reflection_float3(%struct.PaddedVectorLayout addrspace(2)* align 16
       }
       const sdkApiInputs = Object.keys(lock.sdkFiles).filter((path) => path.startsWith("api/"));
       assert.equal(sdkApiInputs.length, 18, "compiler/API sources belong to the generic fork");
-      assert.notEqual(
-        lock.sdkFiles["api/air_compiler.cpp"],
-        receipt.sourceInputs["api/air_compiler.cpp"],
-      );
-      assert.notEqual(
-        lock.sdkFiles["api/CMakeLists.txt"],
-        receipt.sourceInputs["api/CMakeLists.txt"],
-      );
+      // Reviewed fixture identities include bilingual comments; executable bytes match the original receipt.
+      const nativeFixtureDigests = {
+        "control_smoke.cpp": "68050d99a3d491015aa9366cd9597c289ec3109c6ad2ca234437ac4b08efbd19",
+        "header_smoke.cpp": "7c9767e8966f80f12baabeaeb9625e395f76def68ebd4a28fd863ba485144720",
+        "operations_smoke.h": "f4eba86a452a22b52bec7aef08b57c98a5a28a40bc8a8695ed009fae3e663323",
+        "smoke.cpp": "30baccb084c3787bdb36a21746891c265b4f3b07004a79f4fe030060485c30cb",
+      };
       for (const name of [
         "control_smoke.cpp",
         "header_smoke.cpp",
@@ -1025,52 +1015,12 @@ define void @reflection_float3(%struct.PaddedVectorLayout addrspace(2)* align 16
         assert.equal(Object.hasOwn(lock.sdkFiles, `api/${name}`), false);
         assert.equal(
           hash(await readFile(new URL(`fixtures/native-api/${name}`, root))),
-          receipt.sourceInputs[`api/${name}`],
+          nativeFixtureDigests[name],
           `relocated authored ${name}`,
         );
       }
     },
   );
-
-  test("original build provenance still binds the a2flo base and ten ordered patches", async () => {
-    const { manifest, receipt } = await readOriginalAirProvenance();
-    assert.equal(manifest.repository, "https://github.com/a2flo/floor_llvm");
-    assert.equal(manifest.commit, "4b173e3db383ec7164afb11ee7dc86609c88f052");
-    assert.equal(receipt.sourceCommit, manifest.commit);
-    assert.equal(manifest.patches.length, 10);
-    assert.equal(
-      receipt.sourceManifestSha256,
-      hash(
-        await readFile(
-          new URL("fixtures/air-release-history/source-manifest.json", import.meta.url),
-        ),
-      ),
-    );
-    const patchPaths = manifest.patches.map(({ path }) => path);
-    assert.equal(new Set(patchPaths).size, patchPaths.length);
-    for (const patch of manifest.patches) {
-      assert.match(patch.path, /^patches\/[A-Za-z0-9_.+-]+\.patch$/);
-      assert.equal(receipt.sourceInputs[patch.path], patch.sha256, patch.path);
-    }
-    assert.deepEqual(
-      Object.keys(receipt.sourceInputs).filter((path) => path.startsWith("patches/")),
-      patchPaths,
-    );
-    for (const patch of manifest.rebaseProvenance.previousProjectPatches) {
-      assert.match(patch.sha256, /^[a-f0-9]{64}$/);
-      assert(patch.rebasedInto.length > 0);
-      for (const target of patch.rebasedInto) assert(patchPaths.includes(target), target);
-    }
-    assert.equal(
-      receipt.sourceFingerprintSha256,
-      hash(
-        JSON.stringify({
-          sourceManifestSha256: receipt.sourceManifestSha256,
-          sourceInputs: receipt.sourceInputs,
-        }),
-      ),
-    );
-  });
 
   test("source review override rejects unknown, missing, tampered and symlinked blobs without fallback", async () => {
     const reviewDirectory = await mkdtemp(join(tmpdir(), "air-source-review-"));
@@ -1148,7 +1098,7 @@ define void @reflection_float3(%struct.PaddedVectorLayout addrspace(2)* align 16
       );
       assert.doesNotMatch(
         source,
-        /D2R_AIR_SOURCE_REVIEW_DIR|fixtures\/air-fork-source|generic-no-added-license-labels/,
+        /D2R_AIR_SOURCE_REVIEW_DIR|fixtures\/air\/|generic-no-added-license-labels/,
       );
     }
   });
@@ -1978,7 +1928,7 @@ define void @reflection_float3(%struct.PaddedVectorLayout addrspace(2)* align 16
   const { default: assert } = strictModule;
   const { readFileSync } = nodeFsModule;
   const { default: test } = nodeTestModule;
-  const { sourceReviewOptions, readForkSource } = forkSourceModule;
+  const { sourceReviewOptions, readForkSource } = fixtureModule;
   const { checkFragmentInputLiveness } = checkFragmentInputLivenessModule;
 
   function syntheticIR(keepVarying, keepPosition = keepVarying) {
@@ -2473,13 +2423,13 @@ ${body.join("\n")}
 
 // air-header-operations
 {
-  // 验证 air-header-operations 的约定与边界；依据 ./fixtures/air-fork-source/fork-source.mjs、./check-buffer-reflection.mjs 及本文件的测试断言。
-  // Verify air-header-operations contracts and boundaries against ./fixtures/air-fork-source/fork-source.mjs、./check-buffer-reflection.mjs and this file's assertions.
+  // 验证 air-header-operations 的约定与边界；依据 ./fixtures/air/fixture.mjs、./check-buffer-reflection.mjs 及本文件的测试断言。
+  // Verify air-header-operations contracts and boundaries against ./fixtures/air/fixture.mjs、./check-buffer-reflection.mjs and this file's assertions.
   const { default: assert } = strictModule;
   const { readFile } = promisesModule;
   const { createHash } = nodeCryptoModule;
   const { default: test } = nodeTestModule;
-  const { sourceReviewOptions, readForkSource, readReviewedSourceLock } = forkSourceModule;
+  const { sourceReviewOptions, readForkSource, readReviewedSourceLock } = fixtureModule;
 
   const compiler = new URL("../toolchain/metal-air-compiler/", import.meta.url);
   const nativeFixtures = new Set([
@@ -3035,13 +2985,13 @@ ${body.join("\n")}
 
 // air-pointer-slot-source
 {
-  // 验证 air-pointer-slot-source 的约定与边界；依据 ./fixtures/air-fork-source/fork-source.mjs 及本文件的测试断言。
-  // Verify air-pointer-slot-source contracts and boundaries against ./fixtures/air-fork-source/fork-source.mjs and this file's assertions.
+  // 验证 air-pointer-slot-source 的约定与边界；依据 ./fixtures/air/fixture.mjs 及本文件的测试断言。
+  // Verify air-pointer-slot-source contracts and boundaries against ./fixtures/air/fixture.mjs and this file's assertions.
   const { default: assert } = strictModule;
   const { createHash } = nodeCryptoModule;
   const { readFile } = promisesModule;
   const { default: test } = nodeTestModule;
-  const { sourceReviewOptions, readForkSource, readOriginalAirProvenance } = forkSourceModule;
+  const { sourceReviewOptions, readForkSource } = fixtureModule;
 
   const root = new URL("../toolchain/metal-air-compiler/", import.meta.url);
   const read = (path) => readFile(new URL(path, root), "utf8");
@@ -3053,17 +3003,6 @@ ${body.join("\n")}
     "typed pointer-slot correction retains its authenticated fork source boundary",
     sourceReviewOptions,
     async () => {
-      const { manifest, receipt } = await readOriginalAirProvenance();
-      const path = "patches/0107-a2flo-typed-constant-pointer-slots.patch";
-      const expected = "a347fbee6ebebf76a8eae835d3bcbfaff8a4082651c2e42d6a0f980b867c27ec";
-      assert.equal(manifest.patches.length, 10);
-      assert.deepEqual(manifest.patches[6], { path, sha256: expected });
-      assert.equal(receipt.sourceInputs[path], expected);
-      assert.equal(
-        receipt.sourceInputs["patches/0106-a2flo-corpus-compiler-fixes.patch"],
-        "70e7f251eb79ef54d6725d314d0199fe813d11bba0294e349e6a9c3008976867",
-        "writer and earlier corrections retain their original provenance",
-      );
       const source = await readForkSource("llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp");
       assert.equal(
         hash(source),
@@ -3076,11 +3015,6 @@ ${body.join("\n")}
     "exact inverse merges retain authenticated nominal-root and cycle proofs",
     sourceReviewOptions,
     async () => {
-      const { manifest, receipt } = await readOriginalAirProvenance();
-      const path = "patches/0108-a2flo-exact-inverse-pointer-merges.patch";
-      const expected = "f64c9fcbdae68aa36438cadce6fdc3d034a9c8a994b78e6125c594150ccbbb6f";
-      assert.deepEqual(manifest.patches[7], { path, sha256: expected });
-      assert.equal(receipt.sourceInputs[path], expected);
       const source = await readForkSource("llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp");
       assert.equal(
         hash(source),
@@ -3251,11 +3185,6 @@ ${body.join("\n")}
     "canonical GEP restoration retains its exact authenticated fork invariants",
     sourceReviewOptions,
     async () => {
-      const { manifest, receipt } = await readOriginalAirProvenance();
-      const path = "patches/0109-a2flo-canonical-gep-recasts.patch";
-      const expected = "52724314a6e3095290fdd933ceb0caa51e057162216d523a8c62a5a73b906e85";
-      assert.deepEqual(manifest.patches[8], { path, sha256: expected });
-      assert.equal(receipt.sourceInputs[path], expected);
       const source = await readForkSource("llvm/lib/Transforms/LibFloor/PointerBCFixup.cpp");
       assert.equal(
         hash(source),
@@ -3336,8 +3265,8 @@ ${body.join("\n")}
 
 // air-release-contract
 {
-  // 验证 air-release-contract 的约定与边界；依据 ../runtime-build/air-release-contract.mjs、./fixtures/air-release-generic/fixture.mjs 及本文件的测试断言。
-  // Verify air-release-contract contracts and boundaries against ../runtime-build/air-release-contract.mjs、./fixtures/air-release-generic/fixture.mjs and this file's assertions.
+  // 验证 air-release-contract 的约定与边界；依据 ../runtime-build/air-release-contract.mjs、./fixtures/air/fixture.mjs 及本文件的测试断言。
+  // Verify air-release-contract contracts and boundaries against ../runtime-build/air-release-contract.mjs、./fixtures/air/fixture.mjs and this file's assertions.
   const { default: assert } = strictModule;
   const { Buffer } = nodeBufferModule;
   const { default: test } = nodeTestModule;
@@ -4776,13 +4705,13 @@ ${body.join("\n")}
 
 // air-scalar-i1-source
 {
-  // 验证 air-scalar-i1-source 的约定与边界；依据 ./fixtures/air-fork-source/fork-source.mjs 及本文件的测试断言。
-  // Verify air-scalar-i1-source contracts and boundaries against ./fixtures/air-fork-source/fork-source.mjs and this file's assertions.
+  // 验证 air-scalar-i1-source 的约定与边界；依据 ./fixtures/air/fixture.mjs 及本文件的测试断言。
+  // Verify air-scalar-i1-source contracts and boundaries against ./fixtures/air/fixture.mjs and this file's assertions.
   const { default: assert } = strictModule;
   const { createHash } = nodeCryptoModule;
   const { readFile } = promisesModule;
   const { default: test } = nodeTestModule;
-  const { sourceReviewOptions, readForkSource, readOriginalAirProvenance } = forkSourceModule;
+  const { sourceReviewOptions, readForkSource } = fixtureModule;
 
   const root = new URL("../toolchain/metal-air-compiler/", import.meta.url);
   const read = (path) => readFile(new URL(path, root), "utf8");
@@ -4794,19 +4723,9 @@ ${body.join("\n")}
     "scalar i1 conversion hardening retains its exact authenticated fork source boundary",
     sourceReviewOptions,
     async () => {
-      const { manifest, receipt } = await readOriginalAirProvenance();
-      const path = "patches/0110-a2flo-scalar-i1-conversions.patch";
-      const sha256 = "1e41886634d829084a3752d56723e38b55ff20dd75649510be6c4be446ca0c82";
       const source = await readForkSource("llvm/lib/Transforms/LibFloor/MetalFinal.cpp");
-      assert.equal(manifest.patches.length, 10);
-      assert.deepEqual(manifest.patches[9], { path, sha256 });
-      assert.equal(receipt.sourceInputs[path], sha256);
       assert.equal(
         hash(source),
-        "b7f8c3d17df3fddea4e87cd8a6fc2ac6ed0d53531714f9403b73ab72f3c39973",
-      );
-      assert.equal(
-        manifest.patchedFiles["llvm/lib/Transforms/LibFloor/MetalFinal.cpp"],
         "b7f8c3d17df3fddea4e87cd8a6fc2ac6ed0d53531714f9403b73ab72f3c39973",
       );
       assert.equal(

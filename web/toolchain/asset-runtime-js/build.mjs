@@ -1,6 +1,7 @@
 // 同一 CI 作业内组装已构建的精确后端；不安装工具、不下载运行时、不启动浏览器。 依据各后端构建报告、来源固定记录与资产清单约定。
 // Assemble already-built exact backends in the same CI job; no tool installation, runtime downloads or browser launch. Based on backend build reports, source provenance pins and the asset inventory contract.
 import process from "node:process";
+import { readHashWasmEmbeddedNotices } from "../../scripts/frontend-notices.mjs";
 import { readFile, writeFile, mkdir, mkdtemp, rename, rm } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -50,8 +51,8 @@ const notices = [
   ["overlay-recipe-source-provenance.json", "../overlay-recipe-js/source-provenance.json"],
   ["overlay-recipe-data-provenance.json", "../overlay-recipe-js/data-provenance.json"],
   ["numeric-art-source-provenance.json", "../art-kernels/provenance.json"],
-  ["spark-md5-LICENSE.txt", "../../vendor/spark-md5-3.0.2/LICENSE2"],
-  ["spark-md5-PROVENANCE.md", "../../vendor/spark-md5-3.0.2/PROVENANCE.md"],
+  ["hash-wasm-LICENSE.txt", "../../node_modules/hash-wasm/LICENSE"],
+  ["hash-wasm-package.json", "../../node_modules/hash-wasm/package.json"],
   ["pixel-kernel-LICENSE-Pillow.txt", "../image-kernels-rust/reference/LICENSE"],
   ["pixel-kernel-source-provenance.json", "../image-kernels-rust/reference/sources.json"],
   ["pixel-kernel-build-report.json", "../image-kernels-rust/dist/build-report.json"],
@@ -161,6 +162,10 @@ async function assemble() {
     validateAssetRuntimeInventory({ version: 1, assets });
     await writeFile(`${staging}/manifest.json`, JSON.stringify({ version: 1, assets }) + "\n");
     await mkdir(`${staging}/licenses`);
+    await writeFile(
+      `${staging}/licenses/hash-wasm-embedded.txt`,
+      await readHashWasmEmbeddedNotices(),
+    );
     for (const [name, source] of notices)
       await writeFile(`${staging}/licenses/${name}`, await readFile(new URL(source, here)));
     await writeFile(

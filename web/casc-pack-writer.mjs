@@ -1,7 +1,7 @@
 // 依据原生 CASC 规则串行暂存补充包；由生产 ASTC 工作线程调用，保留原样或压缩 BLTE 规格。
 // Serial supplemental-pack staging from native CASC rules, used by the production ASTC worker; preserves raw or compressed BLTE specs.
 import { createRawFileStage, RAW_FILE_STAGE_CHUNK_BYTES } from "./raw-file-stage.mjs";
-import SparkMD5 from "./vendor/spark-md5-3.0.2/spark-md5.mjs";
+import { createMD5, md5 } from "hash-wasm";
 import { CASC_PACK_METADATA_LIMITS } from "./toolchain/casc-overlay-js/overlay.mjs";
 const BLOCK = 256 * 1024,
   U32 = 0xffffffff,
@@ -174,16 +174,16 @@ async function* one(bytes) {
 }
 // 原生 ekey_for 按魔数识别 BLTE，即使条目规格为 n；最多保留前八字节再决定哈希范围。
 // Native ekey_for recognizes BLTE by magic even for n records; retain at most eight bytes before choosing the hash extent.
-function rawHasher() {
-  const hash = new SparkMD5.ArrayBuffer(),
-    prefix = new Uint8Array(8);
+async function rawHasher() {
+  let hash = await createMD5();
+  const prefix = new Uint8Array(8);
   let used = 0,
     decided = false,
     limit = Infinity,
     hashed = 0;
   const feed = (bytes) => {
     const length = Math.min(bytes.length, limit - hashed);
-    if (length > 0) hash.append(bytes.subarray(0, length));
+    if (length > 0) hash.update(bytes.subarray(0, length));
     hashed += length;
   };
   const decide = () => {
@@ -195,7 +195,7 @@ function rawHasher() {
     feed(prefix.subarray(0, used));
   };
   return {
-    append(bytes) {
+    update(bytes) {
       if (decided) return feed(bytes);
       const length = Math.min(8 - used, bytes.length);
       prefix.set(bytes.subarray(0, length), used);
@@ -205,12 +205,12 @@ function rawHasher() {
         feed(bytes.subarray(length));
       }
     },
-    end() {
+    digest() {
       if (!decided) decide();
-      return hash.end();
+      return hash.digest();
     },
-    destroy() {
-      hash.destroy();
+    dispose() {
+      hash = null;
     },
   };
 }
@@ -362,15 +362,15 @@ export async function writeCascPack({
           await emit(new Uint8Array(Math.min(RAW_FILE_STAGE_CHUNK_BYTES, header.length - at)));
         let blockIndex = 0;
         for await (const block of blocks(input, io, blockSize)) {
-          const hash = new SparkMD5.ArrayBuffer(),
-            start = encodedSize,
+          let hash = await createMD5();
+          const start = encodedSize,
             blockState = { complete: false };
           try {
             const mode = new Uint8Array([rawBlocks ? 78 : 90]);
-            hash.append(mode);
+            hash.update(mode);
             await emit(mode);
             if (rawBlocks) {
-              hash.append(block);
+              hash.update(block);
               await emit(block);
             } else {
               for await (const bytes of io.iterate(
@@ -380,16 +380,16 @@ export async function writeCascPack({
                 ),
               )) {
                 chunk(bytes);
-                hash.append(bytes);
+                hash.update(bytes);
                 await emit(bytes);
               }
               if (!blockState.complete || encodedSize - start < 2) fail("CODEC_INCOMPLETE");
             }
             put32(header, 12 + 24 * blockIndex, encodedSize - start);
             put32(header, 16 + 24 * blockIndex, block.length);
-            header.set(fromHex(hash.end()), 20 + 24 * blockIndex);
+            header.set(fromHex(hash.digest()), 20 + 24 * blockIndex);
           } finally {
-            hash.destroy();
+            hash = null;
           }
           blockIndex++;
         }
@@ -397,7 +397,7 @@ export async function writeCascPack({
           const mode = new Uint8Array([78]);
           await emit(mode);
           put32(header, 12, 1);
-          header.set(fromHex(SparkMD5.ArrayBuffer.hash(mode)), 20);
+          header.set(fromHex(await md5(mode)), 20);
           blockIndex++;
         }
         if (blockIndex !== count) fail("BLOCK_COUNT");
@@ -406,19 +406,19 @@ export async function writeCascPack({
             stage.backpatch(offset + at, header.slice(at, at + RAW_FILE_STAGE_CHUNK_BYTES)),
           );
         signal?.throwIfAborted();
-        digest = SparkMD5.ArrayBuffer.hash(header);
+        digest = await md5(header);
       } else {
-        const hash = rawHasher();
+        const hash = await rawHasher();
         try {
           const output = job.spec === "n" ? input : compress(input, job.decodedSize);
           for await (const bytes of io.iterate(output)) {
             chunk(bytes);
-            hash.append(bytes);
+            hash.update(bytes);
             await emit(bytes);
           }
-          digest = hash.end();
+          digest = hash.digest();
         } finally {
-          hash.destroy();
+          hash.dispose();
         }
       }
       if (!state.complete) fail("SOURCE_NOT_CONSUMED");

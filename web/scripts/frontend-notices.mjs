@@ -7,6 +7,22 @@ import { fileURLToPath } from "node:url";
 export const FRONTEND_NOTICES_FILE = "third-party-notices.txt";
 const root = fileURLToPath(new URL("../", import.meta.url));
 
+// 固定包还内嵌 MD5 C 和 TypeScript helper；保留其原始声明。
+// The pinned package embeds MD5 C and TypeScript helpers; retain their original notices.
+export async function readHashWasmEmbeddedNotices(
+  directory = resolve(root, "node_modules/hash-wasm"),
+) {
+  const md5 = (await readFile(resolve(directory, "src/md5.c"), "utf8")).match(
+    /^\/\*[\s\S]*?\*\//,
+  )?.[0];
+  const helper = (await readFile(resolve(directory, "dist/index.esm.js"), "utf8")).match(
+    /\/\*\*+\r?\nCopyright \(c\) Microsoft Corporation\.[\s\S]*?\*\//,
+  )?.[0];
+  if (!md5?.includes("Alexander Peslyak") || !helper)
+    throw new Error("hash-wasm embedded notices changed");
+  return `${md5}\n\n${helper}`;
+}
+
 // 只读取有输出贡献的包，不执行包代码，也不遍历开发依赖。
 // Read only packages contributing output bytes; never execute packages or traverse dev dependencies.
 export async function writeFrontendNotices(outputDirectory, metafile, inputDirectory = root) {
@@ -81,17 +97,17 @@ export async function writeFrontendNotices(outputDirectory, metafile, inputDirec
         `${metadata.name}@${metadata.version} (shared upstream ${upstream}; radix-ui@${shared.version}/LICENSE)\n\n${await readFile(resolve(installed, "radix-ui/LICENSE"), "utf8")}`,
       );
     }
+    if (metadata.name === "hash-wasm")
+      sections.push(
+        `${metadata.name}@${metadata.version} (embedded MD5 and TypeScript helper notices)\n\n${await readHashWasmEmbeddedNotices(directory)}`,
+      );
     for (const file of files)
       sections.push(
         `${metadata.name}@${metadata.version} (${file})\n\n${await readFile(resolve(directory, file), "utf8")}`,
       );
   }
-  // 本地复制的组件和校验模块也属于产物；逐字保留其许可证。
-  // Locally copied components and checksum modules also ship; preserve their licenses verbatim.
-  for (const [name, path] of [
-    ["shadcn/ui", "SHADCN_LICENSE.md"],
-    ["SparkMD5 3.0.2 (MIT alternative)", "vendor/spark-md5-3.0.2/LICENSE2"],
-  ])
-    sections.push(`${name}\n\n${await readFile(resolve(root, path), "utf8")}`);
+  // 本地复制的组件仍随产物分发；逐字保留许可证。
+  // Locally copied components still ship; preserve their license verbatim.
+  sections.push(`shadcn/ui\n\n${await readFile(resolve(root, "SHADCN_LICENSE.md"), "utf8")}`);
   await writeFile(resolve(outputDirectory, FRONTEND_NOTICES_FILE), sections.join("\n\n"));
 }

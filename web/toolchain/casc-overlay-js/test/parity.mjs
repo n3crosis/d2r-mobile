@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import process from "node:process";
 import { createPngCodec } from "../../png-codec-exact/codec.mjs";
 import { loadPyodide } from "../../asset-generation-spike/node_modules/pyodide/pyodide.mjs";
-import SparkMD5 from "../../../vendor/spark-md5-3.0.2/spark-md5.mjs";
+import { createMD5 } from "hash-wasm";
 import { createCascOverlayTransform } from "../overlay.mjs";
 import "../scripts/verify-source.mjs";
 const py = await loadPyodide({
@@ -20,10 +20,8 @@ for (const name of ["casc_overlay_original.py", "casc_overlay.py"])
     ),
   );
 py.runPython("from casc_overlay import generate\nimport zlib, json");
-const md5 = (bytes) => {
-  const value = SparkMD5.ArrayBuffer.hash(bytes.slice().buffer, true);
-  return Uint8Array.from(value, (c) => c.charCodeAt(0));
-};
+const md5Hasher = await createMD5();
+const md5 = (bytes) => md5Hasher.init().update(bytes).digest("binary");
 const oracleCompress = (bytes) => {
   py.globals.set("_compress", bytes);
   const proxy = py.runPython("zlib.compress(bytes(_compress), 9)");

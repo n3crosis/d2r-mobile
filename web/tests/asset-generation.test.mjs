@@ -8,13 +8,12 @@ import * as assetGeneratorAdapterModule from "../asset-generator-adapter.mjs";
 import * as nodeChild_processModule from "node:child_process";
 import * as nodeCryptoModule from "node:crypto";
 import * as assetPipelineAdapterModule from "../asset-pipeline-adapter.mjs";
-import * as assetExtractionFixtureModule from "./helpers/asset-extraction-fixture.mjs";
+import * as extractionAdapterFixtureModule from "./helpers/extraction-adapter-fixture.mjs";
 import * as mapGoalGeneratorModule from "../map-goal-generator.mjs";
 import * as cascOverlayFixtureModule from "./helpers/casc-overlay-fixture.mjs";
 import * as utilModule from "../toolchain/art-recipes-js/util.mjs";
 import * as fontModule from "../toolchain/font-rasterizer-exact/font.mjs";
 import * as hudGeneratorModule from "../hud-generator.mjs";
-import * as memoryOutputCacheModule from "./helpers/memory-output-cache.mjs";
 import * as revisionModule from "../toolchain/art-recipes-js/revision.mjs";
 import * as logicalAssetSuffixesModule from "../logical-asset-suffixes.mjs";
 import * as remainingArtGeneratorModule from "../remaining-art-generator.mjs";
@@ -25,6 +24,135 @@ import * as nativeArtPngDigestsModule from "../native-art-png-digests.mjs";
 import * as nativeArtTextureModule from "../native-art-texture.mjs";
 import * as browserTextureEncoderModule from "../toolchain/texture-spike/browser-texture-encoder.mjs";
 import * as v61AssetWorkerModule from "../v61-asset-worker.mjs";
+
+// 原有独立作用域测试区段共用的套件内夹具。
+// Suite-local fixtures shared by the original independently scoped sections.
+const assetExtractionFixtureModule = (() => {
+  const { createHash } = nodeCryptoModule;
+  const { fixture, open, selection } = extractionAdapterFixtureModule;
+  const { fixture: casc } = cascOverlayFixtureModule;
+  const { MAP_GOAL_IMAGE_PATHS, MAP_GOAL_TABLES, MAP_GOAL_FONT } = mapGoalGeneratorModule;
+  // 自编扁平 data/ RomFS 映像，通过真实提取适配器的有界线程协议提供；没有生产解析器覆盖或注册接缝。
+  // Authored flat data/ RomFS image, served through the real extraction adapter's
+  // bounded worker protocol. No production resolver override or registration seam.
+  function romfs(files) {
+    const items = Object.entries(files).map(([path, bytes]) => ({
+      name: new TextEncoder().encode(path.slice(5)),
+      bytes,
+    }));
+    let fileSize = 0,
+      dataSize = 0;
+    for (const item of items) {
+      item.meta = fileSize;
+      item.data = dataSize;
+      fileSize += 32 + Math.ceil(item.name.length / 4) * 4;
+      dataSize += item.bytes.length;
+    }
+    const dirStart = 84,
+      dirSize = 52,
+      hashStart = dirStart + dirSize,
+      fileStart = hashStart + 4,
+      dataStart = fileStart + fileSize;
+    const out = new Uint8Array(dataStart + dataSize),
+      v = new DataView(out.buffer);
+    const u32 = (p, x) => v.setUint32(p, x, true),
+      u64 = (p, x) => v.setBigUint64(p, BigInt(x), true);
+    [80, 80, 4, dirStart, dirSize, hashStart, 4, fileStart, fileSize, dataStart].forEach((x, i) =>
+      u64(i * 8, x),
+    );
+    [0, 0xffffffff, 24, 0xffffffff, 0xffffffff, 0].forEach((x, i) => u32(dirStart + i * 4, x));
+    [0, 0xffffffff, 0xffffffff, 0, 0xffffffff, 4].forEach((x, i) => u32(dirStart + 24 + i * 4, x));
+    out.set(new TextEncoder().encode("data"), dirStart + 48);
+    items.forEach((item, i) => {
+      const p = fileStart + item.meta;
+      u32(p, 24);
+      u32(p + 4, items[i + 1]?.meta ?? 0xffffffff);
+      u64(p + 8, item.data);
+      u64(p + 16, item.bytes.length);
+      u32(p + 24, 0xffffffff);
+      u32(p + 28, item.name.length);
+      out.set(item.name, p + 32);
+      out.set(item.bytes, dataStart + item.data);
+    });
+    return out;
+  }
+  async function extractedFixture(template) {
+    const files = Object.fromEntries(
+      Object.entries(casc.files).map(([p, b]) => [p, Buffer.from(b, "base64")]),
+    );
+    const assets = {
+      ...Object.fromEntries(
+        [...Object.values(MAP_GOAL_IMAGE_PATHS), MAP_GOAL_FONT].map((p) => [
+          p,
+          Buffer.from("fixture"),
+        ]),
+      ),
+      ...Object.fromEntries(
+        MAP_GOAL_TABLES.map((p) => [`local/lng/strings/${p}.json`, Buffer.from("[]")]),
+      ),
+      "template.sprite": template,
+    };
+    let offset = 0;
+    const rows = [],
+      chunks = [];
+    for (const [name, bytes] of Object.entries(assets)) {
+      const ekey = "0".repeat(18) + "0003" + offset.toString(16).padStart(10, "0");
+      rows.push(
+        [
+          "0",
+          "0",
+          "0",
+          "3",
+          createHash("md5").update(bytes).digest("hex"),
+          bytes.length,
+          ekey,
+          bytes.length,
+          "n",
+          `data:data/${name.toLowerCase()}`,
+          "0",
+        ].join("|"),
+      );
+      chunks.push(bytes);
+      offset += bytes.length;
+    }
+    files["data/build_manifest.psv"] = Buffer.concat([
+      files["data/build_manifest.psv"],
+      Buffer.from("\n" + rows.join("\n") + "\n"),
+    ]);
+    files["data/00-00000003.data"] = Buffer.concat(chunks);
+    const f = fixture({ romfs: romfs(files) }),
+      session = await open(f);
+    return {
+      extracted: await f.adapter.extractSelected({ session, selection }),
+      selection,
+      cleanup: f.adapter.cleanup,
+    };
+  }
+  return { extractedFixture };
+})();
+const memoryOutputCacheModule = (() => {
+  // 仅为合成模拟：模拟缓存字节所有权约定，而非文件系统或账本真实性。
+  // Synthetic only: emulate the cache byte ownership contract, not filesystem/ledger authenticity.
+  function memoryOutputCache() {
+    const files = new Map();
+    return {
+      async read({ kind, key, maxBytes }) {
+        const bytes = files.get(`${kind}/${key}`);
+        return bytes && bytes.length <= maxBytes ? bytes.slice() : null;
+      },
+      async write({ kind, key, bytes }) {
+        files.set(`${kind}/${key}`, bytes.slice());
+        return true;
+      },
+    };
+  }
+  const assetCacheContext = Object.freeze({
+    runtimeManifestSha256: "a".repeat(64),
+    profileId: "synthetic-profile",
+    artRevision: "synthetic-recipe",
+  });
+  return { memoryOutputCache, assetCacheContext };
+})();
 
 // asset-base64-allocation
 {
@@ -982,8 +1110,8 @@ import * as v61AssetWorkerModule from "../v61-asset-worker.mjs";
 
 // hud-generator
 {
-  // 验证 hud-generator 的约定与边界；依据 ../hud-generator.mjs、./helpers/memory-output-cache.mjs 及本文件的测试断言。
-  // Verify hud-generator contracts and boundaries against ../hud-generator.mjs、./helpers/memory-output-cache.mjs and this file's assertions.
+  // 验证 hud-generator 的约定与边界；依据 ../hud-generator.mjs、本测试套件内的内存输出缓存夹具 及本文件的测试断言。
+  // Verify hud-generator contracts and boundaries against ../hud-generator.mjs、the suite-local memory output cache fixture and this file's assertions.
   const { default: test } = nodeTestModule;
   const { default: assert } = strictModule;
   const { createHash } = nodeCryptoModule;
@@ -1806,8 +1934,8 @@ import * as v61AssetWorkerModule from "../v61-asset-worker.mjs";
 
 // native-art-generator
 {
-  // 验证 native-art-generator 的约定与边界；依据 ../native-art-generator.mjs、./helpers/memory-output-cache.mjs 及本文件的测试断言。
-  // Verify native-art-generator contracts and boundaries against ../native-art-generator.mjs、./helpers/memory-output-cache.mjs and this file's assertions.
+  // 验证 native-art-generator 的约定与边界；依据 ../native-art-generator.mjs、本测试套件内的内存输出缓存夹具 及本文件的测试断言。
+  // Verify native-art-generator contracts and boundaries against ../native-art-generator.mjs、the suite-local memory output cache fixture and this file's assertions.
   const { default: test } = nodeTestModule;
   const { default: assert } = strictModule;
   const { createHash } = nodeCryptoModule;

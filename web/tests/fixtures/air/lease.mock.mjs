@@ -24,10 +24,10 @@ const component = {
   wasmSha256: sha(wasm),
   headerSha256: "1".repeat(64),
 };
-mock.module("../../shell-profiles.mjs", {
+mock.module("../../../shell-profiles.mjs", {
   namedExports: { SHELL_PROFILE_IDS: [profile.id], resolveShellProfile: () => profile },
 });
-mock.module("../../air-compiler-runtime-contract.mjs", {
+mock.module("../../../air-compiler-runtime-contract.mjs", {
   namedExports: {
     validateAirCompilerRuntimeComponent: () => component,
     assertAirCompilerReceiptMatchesComponent() {},
@@ -86,7 +86,7 @@ async function setup(t) {
   });
   globalThis.caches = { open: () => Promise.reject(new Error("Synthetic cache unavailable")) };
   const { prepareSealedRuntime } = await import(
-    `../../sealed-runtime/clients.mjs?lease=${++serial}`
+    `../../../sealed-runtime/clients.mjs?lease=${++serial}`
   );
   const runtime = await prepareSealedRuntime({
     baseUrl: "https://example.test/runtime/",

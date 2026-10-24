@@ -329,9 +329,9 @@ require('node:fs').appendFileSync(process.env.D2R_CAPTURE, JSON.stringify({args:
       );
   });
 
-  test("only the 90 audited source-only assets are rejected; live assets and proof records remain", () => {
-    assert.equal(SOURCE_ONLY_RUNTIME_ASSETS.length, 90);
-    assert.equal(new Set(SOURCE_ONLY_RUNTIME_ASSETS).size, 90);
+  test("only the 89 audited source-only assets are rejected; live assets and proof records remain", () => {
+    assert.equal(SOURCE_ONLY_RUNTIME_ASSETS.length, 89);
+    assert.equal(new Set(SOURCE_ONLY_RUNTIME_ASSETS).size, 89);
     assert.ok(Object.isFrozen(SOURCE_ONLY_RUNTIME_ASSETS));
     for (const path of SOURCE_ONLY_RUNTIME_ASSETS)
       assert.throws(() => assertNoSourceOnlyRuntimeAsset(path), /Source-only module/);
@@ -345,7 +345,7 @@ require('node:fs').appendFileSync(process.env.D2R_CAPTURE, JSON.stringify({args:
       "toolchain/offline-runtime-spike/dist/manifest.json",
       "toolchain/offline-runtime-spike/dotnet-dist/worker.mjs",
       "toolchain/offline-runtime-spike/dotnet-dist/manifest.json",
-      "toolchain/asset-runtime-js/dist/licenses/spark-md5-LICENSE.txt",
+      "toolchain/asset-runtime-js/dist/licenses/hash-wasm-LICENSE.txt",
       "toolchain/shell-release-evidence/v2.0.0.json",
       "toolchain/shell-release-evidence/v2.0.0-ios18.json",
       "toolchain/shell-release-evidence/v2.0.0-derived-capacities.json",

@@ -7,7 +7,7 @@
  * 仅用于旧归档格式校验和，绝不用于认证或游戏身份识别。
  * Legacy archive-format checksum only, never authentication or game identity.
  */
-import SparkMD5 from "./vendor/spark-md5-3.0.2/spark-md5.mjs";
+import { createMD5 } from "hash-wasm";
 
 export const MD5_CHUNK_BYTES = 64 * 1024;
 const yieldTask = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -29,23 +29,23 @@ export async function verifyMd5(bytes, expectedHex, { signal } = {}) {
     !/^[0-9a-f]{32}$/i.test(expectedHex)
   )
     throw new TypeError("Expected a 32-character MD5 hex digest");
-  const hash = new SparkMD5.ArrayBuffer();
+  let hash = await createMD5();
   try {
     for (let offset = 0; offset < bytes.byteLength; offset += MD5_CHUNK_BYTES) {
       signal?.throwIfAborted();
       // 传递视图本身而非其底层缓冲区。上游将此有界块复制到工作缓冲区，
-      // 并在调用之间最多保留 63 字节。
+      // 工作内存固定，不随输入总量增长。
       // Pass the view itself, not its backing buffer. Upstream copies this bounded
-      // chunk into its working buffer and retains at most 63 bytes between calls.
-      hash.append(bytes.subarray(offset, offset + MD5_CHUNK_BYTES));
+      // chunk into fixed-size WASM working memory, independent of total input size.
+      hash.update(bytes.subarray(offset, offset + MD5_CHUNK_BYTES));
       // 任务（而不只是微任务）让 UI 取消操作能在块之间运行。
       // A task (not just a microtask) lets UI cancellation run between chunks.
       await yieldTask();
       signal?.throwIfAborted();
     }
     signal?.throwIfAborted();
-    return hash.end() === expectedHex.toLowerCase();
+    return hash.digest() === expectedHex.toLowerCase();
   } finally {
-    hash.destroy();
+    hash = null;
   }
 }

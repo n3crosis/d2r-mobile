@@ -920,24 +920,17 @@ export function createPinnedCascOverlayTransform(dependencies = {}) {
 export function createPinnedCascPrebuiltOverlayTransform(dependencies = {}) {
   return pinnedOverlayTransform(dependencies, createCascPrebuiltOverlayTransform);
 }
-function pinnedOverlayTransform({ codec, SparkMD5 } = {}, factory) {
+function pinnedOverlayTransform({ codec, md5Hasher } = {}, factory) {
   requireValue(
     codec?.genericZlibVersion === "1.2.13" &&
       typeof codec.compressZlib === "function" &&
-      typeof SparkMD5?.ArrayBuffer?.hash === "function",
+      typeof md5Hasher?.init === "function" &&
+      typeof md5Hasher.update === "function" &&
+      typeof md5Hasher.digest === "function",
   );
   return factory({
     md5(bytes) {
-      // SparkMD5 仅读取完整缓冲区；用普通数组复制子视图，避免 Buffer.slice 共享额外字节。
-      // SparkMD5 reads full buffers; copy subviews to plain arrays because Buffer.slice aliases backing bytes.
-      const buffer =
-        bytes.buffer instanceof ArrayBuffer &&
-        bytes.byteOffset === 0 &&
-        bytes.byteLength === bytes.buffer.byteLength
-          ? bytes.buffer
-          : new Uint8Array(bytes).buffer;
-      const raw = SparkMD5.ArrayBuffer.hash(buffer, true);
-      return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+      return md5Hasher.init().update(bytes).digest("binary");
     },
     compress: (bytes) => codec.compressZlib(bytes, { level: 9 }),
   });

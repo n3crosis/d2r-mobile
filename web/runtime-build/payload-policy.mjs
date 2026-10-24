@@ -92,7 +92,6 @@ export const SOURCE_ONLY_RUNTIME_ASSETS = Object.freeze([
   "toolchain/asset-runtime-js/contract.mjs",
   "toolchain/asset-runtime-js/payload-policy.mjs",
   "toolchain/casc-overlay-js/overlay.mjs",
-  "vendor/spark-md5-3.0.2/spark-md5.mjs",
   "toolchain/nsp-extract-spike/browser-boundary.mjs",
   "toolchain/nsp-extract-spike/dist/hactool-boundary.mjs",
   "toolchain/nsp-extract-spike/extraction-engine.mjs",

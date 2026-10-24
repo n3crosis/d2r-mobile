@@ -8,7 +8,7 @@
 import { readAuthenticatedAssets } from "./extraction-job-adapter.mjs";
 import { archiveLocator, decodeArchiveRecord, ARCHIVE_LIMITS } from "./archive-reader.mjs";
 import { verifyMd5 } from "./checksum-verifier.mjs";
-import SparkMD5 from "./vendor/spark-md5-3.0.2/spark-md5.mjs";
+import { createMD5 } from "hash-wasm";
 import { ROMFS_LIMITS } from "./romfs-tree.mjs";
 import { CASC_LIMITS } from "./casc-logical-reader.mjs";
 import { CASC_PACK_METADATA_LIMITS } from "./toolchain/casc-overlay-js/overlay.mjs";
@@ -103,12 +103,12 @@ async function tvfs(romfs, values, name, signal) {
   const headerSize = new DataView(prefix.buffer).getUint32(4);
   if (headerSize < 12 || headerSize > encodedSize || headerSize > 12 + 24 * ARCHIVE_LIMITS.blocks)
     fail();
-  const hash = new SparkMD5.ArrayBuffer();
+  let hash = await createMD5();
   let digest;
   try {
-    digest = hash.append(await read(0, headerSize)).end();
+    digest = hash.update(await read(0, headerSize)).digest();
   } finally {
-    hash.destroy();
+    hash = null;
   }
   if (digest.slice(0, 18) !== keys[1].slice(0, 18).toLowerCase()) fail();
   return decodeArchiveRecord(

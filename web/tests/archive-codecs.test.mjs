@@ -19,7 +19,7 @@ import * as deflateBoundaryModule from "../deflate-boundary.mjs";
 import * as nodeFsModule from "node:fs";
 import * as codecModule from "../toolchain/png-codec-exact/codec.mjs";
 import * as sourceDownloadModule from "../toolchain/png-codec-exact/source-download.mjs";
-import * as sparkMd5Module from "../vendor/spark-md5-3.0.2/spark-md5.mjs";
+import { createMD5 } from "hash-wasm";
 import * as checksumVerifierModule from "../checksum-verifier.mjs";
 import * as preflightModule from "../preflight.mjs";
 
@@ -3341,13 +3341,12 @@ print('Pinned native zlib1.2.13: four deterministic inputs, three fragment sizes
 
 // checksum-verifier
 {
-  // 验证 checksum-verifier 的约定与边界；依据 ../vendor/spark-md5-3.0.2/spark-md5.mjs、../checksum-verifier.mjs 及本文件的测试断言。
-  // Verify checksum-verifier contracts and boundaries against ../vendor/spark-md5-3.0.2/spark-md5.mjs、../checksum-verifier.mjs and this file's assertions.
+  // 验证 checksum-verifier 的约定与边界；依据 hash-wasm、../checksum-verifier.mjs 及本文件的测试断言。
+  // Verify checksum-verifier contracts and boundaries against hash-wasm、../checksum-verifier.mjs and this file's assertions.
   const { default: assert } = strictModule;
   const { createHash } = nodeCryptoModule;
   const { default: test } = nodeTestModule;
   const { readFileSync } = nodeFsModule;
-  const { default: SparkMD5 } = sparkMd5Module;
   const { MD5_CHUNK_BYTES, verifyMd5 } = checksumVerifierModule;
   const { fileSource } = preflightModule;
   const { decodeArchiveRecord } = archiveReaderModule;
@@ -3477,37 +3476,66 @@ print('Pinned native zlib1.2.13: four deterministic inputs, three fragment sizes
   });
 
   test("incremental calls never exceed the bounded chunk size or widen the input view", async () => {
-    const original = SparkMD5.ArrayBuffer.prototype.append;
-    const backing = new Uint8Array(MD5_CHUNK_BYTES * 3 + 100).fill(29);
-    const bytes = backing.subarray(13, backing.length - 19);
     const chunks = [];
-    SparkMD5.ArrayBuffer.prototype.append = function (view) {
-      assert.ok(view instanceof Uint8Array);
-      assert.ok(view.byteLength <= MD5_CHUNK_BYTES);
-      assert.equal(view.buffer, bytes.buffer);
-      assert.equal(view.byteOffset, bytes.byteOffset + chunks.reduce((sum, size) => sum + size, 0));
-      chunks.push(view.byteLength);
-      return original.call(this, view);
-    };
-    try {
-      assert.equal(await verifyMd5(bytes, digest(bytes)), true);
-      assert.equal(
-        chunks.reduce((sum, size) => sum + size, 0),
-        bytes.byteLength,
-      );
-      assert.equal(chunks.length, Math.ceil(bytes.byteLength / MD5_CHUNK_BYTES));
-    } finally {
-      SparkMD5.ArrayBuffer.prototype.append = original;
+    class ObservedBytes extends Uint8Array {
+      subarray(start, end) {
+        const view = super.subarray(start, end);
+        assert.ok(view.byteLength <= MD5_CHUNK_BYTES);
+        assert.equal(
+          view.byteOffset,
+          this.byteOffset + chunks.reduce((sum, size) => sum + size, 0),
+        );
+        chunks.push(view.byteLength);
+        return new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+      }
     }
+    const backing = new Uint8Array(MD5_CHUNK_BYTES * 3 + 100).fill(29);
+    const bytes = new ObservedBytes(backing.buffer, 13, backing.length - 32);
+    assert.equal(await verifyMd5(bytes, digest(bytes)), true);
+    assert.equal(
+      chunks.reduce((sum, size) => sum + size, 0),
+      bytes.byteLength,
+    );
+    assert.equal(chunks.length, Math.ceil(bytes.byteLength / MD5_CHUNK_BYTES));
   });
 
-  test("vendored source and MIT license match documented SHA-256 fingerprints", () => {
-    for (const [file, expected] of [
-      ["spark-md5.mjs", "bf574e66f46dca229613e716e02146cd45859f46b92014f2503db535475d9605"],
-      ["LICENSE2", "6e7abbd885f650c938cf377a6edcad56c7dcb61de092853af6141d806f8c9f04"],
-    ]) {
-      const contents = readFileSync(new URL(`../vendor/spark-md5-3.0.2/${file}`, import.meta.url));
-      assert.equal(createHash("sha256").update(contents).digest("hex"), expected);
+  test("hash-wasm release and MIT license are pinned", () => {
+    const metadata = JSON.parse(
+      readFileSync(new URL("../node_modules/hash-wasm/package.json", import.meta.url)),
+    );
+    const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url)));
+    assert.equal(metadata.version, "4.12.0");
+    assert.equal(manifest.dependencies["hash-wasm"], metadata.version);
+    assert.equal(metadata.license, "MIT");
+    assert.match(
+      readFileSync(new URL("../node_modules/hash-wasm/LICENSE", import.meta.url), "utf8"),
+      /Copyright \(c\) 2020 Dani Biró/,
+    );
+  });
+
+  test("large incremental hashes preserve independent binary and hex states without network", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = () => {
+      throw new Error("Hashing must not fetch WASM");
+    };
+    try {
+      const [first, second] = await Promise.all([createMD5(), createMD5()]);
+      const oracle = createHash("md5");
+      const chunk = new Uint8Array(MD5_CHUNK_BYTES + 13).fill(71);
+      for (let index = 0; index < 2048; index++) {
+        first.update(chunk);
+        oracle.update(chunk);
+        second.update(new Uint8Array([index % 256]));
+      }
+      assert.equal(first.digest(), oracle.digest("hex"));
+      const small = Uint8Array.from({ length: 2048 }, (_, index) => index % 256);
+      assert.deepEqual(
+        second.digest("binary"),
+        new Uint8Array(createHash("md5").update(small).digest()),
+      );
+      assert.equal(first.init().digest(), vectors[0][1]);
+    } finally {
+      globalThis.fetch = originalFetch;
     }
   });
 }

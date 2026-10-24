@@ -2,7 +2,7 @@
 // Incrementally decode into a private stage using archive-reader N/Z/BLTE checks and raw-file-stage.
 import { ARCHIVE_LIMITS } from "./archive-reader.mjs";
 import { createRawFileStage } from "./raw-file-stage.mjs";
-import SparkMD5 from "./vendor/spark-md5-3.0.2/spark-md5.mjs";
+import { createMD5, md5 } from "hash-wasm";
 export const ARCHIVE_STREAM_READ_BYTES = 65536;
 export const ARCHIVE_STREAM_CACHE_BYTES = 1024 * 1024;
 export const ARCHIVE_STREAM_CLEANUP_WAIT_MS = 1000;
@@ -12,7 +12,6 @@ const fail = (code) => {
 };
 const integer = (v, max = U32) => Number.isSafeInteger(v) && v >= 0 && v <= max;
 const hex = (bytes) => Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-const hash = () => new SparkMD5.ArrayBuffer();
 const u32 = (bytes, at) =>
   new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(at, false);
 const abort = (signal) => {
@@ -171,7 +170,7 @@ export async function stageArchiveRecord(
   )
     fail("RECORD");
   let acquiring, stage;
-  const contentHash = hash();
+  let contentHash = await createMD5();
   const read = async (position, count) => {
     if (
       !integer(position, encodedSize) ||
@@ -215,8 +214,7 @@ export async function stageArchiveRecord(
       const header = new Uint8Array(headerSize);
       for (let at = 0; at < headerSize; at += ARCHIVE_STREAM_READ_BYTES)
         header.set(await read(at, Math.min(ARCHIVE_STREAM_READ_BYTES, headerSize - at)), at);
-      if (SparkMD5.ArrayBuffer.hash(header).slice(0, 18) !== ekey.slice(0, 18).toLowerCase())
-        fail("EKEY");
+      if ((await md5(header)).slice(0, 18) !== ekey.slice(0, 18).toLowerCase()) fail("EKEY");
       let position = headerSize,
         decodedTotal = 0;
       for (let i = 0; i < count; ++i) {
@@ -263,7 +261,7 @@ export async function stageArchiveRecord(
         fail("DECODED_SIZE");
       await waiting(() => stage.append(bytes), signal);
       abort(signal);
-      contentHash.append(bytes);
+      contentHash.update(bytes);
       total += bytes.length;
     };
     for (const block of blocks) {
@@ -271,7 +269,7 @@ export async function stageArchiveRecord(
       // Cache at most 1 MiB for verified small-block reuse; read larger blocks twice from the same immutable source.
       const cached =
         block.encoded <= ARCHIVE_STREAM_CACHE_BYTES ? new Uint8Array(block.encoded) : null;
-      const verified = hash();
+      let verified = await createMD5();
       let verifiedDigest;
       try {
         for (let at = 0; at < block.encoded; at += ARCHIVE_STREAM_READ_BYTES) {
@@ -279,30 +277,30 @@ export async function stageArchiveRecord(
             block.position + at,
             Math.min(ARCHIVE_STREAM_READ_BYTES, block.encoded - at),
           );
-          verified.append(bytes);
+          verified.update(bytes);
           cached?.set(bytes, at);
         }
-        const digest = verified.end();
+        const digest = verified.digest();
         verifiedDigest = digest;
         if (
           blte ? digest !== block.checksum : digest.slice(0, 18) !== ekey.slice(0, 18).toLowerCase()
         )
           fail(blte ? "BLOCK_MD5" : "EKEY");
       } finally {
-        verified.destroy();
+        verified = null;
       }
       const payloadRead = (at, count) =>
         cached
           ? Promise.resolve(cached.slice(at - block.position, at - block.position + count))
           : read(at, count);
-      const encodedHash = hash();
+      let encodedHash = await createMD5();
       try {
         let mode = encoding,
           payloadAt = block.position,
           payloadSize = block.encoded;
         if (blte) {
           const marker = await payloadRead(payloadAt, 1);
-          encodedHash.append(marker);
+          encodedHash.update(marker);
           if (marker[0] !== 78 && marker[0] !== 90) fail("BLOCK_MODE");
           mode = marker[0] === 78 ? "n" : "z";
           payloadAt++;
@@ -318,7 +316,7 @@ export async function stageArchiveRecord(
             for (let part = 0; part < bytes.length; part += slice) {
               abort(signal);
               const piece = bytes.subarray(part, part + slice);
-              encodedHash.append(piece);
+              encodedHash.update(piece);
               yield piece;
             }
           }
@@ -327,7 +325,7 @@ export async function stageArchiveRecord(
           if (payloadSize !== block.decoded) fail("RAW_LENGTH");
           for await (const bytes of input()) await emit(bytes);
         } else await inflate(input(), block.decoded, emit, signal);
-        const actual = encodedHash.end();
+        const actual = encodedHash.digest();
         // 第二遍必须与已验证的完整摘要一致，即使非 BLTE 的 EKey 只保存摘要前缀。
         // Require the full verified digest on the second pass even though non-BLTE EKeys store only a prefix.
         if (actual !== verifiedDigest) fail("SOURCE_CHANGED");
@@ -336,10 +334,10 @@ export async function stageArchiveRecord(
         )
           fail(blte ? "BLOCK_MD5" : "EKEY");
       } finally {
-        encodedHash.destroy();
+        encodedHash = null;
       }
     }
-    if (total !== decodedSize || contentHash.end() !== ckey.toLowerCase()) fail("CKEY");
+    if (total !== decodedSize || contentHash.digest() !== ckey.toLowerCase()) fail("CKEY");
     const file = await waiting(() => stage.finalize(), signal);
     abort(signal);
     if (file?.size !== decodedSize || typeof file.readAt !== "function") fail("FINAL_SIZE");
@@ -383,6 +381,6 @@ export async function stageArchiveRecord(
     if (acquiring) return cleanup(acquiring, safe, error);
     throw safe;
   } finally {
-    contentHash.destroy();
+    contentHash = null;
   }
 }

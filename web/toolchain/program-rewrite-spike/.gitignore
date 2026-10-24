@@ -1,9 +1,0 @@
-/deps/
-/dist/
-/fixtures/
-/node_modules/
-/oracle/
-/browser-results/
-/__pycache__/
-/.venv/
-/oracle-guest/

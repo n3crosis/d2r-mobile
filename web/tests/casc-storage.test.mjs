@@ -12,7 +12,7 @@ import * as overlayModule from "../toolchain/casc-overlay-js/overlay.mjs";
 import * as cascPackWriterModule from "../casc-pack-writer.mjs";
 import * as archiveReaderModule from "../archive-reader.mjs";
 import * as rawFileStageModule from "../raw-file-stage.mjs";
-import * as sparkMd5Module from "../vendor/spark-md5-3.0.2/spark-md5.mjs";
+import { createMD5 } from "hash-wasm";
 import * as contractModule from "../toolchain/asset-runtime-js/contract.mjs";
 
 // casc-logical-reader
@@ -1522,15 +1522,14 @@ for at in range(0,max(1,len(raw)),65536):
 
 // casc-pinned-md5-view
 {
-  // 合成 TVFS 输入验证固定 MD5 适配器只散列视图范围；不加载游戏数据或 WASM。
-  // Synthetic TVFS input verifies the pinned MD5 adapter hashes only the view; no game data or WASM.
+  // 合成 TVFS 输入验证固定 MD5 适配器只散列视图范围；不加载游戏数据或 codec WASM。
+  // Synthetic TVFS input verifies the pinned MD5 adapter hashes only the view; no game data or codec WASM.
   const { default: test } = nodeTestModule;
   const { default: assert } = strictModule;
   const { createHash } = nodeCryptoModule;
   const { spawnSync } = nodeChild_processModule;
   const { deflateSync } = nodeZlibModule;
   const { fileURLToPath } = nodeUrlModule;
-  const { default: SparkMD5 } = sparkMd5Module;
   const { createCascOverlayTransform, createPinnedCascOverlayTransform } = overlayModule;
 
   const compress = (bytes) => new Uint8Array(deflateSync(bytes, { level: 9 }));
@@ -1551,7 +1550,7 @@ for at in range(0,max(1,len(raw)),65536):
     const expected = await oracle(new Uint8Array(payload), request.options);
     const generate = createPinnedCascOverlayTransform({
       codec: { genericZlibVersion: "1.2.13", compressZlib: compress },
-      SparkMD5,
+      md5Hasher: await createMD5(),
     });
     for (const padding of [0, 19]) {
       const backing = Buffer.alloc(payload.length + padding * 2, 0xa7);

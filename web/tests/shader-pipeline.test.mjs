@@ -1878,7 +1878,7 @@ import * as shaderSourcelinkDiagnosticModule from "../runtime-build/shader-sourc
     assert.match(policy, /"shader-diagnostics\.mjs"/);
     const adapter = await readFile(new URL("../air-compiler-adapter.mjs", import.meta.url), "utf8");
     assert.match(adapter, /shader-diagnostics\.mjs/);
-    const { readReviewedSourceLock } = await import("./fixtures/air-fork-source/fork-source.mjs");
+    const { readReviewedSourceLock } = await import("./fixtures/air/fixture.mjs");
     const lock = await readReviewedSourceLock();
     assert(Object.keys(lock.compilerFiles).every((path) => !path.includes("shader-diagnostics")));
     assert(Object.keys(lock.sdkFiles).every((path) => !path.includes("shader-diagnostics")));

@@ -433,6 +433,7 @@ finish
         metadata({
           "src/index.css": { bytesInOutput: 1 },
           "node_modules/react/index.js": { bytesInOutput: 1 },
+          "node_modules/hash-wasm/dist/index.esm.js": { bytesInOutput: 1 },
           "node_modules/@radix-ui/react-compose-refs/dist/index.mjs": { bytesInOutput: 1 },
           "node_modules/react-dom/client.js": { bytesInOutput: 1 },
           "node_modules/scheduler/index.js": { bytesInOutput: 1 },
@@ -445,8 +446,20 @@ finish
         }),
       );
       const notices = await readFile(resolve(directory, "third-party-notices.txt"), "utf8");
+      const md5Notice = (
+        await readFile(new URL("../node_modules/hash-wasm/src/md5.c", import.meta.url), "utf8")
+      ).match(/^\/\*[\s\S]*?\*\//)[0];
+      const helperNotice = (
+        await readFile(
+          new URL("../node_modules/hash-wasm/dist/index.esm.js", import.meta.url),
+          "utf8",
+        )
+      ).match(/\/\*\*+\r?\nCopyright \(c\) Microsoft Corporation\.[\s\S]*?\*\//)[0];
+      assert.ok(notices.includes(md5Notice));
+      assert.ok(notices.includes(helperNotice));
       for (const file of [
         "tailwindcss/LICENSE",
+        "hash-wasm/LICENSE",
         "react/LICENSE",
         "react-dom/LICENSE",
         "scheduler/LICENSE",
@@ -462,13 +475,14 @@ finish
           ),
           file,
         );
-      for (const file of ["SHADCN_LICENSE.md", "vendor/spark-md5-3.0.2/LICENSE2"])
+      for (const file of ["SHADCN_LICENSE.md"])
         assert.ok(
           notices.includes(await readFile(new URL(`../${file}`, import.meta.url), "utf8")),
           file,
         );
       for (const name of [
         "react@",
+        "hash-wasm@4.12.0",
         "react-dom@",
         "scheduler@",
         "@radix-ui/react-checkbox@",

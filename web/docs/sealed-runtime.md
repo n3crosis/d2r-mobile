@@ -49,9 +49,9 @@ checks reservations/metadata but does not authenticate external pack bytes;
 it is not a UI option. See [CASC storage](casc-storage.md).
 
 [MD5 verification](../../web/checksum-verifier.mjs) hashes only the supplied view
-in bounded yielding chunks, preserving cancellation and destroying per-call state.
-Callers must not mutate pending input. Keep [SparkMD5 3.0.2 MIT provenance](../../web/vendor/spark-md5-3.0.2/PROVENANCE.md).
-Collision-broken MD5 satisfies the archive format, not authenticity.
+in bounded yielding chunks, preserving cancellation and releasing per-call state.
+Callers must not mutate pending input. Keep [hash-wasm 4.12.0 MIT notice](https://github.com/Daninet/hash-wasm/blob/v4.12.0/LICENSE).
+Initialization is asynchronous; independent stream instances are released on success, cancellation or error. The pinned package embeds its MD5 WASM bytes, so hashing needs no network fetch. Collision-broken MD5 satisfies the archive format, not authenticity.
 
 [Streaming SHA-256](../../web/toolchain/sha256-stream-wasm/adapter.mjs) uses
 [pinned hactool/mbedTLS 2.6.1](../../web/toolchain/sha256-stream-wasm/source-pin.json),
@@ -105,8 +105,8 @@ initialized:true 后才接受私有 RPC；不得引入任意模块或 URL 回退
 Pillow 派生声明及 PNG zlib 1.3.1、CASC zlib 1.2.13 声明。内部 prebuilt-CASC 验证预留位置/
 元数据但不认证外部包字节，也不是 UI 选项，详见 CASC 指南。
 
-MD5 只散列传入视图，分块让出任务，保留取消并在所有结束路径销毁状态；调用方期间不得改输入。
-保留 SparkMD5 3.0.2 MIT 来源。MD5 已失去抗碰撞能力，只满足格式，不能证明真实性。
+MD5 只散列传入视图，分块让出任务，保留取消并在所有结束路径释放状态；调用方期间不得改输入。
+初始化为异步；独立流实例在成功、取消或失败后释放。固定包内嵌 MD5 WASM，无需联网获取。保留 hash-wasm 4.12.0 MIT 来源。MD5 已失去抗碰撞能力，只满足格式，不能证明真实性。
 
 流式 SHA-256 使用固定 hactool/mbedTLS 2.6.1，固定内存 256 KiB、读取 ≤64 KiB。
 散列已完成暂存快照，保留代次令牌所有权、取消清理及来源/许可证凭据。调用方认证 WASM，

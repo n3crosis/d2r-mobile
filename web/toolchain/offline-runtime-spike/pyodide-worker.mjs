@@ -112,9 +112,10 @@ async function initialize(data) {
   phase = "initialize-casc-codec";
   const { createPngCodec } = await import(moduleUrl("png-codec.mjs"));
   const codec = await createPngCodec(assets.get("png-codec.wasm"));
-  const { default: SparkMD5 } = await import(moduleUrl("spark-md5.mjs"));
+  const { createMD5 } = await import(moduleUrl("hash-wasm.mjs"));
+  const md5Hasher = await createMD5();
   const { createPinnedCascOverlayTransform } = await import(moduleUrl("casc-overlay.mjs"));
-  cascTransform = createPinnedCascOverlayTransform({ codec, SparkMD5 });
+  cascTransform = createPinnedCascOverlayTransform({ codec, md5Hasher });
   phase = "import-runtime";
   await import(moduleUrl("pyodide.asm.js"));
   const { loadPyodide } = await import(moduleUrl("pyodide.mjs"));

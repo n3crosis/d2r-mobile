@@ -1,8 +1,0 @@
-/target/
-/dist/
-/reference/*.c
-/reference/*.h
-/reference/Image.py
-/test/fixtures.json
-/test/fixtures-meta.json
-/reference/PngImagePlugin.py

@@ -104,7 +104,7 @@ test("retention stays failure-only and keeps source upload before diagnostic bin
 
 test("fresh diagnostic source requires exact fork, lock and complete SDK-inclusive source mirror", async () => {
   const { createFreshAirReleaseFixture, fixtureJson, fixtureRecord } =
-    await import("../tests/fixtures/air-release-generic/fixture.mjs");
+    await import("../tests/fixtures/air/fixture.mjs");
   const f = createFreshAirReleaseFixture(),
     sourceName = `air-wasm-${f.pin.version}-source.tar.gz`;
   const source = {

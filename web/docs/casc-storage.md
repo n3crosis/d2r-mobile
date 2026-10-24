@@ -10,7 +10,7 @@ The manifest is indexed with streaming reads; archive payloads remain lazy and B
 
 ### Serialize overlays and supplemental packs
 
-[overlay.mjs](../../web/toolchain/casc-overlay-js/overlay.mjs) implements native TVFS/CFT/path-trie/BLTE serialization. `createPinnedCascOverlayTransform` binds pinned SparkMD5 and zlib 1.2.13; arbitrary compression substitutions change output bytes. Ordinary overlays retain 64 MiB input/output, 16 MiB table/replacement and 4,096-job limits.
+[overlay.mjs](../../web/toolchain/casc-overlay-js/overlay.mjs) implements native TVFS/CFT/path-trie/BLTE serialization. `createPinnedCascOverlayTransform` binds pinned hash-wasm and zlib 1.2.13; arbitrary compression substitutions change output bytes. Ordinary overlays retain 64 MiB input/output, 16 MiB table/replacement and 4,096-job limits.
 
 `inspectCascPackStorageSpecs` resolves original specs; `patchCascPrebuiltReferences` resolves every old slot before copying and changes only selected EKeys/lengths. `createCascPackStorageLookup` reuses one immutable snapshot, optionally indexing large batches. Metadata supports at most 32,768 requests and 8 MiB path bytes. Duplicate/ambiguous/unaligned matches reject. These helpers do not authenticate path/key associations or external pack bytes, reserve locations or prove payload/spec agreement.
 
@@ -34,7 +34,7 @@ node web/toolchain/casc-overlay-js/test/parity.mjs --wasm
 CASC_PACK_NATIVE_CODEC="$PWD/web/toolchain/png-codec-exact/dist/png_codec_native.so" node --test web/tests/casc-storage.test.mjs
 ```
 
-Preserve [source provenance](../../web/toolchain/casc-overlay-js/source-provenance.json), [SparkMD5 notices](../../web/vendor/spark-md5-3.0.2/PROVENANCE.md) and codec licenses. Default pack tests use mock staging/host compression; optional native and WASM checks exercise different boundaries. Synthetic serializer/index/hash agreement does not prove browser quotas, large-pack performance, real-game compatibility or installation.
+Preserve [source provenance](../../web/toolchain/casc-overlay-js/source-provenance.json), [hash-wasm notice](https://github.com/Daninet/hash-wasm/blob/v4.12.0/LICENSE) and codec licenses. Default pack tests use mock staging/host compression; optional native and WASM checks exercise different boundaries. Synthetic serializer/index/hash agreement does not prove browser quotas, large-pack performance, real-game compatibility or installation.
 
 ## 简体中文
 
@@ -46,7 +46,7 @@ createCascLogicalAssets 把选定且不可变的 RomFS 索引连接到有界 log
 
 ### 覆盖层与补充包
 
-overlay.mjs 实现原生 TVFS/CFT/路径树/BLTE 序列化。生产 wrapper 绑定固定 SparkMD5 和 zlib 1.2.13，任意替换压缩器会改变字节。普通覆盖层保持输入/输出 64 MiB、单表/替换 16 MiB、4,096 任务上限。
+overlay.mjs 实现原生 TVFS/CFT/路径树/BLTE 序列化。生产 wrapper 绑定固定 hash-wasm 和 zlib 1.2.13，任意替换压缩器会改变字节。普通覆盖层保持输入/输出 64 MiB、单表/替换 16 MiB、4,096 任务上限。
 
 规格检查解析原始存储方式；引用补丁先解析全部旧槽再复制，只改选定 EKey/长度。可复用 lookup 只建立一次不可变快照，大批量可使用索引。元数据最多 32,768 请求和 8 MiB 路径字节；重复、歧义或未对齐命中拒绝。这些 helper 不认证路径关联/外部包，不预留位置，也不证明载荷符合规格。
 
@@ -58,4 +58,4 @@ writeCascPack 串行消费任务到调用方自有暂存。沿用原始 n/z/raw-
 
 ### 验证与来源
 
-上方命令从仓库根执行；WASM 检查需先用 Emscripten 4.0.20 构建固定 codec。保留源码来源、SparkMD5 声明及 codec 许可证。默认测试用暂存/宿主压缩替身，可选原生和 WASM 各有证据边界；合成字节/索引/散列一致不证明浏览器配额、大包性能、真实游戏或安装兼容性。
+上方命令从仓库根执行；WASM 检查需先用 Emscripten 4.0.20 构建固定 codec。保留源码来源、hash-wasm 声明及 codec 许可证。默认测试用暂存/宿主压缩替身，可选原生和 WASM 各有证据边界；合成字节/索引/散列一致不证明浏览器配额、大包性能、真实游戏或安装兼容性。

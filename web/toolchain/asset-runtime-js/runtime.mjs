@@ -18,7 +18,7 @@ import { createImageKernels } from "../image-kernels-rust/kernels.mjs";
 import { createPngCodec } from "../png-codec-exact/codec.mjs";
 import { createFontRasterizer } from "../font-rasterizer-exact/font.mjs";
 import * as numeric from "../art-kernels/kernels.mjs";
-import SparkMD5 from "../../vendor/spark-md5-3.0.2/spark-md5.mjs";
+import { createMD5 } from "hash-wasm";
 const WASM_NAMES = ["image-kernels.wasm", "png-codec.wasm", "font-rasterizer.wasm"];
 const digest = async (algorithm, bytes) =>
   Array.from(new Uint8Array(await crypto.subtle.digest(algorithm, bytes)), (byte) =>
@@ -59,16 +59,10 @@ export async function createAssetRuntime(assets, expected, onStage = () => {}) {
   onStage("initialize-font-rasterizer");
   const font = await createFontRasterizer(modules.get("font-rasterizer.wasm"));
   onStage("bind-asset-recipes");
-  // SparkMD5 仅读取完整缓冲区；子视图仍复制精确范围，避免散列额外字节。
-  // SparkMD5 only reads full buffers; copy subviews to avoid hashing unrelated bytes.
-  const md5 = (bytes) =>
-    SparkMD5.ArrayBuffer.hash(
-      bytes.buffer instanceof ArrayBuffer &&
-        bytes.byteOffset === 0 &&
-        bytes.byteLength === bytes.buffer.byteLength
-        ? bytes.buffer
-        : bytes.slice().buffer,
-    );
+  // 在异步初始化后同步复用实例；每次调用完整结束，不跨 await 共享进行中的状态。
+  // Reuse only complete synchronous hashes after async initialization; never share in-flight state across await.
+  const md5Hasher = await createMD5();
+  const md5 = (bytes) => md5Hasher.init().update(bytes).digest();
   const sha256 = (bytes) => digest("SHA-256", bytes),
     sha1 = (bytes) => digest("SHA-1", bytes);
   const art = createArtRecipes({
@@ -80,8 +74,8 @@ export async function createAssetRuntime(assets, expected, onStage = () => {}) {
     sha256,
   });
   const remaining = createRemainingArtRecipes({ pixels: kernels, png: codec, numeric });
-  const casc = createPinnedCascOverlayTransform({ codec, SparkMD5 });
-  const cascPrebuilt = createPinnedCascPrebuiltOverlayTransform({ codec, SparkMD5 });
+  const casc = createPinnedCascOverlayTransform({ codec, md5Hasher });
+  const cascPrebuilt = createPinnedCascPrebuiltOverlayTransform({ codec, md5Hasher });
   const overlay = createOverlayRecipe({ png: codec, md5, sha1 });
   if (typeof overlay?.execute !== "function")
     throw new Error("Incomplete overlay recipe implementation");
