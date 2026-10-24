@@ -59,7 +59,7 @@ an advisory does not revive a cancelled job. Exact result types/options remain
 in the module.
 
 ```sh
-node --test web/tests/output-cache.test.mjs
+node --test web/tests/browser-lifecycle.test.mjs
 ```
 
 Run from repository root. Synthetic tests cover trust, invalidation, storage

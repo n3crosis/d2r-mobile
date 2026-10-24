@@ -11,7 +11,7 @@ pushes/PRs and manual dispatch. Run its shared local entry point from repository
 node web/verification/verify.mjs quick
 (cd web && bun scripts/check-local.mjs)
 (cd web && bun run test)
-node --test web/tests/e2e-tooling.test.mjs
+node --test web/tests/build-policy.test.mjs
 ```
 
 `quick` needs Bun 1.4.3, Node 22.12+ (24 recommended), Python with venv/pip and

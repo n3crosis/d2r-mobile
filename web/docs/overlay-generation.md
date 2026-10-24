@@ -23,7 +23,7 @@ Recipe payload/output each cap at 128 MiB; individual files/manifest at 16 MiB. 
 ### Verify
 
 ```sh
-node --test web/tests/overlay-generation.test.mjs
+node --test web/tests/asset-generation.test.mjs
 node web/toolchain/overlay-recipe-js/scripts/verify-source.mjs
 python3 web/toolchain/overlay-recipe-js/scripts/generate-contract-source.py --check
 # Requires historical b811b901 locally:
