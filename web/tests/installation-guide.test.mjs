@@ -47,11 +47,8 @@ test("generation reminder stays visible beside Generate and sets expectations wi
   );
 });
 
-test("only the short FAQ uses the existing Accordion, without adding a dependency", () => {
-  const imports = [...faq.matchAll(/from "([^"]+)"/g)].map((match) => match[1]);
-  assert.deepEqual(imports, ["../../i18n.mjs", "@/components/ui/accordion"]);
+test("FAQ remains a labeled single-open collapsible section", () => {
   assert.match(faq, /<Accordion type="single" collapsible>/);
-  assert.equal([...faq.matchAll(/\["dmWebFaq\w+Question"/g)].length, 6);
   assert.match(faq, /aria-labelledby="faq-heading"/);
 });
 

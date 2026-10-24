@@ -66,36 +66,10 @@ A crash can leave an orphaned stage. There is deliberately no global clearing,
 startup scavenging, recursive removal, or deletion of unknown entries. No input
 file handles are accepted or modified.
 
-## Evidence and remaining gates
+## Local verification
 
-```sh
-node --test web/tests/staged-zip-validator.test.mjs web/tests/browser-staged-output.test.mjs
-```
-
-Tests cover independent Python `zipfile` validation of both formats, mutation of
-every byte in tiny archives, >4 GiB metadata arithmetic without large allocations,
-advisory-estimate tolerance, capability/permission failures, collisions, short/excess
-writes, output and manifest ownership, post-validation mutation, write/close/cleanup failures,
-cancellation, late cancellation and unrelated-file preservation. Lifecycle unit
-tests use fault-injection mocks.
-
-`staged-output-browser-checks.yml` runs a tiny real Chromium OPFS harness with
-Playwright 1.64.1. The destination is a test-only OPFS file, not an OS save-picker
-handle. It covers ZIP32/ZIP64 commit and independent reread, actual writable
-cancellation preserving existing output, own-stage cleanup, unrelated-file
-preservation and staging/abort with an injected low quota estimate.
-
-```sh
-PLAYWRIGHT_ENTRY=/absolute/path/to/playwright/index.mjs \
-  node web/toolchain/staged-output-spike/browser-smoke.mjs
-```
-
-Hosted proof passed on 2026-10-20 for commit
-`b90743b5b70fdf9ffa895dfd1d54a0201ad270c7` using Chromium `156.0.8078.4`:
-[real OPFS workflow run](https://github.com/n3crosis/d2r-mobile/actions/runs/39399152890).
-All four browser scenarios passed at that historical commit, which rejected low
-estimates. The revised advisory-only scenario has not been browser-rerun here.
-The prior evidence establishes only the tiny OPFS scope described above. Windows
-and macOS save-picker behavior, actual multi-GB OPFS endurance, crash recovery and
-real-game output correctness remain release gates. The separate ZIP64 large-output
-workflow proves writer bytes, not this browser staging lifecycle.
+Run the optional `staged-output` profile in [TESTING.md](TESTING.md). Its Chromium
+harness uses a test-only OPFS destination, not an OS save-picker handle. It does
+not establish Windows/macOS save-picker behavior, multi-GB OPFS endurance, crash
+recovery or real-game output correctness. The separate `zip64` profile checks
+writer bytes, not browser staging.

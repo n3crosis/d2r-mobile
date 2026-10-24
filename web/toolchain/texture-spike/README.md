@@ -69,10 +69,11 @@ Consumers should present errors, not silently fall back to incomplete output.
 
 ## Reproduction and evidence
 
-CI `.github/workflows/texture-browser-checks.yml` installs official emsdk 4.0.20
-from tag commit `e4fe26ef59168ff44f4c23c466e497bf60b3411e`, asserting the exact hash
-before installing/activating 4.0.20. `build-wasm.sh` checks the compiler version.
-No SDK is downloaded or executed by the browser. Run:
+The optional `texture` profile in [TESTING.md](../../TESTING.md) provisions the
+pinned Emscripten SDK 4.0.20 from tag commit
+`e4fe26ef59168ff44f4c23c466e497bf60b3411e` for local verification.
+`build-wasm.sh` checks the compiler version;
+no SDK is downloaded or executed by the browser. With prerequisites ready, run:
 
 ```sh
 bash web/toolchain/texture-spike/build-wasm.sh
@@ -91,13 +92,6 @@ layout words and every output byte against those native results. Independent
 known-red BC1 and zero-BC3 oracles supplement same-source differential tests.
 Malformed requests, heap growth, public worker transfer/recovery, and no external
 traffic are tested. Generated fixtures are ignored, synthetic and local only.
-
-Native checks have been run locally. Official Emscripten compilation, Node/WASM
-differential checks and actual Chromium dedicated-worker checks passed in
-[CI run 39395178181](https://github.com/n3crosis/d2r-mobile/actions/runs/39395178181)
-at commit `1db2b64b8a6d8512fb9492369bde823419ab40a3`. This includes the explicit
-`HEAPU8`/`HEAPU32` runtime exports required by Emscripten 4.0.20. No game texture
-validation or end-to-end asset-generation parity is claimed.
 
 ## Notices
 
@@ -145,13 +139,11 @@ No array/mip-chain encoding, multi-frame template extraction, ASTC encoding or
 other BC encoding is implemented. This primitive alone does not reproduce the
 wide-stash image composition or authorize replacing arbitrary atlas layouts.
 
-CI additionally generates 24 original full-image NumPy BC3 + original native
+The encoder fixture script generates 24 original full-image NumPy BC3 + original native
 `pack` reference cases (solid/gradient/alpha/noise; 1×1 through edge-aligned and
 nonaligned 68×65). It compares every linear BC3 byte and full packed sprite byte
 against Node/WASM and actual Chromium/Pyodide output, exercises malformed lengths,
-geometry/format/frames, and tests cancellation plus clean worker restart. This
-new encoder proof is pending CI; previous decoder green runs do not establish
-encoder parity. To prepare locally or in CI after installing the pinned runtime:
+geometry/format/frames, and tests cancellation plus clean worker restart. Decoder checks do not establish encoder parity. After installing the pinned runtime:
 
 ```sh
 python3 web/toolchain/texture-spike/package-encoder.py

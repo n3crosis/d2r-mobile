@@ -125,15 +125,6 @@ No default Worker URL is installed. A later sealed preloaded-runtime loader can
 supply its own trusted factory. The current offline-runtime proof does not yet cover
 this extraction engine, so offline extraction is explicitly unproven.
 
-## Evidence and remaining limits
-
-Focused Node tests exercise serialized requests, transferred-array ownership,
-queue limits, terminal errors, timeout, cancellation, strict responses, token
-transition, required-module staging, aggregate budgets, selection mismatch, DLC
-input gating, explicit DLC versions, lazy RomFS access, revocation and cleanup with
-synthetic mock Workers.
-Chromium CI separately loads the actual client and extraction Worker, checks clean
-disposal and terminal malformed-input failure alongside the native WASM smoke.
-These do not establish successful authenticated extraction of a real signed title,
-commercial content conversion, complete program generation, device execution, or
-an extraction-specific sealed offline runtime.
+Synthetic worker tests do not establish authenticated extraction of a real signed
+title or an extraction-specific sealed offline runtime. See [TESTING.md](TESTING.md)
+for the optional local extraction profile.

@@ -1,6 +1,8 @@
-# BKTR next boundary
+# Bounded BKTR reader
 
-The prior bounded JS relocation parser/planner passed [NSP CI run 39396778480](https://github.com/n3crosis/d2r-mobile/actions/runs/39396778480), commit `fe5abb21b5527c6d230f86c94a4a7a42c6982036`. It remains an independently usable **untrusted routing primitive**, not a decryption or authentication API. The new native authenticated legacy BKTR path below awaits its first full CI execution. No user content, keys, valid signed NCA, or real update fixture has been accessed.
+The bounded JS relocation parser/planner is an independently usable **untrusted
+routing primitive**, not a decryption or authentication API. Synthetic fixtures do
+not establish compatibility with signed retail base/update inputs.
 
 ## Exact upstream mapping
 
@@ -21,7 +23,7 @@ The legacy upstream parser allocates caller-sized tables, relocates buckets in p
 
 `planRelocationRead(table,offset,count)` returns frozen base/patch physical read spans, splitting across virtual relocation boundaries, capped at 64 KiB total. All offsets remain BigInt. Synthetic tests cover base/patch/base crossing, physical offsets above 4 GiB, EOF, malformed counts/order/source flags and out-of-range mappings. This primitive does not read or decrypt source content and does not assert that the table is authenticated. It must remain internal to a future verifier, never a public unchecked extraction path.
 
-## Native legacy patch path, pending CI
+## Native legacy patch path
 
 `openPatchedRomfs(baseIndex,patchIndex)` / `nsp_open_patched_romfs` now opens and verifies the base RomFS first, transfers that context into separate owned storage, authenticates the patch header, and selects its unique BKTR RomFS section. Both fixed retail RSA-PSS signature checks and section-header hash/range checks remain mandatory. The base and patch use separate file/AES contexts, wiped/freed together on close or failure.
 
@@ -31,7 +33,7 @@ The merged reader splits both virtual relocations and physical encryption subsec
 
 `open(index,"program-exefs")` may now coexist with an unselected BKTR RomFS section. It still verifies only its selected PFS0 content and signed section headers, not the BKTR payload. This permits independently verifying the patch executable without falsely treating it as a merged filesystem. Selecting BKTR as PFS0 or using a patched base for the new merge remains unsupported.
 
-A closed C fixture, exposed only as a no-argument synthetic self-test, constructs public in-memory fixture data and temporary memory-filesystem files, validates malformed table rejection, checks CTR-Ex ciphertext against an independently generated OpenSSL SHA256 digest, reads across base/patch and encryption-generation boundaries including unaligned offsets, and runs the same merged-IVFC verifier. Changed patch ciphertext and wrong base bytes must fail integrity. It always closes every synthetic context and never exposes a reader, accepts a caller root/key/path, or skips production RSA validation. Chromium additionally rejects an unsigned base through the new production patch API. Full execution is left to the next GitHub CI run.
+A closed C fixture, exposed only as a no-argument synthetic self-test, constructs public in-memory fixture data and temporary memory-filesystem files, validates malformed table rejection, checks CTR-Ex ciphertext against an independently generated OpenSSL SHA256 digest, reads across base/patch and encryption-generation boundaries including unaligned offsets, and runs the same merged-IVFC verifier. Changed patch ciphertext and wrong base bytes must fail integrity. It always closes every synthetic context and never exposes a reader, accepts a caller root/key/path, or skips production RSA validation. Chromium additionally rejects an unsigned base through the new production patch API. Run the optional local `extraction` profile in [TESTING.md](../../TESTING.md).
 
 ## Still required before an end-to-end claim
 

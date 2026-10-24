@@ -53,10 +53,3 @@ Changing the initializer invalidates existing code signatures. Output remains
 unsigned and requires user signing after all packaging modifications. Base-only
 gameplay remains unverified; this source-backed change establishes truthful
 no-DLC service responses, not device-playability evidence.
-
-## Checks for this change
-
-Only syntax and scoped ESLint checks were run, as requested. No tests, CI
-expansion, native execution, commit, or push were performed. The deterministic
-hash above was computed over the pinned shell copy with precisely those four
-bytes changed; that is static artifact inspection, not a runtime test.

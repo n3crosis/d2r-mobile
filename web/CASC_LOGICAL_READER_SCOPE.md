@@ -49,15 +49,3 @@ before bytes are returned. MD5 is format integrity, not authentication.
 A per-read abort signal and the factory's lifetime signal both apply, including
 to underlying RomFS reads. Expired native mount-reader errors propagate. Returned
 byte arrays are owned by the caller and cannot mutate the manifest or archive.
-
-## Evidence
-
-`tests/casc-logical-reader.test.mjs` constructs synthetic raw/zlib/BLTE archives
-and invokes the repository's unmodified Python `dmx.py` as the lookup/decode
-oracle. It checks duplicate precedence, aliases, backslashes, a sparse 40-bit
-locator above 4 GiB, bounded lazy reads over a file with BigInt size above 2^53,
-owned output, cancellation, corrupt checksums, unsupported layouts, locator
-mismatches, absent assets, invalid extents, path restrictions and manifest/read
-budgets. No proprietary bytes or keys are included. Full-suite execution belongs
-to existing GitHub Actions (`tests/*.test.mjs`); targeted development verification
-is not a claim of complete native extraction or real-title compatibility.

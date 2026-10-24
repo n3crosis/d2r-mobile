@@ -4,7 +4,7 @@ This **test-root-only** proof authors a tiny NSP containing a signed Meta NCA an
 Program NCA. It supplies no Nintendo keys, signatures, game content, executable
 code, user uploads, or downloaded game data. RSA private material is generated
 fresh in Node memory and never written. Only the synthetic public modulus is
-persisted in disposable CI scratch space.
+persisted in disposable scratch space.
 
 ## Run
 
@@ -22,29 +22,13 @@ active, its command is:
 bash web/toolchain/synthetic-signed-nca/run-ci.sh
 ```
 
-The dedicated `.github/workflows/synthetic-signed-nca.yml` workflow is available
-for an explicitly requested CI proof. Do not add automatic runs to obtain another
-copy of an unchanged result.
-
-## Verified receipt
-
-The full dual-WASM proof passed on 2026-10-20 at commit
-`2996fec9f52e998e7b60c037733e31dfbedf8c57`:
-
-- [Run 39405094585, job 118568975471](https://github.com/n3crosis/d2r-mobile/actions/runs/39405094585/job/118568975471)
-  completed successfully at 10:03:39 UTC.
-- The job log at 10:03:35 UTC confirms identical pinned dependency sources except
-  for the single test public root, production rejection of the synthetic signer,
-  successful synthetic NSP/Meta/CNMT/Program ExeFS/IVFC/RomFS authentication and
-  extraction, and rejection of the tampering matrix below.
-- This is a receipt for that exact revision, not proof that subsequent changes
-  have been exercised. The log retains upstream compiler warnings; success does
-  not claim warning-free upstream sources.
+The optional `signed-nca` profile in [TESTING.md](../../TESTING.md) runs the full
+proof locally. It is not part of the shared quick build.
 
 ## Isolation and assertions
 
 1. Build the normal pinned production boundary without any modification.
-2. Copy its build scripts and boundary source into disposable CI storage.
+2. Copy its build scripts and boundary source into disposable scratch storage.
 3. In that copy only, extend dependency preparation to substitute exactly one
    retail RSA public modulus in pinned upstream `pki.c` with a generated public
    test modulus. Do not modify signature verification, content hashing,
@@ -64,14 +48,13 @@ The full dual-WASM proof passed on 2026-10-20 at commit
    the integrity error and retain no open PFS directory. Also corrupt Meta's
    PFS hash table and require rejection.
 
-The workflow never uploads binaries or fixtures and removes its scratch tree on
+The harness never uploads binaries or fixtures and removes its scratch tree on
 exit. It neither writes into nor contributes files to production `dist/`.
 
 ## Exact limits
 
-The successful dual-WASM run above proves synthetic authenticated container
-extraction at its recorded revision. Local generator/static tests alone do not
-establish that result for a later revision.
+Local generator/static tests alone do not establish dual-WASM authenticated
+container extraction; run the full proof against the revision under review.
 The fixture uses the existing plaintext-header/unencrypted-section format; it does
 not prove AES-encrypted NCA handling, titlekey/key-area handling, or retail key
 availability. ExeFS has deliberately tiny NSO0/META marker files, not complete

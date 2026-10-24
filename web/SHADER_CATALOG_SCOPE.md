@@ -54,12 +54,7 @@ adapter checks tesc/tese modes, kernel/vertex MSL kinds and the ds triangle patc
 attribute. It reports `stageSupport: source-ported-unverified` and no verified
 stage linkage. Actual emitted outputs and replay still need native parity proof.
 
-## Evidence and remaining integration
-
-Four bounded local tests passed: full catalog selection against AST-extracted
-original Python selection, tamper/missing-input rejection, authored cs/vs/ps
-record/c1 mapping against original `job_for`, and invalid c1/SPH rejection. No
-SDK or browser build, game input, heavy CI or workflow change was used here.
+## Production integration
 
 `production-shaders.mjs` supplies authenticated pack/main-image inputs, replay metadata and the final source-digest gate. This adapter alone retains `productionEquivalent: false`; its job preparation is not a release attestation.
 

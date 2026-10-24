@@ -6,7 +6,7 @@ This is an **implemented, isolated transform subset**, not the full game asset g
 
 - `image-default-frame`: validates SpA1 v31 raw RGBA, crops one horizontal frame, runs the **original** `gen_hud_v4.dflt` NumPy color-mask transformation, and returns raw RGBA, Pillow PNG, and the native overlay's v31 sprite header/pixels.
 - `experience-table`: runs the **original** `gen_hud_exp.main` function with an in-memory reader and captured output. The 100-entry C header is not a placeholder or a re-created approximation.
-- `derived-tables`: uses the original `shell_stubs.parse/data` to emit a complete runtime `derived.tsv` from all three genuine generated C texts, with external trusted count/hash expectations. See `DERIVED_TABLES.md`; new differential browser checks are pending CI.
+- `derived-tables`: uses the original `shell_stubs.parse/data` to emit a complete runtime `derived.tsv` from all three genuine generated C texts, with external trusted count/hash expectations. See `DERIVED_TABLES.md`.
 - `overlay-paths`: runs the **original** `gen_romfs_overlay.touch_path` rewrite with its original `LAY`, `UI`, and `TDIR` constants. Returns a path plan only, never labels it a CASC overlay.
 - Typed-array worker transport, serialized requests, caller-buffer ownership preserved, bounded reads, error propagation, and cancellation by terminating the dedicated worker.
 
@@ -71,16 +71,11 @@ Official references: [deployment](https://pyodide.org/en/0.27.7/usage/downloadin
 
 ## Verification
 
-The independent workflow `.github/workflows/browser-asset-checks.yml`:
-
-1. Packages the audited native functions after source hash checks.
-2. Prepares a fully self-hosted runtime.
-3. Creates tiny **authored synthetic** sprite/table/path fixtures. No fonts or game inputs.
-4. Builds independent reference RGBA/header bytes using scalar Python, calls the original native table function, and supplies explicit expected overlay paths.
-5. Executes the module worker in real Chromium with external requests blocked, concurrently requests all three operations, and compares exact RGBA/sprite/header/path output bytes.
-6. Decodes browser-generated PNG with native Pillow and demands exact pixel equality. Compressed PNG byte identity is intentionally not required across library versions.
-7. Checks truncated headers/payloads, oversized dimensions, invalid frame selection, unsupported v61/CASC, short table input and traversal paths; checks recovery after errors.
-8. Uploads report, fixture/reference/output bytes, source provenance and the self-hostable static build as evidence.
+Run the optional `assets` profile in [TESTING.md](../../TESTING.md). It compares
+source-pinned transformations against independent native references using authored
+synthetic inputs. PNG pixel equality is required; compressed PNG bytes may differ
+across library versions. Synthetic parity does not establish real-game generation
+or Windows/macOS integration.
 
 Maintainer commands (not end-user steps):
 
@@ -94,25 +89,21 @@ npm run test:browser
 python3 test/verify-png.py
 ```
 
-Browser execution was delegated to GitHub CI after the coherent implementation batch. [Run 39392846657](https://github.com/n3crosis/d2r-mobile/actions/runs/39392846657) **passed** on commit `143e375973d4f4d5fbc770e3464f9112c2403a4b`: runtime preparation, independent native reference, real Chromium exact parity, PNG pixel verification, and artifact upload all succeeded. The `browser-asset-generation-evidence` artifact contains the report and prepared static build (9,864,227 compressed bytes; artifact SHA-256 `fcd01fd9daa64c9ec42ea8db90a369e7a965f98acbf7389b448a6e9fd7adddf9`). This proves the listed synthetic subset only. Linux Chromium CI validates the browser runtime path, not native Windows/macOS OS-specific integration or full real-game asset generation. Source changes after that commit require their own CI proof.
-
 ## Data and licensing
 
 Synthetic pixels/tables are authored by this test. No proprietary game font or image is shipped/downloaded. Original game fonts must remain user-supplied and local, and their licenses must permit the intended use; this spike grants no redistribution rights. The prepared runtime remains subject to Pyodide and included packages' licenses. Keep package license metadata when distributing a deployment. Native adaptation retains this repository's licensing.
 
 ## Optional v61 PNG bridge (separate integration)
 
-The standalone worker above still rejects v61. `web/v61-asset-worker.mjs` composes the separate real texture WASM worker with this unchanged Pyodide worker, and `web/asset-generator-adapter.mjs` exposes it only with explicit `enableV61Png: true`. Output is PNG only; native v61 sprite encoding is still unsupported. Texture worker parity passed [run 39395178181](https://github.com/n3crosis/d2r-mobile/actions/runs/39395178181). The extended asset workflow now includes an independent two-frame v61 native fixture and real cross-worker/browser packaging-adapter pixel comparison. The composed-path check passed [run 39396778418](https://github.com/n3crosis/d2r-mobile/actions/runs/39396778418) on commit `fe5abb21b5527c6d230f86c94a4a7a42c6982036`, with the log confirming exact native pixel parity through both workers and the packaging adapter. See `web/ASSET_GENERATOR_ADAPTER_SCOPE.md` for bounds and limitations.
+The standalone worker above still rejects v61. `web/v61-asset-worker.mjs` composes the separate real texture WASM worker with this unchanged Pyodide worker, and `web/asset-generator-adapter.mjs` exposes it only with explicit `enableV61Png: true`. Output is PNG only; native v61 sprite encoding is still unsupported. See `web/ASSET_GENERATOR_ADAPTER_SCOPE.md` for bounds and limitations.
 
 The next named generator boundary is [complete native art](NATIVE_ART.md): all
 manifest PNGs plus the actual skill-index text intermediate, original hash checks,
-and separate padded-atlas decoding. Both strict synthetic proofs passed in
-[asset CI run 39399152831](https://github.com/n3crosis/d2r-mobile/actions/runs/39399152831)
-at `b90743b5b70fdf9ffa895dfd1d54a0201ad270c7`; this is not real-game or full-IPA validation.
+and separate padded-atlas decoding.
 
 The complete [Switch-upscaled HUD stage](HUD.md) now preserves original layout,
 glyph rendering and every required image. Both fonts are read from the archive;
-CI uses newly authored synthetic outlines only. Full differential proof is pending.
+the proof harness uses newly authored synthetic outlines only.
 
 The separate [complete current-name map-goal generator](MAP_GOAL.md) adds the
 original 31-label/five-language render, seven symbols, cross and exact164-file

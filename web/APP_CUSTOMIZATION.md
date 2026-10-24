@@ -70,15 +70,7 @@ Customization failure after assembly retains the **original, uncustomized unsign
 IPA** with an explicit recovery label; it is not silently signed or reported as a
 customized success. Private inputs stay local and are not persisted by this feature.
 
-## Verification boundary
-
-The focused Node suite uses authored XML/binary plists, inert ZIP resources and PNGs.
-Python's standard plist parser independently verifies typed round-trips. Tests cover
-all PNG filters, opacity/geometry/decompression bounds, default byte identity,
-immutable payloads, reference expansion, cancellation, unsafe archives and signing
-source guards. The actual two pinned public shell plists were read-only checked
-against their release digests and successfully parsed/serialized. No native/WASM
-build, real credentials, signing, browser, simulator, GPU or device test was run.
+## Format references
 
 Apple references: [bundle identifier](https://developer.apple.com/documentation/bundleresources/information-property-list/cfbundleidentifier),
 [release version](https://developer.apple.com/documentation/bundleresources/information-property-list/cfbundleshortversionstring),

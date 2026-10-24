@@ -4,9 +4,7 @@ This module is **not an NSP decryptor, supported-game detector, patch applicator
 or IPA exporter**. It has no user keys, copyrighted fixtures, browser persistence,
 network calls, external packages, or dependency changes. All tests are synthetic.
 
-## Primary-source evidence
-
-Inspected 2026-10-20:
+## Format references
 
 - [Atmosphère packaged CNMT header and extended headers](https://github.com/Atmosphere-NX/Atmosphere/blob/master/libraries/libstratosphere/include/stratosphere/ncm/ncm_content_meta.hpp):
   packaged header is 0x20 bytes; application extension is 0x10; patch extension
@@ -25,8 +23,6 @@ Inspected 2026-10-20:
   `0100726014352000`, detects BKTR, then checks extracted main/sdk/subsdk0 hashes
   for the native project's supported build. It does not parse CNMT. Its loop's
   last-match behavior must not become the browser selection algorithm.
-- Local hactool inspection at commit
-  `1d64a83450e025622f3468c28fc4164dad2c5ef6` found no CNMT implementation to reuse.
 
 The external source links describe format evidence, not imported implementation
 code. This is a separately implemented bounded JS parser. Links reference upstream
@@ -86,14 +82,3 @@ The returned `base`, optional `patch`, separate `dlc` array and deduplicated
 The mapping of the native supported display version to CNMT integer versions is
 not established. Never replace the native executable hash allowlist with an ID,
 CNMT version, or “newest available” check.
-
-## Verified checks
-
-From `web/`:
-
-- `node --test tests/content-selection.test.mjs`
-- `bun run lint`
-- `bun run format:check`
-
-No real NSP/key data, native parity, browser decryption, supported game build,
-patch application, or device IPA installation has been tested by this module.

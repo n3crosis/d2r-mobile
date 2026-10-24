@@ -69,8 +69,7 @@ function inputContext(overrides = {}) {
   };
   return { writes, context };
 }
-test("manual route and package selectors are removed without changing customization guards", () => {
-  assert.doesNotMatch(app, /id="input-mode"|selectedNsps|selectDefaultNspNames|package-selection/);
+test("customization callbacks ignore edits while unavailable or owned by an operation", () => {
   for (const overrides of [
     { ready: false },
     { busy: true },

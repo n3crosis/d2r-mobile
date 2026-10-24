@@ -42,7 +42,7 @@ best-effort abort, never close. Starting close is the commit boundary: subsequen
 cancellation is ignored. A failed close triggers abort but does not guarantee
 rollback. The caller must discard partial output after failure.
 
-## Format evidence and tests
+## Format reference
 
 Primary source: [PKWARE APPNOTE 6.3.10](https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT),
 sections 4.3.7, 4.3.9, 4.3.12, 4.3.14–16 and 4.5.3. The writer always uses ZIP64
@@ -50,19 +50,10 @@ size/offset extras, signed data descriptors, ZIP64 end record and locator, and a
 legacy sentinel end record. Records are single-disk/little-endian. CRC32 is
 calculated over every actual input byte.
 
-From `web/`, `node --test tests/zip64-writer.test.mjs` runs fast tests, including
-independent Python `zipfile` extraction/CRC verification of real small archives,
-determinism, record fields, budgets/path safety, actual byte counts, backpressure,
-cancellation, cleanup and commit boundary. Python 3 is required. Virtual large
-size tests include offsets above 4 GiB and 2^53: **they validate declared-size math
-and end-record serialization only, not complete multi-gigabyte archives or CRC**.
+## Local verification
 
-`ZIP64_LARGE_STREAM_TEST=1 node --test tests/zip64-writer.test.mjs` also processes
-an actual 4 GiB + 4 MiB payload using a reused 4 MiB source buffer and discard/count
-sink. Every byte passes through the production CRC loop, independently checked by
-Python zlib. This optional CPU-heavy test does not save/extract a multi-gigabyte
-archive. Neither mode proves browser quotas or app compatibility. The ordinary
-test glob discovers fast tests. The separate `zip64-large-output-checks.yml` CI
-workflow enables the real large stream test on relevant pushes/pull requests and
-manual dispatch. Its Node test is time-bounded, uses synthetic zero bytes only,
-and retains no payload/archive artifacts. Existing test scripts are unchanged.
+The optional `zip64` profile in [TESTING.md](TESTING.md) processes a real
+4 GiB + 4 MiB synthetic CRC stream with bounded memory and an independent Python
+zlib check. It does not save or extract a multi-gigabyte archive, prove browser
+quotas or establish app compatibility. Ordinary unit tests include small archives
+checked with Python `zipfile`; virtual large-offset tests check arithmetic only.
