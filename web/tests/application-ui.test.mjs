@@ -2966,7 +2966,26 @@ print("ok")`,
       /controller.signal.aborted[\s\S]*?dmWebSigningCancelled[\s\S]*?SIGNING_PROFILE_MISMATCH[\s\S]*?dmWebSigningProfileMismatch[\s\S]*?dmWebSigningFailed/,
     );
     assert.doesNotMatch(source, /setSigningStatus\(signingError|t\(signingError/);
-    const table = await readFile(new URL("../../dm/i18n/ui_text.tsv", import.meta.url), "utf8");
+    const table = await readFile(new URL("../i18n/ui_text.tsv", import.meta.url), "utf8");
+    const nativeTable = await readFile(
+      new URL("../../dm/i18n/ui_text.tsv", import.meta.url),
+      "utf8",
+    );
+    assert.doesNotMatch(nativeTable, /^dmWeb/m);
+    const rows = table
+      .trimEnd()
+      .split("\n")
+      .slice(1)
+      .map((line) => line.split("\t"));
+    assert.deepEqual(
+      rows.map(([key]) => key),
+      Object.keys(i18nCatalogModule.catalog),
+    );
+    for (const [key, zh, en] of rows)
+      assert.deepEqual(i18nCatalogModule.catalog[key], [
+        en.replaceAll("\\n", "\n"),
+        zh.replaceAll("\\n", "\n"),
+      ]);
     const row = (key) =>
       table
         .split("\n")

@@ -1,5 +1,5 @@
-// 提取诊断依据固定公开代码与共享文字表，绝不暴露原生异常或密钥及文件内容。
-// Extraction diagnostics use fixed public codes and the shared UI table, never native exceptions or key/file contents.
+// 提取诊断依据固定公开代码与浏览器专用文字表，绝不暴露原生异常或密钥及文件内容。
+// Extraction diagnostics use fixed public codes and the browser-owned UI table, never native exceptions or key/file contents.
 import { t } from "./i18n.mjs";
 const workerCodes = new Set([
   "EXTRACTION_FAILED",

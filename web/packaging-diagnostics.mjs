@@ -1,5 +1,5 @@
-// 浏览器打包诊断：依据固定错误代码与共享界面文字表，不显示私密输入。
-// Browser packaging diagnostics based on fixed error codes and the shared UI table, without private inputs.
+// 浏览器打包诊断：依据固定错误代码与浏览器专用文字表，不显示私密输入。
+// Browser packaging diagnostics based on fixed error codes and the browser-owned UI table, without private inputs.
 import { t } from "./i18n.mjs";
 import { APP_CUSTOMIZATION_ERROR_CODES } from "./app-customization.mjs";
 import { isProgramCompatibilityDiagnosticCode } from "./program-compatibility.mjs";

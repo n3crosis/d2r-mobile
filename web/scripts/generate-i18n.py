@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""从共享界面文字表生成仅供浏览器使用的中英目录；不读取游戏文件。
-Generate the browser-only Chinese/English catalog from the shared UI table, without game files.
+"""从浏览器专用文字表生成仅供浏览器使用的中英目录；不读取游戏文件。
+Generate the browser-only Chinese/English catalog from the browser-owned UI table, without game files.
 """
 
 import csv
@@ -9,24 +9,24 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-TABLE = ROOT / "dm/i18n/ui_text.tsv"
+TABLE = ROOT / "web/i18n/ui_text.tsv"
 OUTPUT = ROOT / "web/i18n-catalog.mjs"
 
 
 def generate():
-    """浏览器仅支持中英；其它语言列仍由原生表规则管理。 | Browser supports Chinese/English only; native table rules govern other columns."""
+    """浏览器仅支持中英；不读取原生文字表。 | Browser supports Chinese/English only; no native table dependency."""
     catalog = {}
     with TABLE.open(encoding="utf-8", newline="") as source:
         for row in csv.DictReader(source, delimiter="\t"):
             key = row["键"]
             if not key.startswith("dmWeb"):
-                continue
+                raise ValueError(f"Invalid browser key: {key}")
             if key in catalog:
                 raise ValueError(f"Duplicate browser key: {key}")
             catalog[key] = [row["English"].replace("\\n", "\n"), row["中文"].replace("\\n", "\n")]
     return (
-        "// 生成文件，勿手改：python3 web/scripts/generate-i18n.py；来源 dm/i18n/ui_text.tsv。\n"
-        "// Generated; do not edit: python3 web/scripts/generate-i18n.py; source dm/i18n/ui_text.tsv.\n"
+        "// 生成文件，勿手改：python3 web/scripts/generate-i18n.py；来源 web/i18n/ui_text.tsv。\n"
+        "// Generated; do not edit: python3 web/scripts/generate-i18n.py; source web/i18n/ui_text.tsv.\n"
         "export const catalog = Object.freeze("
         + json.dumps(catalog, ensure_ascii=False, indent=2)
         + ");\n"

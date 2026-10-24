@@ -1,5 +1,5 @@
-// 浏览器本地打包界面：依据打包进度协议与共享多语文字表。
-// Local browser packaging UI based on the packaging progress protocol and shared multilingual table.
+// 浏览器本地打包界面：依据打包进度协议与浏览器专用中英文字表。
+// Local browser packaging UI based on the packaging progress protocol and browser-owned Chinese/English table.
 import { catalog } from "../i18n-catalog.mjs";
 import { t, browserLanguage, setBrowserLanguage, subscribeLanguage } from "../i18n.mjs";
 import { FolderOpenIcon, PackageIcon, ShieldCheckIcon } from "lucide-react";

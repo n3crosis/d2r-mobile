@@ -1,5 +1,5 @@
-// 生成文件，勿手改：python3 web/scripts/generate-i18n.py；来源 dm/i18n/ui_text.tsv。
-// Generated; do not edit: python3 web/scripts/generate-i18n.py; source dm/i18n/ui_text.tsv.
+// 生成文件，勿手改：python3 web/scripts/generate-i18n.py；来源 web/i18n/ui_text.tsv。
+// Generated; do not edit: python3 web/scripts/generate-i18n.py; source web/i18n/ui_text.tsv.
 export const catalog = Object.freeze({
   "dmWebReasonsProdKeysMissing": [
     "prod.keys is missing.",
