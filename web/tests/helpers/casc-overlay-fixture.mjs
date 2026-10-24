@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 const base = new URL("../../toolchain/asset-generation-spike/", import.meta.url);
 const script = new URL("test/casc-overlay-oracle.py", base);
-execFileSync("python3", [new URL("scripts/package-casc-overlay.py", base).pathname]);
+execFileSync("python3", [new URL("scripts/package-assets.py", base).pathname, "casc-overlay"]);
 export const fixture = JSON.parse(
   execFileSync("python3", [script.pathname], { maxBuffer: 4 * 1024 * 1024 }),
 );

@@ -2696,11 +2696,7 @@ const memoryOutputCacheModule = (() => {
   test("overlay source and derived-data pins stay synchronized after shared UI text changes", () => {
     const result = spawnSync(
       process.execPath,
-      [
-        fileURLToPath(
-          new URL("../toolchain/overlay-recipe-js/scripts/verify-source.mjs", import.meta.url),
-        ),
-      ],
+      [fileURLToPath(new URL("../toolchain/verify-asset-sources.mjs", import.meta.url)), "overlay"],
       { encoding: "utf8" },
     );
     assert.equal(result.error, undefined);
@@ -3181,6 +3177,80 @@ const memoryOutputCacheModule = (() => {
     for (const [key, columns] of Object.entries(record.i18n.unchangedHudVitalRows)) {
       const row = table.split("\n").find((line) => line.startsWith(`${key}\t`));
       assert.deepEqual(row.split("\t").slice(1, 7), columns);
+    }
+  });
+}
+
+// Asset source gates share one command without running unrelated gates on import.
+{
+  const { default: test } = nodeTestModule;
+  const { default: assert } = strictModule;
+  const { spawnSync } = nodeChild_processModule;
+  const { fileURLToPath } = nodeUrlModule;
+  const gateUrl = new URL("../toolchain/verify-asset-sources.mjs", import.meta.url);
+  const gates = [
+    [
+      "asset-transforms",
+      "asset-transforms-js/source-provenance.json",
+      "Asset transform native source drift",
+    ],
+    ["casc-overlay", "casc-overlay-js/source-provenance.json", "CASC overlay source drift"],
+    ["art-recipes", "art-recipes-js/source-provenance.json", "Art recipe source drift"],
+    ["remaining-art", "remaining-art-js/source-provenance.json", "Remaining-art source drift"],
+    ["hud", "hud-recipes-js/provenance.json", "HUD source drift"],
+    ["overlay", "overlay-recipe-js/source-provenance.json", "Overlay recipe source drift"],
+  ];
+  test("each consolidated asset source selector verifies its original source contract", () => {
+    for (const [selector] of gates) {
+      const result = spawnSync(process.execPath, [fileURLToPath(gateUrl), selector], {
+        encoding: "utf8",
+      });
+      assert.equal(result.status, 0, `${selector}: ${result.stderr}`);
+    }
+    for (const args of [[], ["unknown"], ["toString"]]) {
+      const result = spawnSync(process.execPath, [fileURLToPath(gateUrl), ...args], {
+        encoding: "utf8",
+      });
+      assert.notEqual(result.status, 0);
+    }
+  });
+  test("consolidated gate imports read no manifests and selected gates reject source tampering", async () => {
+    const { mkdtemp, mkdir, readFile, writeFile, rm } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join, dirname } = await import("node:path");
+    const { pathToFileURL } = await import("node:url");
+    const directory = await mkdtemp(join(tmpdir(), "asset-source-gates-"));
+    try {
+      const script = join(directory, "web/toolchain/verify-asset-sources.mjs");
+      await mkdir(dirname(script), { recursive: true });
+      await writeFile(script, await readFile(gateUrl));
+      const imported = spawnSync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "-e",
+          `await import(${JSON.stringify(pathToFileURL(script).href)})`,
+        ],
+        { encoding: "utf8" },
+      );
+      assert.equal(imported.status, 0, imported.stderr);
+      assert.equal(imported.stdout, "");
+      for (const [selector, manifestPath, diagnostic] of gates) {
+        const bytes = await readFile(new URL(`../toolchain/${manifestPath}`, import.meta.url));
+        const manifest = JSON.parse(bytes);
+        const firstSource = Object.keys(manifest.sources ?? manifest)[0];
+        const target = join(directory, "web/toolchain", manifestPath);
+        await mkdir(dirname(target), { recursive: true });
+        await writeFile(target, bytes);
+        const source = join(directory, firstSource);
+        await mkdir(dirname(source), { recursive: true });
+        await writeFile(source, "deliberately changed source bytes");
+        const result = spawnSync(process.execPath, [script, selector], { encoding: "utf8" });
+        assert.notEqual(result.status, 0, selector);
+        assert.ok(result.stderr.includes(diagnostic), result.stderr);
+      }
+    } finally {
+      await rm(directory, { recursive: true, force: true });
     }
   });
 }

@@ -43,7 +43,7 @@ Recipe payload/output each cap at 128 MiB; individual files/manifest at 16 MiB. 
 
 ```sh
 node --test web/tests/asset-generation.test.mjs
-node web/toolchain/overlay-recipe-js/scripts/verify-source.mjs
+node web/toolchain/verify-asset-sources.mjs overlay
 python3 web/toolchain/overlay-recipe-js/scripts/generate-contract-source.py --check
 # Requires historical b811b901 locally:
 python3 web/toolchain/overlay-recipe-js/scripts/generate-contract-source.py --check --release
@@ -106,10 +106,10 @@ npm --prefix web/toolchain/asset-generation-spike run prepare:core
 npm --prefix web/toolchain/asset-generation-spike run prepare:runtime
 node web/toolchain/image-kernels-rust/build.mjs
 node web/toolchain/font-rasterizer-exact/build.mjs
-node web/toolchain/art-recipes-js/scripts/verify-source.mjs
-node web/toolchain/asset-transforms-js/scripts/verify-source.mjs
-node web/toolchain/hud-recipes-js/verify-sources.mjs
-node web/toolchain/remaining-art-js/scripts/verify-sources.mjs
+node web/toolchain/verify-asset-sources.mjs art-recipes
+node web/toolchain/verify-asset-sources.mjs asset-transforms
+node web/toolchain/verify-asset-sources.mjs hud
+node web/toolchain/verify-asset-sources.mjs remaining-art
 node --test web/tests/asset-generation.test.mjs web/tests/casc-storage.test.mjs
 node web/toolchain/asset-transforms-js/test/parity.mjs
 # After building pinned PNG/font WASM / 固定 PNG/字体 WASM 构建后

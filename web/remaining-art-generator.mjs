@@ -1,9 +1,9 @@
 // 依据 gen_widestash_art.py 等原生图像生成器与 nvn_deswizzle.c 组合剩余图像。
 // Compose remaining art from native image generators including gen_widestash_art.py and nvn_deswizzle.c.
 /**
- * 仅操作已认证资源的原生 stash/trove/vault/pouch 构建顺序。原始图像语句由 package-remaining-art.py 打包。MainPanel 直接复制原始 BC3 块而不重新编码，与 gen_widestash_art.py 一致。
+ * 仅操作已认证资源的原生 stash/trove/vault/pouch 构建顺序。原始图像语句由 package-assets.py remaining-art 打包。MainPanel 直接复制原始 BC3 块而不重新编码，与 gen_widestash_art.py 一致。
  * Native stash/trove/vault/pouch build order, operating only on authenticated assets.
- * Original image statements are packaged by package-remaining-art.py. MainPanel
+ * Original image statements are packaged by package-assets.py remaining-art. MainPanel
  * copies original BC3 blocks without re-encoding, matching gen_widestash_art.py.
  */
 import { resolveLogicalAssetSuffixes } from "./logical-asset-suffixes.mjs";

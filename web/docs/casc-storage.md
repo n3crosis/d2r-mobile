@@ -26,7 +26,7 @@ Run from repository root:
 
 ```sh
 node --test web/tests/casc-storage.test.mjs
-node web/toolchain/casc-overlay-js/scripts/verify-source.mjs
+node web/toolchain/verify-asset-sources.mjs casc-overlay
 node web/toolchain/casc-overlay-js/test/parity.mjs
 node --test web/toolchain/casc-overlay-js/test/prebuilt.mjs
 # After building the pinned codec with Emscripten 4.0.20:

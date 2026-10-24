@@ -1,6 +1,7 @@
 // 同一 CI 作业内组装已构建的精确后端；不安装工具、不下载运行时、不启动浏览器。 依据各后端构建报告、来源固定记录与资产清单约定。
 // Assemble already-built exact backends in the same CI job; no tool installation, runtime downloads or browser launch. Based on backend build reports, source provenance pins and the asset inventory contract.
 import process from "node:process";
+import { ASSET_SOURCE_GATES, verifyAssetSources } from "../verify-asset-sources.mjs";
 import { readHashWasmEmbeddedNotices } from "../../scripts/frontend-notices.mjs";
 import { readFile, writeFile, mkdir, mkdtemp, rename, rm } from "node:fs/promises";
 import { createHash } from "node:crypto";
@@ -33,14 +34,7 @@ const dependencies = [
     create: "createFontRasterizer",
   },
 ];
-const gates = [
-  "../asset-transforms-js/scripts/verify-source.mjs",
-  "../casc-overlay-js/scripts/verify-source.mjs",
-  "../art-recipes-js/scripts/verify-source.mjs",
-  "../remaining-art-js/scripts/verify-sources.mjs",
-  "../hud-recipes-js/verify-sources.mjs",
-  "../overlay-recipe-js/scripts/verify-source.mjs",
-];
+const gates = Object.keys(ASSET_SOURCE_GATES);
 const notices = [
   ["asset-runtime-source-provenance.json", "./source-provenance.json"],
   ["asset-transform-source-provenance.json", "../asset-transforms-js/source-provenance.json"],
@@ -99,7 +93,7 @@ async function verifySources() {
     if (hash(await readFile(new URL(path, new URL("../../../", here)))) !== expected)
       throw new Error(`Asset worker protocol source drift: ${path}`);
   }
-  for (const gate of gates) await import(new URL(gate, here));
+  for (const gate of gates) await verifyAssetSources(gate);
 }
 async function assemble() {
   if (!globalThis.Bun || globalThis.Bun.version !== "1.4.3")

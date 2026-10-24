@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { executeAssetTransform, VAULT_PATHS } from "../transforms.mjs";
-import "../scripts/verify-source.mjs";
+import { verifyAssetTransformSources } from "../../verify-asset-sources.mjs";
+await verifyAssetTransformSources();
 const encode = (value) =>
   new TextEncoder().encode(typeof value === "string" ? value : JSON.stringify(value));
 const hash = (value) => createHash("sha256").update(value).digest("hex");

@@ -5,10 +5,10 @@ set -euo pipefail
 cd "$VERIFY_ROOT/web"
 # 在安装依赖或构建运行时前检查共享文字表及其派生数据来源。
 # Check shared UI text and derived-data provenance before dependency or runtime builds.
-node toolchain/hud-recipes-js/verify-sources.mjs
-node toolchain/overlay-recipe-js/scripts/verify-source.mjs
-node toolchain/art-recipes-js/scripts/verify-source.mjs
-node toolchain/asset-transforms-js/scripts/verify-source.mjs
+node toolchain/verify-asset-sources.mjs hud
+node toolchain/verify-asset-sources.mjs overlay
+node toolchain/verify-asset-sources.mjs art-recipes
+node toolchain/verify-asset-sources.mjs asset-transforms
 python3 toolchain/texture-spike/package-encoder.py
 bun install --frozen-lockfile
 # 资产来源包含已安装的 hash-wasm；冻结安装后、昂贵编译前校验全部来源。

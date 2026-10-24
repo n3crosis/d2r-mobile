@@ -7,7 +7,8 @@ import { createPngCodec } from "../../png-codec-exact/codec.mjs";
 import { loadPyodide } from "../../asset-generation-spike/node_modules/pyodide/pyodide.mjs";
 import { createMD5 } from "hash-wasm";
 import { createCascOverlayTransform } from "../overlay.mjs";
-import "../scripts/verify-source.mjs";
+import { verifyCascOverlaySources } from "../../verify-asset-sources.mjs";
+await verifyCascOverlaySources();
 const py = await loadPyodide({
   indexURL: new URL("../../asset-generation-spike/node_modules/pyodide/", import.meta.url).pathname,
 });

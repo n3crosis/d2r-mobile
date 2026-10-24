@@ -15,22 +15,14 @@ python_sources=(
   web/toolchain/spirv-cross-spike/native-oracle.py
   web/toolchain/spirv-cross-spike/provenance.py
   web/toolchain/shell-release-evidence/verify-v2-shell-evidence.py
-  web/toolchain/asset-generation-spike/scripts/package-core.py
+  web/toolchain/asset-generation-spike/scripts/package-assets.py
   web/toolchain/asset-generation-spike/src/core.py
-  web/toolchain/asset-generation-spike/scripts/package-native-art.py
-  web/toolchain/asset-generation-spike/scripts/package-hud.py
   web/toolchain/asset-generation-spike/src/hud.py
-  web/toolchain/asset-generation-spike/scripts/package-casc-overlay.py
   web/toolchain/asset-generation-spike/src/casc_overlay.py
   web/toolchain/asset-generation-spike/test/casc-overlay-oracle.py
-  web/toolchain/asset-generation-spike/scripts/package-map-goal.py
-  web/toolchain/asset-generation-spike/scripts/package-mercenary.py
-  web/toolchain/asset-generation-spike/scripts/package-vault.py
   web/toolchain/asset-generation-spike/src/vault.py
   web/toolchain/asset-generation-spike/src/mercenary.py
-  web/toolchain/asset-generation-spike/scripts/package-remaining-art.py
   web/toolchain/asset-generation-spike/src/remaining_art.py
-  web/toolchain/asset-generation-spike/scripts/package-overlay-recipe.py
   web/toolchain/asset-generation-spike/src/overlay_recipe.py
   web/toolchain/asset-generation-spike/src/map_goal.py
   web/toolchain/asset-generation-spike/src/native_art.py

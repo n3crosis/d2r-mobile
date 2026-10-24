@@ -14,7 +14,8 @@ import { generateDefaultFrame } from "../default-frame.mjs";
 import { generateMapGoal, LABELS } from "../map-goal.mjs";
 import { RELEASE_ART_REVISION, UPSTREAM_ART_REVISION } from "../revision.mjs";
 import { createOracle } from "./oracle.mjs";
-import "../scripts/verify-source.mjs";
+import { verifyArtRecipeSources } from "../../verify-asset-sources.mjs";
+await verifyArtRecipeSources();
 const oracle = await createOracle();
 try {
   const wasm = process.argv.includes("--wasm");
