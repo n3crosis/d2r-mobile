@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
   "sources": {
-    "web/toolchain/offline-runtime-spike/pyodide-worker.mjs": "c75bfeb57f8fc602c06aecee0deb30e542546aadbee7f9c6b1b3d16f5b84deb5"
+    "web/toolchain/offline-runtime-spike/pyodide-worker.mjs": "82b57bdd933671afbc19e68cde178064b87521f5cc462dcc9b4de05472e93508"
   }
 }

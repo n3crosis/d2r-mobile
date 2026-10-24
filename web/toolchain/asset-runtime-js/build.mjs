@@ -91,9 +91,7 @@ export const buildPlan = Object.freeze({
   productionSwitch:
     "clients.mjs, runtime-build/build.mjs and package.mjs select this exact four-asset closure; same-job CI must build and validate all artifacts before deployment",
 });
-async function assemble() {
-  if (!globalThis.Bun || globalThis.Bun.version !== "1.4.3")
-    throw new Error("Run with the existing Bun 1.4.3 build toolchain");
+async function verifySources() {
   const provenance = JSON.parse(await readFile(new URL("source-provenance.json", here), "utf8"));
   if (provenance.schemaVersion !== 1 || Object.keys(provenance.sources).length !== 1)
     throw new Error("Asset protocol provenance drift");
@@ -102,6 +100,11 @@ async function assemble() {
       throw new Error(`Asset worker protocol source drift: ${path}`);
   }
   for (const gate of gates) await import(new URL(gate, here));
+}
+async function assemble() {
+  if (!globalThis.Bun || globalThis.Bun.version !== "1.4.3")
+    throw new Error("Run with the existing Bun 1.4.3 build toolchain");
+  await verifySources();
   const assets = [],
     contents = new Map();
   for (const dependency of dependencies) {
@@ -200,5 +203,7 @@ async function assemble() {
   }
 }
 if (process.argv[2] === "--plan") console.log(JSON.stringify(buildPlan, null, 2));
+else if (process.argv[2] === "--verify-sources") await verifySources();
 else if (process.argv.length === 2) await assemble();
-else throw new Error("Usage: bun web/toolchain/asset-runtime-js/build.mjs [--plan]");
+else
+  throw new Error("Usage: bun web/toolchain/asset-runtime-js/build.mjs [--plan|--verify-sources]");

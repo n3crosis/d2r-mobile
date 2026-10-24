@@ -310,15 +310,24 @@ import * as assertIsolatedRunModule from "./helpers/assert-isolated-run.mjs";
     }
   });
 
-  test("quick installs frozen dependencies before verifying package-backed CASC sources", async () => {
+  test("quick installs frozen dependencies before verifying all asset runtime sources", async () => {
     const recipe = await readFile(
       new URL("../verification/recipes/quick.sh", import.meta.url),
       "utf8",
     );
     const install = recipe.indexOf("\nbun install --frozen-lockfile\n");
-    const verify = recipe.indexOf("\nnode toolchain/casc-overlay-js/scripts/verify-source.mjs\n");
+    const verify = recipe.indexOf("\nnode toolchain/asset-runtime-js/build.mjs --verify-sources\n");
     const build = recipe.indexOf("\nbun run build\n");
     assert.ok(install >= 0 && verify > install && build > verify);
+    const result = spawnSync(
+      process.execPath,
+      [
+        new URL("../toolchain/asset-runtime-js/build.mjs", import.meta.url).pathname,
+        "--verify-sources",
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(result.status, 0, result.stderr);
   });
 
   test("shared recipe runner preserves failure, skipped steps, and diagnostics", async () => {
