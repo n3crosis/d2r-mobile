@@ -57,7 +57,7 @@ actual=$(dotnet "$native_dll" --source-sha)
 expected=$(cat "$GITHUB_WORKSPACE/dm/gfx/tools/dmsh_xlate/Program.cs" "$native_project" | sha256sum | cut -c1-16)
 test "$actual" = "$expected"
 echo "Verified original native embedded source: $actual"
-sha256sum "$GITHUB_WORKSPACE/dm/gfx/tools/dmsh_xlate/Program.cs" "$native_project" ShaderBridge.cs ShaderSpike.csproj EmbeddedResources.cs synthetic-fixture.mjs wwwroot/synthetic-fixture.mjs "$RUNNER_TEMP/shader-parity/fixture/synthetic-exit.bin" "$RUNNER_TEMP/shader-parity/fixture/jobs.json"
+sha256sum "$GITHUB_WORKSPACE/dm/gfx/tools/dmsh_xlate/Program.cs" "$native_project" ShaderBridge.cs ShaderSpike.csproj EmbeddedResources.cs wwwroot/synthetic-fixture.mjs "$RUNNER_TEMP/shader-parity/fixture/synthetic-exit.bin" "$RUNNER_TEMP/shader-parity/fixture/jobs.json"
 git rev-parse HEAD:dm/third_party/ryujinx
 timeout --kill-after=5s 60s dotnet "$native_dll" "$RUNNER_TEMP/shader-parity/fixture/jobs.json" "$RUNNER_TEMP/shader-parity/native"
 test -s "$RUNNER_TEMP/shader-parity/native/synthetic-exit.spv"

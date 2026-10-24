@@ -6,7 +6,10 @@
 // ShaderHeader.cs stage bits10..13 + header[18] color component mask;
 // Decoder.cs 在每个 32 字节指令组开头跳过一个调度字。
 // Decoder.cs skips one scheduling word at each 32-byte instruction-group start.
-import { code as computeCode, job as computeJob } from "../shader-spike/synthetic-fixture.mjs";
+import {
+  code as computeCode,
+  job as computeJob,
+} from "../shader-spike/wwwroot/synthetic-fixture.mjs";
 const prefix = (bits) => BigInt(`0b${bits.padEnd(64, "0")}`);
 const pt = 7n << 16n,
   rz = 255n,

@@ -15,7 +15,7 @@ import * as inventoryShaderCorpusModule from "../scripts/inventory-shader-corpus
 import * as shaderDiagnosticsModule from "../shader-diagnostics.mjs";
 import * as shaderPipelineModule from "../shader-pipeline.mjs";
 import * as shaderFeatureInventoryModule from "../shader-feature-inventory.mjs";
-import * as syntheticFixtureModule from "../toolchain/shader-spike/synthetic-fixture.mjs";
+import * as syntheticFixtureModule from "../toolchain/shader-spike/wwwroot/synthetic-fixture.mjs";
 import * as convertModule from "../toolchain/spirv-cross-spike/wwwroot/convert.mjs";
 import * as graphicsFixturesModule from "../toolchain/shader-pipeline-spike/graphics-fixtures.mjs";
 import * as replayReflectionModule from "../toolchain/spirv-cross-spike/wwwroot/replay-reflection.mjs";
@@ -2089,8 +2089,8 @@ import * as shaderSourcelinkDiagnosticModule from "../runtime-build/shader-sourc
 
 // shader-fixture-encoding
 {
-  // 验证 shader-fixture-encoding 的约定与边界；依据 ../toolchain/shader-spike/synthetic-fixture.mjs 及本文件的测试断言。
-  // Verify shader-fixture-encoding contracts and boundaries against ../toolchain/shader-spike/synthetic-fixture.mjs and this file's assertions.
+  // 验证 shader-fixture-encoding 的约定与边界；依据 ../toolchain/shader-spike/wwwroot/synthetic-fixture.mjs 及本文件的测试断言。
+  // Verify shader-fixture-encoding contracts and boundaries against ../toolchain/shader-spike/wwwroot/synthetic-fixture.mjs and this file's assertions.
   const { default: test } = nodeTestModule;
   const { default: assert } = strictModule;
   const { code, job } = syntheticFixtureModule;

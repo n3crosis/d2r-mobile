@@ -29,7 +29,6 @@ python_sources=(
   web/toolchain/asset-generation-spike/scripts/package-mercenary.py
   web/toolchain/asset-generation-spike/scripts/package-vault.py
   web/toolchain/asset-generation-spike/src/vault.py
-  web/toolchain/asset-generation-spike/scripts/package-bc3.py
   web/toolchain/asset-generation-spike/src/mercenary.py
   web/toolchain/asset-generation-spike/scripts/package-remaining-art.py
   web/toolchain/asset-generation-spike/src/remaining_art.py

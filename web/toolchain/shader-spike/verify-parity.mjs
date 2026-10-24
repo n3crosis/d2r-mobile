@@ -1,11 +1,11 @@
-// 比较着色器转换实现的输出一致性；依据 ./synthetic-fixture.mjs 的模块与调用约定。
-// Compare output parity between shader translation implementations using the module and calling contracts in ./synthetic-fixture.mjs.
+// 比较着色器转换实现的输出一致性；依据 ./wwwroot/synthetic-fixture.mjs 的模块与调用约定。
+// Compare output parity between shader translation implementations using the module and calling contracts in ./wwwroot/synthetic-fixture.mjs.
 import assert from "node:assert/strict";
 import { readFile, writeFile, mkdir, stat } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { code, job } from "./synthetic-fixture.mjs";
+import { code, job } from "./wwwroot/synthetic-fixture.mjs";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const expectedHash = (
