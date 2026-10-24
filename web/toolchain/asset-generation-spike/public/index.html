@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self'; img-src 'self' blob:; object-src 'none'; base-uri 'none'"
+  />
+  <title>Browser asset transformation spike</title>
+  <h1>Browser asset transformation spike</h1>
+  <p>
+    Synthetic fixtures only. No game files, fonts, uploads or analytics. This is not the complete
+    asset generator.
+  </p>
+  <p>
+    The CI harness invokes the module worker directly. Deployment serves this directory as static
+    files, including its prepared runtime.
+  </p>
+</html>

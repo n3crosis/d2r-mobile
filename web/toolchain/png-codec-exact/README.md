@@ -1,0 +1,43 @@
+# PNG and CASC zlib bridge
+
+This small C/WASM boundary preserves two distinct existing encoder contracts in one artifact:
+
+- PNG: Pillow **10.2.0** with its bundled **zlib 1.3.1**.
+- CASC generic compression: CPython `zlib.compress(data, 9)` with bundled **zlib 1.2.13**.
+
+The versions preserve the original Pillow and CPython encoding contracts. Linking a default modern PNG encoder or arbitrarily substituting one zlib version risks encoded-hash changes. Both source archives are official, byte-size/SHA-256 pinned in `zlib-source.json` and `zlib-legacy-source.json`. The legacy copy compiles with `Z_PREFIX` and a separate `z_errmsg` symbol, shares the bounded input/output buffers, and contains deflate/checksum code only. There is no second runtime artifact or second image-decoder implementation.
+
+## API
+
+`codec.mjs` exports async `createPngCodec(wasmBytes)`. The existing whole-buffer methods are synchronous:
+
+- `zlibVersion === "1.3.1"`
+- `genericZlibVersion === "1.2.13"`
+- `encodeRgba(rgba, width, height) -> Uint8Array`
+- `decodeRgba(png) -> { width, height, channels: 4, data: Uint8Array }`
+- `compressZlib(raw, { level: 9 }) -> Uint8Array`
+- `compressZlibStream(input, { maxInputBytes, maxOutputBytes, signal?, level?: 9 }) -> AsyncGenerator<Uint8Array>`; see [bounded streaming contract](STREAMING_ZLIB.md) and [中文说明](STREAMING_ZLIB.zh-CN.md).
+
+The encoder implements only the production Pillow save defaults: RGBA8, noninterlaced, no metadata, `optimize=False`, default compression level, `Z_FILTERED`, 15-bit window, memory level 9. Row filter scoring, strict tie-breaking, NONE/UP/SUB/PAETH order, streaming calls, 65,536-byte IDAT boundaries and chunk CRCs match Pillow. AVERAGE is deliberately not considered by the encoder because Pillow defaults omit it. The decoder supports all five PNG row filters.
+
+The decoder rejects unsupported depth/color/interlace, unknown critical chunks, invalid CRCs, noncontiguous IDATs, trailing payload, too many chunks, truncated streams, excess dimensions and excess inflated bytes. It accepts bounded ancillary metadata but does not apply browser color management. The fixed source close button was inspected: 24x33, RGBA8, noninterlaced. The current production PNG boundaries require no other image codecs.
+
+Generic zlib parameters are fixed to level 9, window 15, memory level 8 and default strategy. The adapter feeds 1 MiB input pieces without intermediate flushes, using `Z_FINISH` only at the end. Its cap is 128 MiB total input; CASC's largest supported individual file is 16 MiB. The WASM raw buffers remain bounded and do not expand with that total.
+
+## Build and verification
+
+Use the **already installed CI emsdk 4.0.20**:
+
+    node web/toolchain/png-codec-exact/build.mjs
+    node web/toolchain/png-codec-exact/test/make-fixtures.mjs
+    node web/toolchain/png-codec-exact/test/equivalence.mjs
+
+The recipe creates `dist/png-codec.wasm`, licenses and a build report. It downloads and verifies official source archives, not runtime packages. It does not add a CI job or modify runtime manifests, loaders or production source. There are no Python/libpng/Emscripten filesystem dependencies in this production runtime. Fixed memory is 64 MiB; fixed buffers are BSS, not download payload. The build rejects unexpected host imports.
+
+`test/make-fixtures.mjs` uses only hash-verified existing Pyodide/Pillow files and synthetic images, without a browser, network or game assets. It copies the unchanged loader into a temporary CommonJS scope for Node compatibility, writes ignored fixture files and removes the temporary loader afterward. `test/native-equivalence.py` is a development-only native oracle check; Python is not part of this codec's runtime.
+
+## Required guard preservation
+
+`native-art` freezes SHA-256 of **encoded PNG bytes**, and HUD rechecks those same hashes. Keep these guards exactly as they are. This bridge is designed to satisfy them, not replace them with pixel hashes. Full frozen asset checks still require authenticated user-game inputs; synthetic evidence is not a substitute for that final check.
+
+Copyright/license notices are in `reference/LICENSE` (Pillow), `reference/LICENSE-zlib` and `reference/LICENSE-zlib-legacy`. They are copied beside the WASM on build and must accompany redistribution. Official Pillow source URLs and digests are recorded in `reference/sources.json`.

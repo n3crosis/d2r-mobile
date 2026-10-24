@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "sources": {
+    "web/toolchain/offline-runtime-spike/pyodide-worker.mjs": "c75bfeb57f8fc602c06aecee0deb30e542546aadbee7f9c6b1b3d16f5b84deb5"
+  }
+}

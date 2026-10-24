@@ -1,0 +1,33 @@
+{
+  "scope": "isolated source-pinned font kernel; no production integration",
+  "oracle": {
+    "pillow": "10.2.0",
+    "freetype": "2.6.0",
+    "layout": "BASIC",
+    "raqm": false,
+    "pyodide": "0.27.7",
+    "runtime": "actual bundled WASM loaded under Node"
+  },
+  "nativePort": {
+    "exactCases": 94,
+    "compilerWarningsCheck": "passed -std=c11 -Wall -Wextra -Werror -fsyntax-only",
+    "boundsChecks": "passed"
+  },
+  "fonts": [
+    {
+      "name": "DejaVuSans.ttf",
+      "bytes": 759720,
+      "sha256": "57f73e11f51999432bf7ab22ce55b6f945d5eca1bf824404cfa9ec2e3718c84e"
+    },
+    {
+      "name": "NimbusSans-Regular.otf",
+      "bytes": 82264,
+      "sha256": "7c25be4d78155523080ab85b10277150657ff7dabbcad7037bdd536c9b6d0d08"
+    }
+  ],
+  "wasmArtifactVerified": false,
+  "blocker": "emcc is absent in this executor; build recipe targets existing CI emsdk 4.0.20",
+  "gameFontsVerified": false,
+  "productionOutputVerified": false,
+  "runtimePayloadSavingsClaimed": false
+}

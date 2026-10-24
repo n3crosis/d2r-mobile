@@ -1,0 +1,150 @@
+[
+  {
+    "operation": "remaining-art",
+    "options": {
+      "kind": "stash",
+      "name": "StashPanelBG"
+    },
+    "outputs": {
+      "image.rgba": {
+        "bytes": 2201408,
+        "sha256": "65b9050bae3f9e532b7c9c5aae5948583cd6d646b5ff02886b8a1dfea82c80e0"
+      }
+    }
+  },
+  {
+    "operation": "remaining-art",
+    "options": {
+      "kind": "stash",
+      "name": "StashPanelBGPersonal"
+    },
+    "outputs": {
+      "image.rgba": {
+        "bytes": 2201408,
+        "sha256": "68d05fed27a548b55ecef53b314914bd985f0e26c16602341b94214d52369838"
+      }
+    }
+  },
+  {
+    "operation": "remaining-art",
+    "options": {
+      "kind": "stash",
+      "name": "StashPanelBGShared"
+    },
+    "outputs": {
+      "image.rgba": {
+        "bytes": 2201408,
+        "sha256": "68d05fed27a548b55ecef53b314914bd985f0e26c16602341b94214d52369838"
+      }
+    }
+  },
+  {
+    "operation": "remaining-art",
+    "options": {
+      "kind": "stash",
+      "name": "StashPanelBGPersonal"
+    },
+    "outputs": {
+      "image.rgba": {
+        "bytes": 2204800,
+        "sha256": "c2c653ca5603f3c577ec5cb1d8151d4afd7c69bc3df00798ff7d2ef51e4830fb"
+      }
+    }
+  },
+  {
+    "operation": "remaining-art",
+    "options": {
+      "kind": "advanced",
+      "name": "AdvancedStash_Consumables_Console"
+    },
+    "outputs": {
+      "image.rgba": {
+        "bytes": 2201408,
+        "sha256": "a966ef0beca5c0e00c4c8a6fadd1961f18ecea18f07117f26321eb3245bd035e"
+      }
+    }
+  },
+  {
+    "operation": "remaining-art",
+    "options": {
+      "kind": "advanced",
+      "name": "AdvancedStash_Runes_Console"
+    },
+    "outputs": {
+      "image.rgba": {
+        "bytes": 2201408,
+        "sha256": "a966ef0beca5c0e00c4c8a6fadd1961f18ecea18f07117f26321eb3245bd035e"
+      }
+    }
+  },
+  {
+    "operation": "remaining-art",
+    "options": {
+      "kind": "trove",
+      "name": "AdvancedStash_Gems_Console"
+    },
+    "outputs": {
+      "image.rgba": {
+        "bytes": 2201408,
+        "sha256": "56066c1c581992733be0e30ab809b7e50c1f52964a264abb2753870b80bdf874"
+      }
+    }
+  },
+  {
+    "operation": "remaining-art",
+    "options": {
+      "kind": "pouch",
+      "name": "PouchBox"
+    },
+    "outputs": {
+      "image.rgba": {
+        "bytes": 35840,
+        "sha256": "9fab733827677c4d4d0071caf3051fc00fd8390d0dd55a8b39416044a7992b1a"
+      }
+    }
+  },
+  {
+    "operation": "remaining-art",
+    "options": {
+      "kind": "pouch",
+      "name": "PouchBox"
+    },
+    "outputs": {
+      "image.rgba": {
+        "bytes": 35840,
+        "sha256": "9fab733827677c4d4d0071caf3051fc00fd8390d0dd55a8b39416044a7992b1a"
+      }
+    }
+  },
+  {
+    "operation": "remaining-art",
+    "options": {
+      "kind": "vault",
+      "name": "VaultBottom"
+    },
+    "outputs": {
+      "image.rgba": {
+        "bytes": 461312,
+        "sha256": "36a938318fc97e764fe08bd23e2aad2f1d9ec7e01003e6b17de9b72c332e3cb6"
+      },
+      "VaultBottom.png": {
+        "bytes": 15917,
+        "sha256": "dc539b8d94c07f31f0f4d683bdbf9fdc37230fd7fc87a73b6557a6253c136dcb"
+      }
+    }
+  },
+  {
+    "operation": "mercenary-art",
+    "options": {},
+    "outputs": {
+      "mercenary.rgba": {
+        "bytes": 1836032,
+        "sha256": "8edffa6982a8876f9c67353cce4a4d7c352dfa85380903d77e3d8c11a11c9712"
+      },
+      "HirelingInventoryBG.png": {
+        "bytes": 156686,
+        "sha256": "0a91e3a889c254f2d30b792edfb79b3c6c34f0c88801d2b9cfa0cfe07f0d08e7"
+      }
+    }
+  }
+]

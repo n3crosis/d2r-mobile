@@ -1,0 +1,6 @@
+/dist/
+/vendor/
+/reference/*.c
+/reference/*.py
+/test/fixtures.json
+/test/fixtures-meta.json

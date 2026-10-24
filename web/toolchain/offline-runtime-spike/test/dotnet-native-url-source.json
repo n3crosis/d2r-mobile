@@ -1,0 +1,8 @@
+{
+  "version": "10.0.13",
+  "build": "ea3da757241508db614cefea6bd7bcf40d5742b3",
+  "source": "dotnet.native.0khjfvip6w.js",
+  "sha256": "a08ad1c2ebf711ec583976a276ed9c2a40e160423173dea776760849e5dbfc70",
+  "locateFile": "function locateFile(path) {\n  if (Module['locateFile']) {\n    return Module['locateFile'](path, scriptDirectory);\n  }\n  return scriptDirectory + path;\n}",
+  "wasmBinaryFile": "var wasmBinaryFile;\nif (Module['locateFile']) {\n  wasmBinaryFile = 'dotnet.native.wasm';\n  if (!isDataURI(wasmBinaryFile)) {\n    wasmBinaryFile = locateFile(wasmBinaryFile);\n  }\n} else {\n  if (ENVIRONMENT_IS_SHELL)\n    wasmBinaryFile = 'dotnet.native.wasm';\n  else\n  // Use bundler-friendly `new URL(..., import.meta.url)` pattern; works in browsers too.\n  wasmBinaryFile = new URL('dotnet.native.wasm', import.meta.url).href;\n}"
+}

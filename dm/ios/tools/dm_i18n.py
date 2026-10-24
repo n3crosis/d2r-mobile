@@ -67,7 +67,8 @@ def build(romfs, outdir, repl):
     prev = repl.get(path.lower())
     if prev: text = open(prev, encoding='utf-8-sig').read()
     have = set(re.findall(r'"Key":\s*"((?:[^"\\]|\\.)*)"', text))
-    rs = rows()
+    # 浏览器专用文字不写入游戏覆盖层。 | Keep browser-only text out of the game overlay.
+    rs = [row for row in rows() if not row[0].startswith("dmWeb")]
     clash = [r[0] for r in rs if r[0] in have]
     if clash: raise SystemExit('dm_i18n：键和原版重名：%s' % clash)
     col = lambda l, zh, en, es, mx, ru, ko: zh if l in ('zhCN', 'zhTW') else es if l == 'esES' else mx if l == 'esMX' else ru if l == 'ruRU' else ko if l == 'koKR' else en
@@ -84,7 +85,8 @@ def header():
     c = lambda s: json.dumps(s, ensure_ascii=False)   # JSON 串的转义在 C 里同样成立（\n \" \\） | JSON string escapes are equally valid in C (newline, double quote, backslash)
     out = ['// 生成文件，勿手改：python3 dm/ios/tools/dm_i18n.py --header > dm/host/dm_i18n_tab.h（表 dm/i18n/ui_text.tsv）', '#pragma once',
            'static const struct { const char *k, *zh, *en, *es, *mx, *ru, *ko; } k_dm_i18n[] = {']
-    out += ['    { %s, %s, %s, %s, %s, %s, %s },' % (c(k), c(zh), c(en), c(es), c(mx), c(ru), c(ko)) for k, zh, en, es, mx, ru, ko in rows()]
+    # 浏览器专用文字不编入原生宿主。 | Keep browser-only text out of the native host.
+    out += ['    { %s, %s, %s, %s, %s, %s, %s },' % (c(k), c(zh), c(en), c(es), c(mx), c(ru), c(ko)) for k, zh, en, es, mx, ru, ko in rows() if not k.startswith("dmWeb")]
     return '\n'.join(out + ['};', ''])
 
 if __name__ == '__main__':

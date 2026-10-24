@@ -1,0 +1,60 @@
+{
+  "version": 2,
+  "id": "d2r-floor-metal-air-v2",
+  "apiVersion": 2,
+  "headerBundleVersion": 2,
+  "sourceLanguage": "floor-metal-3.2",
+  "emscripten": "4.0.20",
+  "sourceCommit": "4b173e3db383ec7164afb11ee7dc86609c88f052",
+  "sourceManifestSha256": "0a05419fa2e7bbf0b9d401e502c96064170db8cc3b18fb67bdfb6b21a508acc7",
+  "sourceInputs": {
+    "api/CMakeLists.txt": "db9bfdde6debc5662479c283b34e4e9e6ab2fed7230ff6861ca0186a406059d0",
+    "api/air_compiler.cpp": "fce9a24557cca900398b2e7b9afbb853297a5d8bd034616d9c80b89a9d20981b",
+    "api/air_compiler.h": "a147b1517a744c04f4dbd913c0537272ff1a999c76692a8b4006976abc00634c",
+    "api/atomic_trust.inc": "508691940662dea2611ae159da15b5199636ab20aa67b98bcd4c8c5cf2bfb166",
+    "api/compat_header.inc.in": "50f62efc6c9c0c879bb8532c2830ac85d5078b852508bb9a915e7eb195cbefa5",
+    "api/control_smoke.cpp": "0d939f48b73054a4ee0844a094ecb5bf83729d725dbccff6827cc247680ea8f3",
+    "api/depth_trust.inc": "32e8869706f3c41a010d2cea809453884ab33da26e47eb72a720bf7cdb8fa179",
+    "api/header_smoke.cpp": "7c9767e8966f80f12baabeaeb9625e395f76def68ebd4a28fd863ba485144720",
+    "api/include/metal_atomic": "39c7b55fad43dac7bcb9a479ed430b68143a694a2f87db62ce1d4712e11f1a88",
+    "api/include/metal_control": "264c52cb5eab9e73ae660c5184ac1945083e1379f6d3a9b98da1bc17ff718f8d",
+    "api/include/metal_depth": "5b194ddee5df9a1940f0170aabbf3afe41f7f72ad2d453877858a0a2eb896f7b",
+    "api/include/metal_integer": "d2be36e0101a115f6fd43bd2240130da7268d414cf8d1a44f825ce7cf1bf83ab",
+    "api/include/metal_math": "bdcae2fe3239f5bdea1aa1fb95f6f43cf87e40acaecaecf0a5b28dbf0437b5c3",
+    "api/include/metal_simd": "a26fa3e703801a054c3838a1c8775dcbe1e04067c90b9574c18dc99c74df57d9",
+    "api/include/metal_stdlib": "d56590759b4e1f6819b0ee68a8651190788c6f73754c7fa80c4f97db858d6b2e",
+    "api/include/metal_tessellation": "fce99ac8bbbadfdbf63f8e778f9ff2ae31c0018f6a9b90645440af411447ecf8",
+    "api/include/metal_texture": "56b87ffbe5254d8dfe925ad94e3d99325e9bd7f41b5e298de0b6bacd2c700cff",
+    "api/include/simd/simd.h": "d591b0abfd545b3057c4918a8d223411dd69c3ec96ca7c1a76f866c84b7b28c3",
+    "api/operations_smoke.h": "bc25a71ec9ee7f74ff0574f673dc8c18a8896bf25f4de0670eb86449f52d7be9",
+    "api/smoke.cpp": "4ed65b0f9b1dd7af45e660cdb7339edaf3c0acb77765dcad5bb4a5dfc545b0d1",
+    "api/texture_trust.inc": "b43fae8a402920bb9889504733a3f27ea3d284c7509291bfa847e44d00dcfe91",
+    "api/wasm_entry.cpp": "be596edd81506cce311364b9e16f1f26e73d6a25453b1c742f6188291bb7bee8",
+    "patches/0101-a2flo-msl-language-semantics.patch": "69a709397aaed7e48c268c20a4dda739785af17f85435fc7930296c503c75a28",
+    "patches/0102-a2flo-msl-codegen.patch": "3cc2884e778b82820c35481654909347f444936f0a25d36028c1d7ba4cb2362f",
+    "patches/0103-a2flo-air-lowering.patch": "61fbdd504ec9ea06ca1831b539a50a09fc5d6d4fc154ca317d4461aaf5495d78",
+    "patches/0104-a2flo-metallib-writer-reflection.patch": "5da88c4bd97ee1a5418b22a828a7bfb3878420cf13033a69b6ca09e63555b081",
+    "patches/0105-a2flo-air-only-build.patch": "3b6bf7e08d3151e2e9d15985ec5c86b624f7385055425ed6ca1227c1edb58d66",
+    "patches/0106-a2flo-corpus-compiler-fixes.patch": "70e7f251eb79ef54d6725d314d0199fe813d11bba0294e349e6a9c3008976867",
+    "patches/0107-a2flo-typed-constant-pointer-slots.patch": "a347fbee6ebebf76a8eae835d3bcbfaff8a4082651c2e42d6a0f980b867c27ec",
+    "patches/0108-a2flo-exact-inverse-pointer-merges.patch": "f64c9fcbdae68aa36438cadce6fdc3d034a9c8a994b78e6125c594150ccbbb6f",
+    "patches/0109-a2flo-canonical-gep-recasts.patch": "52724314a6e3095290fdd933ceb0caa51e057162216d523a8c62a5a73b906e85",
+    "patches/0110-a2flo-scalar-i1-conversions.patch": "1e41886634d829084a3752d56723e38b55ff20dd75649510be6c4be446ca0c82",
+    "toolchain.mjs": "b7f71607823c94602e43ec9ff65c232843afbbeaeb736cd662744f213a958b6d"
+  },
+  "sourceFingerprintSha256": "62fe9f99030712ebcf9f9fdb9cb78c2b92a192a6afda2625250a179cb026a3aa",
+  "headerSha256": "784909a956d3e4608033bf7508d0bf14cb11b4fe7c775ac3d24c9d8ce1137d2c",
+  "files": {
+    "d2r_air_wasm.mjs": {
+      "bytes": 93415,
+      "sha256": "f6cc0897bc61a252027615845629cad0c0faca856b04907fec65f570c1a6f5a2"
+    },
+    "d2r_air_wasm.wasm": {
+      "bytes": 66908450,
+      "sha256": "10f22a8c003f75f8b851ad2d5ed7b61707ebfa01ea0245a024bbce8da766112c"
+    }
+  },
+  "browserExecutionVerified": false,
+  "fullGameCompilationVerified": false,
+  "deviceExecutionVerified": false
+}
