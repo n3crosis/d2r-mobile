@@ -165,8 +165,8 @@ for (const [name, encoded] of Object.entries(expected.files)) {
   assert.equal(digest("sha256", output), digest("sha256", reference), name + " exact bytes");
   hashes[name] = { bytes: output.length, sha256: digest("sha256", output) };
 }
-// 旧版摘要留作历史证据；新摘要只能在上面的独立原生比较通过后审核固定。
-// Retain the legacy digest as historical evidence; approve a new pin only after independent native equality above.
+// 新摘要只能在上面的独立原生比较通过后审核固定，不得复用旧版基线。
+// Approve a new pin only after independent native equality above; do not reuse a legacy baseline.
 const pinned = JSON.parse(
   readFileSync(new URL("expected-upstream-recipe-sha256.json", import.meta.url)),
 );
