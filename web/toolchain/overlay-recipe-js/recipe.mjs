@@ -29,7 +29,6 @@ import {
 import { createAnnotations } from "./annotations.mjs";
 import { PythonFloat } from "../art-recipes-js/native-art-util.mjs";
 import {
-  LEGACY_OVERLAY_REVISION,
   RELEASE_OVERLAY_REVISION,
   UPSTREAM_OVERLAY_REVISION,
   requireOverlayRevision,
@@ -388,9 +387,9 @@ export function createOverlayRecipe({ png, md5, sha1 } = {}) {
       );
       const revision = Object.hasOwn(options, "revision")
         ? options.revision
-        : LEGACY_OVERLAY_REVISION;
-      const upstream = requireOverlayRevision(revision),
-        playstation = revision === UPSTREAM_OVERLAY_REVISION;
+        : RELEASE_OVERLAY_REVISION;
+      requireOverlayRevision(revision);
+      const playstation = revision === UPSTREAM_OVERLAY_REVISION;
       const input = JSON.parse(utf8sig(payload));
       requireValue(exactKeys(input, ["manifest", "assets", "generated"]), "OVERLAY_RECIPE_INPUT");
       requireValue(
@@ -449,7 +448,7 @@ export function createOverlayRecipe({ png, md5, sha1 } = {}) {
         const [path, raw] = entry(suffix || "/ui/layouts/" + rel);
         return [path, utf8sig(raw)];
       };
-      const touch = createTouchLayouts({ readLayout, readEntry, rows, upstream });
+      const touch = createTouchLayouts({ readLayout, readEntry, rows });
       const repl = new Map([
         [UI + "panel/hud_02/bugbtn.sprite", rawSprite(hud)],
         [UI + "panel/hud_02/front_panel.sprite", rawSprite(png.decodeRgba(b64(closeImage.base64)))],
@@ -515,13 +514,12 @@ export function createOverlayRecipe({ png, md5, sha1 } = {}) {
       mercenary(repl);
       update(repl, touch.buildCursor());
       update(repl, touch.buildGlyphs());
-      if (upstream) update(repl, controllerGlyphs(rows, readAsset, { playstation }));
+      update(repl, controllerGlyphs(rows, readAsset, { playstation }));
       update(repl, touch.buildProfile());
       const annotations = createAnnotations({
         readAsset,
         readReplacement: (path) => repl.get(path),
         sha1,
-        upstream,
         release: revision === RELEASE_OVERLAY_REVISION,
       });
       const strings = await annotations.buildTouchStrings();
@@ -595,7 +593,7 @@ export function createOverlayRecipe({ png, md5, sha1 } = {}) {
         ["controller/hudmonsterhealthhd.json", padBossPct],
         ["controller/console/characteroptionspanelhd.json", padBliss],
         ["controller/console/settingspanelhd.json", padSettings],
-        ["controller/console/videooptionspanelhd.json", (text) => padCustomPage(text, upstream)],
+        ["controller/console/videooptionspanelhd.json", (text) => padCustomPage(text)],
       ])
         applyLayout(pr, rel, fn);
       pouch(pr);
@@ -688,7 +686,6 @@ export function createOverlayRecipe({ png, md5, sha1 } = {}) {
         ],
       ])
         for (const [path, raw] of sidecars) {
-          if (!upstream && ["ps_glyphs", "xbox_glyphs"].includes(path)) continue;
           if (!playstation && path === "ps_glyphs") continue;
           variant.sidecars.push({ path, file: addFile(raw) });
         }

@@ -7,7 +7,7 @@ import {
   astcOutputPaths,
   ASTC_OUTPUT_LIMITS,
 } from "./astc-output-validator.mjs";
-import { LEGACY_OVERLAY_REVISION } from "./toolchain/overlay-recipe-js/revision.mjs";
+import { RELEASE_OVERLAY_REVISION } from "./toolchain/overlay-recipe-js/revision.mjs";
 import { validateShellContract } from "./shell-contract.mjs";
 import { resolveShellProfile } from "./shell-profiles.mjs";
 import { loadShaderCatalog } from "./shader-catalog-adapter.mjs";
@@ -128,7 +128,7 @@ export async function inspectProductionAstcEntries(entries, binding, { signal } 
   signal?.throwIfAborted();
   if (!Array.isArray(entries) || !binding?.overlayArchives)
     throw new Error("PRODUCTION_ASTC_INVENTORY");
-  const { recipeRevision = LEGACY_OVERLAY_REVISION } = binding;
+  const { recipeRevision = RELEASE_OVERLAY_REVISION } = binding;
   const expected = astcOutputPaths({ overlayArchives: binding.overlayArchives, recipeRevision });
   if (entries.length !== expected.length) throw new Error("PRODUCTION_ASTC_INVENTORY");
   const pack = validateLegacyPackMetadata(binding.pack);
@@ -218,10 +218,10 @@ export async function bindProductionAstcEntries(profile, entries, binding, optio
   if (profile.astcOutput) throw new Error("PRODUCTION_ASTC_ALREADY_BOUND");
   const expectedRevision =
     profile.profileId === undefined
-      ? LEGACY_OVERLAY_REVISION
+      ? RELEASE_OVERLAY_REVISION
       : resolveShellProfile(profile.profileId).assetRecipe.overlayRevision;
   const recipeRevision =
-    binding?.recipeRevision === undefined ? LEGACY_OVERLAY_REVISION : binding.recipeRevision;
+    binding?.recipeRevision === undefined ? RELEASE_OVERLAY_REVISION : binding.recipeRevision;
   if (recipeRevision !== expectedRevision) throw new Error("PRODUCTION_ASTC_RECIPE_BINDING");
   const astcOutput = await inspectProductionAstcEntries(entries, binding, options);
   const trustedRecipe = Object.freeze({

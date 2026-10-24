@@ -8,7 +8,6 @@
  * authenticates manifest-selected asset bytes before exposing them here.
  */
 import DATA from "./annotation-data.json" with { type: "json" };
-import { legacyI18n, legacyTouch } from "./legacy-v1.mjs";
 import { releaseI18n } from "./release-v2.mjs";
 
 export const annotationSources = Object.freeze({ ...DATA.sources });
@@ -663,7 +662,8 @@ export function createAnnotations({
   upstream = true,
   release = false,
 }) {
-  const touchData = upstream ? DATA.touch : legacyTouch;
+  if (upstream !== true) fail("OVERLAY_RECIPE_REVISION");
+  const touchData = DATA.touch;
   if (
     typeof readAsset !== "function" ||
     typeof readReplacement !== "function" ||
@@ -726,7 +726,7 @@ export function createAnnotations({
     };
   }
   async function buildI18n() {
-    const data = upstream ? (release ? releaseI18n : DATA.i18n) : legacyI18n,
+    const data = release ? releaseI18n : DATA.i18n,
       strings = new Strings(readAsset, readReplacement);
     strings.load("ui.json");
     let text = strings.text.get("ui.json");
@@ -735,7 +735,6 @@ export function createAnnotations({
     const fmt = new RegExp(data.format, "g"),
       proper = new RegExp(data.proper, "g");
     const add = data.rows.map(([key, zh, en, es, mx, ru, ko], i) => {
-      if (!upstream) ko = en;
       if (!/^dm[A-Za-z0-9]+$/.test(key) || !zh || !en || !es || !ru || !ko || used.has(key))
         fail("I18N_ROW", key);
       used.add(key);

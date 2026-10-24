@@ -1,6 +1,7 @@
 // 运行 AIR 编译器的数学运算用例；依据 web/toolchain/metal-air-compiler 的模块与调用约定。
 // Run mathematical-operation cases for the AIR compiler using the module and calling contracts in web/toolchain/metal-air-compiler.
 import assert from "node:assert/strict";
+import { materializeNumericFixture } from "./fixtures/numeric-cases.mjs";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -10,6 +11,7 @@ assert(
   "Explicit external fork clang and header-directory paths are required",
 );
 const root = dirname(fileURLToPath(import.meta.url));
+const out = process.env.AIR_TEST_OUTPUT_DIR || join(root, "fixture-results");
 const clang = resolve(process.argv[2] || "");
 assert(
   process.argv[2],
@@ -33,11 +35,10 @@ const base = [
   "-",
 ];
 for (const name of ["math-scalar", "math-vector", "integer-preservation"]) {
-  const r = spawnSync(
-    clang,
-    [...base, "-DAIR_FAST_MATH=1", join(root, "fixtures", name + ".metal")],
-    { encoding: "utf8", maxBuffer: 8 * 1024 * 1024 },
-  );
+  const r = spawnSync(clang, [...base, "-DAIR_FAST_MATH=1", materializeNumericFixture(name, out)], {
+    encoding: "utf8",
+    maxBuffer: 8 * 1024 * 1024,
+  });
   assert.equal(r.status, 0, r.stderr);
   if (name.startsWith("math-"))
     for (const symbol of [

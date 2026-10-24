@@ -1,11 +1,10 @@
-// 使用 Bun 构建静态前端并校验发布输出；依据 bun-plugin-tailwind、./build-policy.mjs 的模块与调用约定。
-// Build the static frontend with Bun and validate release output using the module and calling contracts in bun-plugin-tailwind、./build-policy.mjs.
+// 使用 Bun 构建静态前端并校验发布输出；依据 bun-plugin-tailwind、./frontend-notices.mjs 的模块与调用约定。
+// Build the static frontend with Bun and validate release output using the module and calling contracts in bun-plugin-tailwind、./frontend-notices.mjs.
 import { rm, mkdir, readFile, readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { resolve, dirname } from "node:path";
 import tailwind from "bun-plugin-tailwind";
-import { validateStaticBuild } from "./build-policy.mjs";
-import { writeFrontendNotices } from "./frontend-notices.mjs";
+import { validateStaticBuild, writeFrontendNotices } from "./frontend-notices.mjs";
 
 export const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const outputDirectory = resolve(root, "dist");

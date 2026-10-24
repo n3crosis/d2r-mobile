@@ -48,7 +48,7 @@ const { generateNativeOverlay, NATIVE_OVERLAY_GENERATED } =
 const { RELEASE_OVERLAY_REVISION, UPSTREAM_OVERLAY_REVISION } =
   await import("../../toolchain/overlay-recipe-js/revision.mjs");
 const { createOverlayManifest } = await import("../../overlay-contract.mjs");
-function options(upstream = false, revision = UPSTREAM_OVERLAY_REVISION) {
+function options(upstream = true, revision = RELEASE_OVERLAY_REVISION) {
   return {
     ...(upstream ? { recipeRevision: revision } : {}),
     generated: Object.fromEntries(
@@ -120,7 +120,10 @@ test("b811 release seals Xbox-only variants without later PlayStation activation
   assert.equal(Object.keys(out.files).length, 29);
 });
 test("latest-source branch seals every variant after markers and ASTC metadata", async () => {
-  const out = await generateNativeOverlay({ ...options(true), prebuiltPack: external() });
+  const out = await generateNativeOverlay({
+    ...options(true, UPSTREAM_OVERLAY_REVISION),
+    prebuiltPack: external(),
+  });
   for (const root of [
     "romfs_overlay",
     "romfs_overlay_variants/item_notes",
@@ -142,7 +145,7 @@ test("latest-source branch seals every variant after markers and ASTC metadata",
     /REVISION/,
   );
 });
-test("optional ASTC preserves all default bytes, recipes and exact11 output", async () => {
+test("optional ASTC preserves all default bytes, recipes and exact15 output", async () => {
   calls.length = 0;
   const base = await generateNativeOverlay(options());
   assert.equal(Object.hasOwn(base, "astc"), false);
@@ -159,7 +162,7 @@ test("optional ASTC preserves all default bytes, recipes and exact11 output", as
   );
   assert.deepEqual(calls[0][1], calls[1][1]);
   assert.deepEqual(calls[2][1], calls[3][1]);
-  assert.equal(Object.keys(out.files).filter((p) => p.startsWith("romfs_overlay_astc")).length, 11);
+  assert.equal(Object.keys(out.files).filter((p) => p.startsWith("romfs_overlay_astc")).length, 15);
   assert.deepEqual(out.astc, {
     count: 1,
     pack,

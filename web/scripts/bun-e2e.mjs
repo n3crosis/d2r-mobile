@@ -10,7 +10,7 @@ import { pathToFileURL } from "node:url";
 import { gunzipSync } from "node:zlib";
 import { prepareBrowserPackager } from "../browser-packager.mjs";
 import { DirectoryHandle, storageAt } from "./bun-e2e-fs.mjs";
-import { NodeCrossWorker } from "./bun-e2e-node-worker.mjs";
+import { NodeCrossWorker } from "./bun-e2e-node-cross.mjs";
 
 function usage() {
   throw new Error(

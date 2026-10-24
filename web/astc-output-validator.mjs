@@ -1,9 +1,6 @@
 // 依据 gen_romfs_overlay.py 的 ASTC 基础与 item_notes 文件集合验证独立产物；不修改默认 BC 输出。
 // Validate isolated ASTC base and item_notes outputs against gen_romfs_overlay.py without changing default BC outputs.
-import {
-  LEGACY_OVERLAY_REVISION,
-  RELEASE_OVERLAY_REVISION,
-} from "./toolchain/overlay-recipe-js/revision.mjs";
+import { RELEASE_OVERLAY_REVISION } from "./toolchain/overlay-recipe-js/revision.mjs";
 import releaseSource from "./toolchain/overlay-recipe-js/release-contract-source.json" with { type: "json" };
 
 export const ASTC_OUTPUT_LIMITS = Object.freeze({
@@ -51,10 +48,10 @@ export function validateLegacyPackMetadata(pack) {
 }
 export function astcOutputPaths({
   overlayArchives,
-  recipeRevision = LEGACY_OVERLAY_REVISION,
+  recipeRevision = RELEASE_OVERLAY_REVISION,
 } = {}) {
   if (
-    ![LEGACY_OVERLAY_REVISION, RELEASE_OVERLAY_REVISION].includes(recipeRevision) ||
+    ![RELEASE_OVERLAY_REVISION].includes(recipeRevision) ||
     !overlayArchives ||
     Object.keys(overlayArchives).sort().join(",") !== "base,item_notes"
   )
@@ -75,9 +72,7 @@ export function astcOutputPaths({
     `${notes}/touch_strings.tsv`,
     `${notes}/dm_textbox_plain.tsv`,
     `${notes}/features.txt`,
-    ...(recipeRevision === RELEASE_OVERLAY_REVISION
-      ? [base, notes].flatMap((root) => [`${root}/xbox_glyphs`, `${root}/overlay.manifest`])
-      : []),
+    ...[base, notes].flatMap((root) => [`${root}/xbox_glyphs`, `${root}/overlay.manifest`]),
   ].sort();
   return Object.freeze(expected);
 }
@@ -111,7 +106,7 @@ export function validateAstcOutputs({
   files,
   pack,
   overlayArchives,
-  recipeRevision = LEGACY_OVERLAY_REVISION,
+  recipeRevision = RELEASE_OVERLAY_REVISION,
 } = {}) {
   const bound = validateLegacyPackMetadata(pack);
   const expected = astcOutputPaths({ overlayArchives, recipeRevision });

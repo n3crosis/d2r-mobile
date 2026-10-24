@@ -22,9 +22,9 @@
     "validation": "Source hash gates, AST-only packaging, and inert synthetic JavaScript contracts",
     "renderedParityVerified": false,
     "shellCompatibilityVerified": false,
-    "review": "../../UPSTREAM_V2_ART_REVIEW.md",
-    "defaultRevision": "v1.0.18, retaining the pre-v2 vital-character sequence",
+    "review": "../../docs/asset-generation.md",
+    "defaultRevision": "b811b90172f4eb40ec1bc89d903308e0c5ab88d0, reviewed v2 release including Korean glyphs",
     "upstreamRevision": "e3756f8942b40eba6c851e881828a5b1bda17fd6, internal only and not selected by production",
-    "releaseRevision": "b811b90172f4eb40ec1bc89d903308e0c5ab88d0, source-reviewed internal alias, not selected by production"
+    "releaseRevision": "b811b90172f4eb40ec1bc89d903308e0c5ab88d0, selected by both production v2 shell profiles"
   }
 }

@@ -1,13 +1,12 @@
-// 生成预览构建的文件与步骤清单；依据 ../runtime-build/inventory.mjs、../scripts/build-policy.mjs 的模块与调用约定。
-// Generate file and step manifests for preview builds using the module and calling contracts in ../runtime-build/inventory.mjs、../scripts/build-policy.mjs.
+// 生成预览构建的文件与步骤清单；依据 ../runtime-build/inventory.mjs、../scripts/frontend-notices.mjs 的模块与调用约定。
+// Generate file and step manifests for preview builds using the module and calling contracts in ../runtime-build/inventory.mjs、../scripts/frontend-notices.mjs.
 import process from "node:process";
 import { readdir, readFile, writeFile, lstat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { verifyRuntimeInventory } from "../runtime-build/inventory.mjs";
-import { validateStaticBuild } from "../scripts/build-policy.mjs";
-import { FRONTEND_NOTICES_FILE } from "../scripts/frontend-notices.mjs";
+import { validateStaticBuild, FRONTEND_NOTICES_FILE } from "../scripts/frontend-notices.mjs";
 
 export async function createPreviewManifest(directory, commit = null, runtimeDigest = null) {
   const files = [];

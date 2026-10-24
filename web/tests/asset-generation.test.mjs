@@ -34,8 +34,6 @@ import * as inventoryParityModule from "../toolchain/overlay-recipe-js/test/inve
 import * as annotationsParityModule from "../toolchain/overlay-recipe-js/test/annotations-parity.mjs";
 import * as overlayModule from "../toolchain/casc-overlay-js/overlay.mjs";
 import * as annotationDataJsonModule from "../toolchain/overlay-recipe-js/annotation-data.json" with { type: "json" };
-import * as legacyV1DataJsonModule from "../toolchain/overlay-recipe-js/legacy-v1-data.json" with { type: "json" };
-import * as legacyV1Module from "../toolchain/overlay-recipe-js/legacy-v1.mjs";
 import * as releaseV2DataJsonModule from "../toolchain/overlay-recipe-js/release-v2-data.json" with { type: "json" };
 import * as releaseV2Module from "../toolchain/overlay-recipe-js/release-v2.mjs";
 import * as touchLayoutModule from "../toolchain/overlay-recipe-js/touch-layout.mjs";
@@ -734,7 +732,7 @@ const memoryOutputCacheModule = (() => {
     const f = await setup(),
       adapter = createAssetPipelineAdapter(f.options);
     const entries = await adapter.generateAssets(f.auth);
-    assert.equal(entries.filter((e) => e.path.startsWith("mapgoal/")).length, 164);
+    assert.equal(entries.filter((e) => e.path.startsWith("mapgoal/")).length, 195);
     assert.deepEqual(
       entries.filter((e) => e.path.startsWith("romfs_overlay/")).map((e) => e.path),
       ["romfs_overlay/data/.build.config", "romfs_overlay/data/00-00000002.data"],
@@ -810,7 +808,7 @@ const memoryOutputCacheModule = (() => {
     const adapter = createAssetPipelineAdapter(f.options);
     f.options.textureReplacements[0].sha256 = "0".repeat(64);
     const entries = await adapter.generateAssets(f.auth);
-    assert.equal(entries.length, 166);
+    assert.equal(entries.length, 197);
     adapter.dispose();
   });
   test("abort stops a pending trusted transform promptly and wipes its late output", async () => {
@@ -1172,7 +1170,7 @@ const memoryOutputCacheModule = (() => {
         async run(op, payload, options) {
           assert.equal(op, "hud-v4");
           assert.equal(options.mode, "switch-upscaled");
-          assert.equal(options.revision, undefined);
+          assert.equal(options.revision, overlayRevisionModule.RELEASE_OVERLAY_REVISION);
           const bundle = JSON.parse(new TextDecoder().decode(payload));
           assert.deepEqual(Object.keys(bundle.fonts).sort(), [
             "blizzardglobal-v5_81.ttf",
@@ -1228,8 +1226,7 @@ const memoryOutputCacheModule = (() => {
       const run = f.assetWorker.run;
       f.assetWorker.run = async (operation, payload, options) => {
         assert.equal(options.revision, revision);
-        const { revision: _revision, ...legacyOptions } = options;
-        return run(operation, payload, legacyOptions);
+        return run(operation, payload, { ...options, revision: RELEASE_ART_REVISION });
       };
       await generateHud(f);
     }
@@ -1487,7 +1484,10 @@ const memoryOutputCacheModule = (() => {
     const assetWorker = {
       async run(op, payload, options) {
         assert.equal(op, "map-goal");
-        assert.deepEqual(options, { names: "current" });
+        assert.deepEqual(options, {
+          names: "current",
+          revision: overlayRevisionModule.RELEASE_OVERLAY_REVISION,
+        });
         const bundle = JSON.parse(new TextDecoder().decode(payload));
         assert.equal(Object.keys(bundle.strings).length, 5);
         return { files: Object.fromEntries(MAP_GOAL_OUTPUTS.map((n) => [n, new Uint8Array([1])])) };
@@ -1495,10 +1495,10 @@ const memoryOutputCacheModule = (() => {
     };
     return { logicalAssets, decodeAtlas, assetWorker, reads, buffers };
   }
-  test("Map-goal maps exactly eight archive reads and all 164 legacy outputs", async () => {
+  test("Map-goal maps exactly eight archive reads and all 195 current outputs", async () => {
     const f = fixture();
     const result = await generateMapGoal(f);
-    assert.equal(Object.keys(result.files).length, 164);
+    assert.equal(Object.keys(result.files).length, 195);
     assert.equal(f.reads.length, 8);
     assert.ok(f.reads.some(([p]) => p === MAP_GOAL_FONT));
     for (const b of f.buffers) assert.ok(b.every((x) => x === 0));
@@ -1653,7 +1653,7 @@ const memoryOutputCacheModule = (() => {
   const { default: test } = nodeTestModule;
   const { default: assert } = strictModule;
   const { generateMapGoal, LABELS } = mapGoalModule;
-  const { MAP_GOAL_OUTPUTS, UPSTREAM_MAP_GOAL_OUTPUTS } = mapGoalGeneratorModule;
+  const { UPSTREAM_MAP_GOAL_OUTPUTS } = mapGoalGeneratorModule;
   const { RELEASE_ART_REVISION, UPSTREAM_ART_REVISION } = revisionModule;
 
   function fixture(outputBytes, mutateStrings = () => {}, revision = UPSTREAM_ART_REVISION) {
@@ -1790,20 +1790,15 @@ const memoryOutputCacheModule = (() => {
     assert.equal(f.closed, 1);
   });
 
-  test("legacy map-goal defaults retain the old inventory and manifest", () => {
-    const f = fixture(
-      new Uint8Array([1]),
-      (strings) => {
-        for (const rows of Object.values(strings)) for (const row of rows) delete row.koKR;
-      },
-      null,
-    );
+  test("map-goal defaults use the current release inventory and reject retired revisions", () => {
+    const f = fixture(new Uint8Array([1]), () => {}, null);
     const result = f.run();
-    assert.deepEqual(Object.keys(result.files).sort(), [...MAP_GOAL_OUTPUTS].sort());
-    assert.equal(Object.keys(result.files).length, 164);
-    assert.equal(f.encoded, 163);
+    assert.deepEqual(result, fixture(new Uint8Array([1]), () => {}, RELEASE_ART_REVISION).run());
+    assert.equal(Object.keys(result.files).length, 195);
+    assert.equal(f.encoded, 194);
     const manifest = JSON.parse(new TextDecoder().decode(result.files["mapgoal.json"]));
-    assert.ok(manifest.labels.every((label) => !Object.hasOwn(label, "koKR")));
+    assert.ok(manifest.labels.every((label) => Object.hasOwn(label, "koKR")));
+    assert.throws(() => fixture(new Uint8Array([1]), () => {}, "v1.0.18").run(), /REVISION/);
   });
 
   test("reviewed b811 map-goal branch matches upstream synthetic output", () => {
@@ -2865,35 +2860,32 @@ const memoryOutputCacheModule = (() => {
   const { createHash } = nodeCryptoModule;
   const { default: test } = nodeTestModule;
   const { default: data } = annotationDataJsonModule;
-  const { default: legacy } = legacyV1DataJsonModule;
-  const { legacyI18n, legacyTouch, legacyCustomPage } = legacyV1Module;
   const { default: release } = releaseV2DataJsonModule;
   const { releaseI18n } = releaseV2Module;
   const { createAnnotations } = annotationsModule;
   const { padCustomPage } = touchLayoutModule;
   const { controllerGlyphs } = recipeModule;
-  const {
-    LEGACY_OVERLAY_REVISION,
-    RELEASE_OVERLAY_REVISION,
-    UPSTREAM_OVERLAY_REVISION,
-    requireOverlayRevision,
-  } = overlayRevisionModule;
+  const { RELEASE_OVERLAY_REVISION, UPSTREAM_OVERLAY_REVISION, requireOverlayRevision } =
+    overlayRevisionModule;
   const { createOverlayManifest, OVERLAY_SOURCE_FINGERPRINT } = overlayContractModule;
 
   const enc = new TextEncoder(),
     dec = new TextDecoder();
   const sha256 = (value) => createHash("sha256").update(value).digest("hex");
   const stringPath = "data/local/lng/strings/ui.json";
-  test("compact legacy deltas restore the exact historical data hashes", () => {
-    for (const [key, value] of [
-      ["i18nSha256", legacyI18n],
-      ["touchSha256", legacyTouch],
-      ["customPageSha256", legacyCustomPage],
-    ])
-      assert.equal(sha256(JSON.stringify(value)), legacy.expected[key]);
+  test("retired overlay revisions and layout branches reject before generating output", () => {
+    assert.throws(() => requireOverlayRevision("v1.0.18"), /REVISION/);
+    assert.throws(
+      () => createAnnotations({ readAsset() {}, sha1() {}, upstream: false }),
+      /REVISION/,
+    );
+    assert.throws(
+      () => padCustomPage('"name": "VideoOptionsPanel" "name": "OptionsTable"', false),
+      /REVISION/,
+    );
   });
-  test("upstream Korean i18n is isolated from the existing v1 shell", async () => {
-    for (const upstream of [true, false]) {
+  test("supported Korean i18n retains exact upstream rows and layout", async () => {
+    for (const upstream of [true]) {
       const pipeline = createAnnotations({
         readAsset: () => enc.encode('[{"Key":"original"}]'),
         sha1: () => "0".repeat(40),
@@ -2901,7 +2893,7 @@ const memoryOutputCacheModule = (() => {
       });
       const result = await pipeline.buildI18n();
       const rows = JSON.parse(dec.decode(result.replacements.get(stringPath))).slice(1);
-      const expected = upstream ? data.i18n : legacyI18n;
+      const expected = data.i18n;
       assert.equal(result.count, expected.rows.length);
       assert.deepEqual(
         rows.map((row) => row.Key),
@@ -2910,16 +2902,15 @@ const memoryOutputCacheModule = (() => {
       assert.ok(rows.every((row) => !row.Key.startsWith("dmWeb")));
       for (let i = 0; i < rows.length; i++) {
         assert.equal(rows[i].id, expected.id0 + i);
-        assert.equal(rows[i].koKR, upstream ? expected.rows[i][6] : expected.rows[i][2]);
+        assert.equal(rows[i].koKR, expected.rows[i][6]);
         assert.equal(rows[i].esMX, expected.rows[i][4] || expected.rows[i][3]);
       }
       const page = padCustomPage('"name": "VideoOptionsPanel" "name": "OptionsTable"', upstream);
       assert.equal(page.includes("TouchCustom_lang_ko"), upstream);
       assert.equal(page.includes("TouchCustomLangHintKo"), upstream);
       assert.ok(!page.includes("TouchCustom_voice"));
-      if (!upstream) assert.equal(page, legacyCustomPage[0]);
     }
-    assert.equal(requireOverlayRevision(LEGACY_OVERLAY_REVISION), false);
+    assert.throws(() => requireOverlayRevision("v1.0.18"), /REVISION/);
     assert.equal(requireOverlayRevision(UPSTREAM_OVERLAY_REVISION), true);
     assert.equal(requireOverlayRevision(RELEASE_OVERLAY_REVISION), true);
     assert.throws(() => requireOverlayRevision("v2.0.0"), /REVISION/);
@@ -2957,7 +2948,7 @@ const memoryOutputCacheModule = (() => {
         enc.encode(JSON.stringify([...rows.values()])),
       ]),
     );
-    for (const upstream of [true, false]) {
+    for (const upstream of [true]) {
       const pipeline = createAnnotations({
         readAsset: (path) => assets.get(path),
         upstream,
@@ -3150,6 +3141,8 @@ const memoryOutputCacheModule = (() => {
 
   test("v2 HUD includes Korean vital glyphs and validates the extra language", () => {
     const characters = vitalCharacters(i18n(), true);
+    assert.equal(vitalCharacters(i18n()), characters);
+    assert.throws(() => vitalCharacters(i18n(), false), /REVISION/);
     for (const char of "생명력마나") assert.ok(characters.includes(char));
     assert.throws(() => vitalCharacters(i18n(""), true), /HUD_I18N_ROW/);
     assert.throws(() => vitalCharacters(i18n("生命"), true), /HUD_I18N_CJK/);
@@ -3167,11 +3160,8 @@ const memoryOutputCacheModule = (() => {
     for (const char of "생명마나") assert.ok(characters.includes(char));
   });
 
-  test("legacy HUD defaults preserve the exact pre-v2 vital character sequence", () => {
-    const table = readFileSync(new URL("../../dm/i18n/ui_text.tsv", import.meta.url), "utf8");
-    // 仅从功能分支基点 75ce76f 的公开 TSV 派生，不进行渲染。
-    // Derived only from the public TSV at feature base 75ce76f, without rendering.
-    assert.equal(vitalCharacters(table), "生命法力:/ 0123456789LMVadefináЖМазинь");
+  test("retired HUD revisions reject before loading assets", () => {
+    assert.throws(() => overlayRevisionModule.requireOverlayRevision("v1.0.18"), /REVISION/);
   });
 
   test("b811/e375 art source comparison stays pinned to the reviewed merge inputs", () => {

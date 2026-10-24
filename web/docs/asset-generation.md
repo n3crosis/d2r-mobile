@@ -15,7 +15,7 @@ Generate art, HUD, tables, map labels and overlays from validated local game res
 
 The authenticated-object API binds private capability identity and selection, not complete-content hashing; copied objects and disposed sessions fail. Source validation follows the input/extraction policy. Recipes, metadata hashes and capacities come from trusted configuration. Supply sealed workers; never invent missing assets or substitute fonts.
 
-Verify source and complete encoded-PNG hashes, including paired release/browser digests. Decode complete atlases with real padded-frame layouts. HUD uses archive fonts and exact glyph inventories. Legacy map-goal emits 164 files; matching v2 adds Korean for 195. Revision selection belongs to the shell profile.
+Verify source and complete encoded-PNG hashes, including paired release/browser digests. Decode complete atlases with real padded-frame layouts. HUD uses archive fonts and exact glyph inventories. Both supported revisions emit the complete 195-file map-goal inventory including Korean. Revision selection belongs to the shell profile.
 
 Vault art must consume the personal sprite after its BC3 round trip. MainPanel preserves native block-copy geometry. Generated C texts feed `dm/derived.tsv`; never execute, compile or package them. Mercenary background generation does not replace overlay layout changes. See [overlay generation](overlay-generation.md) and [CASC storage](casc-storage.md).
 
@@ -38,7 +38,7 @@ Budgets are operation-specific, not total-memory guarantees. The small adapter a
 
 authenticated-object API 只绑定私有能力对象身份和对应选择，不代表已对全部内容求哈希认证；复制对象及失效会话会被拒绝。来源验证遵循输入/提取策略。配方、元数据摘要和容量来自可信配置；使用密封 worker，不虚构资源或替换字体。
 
-检查源文件和完整 PNG 哈希，保留发布/浏览器摘要配对；完整图集必须保留真实填充步距。HUD 使用归档字体及完整字形清单。旧版地图目标为 164 文件，匹配 v2 加韩语后为 195；版本由外壳选择，不是用户开关。
+检查源文件和完整 PNG 哈希，保留发布/浏览器摘要配对；完整图集必须保留真实填充步距。HUD 使用归档字体及完整字形清单。两个支持版本的地图目标均包含韩语，共 195 文件；版本由外壳选择，不是用户开关。
 
 Vault 必须使用个人背景经 BC3 编解码后的像素；MainPanel 保留原生块复制几何。生成 C 文本只用于产生 dm/derived.tsv，不执行、编译或打包。佣兵背景不能代替覆盖层布局修改。
 

@@ -2,6 +2,7 @@
 // Resolve static asset paths and serve the local preview using the module and calling contracts in web/scripts.
 import { resolve, sep, extname } from "node:path";
 import { stat } from "node:fs/promises";
+import { watch } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const outputDirectory = fileURLToPath(new URL("../dist/", import.meta.url));
@@ -54,7 +55,55 @@ export function serve() {
   });
 }
 
-if (import.meta.main) {
+// 开发模式仅在明确启用监视时加载构建工具。
+// Load build tools only when watch mode is explicitly selected.
+async function watchPreview() {
+  const { build, root } = await import("./build.mjs");
+  await build();
   const server = serve();
-  console.log(`Static preview: ${server.url}`);
+  console.log(`Development preview: ${server.url} (refresh after rebuild)`);
+  let running = false;
+  let pending = false;
+  let timer;
+  async function rebuild() {
+    pending = true;
+    if (running) return;
+    running = true;
+    while (pending) {
+      pending = false;
+      try {
+        await build();
+      } catch (error) {
+        console.error(error);
+      }
+    }
+    running = false;
+  }
+  function scheduleRebuild() {
+    clearTimeout(timer);
+    timer = setTimeout(rebuild, 100);
+  }
+  // 不递归监视下载的工具链、node_modules 或构建输出。
+  // Do not recursively watch downloaded toolchains, node_modules or build output.
+  const watchers = [
+    watch(`${root}/src`, { recursive: true }, scheduleRebuild),
+    watch(root, (_event, filename) => {
+      if (/^(?:index\.html|[^/]+\.mjs)$/.test(String(filename ?? ""))) scheduleRebuild();
+    }),
+  ];
+  for (const signal of ["SIGINT", "SIGTERM"]) {
+    process.once(signal, () => {
+      clearTimeout(timer);
+      for (const watcher of watchers) watcher.close();
+      server.stop();
+    });
+  }
+}
+
+if (import.meta.main) {
+  if (process.argv.includes("--watch")) await watchPreview();
+  else {
+    const server = serve();
+    console.log(`Static preview: ${server.url}`);
+  }
 }

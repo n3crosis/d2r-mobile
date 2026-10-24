@@ -10,9 +10,9 @@
 
 ### Revision selection
 
-Both production v2.0.0 [shell profiles](shell-profiles.md) select release recipe `b811b90172f4eb40ec1bc89d903308e0c5ab88d0`: Korean/fifth language option and Xbox mapping, without later PlayStation behavior. Empty operation options retain legacy v1.0.18 data/output.
+Both production v2.0.0 [shell profiles](shell-profiles.md) select release recipe `b811b90172f4eb40ec1bc89d903308e0c5ab88d0`: Korean/fifth language option and Xbox mapping, without later PlayStation behavior. Empty operation options use the reviewed b811 release; retired v1.0.18 revisions are rejected.
 
-The internal `e3756f8942b40eba6c851e881828a5b1bda17fd6` revision adds later controller/language behavior; both it and the b811 release emit DM_OVERLAY_V1 manifests. No production profile selects it. Do not equate source availability with matching published shell behavior or relabel historical native parity as v2 proof. All revisions keep MOVIE_FFMPEG=0. Exact dependency closures, translation hashes and legacy projection are recorded in [release-contract-source.json](../../web/toolchain/overlay-recipe-js/release-contract-source.json), [contract-source.json](../../web/toolchain/overlay-recipe-js/contract-source.json) and [legacy-v1-data.json](../../web/toolchain/overlay-recipe-js/legacy-v1-data.json).
+The internal `e3756f8942b40eba6c851e881828a5b1bda17fd6` revision adds later controller/language behavior; both it and the b811 release emit DM_OVERLAY_V1 manifests. No production profile selects it. Do not equate source availability with matching published shell behavior or relabel historical native parity as v2 proof. All revisions keep MOVIE_FFMPEG=0. Exact dependency closures and translation hashes are recorded in [release-contract-source.json](../../web/toolchain/overlay-recipe-js/release-contract-source.json), [contract-source.json](../../web/toolchain/overlay-recipe-js/contract-source.json).
 
 ### Bounds and lifecycle
 
@@ -44,9 +44,9 @@ createOverlayRecipe 的 overlay-recipe 操作消费现有 UTF-8 JSON：manifest�
 
 ### 配方版本
 
-两个生产 v2.0.0 shell profile 都使用 b811b901 release 配方：韩语/第五语言和 Xbox 映射，不包含后来的 PlayStation 行为。空操作选项保留 legacy v1.0.18 数据/输出。
+两个生产 v2.0.0 shell profile 都使用 b811b901 release 配方：韩语/第五语言和 Xbox 映射，不包含后来的 PlayStation 行为。空操作选项使用已审核的 b811 release；已退役的 v1.0.18 版本会被拒绝。
 
-内部 e3756f8 配方增加后续控制器/语言行为；它与 b811 release 都生成 DM_OVERLAY_V1 清单，但没有生产配置选择它。源码存在不代表已发布 shell 支持，也不能把历史原生对照重新称为 v2 证明。所有版本保持 MOVIE_FFMPEG=0。精确依赖闭包、翻译散列和 legacy 投影见英文节链接的来源记录。
+内部 e3756f8 配方增加后续控制器/语言行为；它与 b811 release 都生成 DM_OVERLAY_V1 清单，但没有生产配置选择它。源码存在不代表已发布 shell 支持，也不能把历史原生对照重新称为 v2 证明。所有版本保持 MOVIE_FFMPEG=0。精确依赖闭包和翻译散列见英文节链接的来源记录。
 
 ### 边界与生命周期
 

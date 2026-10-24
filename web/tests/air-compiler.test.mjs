@@ -5089,3 +5089,38 @@ ${body.join("\n")}
     }
   });
 }
+
+// 保证自编数值用例的打包不改变输入；不执行或声称验证实际编译器。
+// Validate authored numeric fixture packaging, without executing or claiming compiler validation.
+{
+  const { default: test } = nodeTestModule;
+  const { default: assert } = strictModule;
+  const { mkdtemp, readFile, rm } = promisesModule;
+  const { join, basename } = nodePathModule;
+  const { tmpdir } = nodeOsModule;
+  const { createHash } = nodeCryptoModule;
+  test("numeric fixture bundle materializes all original filenames and exact pinned source bytes", async () => {
+    const { numericFixtures, materializeNumericFixture } =
+      await import("../toolchain/metal-air-compiler/fixtures/numeric-cases.mjs");
+    assert.deepEqual(Object.keys(numericFixtures), [
+      "math-scalar",
+      "math-vector",
+      "integer-preservation",
+      "nan-select",
+    ]);
+    const output = await mkdtemp(join(tmpdir(), "air-numeric-fixtures-"));
+    try {
+      for (const [name, fixture] of Object.entries(numericFixtures)) {
+        const path = materializeNumericFixture(name, output);
+        assert.equal(basename(path), `${name}.metal`);
+        const bytes = await readFile(path);
+        assert.equal(bytes.toString("utf8"), fixture.source);
+        assert.equal(createHash("sha256").update(bytes).digest("hex"), fixture.sha256);
+      }
+      for (const invalid of ["../escape", "toString", "constructor", "missing"])
+        assert.throws(() => materializeNumericFixture(invalid, output), /Unknown numeric fixture/);
+    } finally {
+      await rm(output, { recursive: true, force: true });
+    }
+  });
+}

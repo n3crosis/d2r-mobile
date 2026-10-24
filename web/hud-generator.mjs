@@ -5,7 +5,7 @@
  * Complete Switch-upscaled native HUD. Fonts are logical archive reads, never OS files.
  */
 import { acceptsNativeArtPngDigest } from "./native-art-png-digests.mjs";
-import { LEGACY_ART_REVISION, requireArtRevision } from "./toolchain/art-recipes-js/revision.mjs";
+import { RELEASE_ART_REVISION, requireArtRevision } from "./toolchain/art-recipes-js/revision.mjs";
 import { runCachedAssetOperation } from "./asset-output-cache.mjs";
 const IMAGE_PATHS = Object.freeze({
   front_panel: "hd/global/ui/PANEL/HUD_02/front_panel.sprite",
@@ -45,11 +45,11 @@ export async function generateHud({
   metadataSha256,
   mode,
   signal,
-  recipeRevision = LEGACY_ART_REVISION,
+  recipeRevision = RELEASE_ART_REVISION,
   outputCache,
   cacheContext,
 }) {
-  const upstream = requireArtRevision(recipeRevision);
+  requireArtRevision(recipeRevision);
   const check = () => {
     if (signal?.aborted) fail("HUD_CANCELLED");
   };
@@ -170,7 +170,7 @@ export async function generateHud({
     const options = {
       mode,
       metadataSha256,
-      ...(upstream ? { revision: recipeRevision } : {}),
+      revision: recipeRevision,
     };
     return await runCachedAssetOperation({
       outputCache,

@@ -4,7 +4,7 @@
  * 使用当前名称的完整地图目标资源。不使用操作系统字体、私有旧名称或推断的图集布局。
  * Complete current-name map-goal assets. No OS fonts, private old names, or inferred atlas layout.
  */
-import { LEGACY_ART_REVISION, requireArtRevision } from "./toolchain/art-recipes-js/revision.mjs";
+import { RELEASE_ART_REVISION, requireArtRevision } from "./toolchain/art-recipes-js/revision.mjs";
 import { runCachedAssetOperation } from "./asset-output-cache.mjs";
 export const MAP_GOAL_IMAGE_PATHS = Object.freeze({
   symbols: "hd/global/ui/PANEL/Quest_Log/TalRashaSymbol.sprite",
@@ -18,18 +18,16 @@ export const MAP_GOAL_TABLES = Object.freeze([
   "npcs",
 ]);
 export const MAP_GOAL_FONT = "hd/ui/fonts/BlizzardGlobal-V5_81.ttf";
-const outputNames = (upstream) => [
+const outputNames = () => [
   "mapgoal.json",
   "cross.png",
   ...Array.from({ length: 7 }, (_, i) => `sym_${i}.png`),
   ...Array.from({ length: 31 }, (_, i) =>
-    (upstream ? ["", "_en", "_es", "_mx", "_ru", "_ko"] : ["", "_en", "_es", "_mx", "_ru"]).map(
-      (s) => `label_${i}${s}.png`,
-    ),
+    ["", "_en", "_es", "_mx", "_ru", "_ko"].map((s) => `label_${i}${s}.png`),
   ).flat(),
 ];
-export const MAP_GOAL_OUTPUTS = Object.freeze(outputNames(false));
-export const UPSTREAM_MAP_GOAL_OUTPUTS = Object.freeze(outputNames(true));
+export const MAP_GOAL_OUTPUTS = Object.freeze(outputNames());
+export const UPSTREAM_MAP_GOAL_OUTPUTS = MAP_GOAL_OUTPUTS;
 const fail = (code) => {
   throw new Error(code);
 };
@@ -48,12 +46,12 @@ export async function generateMapGoal({
   assetWorker,
   decodeAtlas,
   signal,
-  recipeRevision = LEGACY_ART_REVISION,
+  recipeRevision = RELEASE_ART_REVISION,
   outputCache,
   cacheContext,
 }) {
-  const upstream = requireArtRevision(recipeRevision);
-  const expected = upstream ? UPSTREAM_MAP_GOAL_OUTPUTS : MAP_GOAL_OUTPUTS;
+  requireArtRevision(recipeRevision);
+  const expected = MAP_GOAL_OUTPUTS;
   const owned = new Set(),
     outputOwned = [];
   let success = false;
@@ -120,7 +118,7 @@ export async function generateMapGoal({
     try {
       const options = {
         names: "current",
-        ...(upstream ? { revision: recipeRevision } : {}),
+        revision: recipeRevision,
       };
       result = await runCachedAssetOperation({
         outputCache,

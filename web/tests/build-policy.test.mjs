@@ -1,7 +1,6 @@
 // Feature suite: build-policy. Original test sections retain independent lexical scopes.
 import * as nodeTestModule from "node:test";
 import * as strictModule from "node:assert/strict";
-import * as buildPolicyModule from "../scripts/build-policy.mjs";
 import * as serveModule from "../scripts/serve.mjs";
 import * as promisesModule from "node:fs/promises";
 import * as nodeOsModule from "node:os";
@@ -15,16 +14,15 @@ import * as bunE2eModule from "../scripts/bun-e2e.mjs";
 import * as nodeCryptoModule from "node:crypto";
 import * as nodeZlibModule from "node:zlib";
 import * as nodeEventsModule from "node:events";
-import * as bunE2eNodeWorkerModule from "../scripts/bun-e2e-node-worker.mjs";
 import * as bunE2eNodeCrossModule from "../scripts/bun-e2e-node-cross.mjs";
 
 // build-output
 {
-  // 验证 build-output 的约定与边界；依据 ../scripts/build-policy.mjs、../scripts/serve.mjs 及本文件的测试断言。
-  // Verify build-output contracts and boundaries against ../scripts/build-policy.mjs、../scripts/serve.mjs and this file's assertions.
+  // 验证 build-output 的约定与边界；依据 ../scripts/frontend-notices.mjs、../scripts/serve.mjs 及本文件的测试断言。
+  // Verify build-output contracts and boundaries against ../scripts/frontend-notices.mjs、../scripts/serve.mjs and this file's assertions.
   const { default: test } = nodeTestModule;
   const { default: assert } = strictModule;
-  const { validateStaticBuild } = buildPolicyModule;
+  const { validateStaticBuild } = frontendNoticesModule;
   const { assetPath } = serveModule;
 
   const html = `<link href="./app.css" rel="stylesheet"><script src="./app.js" type="module"></script>`;
@@ -956,7 +954,7 @@ finish
   const { join } = nodePathModule;
   const { tmpdir } = nodeOsModule;
   const { once } = nodeEventsModule;
-  const { NodeCrossWorker } = bunE2eNodeWorkerModule;
+  const { NodeCrossWorker } = bunE2eNodeCrossModule;
   const { readNativeOutput, runNativeCommand, stopNativeChildren } = bunE2eNodeCrossModule;
   async function fixture(action) {
     const root = await mkdtemp(join(tmpdir(), "d2r-synthetic-cross-"));

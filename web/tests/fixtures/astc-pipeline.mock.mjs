@@ -6,7 +6,7 @@ if (!["asset-pipeline-astc", "production-assets-astc"].includes(scenario))
 
 // asset-pipeline-astc
 if (scenario === "asset-pipeline-astc") {
-  // 隔离模块替身仅验证可选元数据、11项输出、所有权和预算，不声明游戏或浏览器证明。
+  // 隔离模块替身仅验证可选元数据、15项输出、所有权和预算，不声明游戏或浏览器证明。
   // Isolated module doubles test optional metadata, eleven outputs, ownership and budgets, not game or browser proof.
   const { default: assert } = await import("node:assert/strict");
   const { createOverlayManifest: createOverlayManifest } =
@@ -142,7 +142,7 @@ if (scenario === "asset-pipeline-astc") {
     unblock();
     const entries = await work;
     unblock = undefined;
-    assert.equal(entries.length, 12);
+    assert.equal(entries.length, 16);
     const binding = adapter.getAstcOutputBinding();
     assert.deepEqual(Object.keys(binding).sort(), [
       "count",
@@ -154,7 +154,7 @@ if (scenario === "asset-pipeline-astc") {
     assert.ok(Object.isFrozen(binding.pack));
     assert.ok(Object.isFrozen(binding.overlayArchives));
     assert.equal(binding.count, 1);
-    assert.equal(binding.recipeRevision, "v1.0.18");
+    assert.equal(binding.recipeRevision, RELEASE_OVERLAY_REVISION);
     assert.equal(binding.pack.name, pack.name);
     for (const bytes of Object.values(output)) assert.ok(bytes.some((n) => n !== 0));
     for (const entry of entries.filter((item) => item.path.startsWith("romfs_overlay_astc")))
@@ -181,7 +181,7 @@ if (scenario === "asset-pipeline-astc") {
     await assert.rejects(bad.generateAssets({}));
     assert.equal(bad.getAstcOutputBinding(), undefined);
   });
-  test("exact11 validation and unchanged80MiB aggregate limit fail without binding", async () => {
+  test("exact15 validation and unchanged80MiB aggregate limit fail without binding", async () => {
     assert.equal(ASSET_PIPELINE_LIMITS.outputBytes, 80 * 1024 * 1024);
     for (const value of ["missing", "oversize"]) {
       mode = value;
@@ -485,7 +485,7 @@ if (scenario === "production-assets-astc") {
     assets.dispose();
   });
 
-  test("production forwards closed b811 and explicit legacy recipes, never caller revisions", async () => {
+  test("production forwards only closed v2 recipes, never caller revisions", async () => {
     failure = undefined;
     for (const profileId of SHELL_PROFILE_IDS) {
       const assets = adapter(false, { profileId });

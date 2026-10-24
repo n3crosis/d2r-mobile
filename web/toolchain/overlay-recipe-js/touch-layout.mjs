@@ -3,7 +3,6 @@
 // Pinned native touch-layout recipe. Static widgets are generated from trusted source,
 // never from game assets; runtime reads are supplied by the authenticated overlay archive.
 import data from "./touch-data.json" with { type: "json" };
-import { legacyCustomPage } from "./legacy-v1.mjs";
 import { parseInventoryJson, pythonJsonDumps } from "./inventory.mjs";
 import { PythonFloat } from "../art-recipes-js/native-art-util.mjs";
 
@@ -213,7 +212,8 @@ function customPage(s, upstream = true) {
     s.includes('"name": "VideoOptionsPanel"') && s.includes('"name": "OptionsTable"'),
     "console video layout changed",
   );
-  return [...(upstream ? data.customPage : legacyCustomPage)];
+  requireValue(upstream === true, "OVERLAY_RECIPE_REVISION");
+  return [...data.customPage];
 }
 export const padCustomPage = (s, upstream = true) => customPage(s, upstream)[0];
 export function riftPanel(s) {
@@ -705,6 +705,7 @@ const present = {
 };
 
 export function createTouchLayouts({ readLayout, readEntry, rows, upstream = true }) {
+  requireValue(upstream === true, "OVERLAY_RECIPE_REVISION");
   requireValue(typeof readLayout === "function", "authenticated layout reader required");
   const put = (out, path, text) => out.set(path.toLowerCase(), encoder.encode(text));
   const transformMap = (spec) => {

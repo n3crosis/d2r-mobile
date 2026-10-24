@@ -269,12 +269,11 @@ import * as packageModule from "../runtime-build/package.mjs";
     astcOutputPaths,
     ASTC_OUTPUT_LIMITS,
   } = astcOutputValidatorModule;
-  const { LEGACY_OVERLAY_REVISION, RELEASE_OVERLAY_REVISION, UPSTREAM_OVERLAY_REVISION } =
-    revisionModule;
+  const { RELEASE_OVERLAY_REVISION, UPSTREAM_OVERLAY_REVISION } = revisionModule;
   const encode = (s) => new TextEncoder().encode(s);
   const pack = { name: "00-00000008.data", size: 3, sha256: "a".repeat(64) };
   const overlayArchives = { base: "00-00000009.data", item_notes: "00-00000010.data" };
-  function fixture() {
+  function rawFixture() {
     const files = {};
     for (const [prefix, name, sidecars] of [
       [
@@ -302,7 +301,7 @@ import * as packageModule from "../runtime-build/package.mjs";
     return { files, pack, overlayArchives };
   }
   function releaseFixture() {
-    const result = { ...fixture(), recipeRevision: RELEASE_OVERLAY_REVISION };
+    const result = { ...rawFixture(), recipeRevision: RELEASE_OVERLAY_REVISION };
     for (const root of ["romfs_overlay_astc", "romfs_overlay_astc_variants/item_notes"]) {
       result.files[`${root}/xbox_glyphs`] = encode(
         "ztouch_controller_buttons_ui/switchx*.sprite\n",
@@ -321,12 +320,13 @@ import * as packageModule from "../runtime-build/package.mjs";
     }
     return result;
   }
+  const fixture = releaseFixture;
   test("accepts exactly native ASTC base plus item_notes while leaving caller bytes unchanged", () => {
     const options = fixture(),
       before = structuredClone(options);
     const result = validateAstcOutputs(options);
-    assert.equal(result.paths.length, 11);
-    assert.equal(result.recipeRevision, LEGACY_OVERLAY_REVISION);
+    assert.equal(result.paths.length, 15);
+    assert.equal(result.recipeRevision, RELEASE_OVERLAY_REVISION);
     assert.deepEqual(result.pack, pack);
     assert.ok(Object.isFrozen(result) && Object.isFrozen(result.paths));
     assert.deepEqual(options, before);
@@ -340,11 +340,9 @@ import * as packageModule from "../runtime-build/package.mjs";
     assert.deepEqual(result.paths, astcOutputPaths(options));
     assert.deepEqual(options, before);
     assert.ok(result.paths.every((path) => !path.endsWith("/ps_glyphs")));
+    assert.throws(() => validateAstcOutputs({ ...options, recipeRevision: "v1.0.18" }));
     assert.throws(() =>
-      validateAstcOutputs({ ...options, recipeRevision: LEGACY_OVERLAY_REVISION }),
-    );
-    assert.throws(() =>
-      validateAstcOutputs({ ...fixture(), recipeRevision: RELEASE_OVERLAY_REVISION }),
+      validateAstcOutputs({ ...rawFixture(), recipeRevision: RELEASE_OVERLAY_REVISION }),
     );
     for (const revision of [null, "v2.0.0", UPSTREAM_OVERLAY_REVISION, {}, "__proto__"])
       assert.throws(() => validateAstcOutputs({ ...options, recipeRevision: revision }));
@@ -1734,14 +1732,13 @@ import * as packageModule from "../runtime-build/package.mjs";
   const { bindProductionAstcEntries, inspectProductionAstcEntries } = productionProfileModule;
   const { selectProductionAstcEntries } = browserPackagerModule;
   const { ASTC_OUTPUT_LIMITS } = astcOutputValidatorModule;
-  const { LEGACY_OVERLAY_REVISION, RELEASE_OVERLAY_REVISION, UPSTREAM_OVERLAY_REVISION } =
-    revisionModule;
+  const { RELEASE_OVERLAY_REVISION, UPSTREAM_OVERLAY_REVISION } = revisionModule;
   const encode = (s) => new TextEncoder().encode(s);
   const binding = {
     pack: { name: "00-00000008.data", size: 123, sha256: "a".repeat(64) },
     overlayArchives: { base: "00-00000009.data", item_notes: "00-00000009.data" },
   };
-  function fixture(recipeRevision = LEGACY_OVERLAY_REVISION) {
+  function fixture(recipeRevision = RELEASE_OVERLAY_REVISION) {
     const files = {};
     for (const [prefix, archive, sides] of [
       [
@@ -1862,18 +1859,12 @@ import * as packageModule from "../runtime-build/package.mjs";
         ),
         /SHELL_PROFILE_UNKNOWN/,
       );
-    for (const profileId of [undefined])
+    for (const profileId of [undefined, "v2.0.0-ios26", "v2.0.0-ios18"])
       await assert.rejects(
-        bindProductionAstcEntries(
-          profileFixture(profileId),
-          fixture(RELEASE_OVERLAY_REVISION),
-          releaseBinding,
-        ),
-        /RECIPE_BINDING/,
-      );
-    for (const profileId of ["v2.0.0-ios26", "v2.0.0-ios18"])
-      await assert.rejects(
-        bindProductionAstcEntries(profileFixture(profileId), fixture(), binding),
+        bindProductionAstcEntries(profileFixture(profileId), fixture(), {
+          ...binding,
+          recipeRevision: "v1.0.18",
+        }),
         /RECIPE_BINDING/,
       );
     for (const recipeRevision of [null, "v2", UPSTREAM_OVERLAY_REVISION, {}]) {
@@ -1882,12 +1873,17 @@ import * as packageModule from "../runtime-build/package.mjs";
       assert.throws(() => selectProductionAstcEntries(fixture(RELEASE_OVERLAY_REVISION), bad));
     }
     const legacy = await bindProductionAstcEntries(profileFixture(undefined), fixture(), binding);
-    assert.equal(legacy.astcOutput.recipeRevision, LEGACY_OVERLAY_REVISION);
+    assert.equal(legacy.astcOutput.recipeRevision, RELEASE_OVERLAY_REVISION);
   });
   test("b811 selection and streamed metadata reject missing, duplicate, unsupported and oversized members", async () => {
     const releaseBinding = { ...binding, recipeRevision: RELEASE_OVERLAY_REVISION };
-    assert.throws(() => selectProductionAstcEntries(fixture(RELEASE_OVERLAY_REVISION), binding));
-    assert.throws(() => selectProductionAstcEntries(fixture(), releaseBinding));
+    assert.throws(() =>
+      selectProductionAstcEntries(fixture(RELEASE_OVERLAY_REVISION), {
+        ...binding,
+        recipeRevision: "v1.0.18",
+      }),
+    );
+    assert.throws(() => selectProductionAstcEntries(fixture("v1.0.18"), releaseBinding));
     for (const changedPath of ["romfs_overlay_astc/ps_glyphs", "romfs_overlay_astc/xbox_glyphs"]) {
       const entries = fixture(RELEASE_OVERLAY_REVISION);
       entries[0] = { ...entries[0], path: changedPath };
@@ -1956,11 +1952,11 @@ import * as packageModule from "../runtime-build/package.mjs";
       { name: "AbortError" },
     );
   });
-  test("binding extends only exact eleven extras and does not mutate default profile", async () => {
+  test("binding extends only exact fifteen extras and does not mutate default profile", async () => {
     const entries = fixture(),
       original = profileFixture();
     const result = await bindProductionAstcEntries(original, entries, binding);
-    assert.equal(result.astcOutput.paths.length, 11);
+    assert.equal(result.astcOutput.paths.length, 15);
     assert.equal(
       result.astcOutput.totalBytes,
       entries.reduce((total, entry) => total + entry.size, 0),
