@@ -5,9 +5,10 @@ import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 import test from "node:test";
 const source = await readFile(new URL("../dotnet-worker.mjs", import.meta.url), "utf8");
-const upstream = JSON.parse(
-  await readFile(new URL("./dotnet-sidecar-source.json", import.meta.url), "utf8"),
+const sourceEvidence = JSON.parse(
+  await readFile(new URL("./dotnet-source-evidence.json", import.meta.url), "utf8"),
 );
+const upstream = sourceEvidence.sidecar;
 // 使用 MIT 许可的 .NET 10.0.13 精确源码片段，完整源码 SHA-256 记录在样例中。仅移除 TS 的 export/as-any 语法并暴露声明供 VM 观察。
 // Exact MIT-licensed .NET10.0.13 source excerpts, full source SHA-256 recorded in fixture.
 // Strip only TS export/as-any syntax and expose declarations for VM observation.
@@ -77,9 +78,7 @@ test("early requests still reject synchronously without starting runtime or acce
   assert.equal(sandbox.onmessage, null);
 });
 
-const nativeSource = JSON.parse(
-  await readFile(new URL("./dotnet-native-url-source.json", import.meta.url), "utf8"),
-);
+const nativeSource = sourceEvidence.nativeUrl;
 const nativeResolution = `${nativeSource.locateFile}\n${nativeSource.wasmBinaryFile}`.replaceAll(
   "import.meta.url",
   "nativeModuleUrl",

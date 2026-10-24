@@ -167,9 +167,12 @@ for (const [name, encoded] of Object.entries(expected.files)) {
 }
 // 新摘要只能在上面的独立原生比较通过后审核固定，不得复用旧版基线。
 // Approve a new pin only after independent native equality above; do not reuse a legacy baseline.
-const pinned = JSON.parse(
-  readFileSync(new URL("expected-upstream-recipe-sha256.json", import.meta.url)),
-);
+const pinned = {
+  revision: "e3756f8942b40eba6c851e881828a5b1bda17fd6",
+  status: "requires-native-oracle-review",
+  files: null,
+  sha256: null,
+};
 assert.equal(pinned.revision, UPSTREAM_OVERLAY_REVISION);
 assert.equal(
   pinned.status,
