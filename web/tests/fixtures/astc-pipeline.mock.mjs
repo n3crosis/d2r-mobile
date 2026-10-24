@@ -404,7 +404,7 @@ if (scenario === "production-assets-astc") {
     return createProductionAssetAdapter({
       runtime,
       profile: {
-        profileId: options.profileId ?? "v1.0.18-ios26",
+        profileId: options.profileId ?? "v2.0.0-ios26",
         nativeArt: { manifest: "{}" },
         derivedCounts: options.derivedCounts ?? {},
       },

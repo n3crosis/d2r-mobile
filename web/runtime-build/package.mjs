@@ -78,17 +78,13 @@ export const SHELL_BUILD_INPUTS = Object.freeze(
     });
   }),
 );
-// 保留当前和显式旧配置的来源证据；只打包当前的两个外壳归档，配置模块已包含在前端和工作线程中。
-// Retain current and explicit legacy provenance; bundle only the two current archives, with registry modules already in frontend and workers.
+// 仅保留当前 v2 配置的来源证据；只打包当前的两个外壳归档，配置模块已包含在前端和工作线程中。
+// Retain current v2 provenance; bundle only the two current archives, with registry modules already in frontend and workers.
 const shellProfileSources = [
   "toolchain/shell-release-evidence/v2.0.0.json",
   "toolchain/shell-release-evidence/v2.0.0-derived-capacities.json",
   "toolchain/shell-release-evidence/v2.0.0-ios18.json",
   "toolchain/shell-release-evidence/v2.0.0-ios18-derived-capacities.json",
-  "toolchain/shell-release-evidence/v1.0.18.json",
-  "toolchain/shell-release-evidence/v1.0.18-derived-capacities.mjs",
-  "toolchain/shell-release-evidence/v1.0.18-ios18.json",
-  "toolchain/shell-release-evidence/v1.0.18-ios18-derived-capacities.json",
 ];
 const maximumFile = 64 * 1024 * 1024;
 const maximumTotal = 512 * 1024 * 1024;

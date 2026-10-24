@@ -48,11 +48,7 @@ for file in shell-profiles.mjs shell-v2-evidence.mjs \
   toolchain/shell-release-evidence/v2.0.0.json \
   toolchain/shell-release-evidence/v2.0.0-derived-capacities.json \
   toolchain/shell-release-evidence/v2.0.0-ios18.json \
-  toolchain/shell-release-evidence/v2.0.0-ios18-derived-capacities.json \
-  toolchain/shell-release-evidence/v1.0.18.json \
-  toolchain/shell-release-evidence/v1.0.18-derived-capacities.mjs \
-  toolchain/shell-release-evidence/v1.0.18-ios18.json \
-  toolchain/shell-release-evidence/v1.0.18-ios18-derived-capacities.json; do
+  toolchain/shell-release-evidence/v2.0.0-ios18-derived-capacities.json; do
   mkdir -p "dist/$(dirname "$file")"
   cp "../../$file" "dist/$file"
 done

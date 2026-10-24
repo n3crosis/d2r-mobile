@@ -39,19 +39,13 @@ compiled-library checks and genuine compiler receipts; never rewrite provenance
 to impersonate a native build. See [shader pipeline](shader-pipeline.md).
 
 Targets select matching b811 art/overlay recipes, not arbitrary revisions.
-Optional ASTC inventory is exactly 15 files for b811, versus 11 for explicit
-legacy profiles. Missing/extra outputs reject. b811 includes Korean/Xbox UI,
+Optional ASTC inventory is exactly 15 files for the current b811 profiles. Missing/extra outputs reject. b811 includes Korean/Xbox UI,
 not later PlayStation glyphs or iOS VP8 additions. The iOS loader does not consume
 Android's overlay.manifest validation path; browser integrity checks still apply.
 
-Legacy v1.0.18 remains explicit, not the default. Its
-[standard capacities](../../web/toolchain/shell-release-evidence/v1.0.18-derived-capacities.mjs),
-[iOS 18 inventory](../../web/toolchain/shell-release-evidence/v1.0.18-ios18.json)
-and [capacity record](../../web/toolchain/shell-release-evidence/v1.0.18-ios18-derived-capacities.json)
-preserve exact binary/source evidence. The legacy iOS 18 host's observed SDK
-26.5.0 differs from the handwritten Guest wrapper's declared SDK 26.0.0;
-minimum OS and SDK are separate. Do not lower unknown binaries' targets.
-Public-byte inspection is not publisher-signature, API-compatibility or device proof.
+Pre-v2 shell profiles and their release-specific evidence have been retired.
+Both current v2.0.0 targets, iOS 26 and iOS 18, remain supported with their exact
+independent evidence. Retired IDs reject rather than falling back.
 
 ### Recheck without execution
 
@@ -90,13 +84,12 @@ SPIRV-Cross 1.4.363.0。当前链输入不复现发布者完整工具指纹；�
 **完整规范化源码摘要**匹配后调整目录/单着色器/c1 标签，不能伪造来源。反射、编译库和真实
 编译器凭据检查仍必需，详见着色器指南。
 
-目标选择对应 b811 图像/覆盖配方，不开放任意修订。b811 可选 ASTC 精确 15 文件，旧配置 11 文件，
+目标选择对应 b811 图像/覆盖配方，不开放任意修订。b811 可选 ASTC 精确 15 文件，
 缺项/多项拒绝。b811 含韩文/Xbox UI，不含后来的 PlayStation 字形或 iOS VP8。
 iOS 加载器不走 Android 的 overlay.manifest 校验，但浏览器完整性检查仍保留。
 
-v1.0.18 仅显式选择，非默认；上方旧版容量、iOS 18 清单和来源证据仍保留。旧 iOS 18 宿主
-实测 SDK 26.5.0 与手写 Guest 声明 SDK 26.0.0 不同，最低系统和 SDK 是不同概念。
-不可降低未知二进制目标。公开字节检查不证明发布者签名、全部 API 兼容或设备运行。
+v2 之前的外壳配置及其专属证据已移除。当前 v2.0.0 的 iOS 26 与 iOS 18
+目标及各自精确证据均保留。旧版 ID 会拒绝，不会回退到其他配置。
 
 ### 无执行复核
 

@@ -3916,8 +3916,6 @@ import * as previewManifestModule from "../verification/preview-manifest.mjs";
     for (const [profileId, minimum] of [
       [DEFAULT_SHELL_PROFILE_ID, "26.0"],
       ["v2.0.0-ios18", "18.0"],
-      ["v1.0.18-ios26", "26.0"],
-      ["v1.0.18-ios18", "18.0"],
     ]) {
       const bytes = await buildGuestFramework(modules, { ...options, profileId });
       const plist = guestInfoPlist("local.guest", { profileId });
@@ -4218,8 +4216,6 @@ import * as previewManifestModule from "../verification/preview-manifest.mjs";
       [undefined, "26.0.0"],
       ["v2.0.0-ios26", "26.0.0"],
       ["v2.0.0-ios18", "18.0.0"],
-      ["v1.0.18-ios26", "26.0.0"],
-      ["v1.0.18-ios18", "18.0.0"],
     ]) {
       const bytes = new TextEncoder().encode(guestInfoPlist(undefined, { profileId }));
       for (const split of [1, 7, 32, bytes.length])

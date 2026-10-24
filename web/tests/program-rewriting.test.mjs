@@ -695,7 +695,7 @@ import * as relocationsModule from "../toolchain/program-rewrite-spike/js/reloca
       (source) =>
         source.replace(
           "programReleaseIds: [REGISTERED_PROGRAM_RELEASE.id],",
-          `programReleaseIds: [REGISTERED_PROGRAM_RELEASE.id, ${JSON.stringify(release.id)}],`,
+          `programReleaseIds: id === "v2.0.0-ios26" ? [REGISTERED_PROGRAM_RELEASE.id, ${JSON.stringify(release.id)}] : [REGISTERED_PROGRAM_RELEASE.id],`,
         ),
     );
     const adapterUrl = await sourceWithImports("../program-rewriter-adapter.mjs", {
@@ -737,7 +737,7 @@ import * as relocationsModule from "../toolchain/program-rewrite-spike/js/reloca
     assert.equal(workerRelease, release.id);
     await assert.rejects(
       createAdapter({
-        profileId: "v1.0.18-ios18",
+        profileId: "v2.0.0-ios18",
         verifyProvenance: () => inputs,
         createWorker: () => assert.fail("Unbound release reached worker"),
       }).generateProgram(),

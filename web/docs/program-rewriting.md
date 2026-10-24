@@ -13,7 +13,7 @@ Start here:
 - [Rewrite modules](../../web/toolchain/program-rewrite-spike/js/): numerical contracts, relocations, rules and output formatting.
 - [Shell profiles](shell-profiles.md): authenticated host identities and program allowlists.
 
-Current bundled shells are v2.0.0 for iOS 26/iOS 18; legacy v1.0.18 profiles remain registered. Registration and generation do not prove device compatibility.
+Current bundled shells are v2.0.0 for iOS 26/iOS 18; pre-v2 shell profiles are no longer registered. Registration and generation do not prove device compatibility.
 
 ### Main flow and trust boundary
 
@@ -63,7 +63,7 @@ The build creates directories and audits sources before dependency downloads. Th
 - [重写模块](../../web/toolchain/program-rewrite-spike/js/)：数值契约、重定位、规则和输出格式。
 - [外壳配置](shell-profiles.md)：认证宿主身份和程序白名单。
 
-当前随包外壳为 v2.0.0 iOS 26/iOS 18，保留旧 v1.0.18 登记。登记成功或生成 framework 均不能证明真实游戏/设备兼容性。
+当前随包外壳为 v2.0.0 iOS 26/iOS 18，已移除 v2 之前的外壳登记。登记成功或生成 framework 均不能证明真实游戏/设备兼容性。
 
 ### 主流程与信任边界
 

@@ -1,11 +1,11 @@
-// 从准确的 v1.0.18 外壳派生仅数据内容模式。
-// 依据 v1.0.18 外壳布局及 dm/host/hle_misc.c 的缓存附加内容计数。
-// Derives a data-only content mode from the exact v1.0.18 shell.
-// Based on the v1.0.18 shell layout and cached add-on count in dm/host/hle_misc.c.
+// 从准确的 v2.0.0 外壳派生仅数据内容模式。
+// 依据 v2.0.0 外壳布局及 dm/host/hle_misc.c 的缓存附加内容计数。
+// Derives a data-only content mode from the exact v2.0.0 shell.
+// Based on the v2.0.0 shell layout and cached add-on count in dm/host/hle_misc.c.
 
 /**
- * 准确的 v1.0.18 外壳仅数据派生。不是指令或授权补丁。
- * Exact v1.0.18 shell data-only derivation. Not an instruction or entitlement patch.
+ * 准确的 v2.0.0 外壳仅数据派生。不是指令或授权补丁。
+ * Exact v2.0.0 shell data-only derivation. Not an instruction or entitlement patch.
  */
 import { DEFAULT_SHELL_PROFILE_ID, resolveShellProfile } from "./shell-profiles.mjs";
 

@@ -84,9 +84,26 @@ for (const [stage, define, values] of [
 // checks are authored coverage until this runner executes on a matching build.
 const storageFixtures = JSON.parse(readFileSync(join(root, "fixtures/stage-storage.json"), "utf8"));
 for (const fixture of storageFixtures) {
-  const source = readFileSync(join(root, fixture.file));
+  let path = join(root, fixture.file);
+  let source;
+  if (fixture.expected === "rejected") {
+    assert.match(fixture.file, /^fixtures\/stage-storage-negative\/[a-z0-9-]+\.metal$/);
+    assert(
+      Array.isArray(fixture.sourceLines) &&
+        fixture.sourceLines.every((line) => typeof line === "string"),
+    );
+    source = fixture.sourceLines.join("\n");
+    path = join(out, fixture.file);
+  } else {
+    assert.equal(fixture.sourceLines, undefined);
+    source = readFileSync(path);
+  }
   assert.equal(sha(source), fixture.sha256, `${fixture.file}: source identity`);
-  const result = emitIR(join(root, fixture.file));
+  if (fixture.expected === "rejected") {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, source);
+  }
+  const result = emitIR(path);
   assert.ifError(result.error);
   assert.equal(result.signal, null, `${fixture.file}: unexpected compiler signal`);
   const name = `stage-storage-${basename(fixture.file, ".metal")}`;

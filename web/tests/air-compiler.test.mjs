@@ -1321,6 +1321,38 @@ define void @reflection_float3(%struct.PaddedVectorLayout addrspace(2)* align 16
     assert(runner.includes("checkReflection(result.stdout, fixture)"));
   });
 
+  test("bundled stage/storage negatives materialize exact pinned source bytes and filenames", async () => {
+    const fixtures = JSON.parse(
+      await readFile(new URL("fixtures/stage-storage.json", root), "utf8"),
+    );
+    const negatives = fixtures.filter(({ expected }) => expected === "rejected");
+    assert.equal(negatives.length, 15);
+    assert.equal(new Set(negatives.map(({ file }) => file)).size, 15);
+    const temp = await mkdtemp(join(tmpdir(), "air-stage-storage-"));
+    try {
+      for (const fixture of negatives) {
+        assert.match(fixture.file, /^fixtures\/stage-storage-negative\/[a-z0-9-]+\.metal$/);
+        assert(
+          Array.isArray(fixture.sourceLines) &&
+            fixture.sourceLines.every((line) => typeof line === "string"),
+        );
+        const source = fixture.sourceLines.join("\n");
+        assert.equal(hash(source), fixture.sha256, fixture.file);
+        assert(source.includes("SPDX-License-Identifier: MIT"));
+        const path = join(temp, fixture.file);
+        await mkdir(dirname(path), { recursive: true });
+        await writeFile(path, source);
+        assert.equal(await readFile(path, "utf8"), source);
+      }
+      assert.deepEqual(
+        (await readdir(join(temp, "fixtures/stage-storage-negative"))).sort(),
+        negatives.map(({ file }) => file.split("/").at(-1)).sort(),
+      );
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
+  });
+
   test(
     "stage/storage regression inventory preserves all authored source bytes and native wiring",
     sourceReviewOptions,
@@ -1332,12 +1364,10 @@ define void @reflection_float3(%struct.PaddedVectorLayout addrspace(2)* align 16
       assert.equal(fixtures.filter(({ expected }) => expected === "compiled").length, 2);
       assert.equal(fixtures.filter(({ expected }) => expected === "rejected").length, 15);
       assert.equal(new Set(fixtures.map(({ file }) => file)).size, fixtures.length);
-      assert.deepEqual(
-        (await readdir(new URL("fixtures/stage-storage-negative/", root))).sort(),
+      assert(
         fixtures
           .filter(({ expected }) => expected === "rejected")
-          .map(({ file }) => file.replace("fixtures/stage-storage-negative/", ""))
-          .sort(),
+          .every(({ sourceLines }) => Array.isArray(sourceLines)),
       );
       const canary = await readFile(new URL("ci-compile-canary.mjs", root), "utf8");
       const publicHashes = {
@@ -1348,7 +1378,10 @@ define void @reflection_float3(%struct.PaddedVectorLayout addrspace(2)* align 16
       };
       for (const fixture of fixtures) {
         assert.match(fixture.file, /^fixtures\/(?:stage-storage-negative\/)?[a-z0-9-]+\.metal$/);
-        const source = await readFile(new URL(fixture.file, root), "utf8");
+        const source =
+          fixture.expected === "rejected"
+            ? fixture.sourceLines.join("\n")
+            : await readFile(new URL(fixture.file, root), "utf8");
         assert.equal(hash(source), fixture.sha256, fixture.file);
         assert(source.includes("SPDX-License-Identifier: MIT"));
         assert(source.includes("#include <metal_stdlib>"));

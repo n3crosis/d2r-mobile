@@ -354,8 +354,6 @@ require('node:fs').appendFileSync(process.env.D2R_CAPTURE, JSON.stringify({args:
       "toolchain/program-rewrite-spike/dist/toolchain/shell-release-evidence/v2.0.0-ios18.json",
       "toolchain/program-rewrite-spike/dist/toolchain/shell-release-evidence/v2.0.0-derived-capacities.json",
       "toolchain/program-rewrite-spike/dist/toolchain/shell-release-evidence/v2.0.0-ios18-derived-capacities.json",
-      "toolchain/shell-release-evidence/v1.0.18-derived-capacities.mjs",
-      "toolchain/program-rewrite-spike/dist/toolchain/shell-release-evidence/v1.0.18-derived-capacities.mjs",
     ])
       assert.doesNotThrow(() => assertNoSourceOnlyRuntimeAsset(path));
   });
@@ -582,7 +580,7 @@ require('node:fs').appendFileSync(process.env.D2R_CAPTURE, JSON.stringify({args:
     }
   });
 
-  test("the default runtime carries only the v2 pair; legacy selection needs explicit archives", () => {
+  test("the runtime carries only the v2 pair and rejects retired profile IDs", () => {
     const legacyIds = ["v1.0.18-ios26", "v1.0.18-ios18"];
     assert.deepEqual(BUNDLED_SHELL_PROFILE_IDS, ["v2.0.0-ios26", "v2.0.0-ios18"]);
     for (const packed of [false, true]) {
@@ -594,7 +592,10 @@ require('node:fs').appendFileSync(process.env.D2R_CAPTURE, JSON.stringify({args:
         ["profile/shell.zip", "profile/shell-ios18.zip"],
       );
       for (const profileId of legacyIds)
-        assert.throws(() => validateRuntimeProfileSelection(bundled, profileId), /unavailable/);
+        assert.throws(
+          () => validateRuntimeProfileSelection(bundled, profileId),
+          /SHELL_PROFILE_UNKNOWN/,
+        );
       const explicit = fixture({ packed, profileIds: SHELL_PROFILE_IDS });
       for (const profileId of SHELL_PROFILE_IDS) {
         const selected = validateRuntimeProfileSelection(explicit, profileId);
@@ -607,36 +608,29 @@ require('node:fs').appendFileSync(process.env.D2R_CAPTURE, JSON.stringify({args:
     }
   });
 
-  test("legacy-only runtime reuse requires a legacy ID and never falls back for v2", () => {
+  test("runtime without current archives never falls back and rejects retired profiles", () => {
     for (const packed of [false, true]) {
-      const manifest = fixture({ packed, profileIds: ["v1.0.18-ios26", "v1.0.18-ios18"] });
+      const manifest = fixture({ packed, profileIds: [] });
       for (const profileId of [undefined, ...BUNDLED_SHELL_PROFILE_IDS])
         assert.throws(() => validateRuntimeProfileSelection(manifest, profileId), /unavailable/);
-      for (const profileId of ["v1.0.18-ios26", "v1.0.18-ios18"]) {
-        const selected = validateRuntimeProfileSelection(manifest, profileId);
-        assert.equal(
-          selected.selectedInventory.at(-1).path,
-          resolveShellProfile(profileId).archivePath,
+      for (const profileId of ["v1.0.18-ios26", "v1.0.18-ios18"])
+        assert.throws(
+          () => validateRuntimeProfileSelection(manifest, profileId),
+          /SHELL_PROFILE_UNKNOWN/,
         );
-        assert.match(selected.selectedInventory.at(-1).path, /^profile\/legacy-shell/);
-      }
     }
   });
 
-  test("old shell identities at reused current paths fail integrity instead of being relabeled", () => {
+  test("mismatched shell identities at current paths fail integrity instead of being relabeled", () => {
     for (const profileId of [undefined, ...BUNDLED_SHELL_PROFILE_IDS]) {
-      for (const [current, legacy] of [
-        ["v2.0.0-ios26", "v1.0.18-ios26"],
-        ["v2.0.0-ios18", "v1.0.18-ios18"],
-      ]) {
+      for (const current of BUNDLED_SHELL_PROFILE_IDS) {
         const manifest = fixture({ packed: false });
         const record = manifest.assets.find(
           (asset) => asset.path === resolveShellProfile(current).archivePath,
         );
-        const evidence = resolveShellProfile(legacy).evidence;
-        manifest.totalBytes += evidence.archiveBytes - record.bytes;
-        record.bytes = evidence.archiveBytes;
-        record.sha256 = evidence.sha256;
+        manifest.totalBytes += 1;
+        record.bytes += 1;
+        record.sha256 = "f".repeat(64);
         assert.throws(
           () => validateRuntimeProfileSelection(manifest, profileId),
           /shell profile integrity/,
@@ -886,11 +880,7 @@ require('node:fs').appendFileSync(process.env.D2R_CAPTURE, JSON.stringify({args:
       assert.equal(input.archivePath, resolveShellProfile(input.profileId).archivePath);
     }
     for (const id of ["v1.0.18-ios26", "v1.0.18-ios18"])
-      assert.ok(
-        !SHELL_BUILD_INPUTS.some(
-          (input) => input.archivePath === resolveShellProfile(id).archivePath,
-        ),
-      );
+      assert.throws(() => resolveShellProfile(id), /SHELL_PROFILE_UNKNOWN/);
   });
 
   test("both provenance layouts include the complete v2 metadata without shipping registry sources", async () => {

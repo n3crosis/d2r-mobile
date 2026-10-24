@@ -1853,7 +1853,16 @@ import * as packageModule from "../runtime-build/package.mjs";
   });
   test("closed profile and binding revisions cannot cross or opt into later-source ASTC", async () => {
     const releaseBinding = { ...binding, recipeRevision: RELEASE_OVERLAY_REVISION };
-    for (const profileId of [undefined, "v1.0.18-ios26", "v1.0.18-ios18"])
+    for (const profileId of ["v1.0.18-ios26", "v1.0.18-ios18"])
+      await assert.rejects(
+        bindProductionAstcEntries(
+          profileFixture(profileId),
+          fixture(RELEASE_OVERLAY_REVISION),
+          releaseBinding,
+        ),
+        /SHELL_PROFILE_UNKNOWN/,
+      );
+    for (const profileId of [undefined])
       await assert.rejects(
         bindProductionAstcEntries(
           profileFixture(profileId),
@@ -1872,11 +1881,7 @@ import * as packageModule from "../runtime-build/package.mjs";
       await assert.rejects(inspectProductionAstcEntries(fixture(RELEASE_OVERLAY_REVISION), bad));
       assert.throws(() => selectProductionAstcEntries(fixture(RELEASE_OVERLAY_REVISION), bad));
     }
-    const legacy = await bindProductionAstcEntries(
-      profileFixture("v1.0.18-ios26"),
-      fixture(),
-      binding,
-    );
+    const legacy = await bindProductionAstcEntries(profileFixture(undefined), fixture(), binding);
     assert.equal(legacy.astcOutput.recipeRevision, LEGACY_OVERLAY_REVISION);
   });
   test("b811 selection and streamed metadata reject missing, duplicate, unsupported and oversized members", async () => {

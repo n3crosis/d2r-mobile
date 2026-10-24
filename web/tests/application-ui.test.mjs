@@ -670,10 +670,7 @@ print("ok")`,
       assert.equal(Object.hasOwn(defaults, "icon"), false);
     }
     assert.throws(() => resolveAppCustomizationDefaults("unregistered"), /SHELL_PROFILE_UNKNOWN/);
-    assert.throws(
-      () => resolveAppCustomizationDefaults("v1.0.18-ios26"),
-      /SHELL_IDENTITY_EVIDENCE_MISSING/,
-    );
+    assert.throws(() => resolveAppCustomizationDefaults("v1.0.18-ios26"), /SHELL_PROFILE_UNKNOWN/);
   });
 
   test("untouched or restored defaults retain the exact original IPA with no customization transaction", async () => {

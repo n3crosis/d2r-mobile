@@ -15,8 +15,6 @@ python_sources=(
   web/toolchain/spirv-cross-spike/native-oracle.py
   web/toolchain/spirv-cross-spike/provenance.py
   web/toolchain/shell-release-evidence/verify-v2-shell-evidence.py
-  web/toolchain/shell-release-evidence/compare-source.py
-  web/toolchain/shell-release-evidence/test-source-comparison.py
   web/toolchain/asset-generation-spike/scripts/package-core.py
   web/toolchain/asset-generation-spike/src/core.py
   web/toolchain/asset-generation-spike/scripts/package-native-art.py

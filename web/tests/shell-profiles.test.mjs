@@ -1,7 +1,7 @@
 // Feature suite: shell-profiles. Original test sections retain independent lexical scopes.
 import * as nodeTestModule from "node:test";
 import * as strictModule from "node:assert/strict";
-import * as v1018JsonModule from "../toolchain/shell-release-evidence/v1.0.18.json" with { type: "json" };
+import * as v200JsonModule from "../toolchain/shell-release-evidence/v2.0.0.json" with { type: "json" };
 import * as shellContractModule from "../shell-contract.mjs";
 import * as nodeChild_processModule from "node:child_process";
 import * as shellLoaderModule from "../shell-loader.mjs";
@@ -17,11 +17,11 @@ import * as productionProfileModule from "../production-profile.mjs";
 
 // shell-contract
 {
-  // 验证 shell-contract 的约定与边界；依据 ../toolchain/shell-release-evidence/v1.0.18.json、../shell-contract.mjs 及本文件的测试断言。
-  // Verify shell-contract contracts and boundaries against ../toolchain/shell-release-evidence/v1.0.18.json、../shell-contract.mjs and this file's assertions.
+  // 验证 shell-contract 的约定与边界；依据 ../toolchain/shell-release-evidence/v2.0.0.json、../shell-contract.mjs 及本文件的测试断言。
+  // Verify shell-contract contracts and boundaries against ../toolchain/shell-release-evidence/v2.0.0.json、../shell-contract.mjs and this file's assertions.
   const { default: test } = nodeTestModule;
   const { default: assert } = strictModule;
-  const { default: releaseEvidence } = v1018JsonModule;
+  const { default: releaseEvidence } = v200JsonModule;
   const { validateShellContract, validateAssemblyInventory, SHELL_LIMITS } = shellContractModule;
   const base = "Payload/DmIOS.app/";
   const entry = (path, size = 10, mode = 0o100644) => ({ path, size, mode });
@@ -613,13 +613,13 @@ print(json.dumps({'zip': make(), 'changed': make(True), 'files': files, 'require
   } = shellProfilesModule;
   const { D2R_RUNTIME_CONTENT_PIN, deriveD2rRuntimeContentMode } = d2rRuntimeContentModeModule;
 
-  test("closed shell registry preserves default binding and separates legacy metadata", () => {
-    const current = resolveShellProfile("v1.0.18-ios26"),
-      legacy = resolveShellProfile("v1.0.18-ios18");
-    assert.equal(current.id, "v1.0.18-ios26");
-    assert.equal(current.releaseId, "v1.0.18");
-    assert.equal(current.archivePath, "profile/legacy-shell.zip");
-    assert.notEqual(current.contentPin, D2R_RUNTIME_CONTENT_PIN);
+  test("closed shell registry preserves both current targets and independent metadata", () => {
+    const current = resolveShellProfile("v2.0.0-ios26"),
+      legacy = resolveShellProfile("v2.0.0-ios18");
+    assert.equal(current.id, "v2.0.0-ios26");
+    assert.equal(current.archivePath, "profile/shell.zip");
+    assert.equal(legacy.archivePath, "profile/shell-ios18.zip");
+    assert.equal(current.contentPin, D2R_RUNTIME_CONTENT_PIN);
     assert.deepEqual(current.guestTarget, {
       platform: "ios",
       minimumVersion: "26.0.0",
@@ -629,17 +629,6 @@ print(json.dumps({'zip': make(), 'changed': make(True), 'files': files, 'require
       platform: "ios",
       minimumVersion: "18.0.0",
       sdkVersion: "26.0.0",
-    });
-    assert.equal(legacy.archivePath, "profile/legacy-shell-ios18.zip");
-    assert.deepEqual(current.contentPin, {
-      release: "v1.0.18",
-      executablePath: "DmIOS",
-      size: 2327536,
-      originalSha256: "2d4b0299ff5d4856e12e14948da369ca35c27d2d0afd78dfed44cf4f6442b9ba",
-      noDlcSha256: "0d6bae055ea5ee0571ff592ece73b90e9f3e7399fa8c59216f70a8f3707988fa",
-      symbol: "_aoc_owned.v",
-      address: 0x10018ef78n,
-      fileOffset: 0x18ef78,
     });
     for (const id of SHELL_PROFILE_IDS) {
       const p = resolveShellProfile(id),
@@ -656,6 +645,7 @@ print(json.dumps({'zip': make(), 'changed': make(True), 'files': files, 'require
         TAROW: 429,
       });
     }
+
     assert.notEqual(current.contentPin.originalSha256, legacy.contentPin.originalSha256);
     assert.notEqual(current.contentPin.fileOffset, legacy.contentPin.fileOffset);
   });
@@ -665,6 +655,8 @@ print(json.dumps({'zip': make(), 'changed': make(True), 'files': files, 'require
       null,
       "ios18",
       "v1.0.18",
+      "v1.0.18-ios26",
+      "v1.0.18-ios18",
       "__proto__",
       "constructor",
       {},
@@ -676,7 +668,7 @@ print(json.dumps({'zip': make(), 'changed': make(True), 'files': files, 'require
         /SHELL_PROFILE_UNKNOWN/,
       );
     }
-    const legacy = resolveShellProfile("v1.0.18-ios18");
+    const legacy = resolveShellProfile("v2.0.0-ios18");
     assert.throws(() => {
       legacy.contentPin.fileOffset = D2R_RUNTIME_CONTENT_PIN.fileOffset;
     }, TypeError);
@@ -714,20 +706,18 @@ print(json.dumps({'zip': make(), 'changed': make(True), 'files': files, 'require
     }
   });
 
-  test("only the matched v2 pair is bundled by default, while explicit old profiles remain closed", () => {
+  test("only the matched v2 pair is registered and retired IDs reject", () => {
     assert.equal(resolveShellProfile().id, DEFAULT_SHELL_PROFILE_ID);
     assert.equal(DEFAULT_SHELL_PROFILE_ID, "v2.0.0-ios26");
     assert.equal(resolveShellProfile().contentPin, D2R_RUNTIME_CONTENT_PIN);
-    assert.deepEqual(BUNDLED_SHELL_PROFILE_IDS, ["v2.0.0-ios26", "v2.0.0-ios18"]);
+    assert.deepEqual(SHELL_PROFILE_IDS, ["v2.0.0-ios26", "v2.0.0-ios18"]);
+    assert.deepEqual(BUNDLED_SHELL_PROFILE_IDS, SHELL_PROFILE_IDS);
     assert.equal(
       new Set(SHELL_PROFILE_IDS.map((id) => resolveShellProfile(id).archivePath)).size,
-      4,
+      2,
     );
-    for (const id of ["v1.0.18-ios26", "v1.0.18-ios18"]) {
-      const profile = resolveShellProfile(id);
-      assert.deepEqual(profile.assetRecipe, { artRevision: "v1.0.18", overlayRevision: "v1.0.18" });
-      assert.ok(!BUNDLED_SHELL_PROFILE_IDS.includes(id));
-    }
+    for (const id of ["v1.0.18-ios26", "v1.0.18-ios18"])
+      assert.throws(() => resolveShellProfile(id), /SHELL_PROFILE_UNKNOWN/);
   });
 }
 
@@ -828,11 +818,7 @@ print(json.dumps({'zip': make(), 'changed': make(True), 'files': files, 'require
   test("default v2 profiles bind reviewed recipes without claiming device validation", async () => {
     assert.equal(DEFAULT_SHELL_PROFILE_ID, "v2.0.0-ios26");
     assert.deepEqual(V2_SHELL_PROFILE_IDS, ["v2.0.0-ios26", "v2.0.0-ios18"]);
-    assert.deepEqual(SHELL_PROFILE_IDS, [
-      ...V2_SHELL_PROFILE_IDS,
-      "v1.0.18-ios26",
-      "v1.0.18-ios18",
-    ]);
+    assert.deepEqual(SHELL_PROFILE_IDS, [...V2_SHELL_PROFILE_IDS]);
     for (const id of V2_SHELL_PROFILE_IDS) {
       const selected = resolveShellProfile(id);
       const evidence = resolveV2ShellEvidence(id);
