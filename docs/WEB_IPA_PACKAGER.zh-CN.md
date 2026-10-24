@@ -20,7 +20,7 @@ English: [WEB_IPA_PACKAGER.md](WEB_IPA_PACKAGER.md)
 2. 选择输入文件夹并授予读写权限。原始 NSP 和密钥文件不会被覆盖。
 3. 选择目标和可选设置，然后开始生成。开始前仍可更改设置。
 4. 下载完成的 IPA。如果自动下载被拦截，点击页面上的下载链接。保存位置由浏览器决定。
-5. 签名并安装 IPA。可选的浏览器本地签名需要自己的 P12/PFX、导出密码和匹配的描述文件，详见[签名准备](../web/SIGNING_PREPARATION.md)。签名凭据不会发送到签名服务器。签名后的 IPA 包含描述文件，但不包含私有签名身份或密码。不使用本地签名时，请另用签名工具。
+5. 签名并安装 IPA。可选的浏览器本地签名需要自己的 P12/PFX、导出密码和匹配的描述文件，详见[签名准备](../web/docs/ipa-signing.md)。签名凭据不会发送到签名服务器。签名后的 IPA 包含描述文件，但不包含私有签名身份或密码。不使用本地签名时，请另用签名工具。
 6. 使用“文件”将输入文件夹中生成的完整 `data` 文件夹复制到 **我的 iPhone / D2R Mobile**，或 iPad 上对应的应用目录。保留文件夹名称和内容。游戏资源与 IPA 分开存放。
 
 已有的 `data` 文件夹只有在与当前输入完整比对通过后才会复用。不匹配时停止导出，不修改原文件夹。如果明确跳过原始资源导出，必须已有与本次游戏、更新和 DLC 匹配的资源；此模式下浏览器不会校验它们。
@@ -36,4 +36,4 @@ English: [WEB_IPA_PACKAGER.md](WEB_IPA_PACKAGER.md)
 
 ## 开发
 
-参阅[开发命令](../web/README.md)、[生产流程](../web/PRODUCTION_FLOW.md)、[运行时构建](../web/runtime-build/README.md)和[测试](../web/TESTING.zh-CN.md)。
+参阅[开发命令](../web/README.md)、[生产流程](../web/docs/browser-lifecycle.md)、[运行时构建](../web/docs/build-policy.md)和[测试](../web/docs/e2e-tooling.md)。

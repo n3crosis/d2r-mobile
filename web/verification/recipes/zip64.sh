@@ -13,7 +13,7 @@ VERIFY_STEP
 step step4 'Stream real large payload without retaining output' web 300 <<'VERIFY_STEP'
 export NODE_OPTIONS="--max-old-space-size=256"
 export ZIP64_LARGE_STREAM_TEST="1"
-node --test --test-timeout=240000 tests/zip64-writer.test.mjs
+node --test --test-timeout=240000 tests/archive-codecs.test.mjs
 VERIFY_STEP
 
 always_step step5 'Record validation boundary' web 0 <<'VERIFY_STEP'

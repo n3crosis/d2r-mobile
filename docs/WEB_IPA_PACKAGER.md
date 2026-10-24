@@ -20,7 +20,7 @@ Use your own legally obtained game files and keys. This repository does not dist
 2. Select the input folder and grant read/write access. Original NSPs and key files are not overwritten.
 3. Choose the target and optional settings, then generate. Settings remain editable until generation starts.
 4. Download the completed IPA. If automatic download is blocked, use the visible download link. The browser controls where the IPA is saved.
-5. Sign and install the IPA. Optional browser-local signing accepts your P12/PFX, export password and matching provisioning profile; see [signing preparation](../web/SIGNING_PREPARATION.md). Credentials are not sent to a signing server. The signed IPA includes the provisioning profile, never the private signing identity or password. Without local signing, use your preferred signing tool separately.
+5. Sign and install the IPA. Optional browser-local signing accepts your P12/PFX, export password and matching provisioning profile; see [signing preparation](../web/docs/ipa-signing.md). Credentials are not sent to a signing server. The signed IPA includes the provisioning profile, never the private signing identity or password. Without local signing, use your preferred signing tool separately.
 6. Copy the completed `data` folder from the input folder into **On My iPhone / D2R Mobile**, or the corresponding app folder on iPad, using Files. Keep its name and contents intact. Game resources are separate from the IPA.
 
 An existing `data` folder is reused only after a full bounded comparison with the current input. Mismatches stop export without changing it. If you explicitly skip original-resource export, you must already have resources for the same game, update and DLC; the browser does not verify them in that mode.
@@ -36,4 +36,4 @@ The experimental **Older-GPU option** also produces a separate `Legacy Device Pa
 
 ## Development
 
-See [developer commands](../web/README.md), [production architecture](../web/PRODUCTION_FLOW.md), [runtime builds](../web/runtime-build/README.md) and [testing](../web/TESTING.md).
+See [developer commands](../web/README.md), [production architecture](../web/docs/browser-lifecycle.md), [runtime builds](../web/docs/build-policy.md) and [testing](../web/docs/e2e-tooling.md).

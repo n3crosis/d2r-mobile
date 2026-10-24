@@ -7,7 +7,7 @@ set -euo pipefail
 source "$(dirname "$0")/../steps.sh"
 
 step step3 'Verify synthetic archives and Python ZIP oracle' . 0 <<'VERIFY_STEP'
-node --test web/tests/staged-zip-validator.test.mjs web/tests/browser-staged-output.test.mjs
+node --test web/tests/archive-codecs.test.mjs web/tests/browser-lifecycle.test.mjs
 VERIFY_STEP
 
 step step4 'Install pinned browser proof tooling' . 0 <<'VERIFY_STEP'

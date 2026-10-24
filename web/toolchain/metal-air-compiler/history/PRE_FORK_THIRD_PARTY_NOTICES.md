@@ -1,4 +1,4 @@
-> Historical pre-fork documentation. Commands and source paths below describe the old build, not the current release consumer. See [the current integration](../README.md).
+> Historical pre-fork documentation. Commands and source paths below describe the old build, not the current release consumer. See [the current integration](../../../docs/air-compiler.md).
 
 # Third-party notices
 

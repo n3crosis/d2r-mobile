@@ -7,4 +7,4 @@ The production v2 shell profiles select the matching b811 release art and overla
 - HUD recipes include Korean vital glyphs for the v2 revision. The full iOS silhouette branch is used; CLI-only arguments and native dynamic-library loading are excluded from browser recipes.
 - Table/path transforms retain their bounded source-pinned helper subset, rather than importing native build scripts wholesale.
 
-`toolchain/art-recipes-js/release-source-compatibility.json` records the shared source inputs. Source guards reject drift before runtime assembly. See [art recipes](toolchain/art-recipes-js/README.md), [HUD recipes](toolchain/hud-recipes-js/README.md) and [shell profiles](toolchain/shell-release-evidence/V2_PROFILES.md) for their APIs and binding rules.
+`toolchain/art-recipes-js/release-source-compatibility.json` records the shared source inputs. Source guards reject drift before runtime assembly. See [art recipes](docs/asset-generation.md), [HUD recipes](docs/asset-generation.md) and [shell profiles](docs/shell-profiles.md) for their APIs and binding rules.

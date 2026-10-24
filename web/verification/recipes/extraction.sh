@@ -19,7 +19,7 @@ bash web/toolchain/nsp-extract-spike/build-wasm.sh
 VERIFY_STEP
 
 step step5 'Run synthetic container tests' . 0 <<'VERIFY_STEP'
-node --test web/toolchain/nsp-extract-spike/*.test.mjs web/tests/extraction-worker-client.test.mjs web/tests/extraction-job-adapter.test.mjs web/tests/d2r-expansion-policy.test.mjs
+node --test web/toolchain/nsp-extract-spike/*.test.mjs web/tests/input-extraction.test.mjs web/tests/packaging-export.test.mjs
 VERIFY_STEP
 
 step step6 'Install browser test tools from official npm package' . 0 <<'VERIFY_STEP'
