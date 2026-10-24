@@ -934,9 +934,14 @@ require('node:fs').appendFileSync(process.env.D2R_CAPTURE, JSON.stringify({args:
         "--experimental-test-module-mocks",
         "--test",
         "--test-reporter=tap",
-        new URL("./fixtures/runtime-shell-build-inputs.mock.mjs", import.meta.url).pathname,
+        new URL("./fixtures/runtime-lifecycle.mock.mjs", import.meta.url).pathname,
       ],
-      { env, encoding: "utf8", timeout: 30000, maxBuffer: 1024 * 1024 },
+      {
+        env: { ...env, D2R_TEST_SCENARIO: "runtime-shell-build-inputs" },
+        encoding: "utf8",
+        timeout: 30000,
+        maxBuffer: 1024 * 1024,
+      },
     );
     assertIsolatedRun(result);
   });
@@ -1455,9 +1460,14 @@ require('node:fs').appendFileSync(process.env.D2R_CAPTURE, JSON.stringify({args:
         "--experimental-test-module-mocks",
         "--test",
         "--test-reporter=tap",
-        new URL("./fixtures/runtime-worker-lifecycle.mock.mjs", import.meta.url).pathname,
+        new URL("./fixtures/runtime-lifecycle.mock.mjs", import.meta.url).pathname,
       ],
-      { env, encoding: "utf8", timeout: 30000, maxBuffer: 1024 * 1024 },
+      {
+        env: { ...env, D2R_TEST_SCENARIO: "runtime-worker-lifecycle" },
+        encoding: "utf8",
+        timeout: 30000,
+        maxBuffer: 1024 * 1024,
+      },
     );
     assertIsolatedRun(result);
   });
@@ -1471,9 +1481,14 @@ require('node:fs').appendFileSync(process.env.D2R_CAPTURE, JSON.stringify({args:
         "--experimental-test-module-mocks",
         "--test",
         "--test-reporter=tap",
-        new URL("./fixtures/runtime-cache-cancellation.mock.mjs", import.meta.url).pathname,
+        new URL("./fixtures/runtime-lifecycle.mock.mjs", import.meta.url).pathname,
       ],
-      { env, encoding: "utf8", timeout: 30000, maxBuffer: 1024 * 1024 },
+      {
+        env: { ...env, D2R_TEST_SCENARIO: "runtime-cache-cancellation" },
+        encoding: "utf8",
+        timeout: 30000,
+        maxBuffer: 1024 * 1024,
+      },
     );
     assertIsolatedRun(result);
   });
@@ -1487,9 +1502,14 @@ require('node:fs').appendFileSync(process.env.D2R_CAPTURE, JSON.stringify({args:
         "--experimental-test-module-mocks",
         "--test",
         "--test-reporter=tap",
-        new URL("./fixtures/runtime-stream-cancellation.mock.mjs", import.meta.url).pathname,
+        new URL("./fixtures/runtime-lifecycle.mock.mjs", import.meta.url).pathname,
       ],
-      { env, encoding: "utf8", timeout: 30000, maxBuffer: 1024 * 1024 },
+      {
+        env: { ...env, D2R_TEST_SCENARIO: "runtime-stream-cancellation" },
+        encoding: "utf8",
+        timeout: 30000,
+        maxBuffer: 1024 * 1024,
+      },
     );
     assertIsolatedRun(result);
   });
@@ -1503,9 +1523,14 @@ require('node:fs').appendFileSync(process.env.D2R_CAPTURE, JSON.stringify({args:
         "--experimental-test-module-mocks",
         "--test",
         "--test-reporter=tap",
-        new URL("./fixtures/runtime-optional-bootstrap.mock.mjs", import.meta.url).pathname,
+        new URL("./fixtures/runtime-lifecycle.mock.mjs", import.meta.url).pathname,
       ],
-      { env, encoding: "utf8", timeout: 30000, maxBuffer: 1024 * 1024 },
+      {
+        env: { ...env, D2R_TEST_SCENARIO: "runtime-optional-bootstrap" },
+        encoding: "utf8",
+        timeout: 30000,
+        maxBuffer: 1024 * 1024,
+      },
     );
     assertIsolatedRun(result);
   });

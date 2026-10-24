@@ -2232,8 +2232,9 @@ import * as opfsStorageAdvisoryModule from "../opfs-storage-advisory.mjs";
   test("production shader reuse preserves identity, validation, source proof and cancellation", () => {
     const result = spawnSync(
       process.execPath,
-      ["--experimental-test-module-mocks", "tests/fixtures/shader-output-cache.mock.mjs"],
+      ["--experimental-test-module-mocks", "tests/fixtures/shader-lifecycle.mock.mjs"],
       {
+        env: { ...process.env, D2R_TEST_SCENARIO: "shader-output-cache" },
         cwd: new URL("../", import.meta.url),
         encoding: "utf8",
         timeout: 60000,
@@ -2251,9 +2252,14 @@ import * as opfsStorageAdvisoryModule from "../opfs-storage-advisory.mjs";
         "--experimental-test-module-mocks",
         "--test",
         "--test-reporter=tap",
-        new URL("./fixtures/production-shader-concurrency.mock.mjs", import.meta.url).pathname,
+        new URL("./fixtures/shader-lifecycle.mock.mjs", import.meta.url).pathname,
       ],
-      { env, encoding: "utf8", timeout: 30000, maxBuffer: 1024 * 1024 },
+      {
+        env: { ...env, D2R_TEST_SCENARIO: "production-shader-concurrency" },
+        encoding: "utf8",
+        timeout: 30000,
+        maxBuffer: 1024 * 1024,
+      },
     );
     assertIsolatedRun(result);
   });

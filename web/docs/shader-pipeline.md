@@ -47,7 +47,7 @@ The IPA checker needs Node 22.12+ or Bun and accepts app-canonical STORE ZIP32/Z
 
 ### Source and licensing
 
-[Cross build](../../web/toolchain/spirv-cross-spike/build.sh) pins official Cross `1.4.363.0` and Emscripten `4.0.20`; [.NET build](../../web/verification/recipes/shader.sh) pins SDK/workload `10.0.402`. Preserve [translator source pins](../../web/toolchain/shader-spike/upstream-source.sha256), [Ryujinx license](../../dm/third_party/ryujinx/LICENSE.txt)/[provenance](../../dm/third_party/ryujinx/README.md), and Cross Apache-2.0 LICENSE/NOTICE with redistribution. Synthetic parity and integrity checks are not full-game/device validation.
+[Cross build](../../web/toolchain/spirv-cross-spike/build.sh) pins official Cross `1.4.363.0` and Emscripten `4.0.20`; [.NET build](../../web/verification/recipes/shader-proofs.sh) pins SDK/workload `10.0.402`. Preserve [translator source pins](../../web/toolchain/shader-spike/upstream-source.sha256), [Ryujinx license](../../dm/third_party/ryujinx/LICENSE.txt)/[provenance](../../dm/third_party/ryujinx/README.md), and Cross Apache-2.0 LICENSE/NOTICE with redistribution. Synthetic parity and integrity checks are not full-game/device validation.
 
 ## 简体中文
 

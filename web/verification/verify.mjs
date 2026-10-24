@@ -9,6 +9,30 @@ import { tmpdir } from "node:os";
 
 export const root = fileURLToPath(new URL("../../", import.meta.url));
 export const profiles = JSON.parse(readFileSync(new URL("profiles.json", import.meta.url), "utf8"));
+// 保留独立配置语义，仅把同类 Bash 入口集中到功能文件。
+// Preserve independent profile semantics; only group related Bash entry points.
+const recipeGroups = Object.freeze({
+  shader: "shader-proofs",
+  "offline-dotnet": "shader-proofs",
+  "spirv-cross": "shader-proofs",
+  "shader-pipeline": "shader-proofs",
+  extraction: "input-proofs",
+  "signed-nca": "input-proofs",
+  program: "input-proofs",
+  texture: "browser-runtime-proofs",
+  "offline-wasm": "browser-runtime-proofs",
+  "desktop-build": "browser-runtime-proofs",
+  desktop: "browser-runtime-proofs",
+  "staged-output": "storage-proofs",
+  zip64: "storage-proofs",
+  quick: "quick",
+});
+export function recipeCommand(profile) {
+  validateProfile(profile);
+  if (profile === "full") throw new Error("Full verification dispatches individual profiles");
+  const script = resolve(root, `web/verification/recipes/${recipeGroups[profile]}.sh`);
+  return profile === "quick" ? [script] : [script, profile];
+}
 export function validateProfile(profile) {
   if (!["quick", "full", ...Object.keys(profiles)].includes(profile)) {
     throw new Error(`Unknown verification profile: ${profile}`);
@@ -57,8 +81,7 @@ export function run(profile, environment = process.env, provision = false) {
   // Preserve the CI temp root when artifacts or dependent jobs use its known paths.
   if (environment.GITHUB_ACTIONS === "true") env.RUNNER_TEMP = environment.RUNNER_TEMP;
   mkdirSync(env.RUNNER_TEMP, { recursive: true });
-  const script = resolve(root, `web/verification/recipes/${profile}.sh`);
-  const result = spawnSync("bash", [script], {
+  const result = spawnSync("bash", recipeCommand(profile), {
     cwd: root,
     env,
     stdio: "inherit",

@@ -77,7 +77,7 @@ import * as bunE2eNodeCrossModule from "../scripts/bun-e2e-node-cross.mjs";
   // Verify ci-policy contracts and boundaries against ../verification/verify.mjs and this file's assertions.
   const { default: test } = nodeTestModule;
   const { default: assert } = strictModule;
-  const { readdir, readFile, mkdtemp, rm } = promisesModule;
+  const { readdir, readFile, mkdtemp, rm, writeFile, chmod } = promisesModule;
   const { tmpdir } = nodeOsModule;
   const { join } = nodePathModule;
   const { spawnSync } = nodeChild_processModule;
@@ -289,6 +289,114 @@ import * as bunE2eNodeCrossModule from "../scripts/bun-e2e-node-cross.mjs";
       assert.equal(validateProfile(name), name);
     assert.throws(() => run("texture", {}), /--provision/);
     assert.throws(() => run("texture", { GITHUB_ACTIONS: "true" }), /local verification only/);
+  });
+
+  test("all verification profiles retain fresh processes, environments and feature dispatch", async () => {
+    const expectedGroups = {
+      quick: "quick",
+      shader: "shader-proofs",
+      "offline-dotnet": "shader-proofs",
+      "spirv-cross": "shader-proofs",
+      "shader-pipeline": "shader-proofs",
+      extraction: "input-proofs",
+      "signed-nca": "input-proofs",
+      program: "input-proofs",
+      texture: "browser-runtime-proofs",
+      "offline-wasm": "browser-runtime-proofs",
+      "desktop-build": "browser-runtime-proofs",
+      desktop: "browser-runtime-proofs",
+      "staged-output": "storage-proofs",
+      zip64: "storage-proofs",
+    };
+    assert.deepEqual(
+      Object.keys(expectedGroups).sort(),
+      ["quick", ...Object.keys(profiles)].sort(),
+    );
+    const temp = await mkdtemp(join(tmpdir(), "verification-dispatch-"));
+    try {
+      const capture = join(temp, "capture.cjs");
+      const output = join(temp, "capture.json");
+      await writeFile(
+        capture,
+        `const fs = require("node:fs"); fs.writeFileSync(process.env.CAPTURE_FILE, JSON.stringify({ pid: process.pid, argv: process.argv.slice(2), cwd: process.cwd(), env: process.env }));`,
+      );
+      const bash = join(temp, "bash");
+      await writeFile(
+        bash,
+        `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(capture)} "$@"\n`,
+      );
+      await chmod(bash, 0o755);
+      const pids = new Set();
+      const directories = new Set();
+      for (const [profile, group] of Object.entries(expectedGroups)) {
+        const command = verifyModule.recipeCommand(profile);
+        assert.equal(
+          command[0],
+          join(verifyModule.root, "web/verification/recipes", `${group}.sh`),
+        );
+        assert.deepEqual(command.slice(1), profile === "quick" ? [] : [profile]);
+        const recipe = await readFile(command[0], "utf8");
+        if (profile !== "quick")
+          assert.ok(recipe.includes(`\n${profile})\n# BEGIN PROFILE ${profile}\n`));
+        assert.equal(
+          run(
+            profile,
+            {
+              ...process.env,
+              GITHUB_ACTIONS: "false",
+              GITHUB_STEP_SUMMARY: "",
+              GITHUB_OUTPUT: "",
+              PATH: temp + nodePathModule.delimiter + process.env.PATH,
+              RUNNER_TEMP: temp,
+              CAPTURE_FILE: output,
+              VERIFY_TEST_SENTINEL: "unchanged environment",
+            },
+            true,
+          ),
+          0,
+        );
+        const captured = JSON.parse(await readFile(output, "utf8"));
+        assert.deepEqual(captured.argv, command);
+        assert.equal(captured.cwd, nodePathModule.resolve(verifyModule.root));
+        assert.equal(captured.env.VERIFY_ROOT, verifyModule.root.replaceAll("\\", "/"));
+        assert.equal(captured.env.GITHUB_WORKSPACE, verifyModule.root);
+        assert.equal(captured.env.VERIFY_TEST_SENTINEL, "unchanged environment");
+        assert.ok(captured.env.RUNNER_TEMP.startsWith(join(temp, `d2r-${profile}-`)));
+        assert.equal(
+          captured.env.GITHUB_STEP_SUMMARY,
+          join(captured.env.RUNNER_TEMP, "summary.md"),
+        );
+        assert.equal(captured.env.GITHUB_OUTPUT, join(captured.env.RUNNER_TEMP, "output"));
+        assert.equal(captured.env.GITHUB_PATH, join(captured.env.RUNNER_TEMP, "path"));
+        assert.equal(captured.env.GITHUB_ENV, join(captured.env.RUNNER_TEMP, "env"));
+        pids.add(captured.pid);
+        directories.add(captured.env.RUNNER_TEMP);
+      }
+      assert.equal(pids.size, Object.keys(expectedGroups).length);
+      assert.equal(directories.size, Object.keys(expectedGroups).length);
+      assert.throws(() => verifyModule.recipeCommand("full"), /individual profiles/);
+      assert.throws(() => verifyModule.recipeCommand("../quick"), /Unknown verification profile/);
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
+  });
+
+  test("grouped recipe entrypoints reject invalid profiles before executing any step", () => {
+    for (const group of [
+      "shader-proofs",
+      "input-proofs",
+      "browser-runtime-proofs",
+      "storage-proofs",
+    ]) {
+      const result = spawnSync(
+        "bash",
+        [join(verifyModule.root, "web/verification/recipes", `${group}.sh`), "__proto__"],
+        { encoding: "utf8" },
+      );
+      assert.equal(result.status, 2);
+      assert.match(result.stderr, /Unknown verification profile/);
+      assert.equal(result.stdout, "");
+    }
   });
 
   test("allowlisted metadata is emitted without executing a proof", async () => {

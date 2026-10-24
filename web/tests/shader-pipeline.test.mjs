@@ -2675,9 +2675,14 @@ import * as shaderSourcelinkDiagnosticModule from "../runtime-build/shader-sourc
         "--experimental-test-module-mocks",
         "--test",
         "--test-reporter=tap",
-        new URL("./fixtures/shader-retirement-assets.mock.mjs", import.meta.url).pathname,
+        new URL("./fixtures/shader-lifecycle.mock.mjs", import.meta.url).pathname,
       ],
-      { env, encoding: "utf8", timeout: 30000, maxBuffer: 1024 * 1024 },
+      {
+        env: { ...env, D2R_TEST_SCENARIO: "shader-retirement-assets" },
+        encoding: "utf8",
+        timeout: 30000,
+        maxBuffer: 1024 * 1024,
+      },
     );
     assertIsolatedRun(result);
   });
