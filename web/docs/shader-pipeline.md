@@ -26,13 +26,13 @@ Outputs are `msl/b-<chain>/<key>_b.metallib`, replay `_b.json`, optional `_bf.me
 
 ### Operating limits
 
-Production overlaps serial translation with at most four independent AIR workers and retains a combined 512 MiB library/replay budget. These are rejection/scheduling limits, not browser-wide RAM guarantees. Output readers return owned chunks; consume them before `dispose()`. Cancellation/failure stops workers and wipes retained buffers. Progress reaching `6927/6927` does not mean packaging is complete. See [output cache](output-cache.md) for persistence rules.
+Production overlaps serial translation with at most four independent AIR workers and retains a combined 512 MiB library/replay budget. These are rejection/scheduling limits, not browser-wide RAM guarantees. Output readers return owned chunks; consume them before `dispose()`. Cancellation/failure stops workers and wipes retained buffers. Progress reaching `6927/6927` does not mean packaging is complete. See [output cache](browser-lifecycle.md#generated-output-cache) for persistence rules.
 
 Self-host the complete same-origin HTTP(S) worker/compiler closure, including .NET `_framework` and notices; no CDN fallback or private-input-triggered downloads.
 
 ### Build and verify
 
-Run from repository root on a developer host. [Verification guidance](e2e-tooling.md) covers prerequisites; heavyweight profiles can provision SDKs/system dependencies and are local-only.
+Run from repository root on a developer host. [Verification guidance](build-policy.md#verification-and-e2e-tooling) covers prerequisites; heavyweight profiles can provision SDKs/system dependencies and are local-only.
 
 ```sh
 node web/verification/verify.mjs shader --provision
@@ -75,13 +75,13 @@ The IPA checker needs Node 22.12+ or Bun and accepts app-canonical STORE ZIP32/Z
 
 ### 使用限制
 
-生产将串行翻译与最多四个独立 AIR 线程重叠，库及回放总预算为 512 MiB。这些是拒绝/调度阈值，不是浏览器总体 RAM 保证。输出块具有独立所有权，消费完成后再 dispose；取消或失败会停止线程并擦除保留缓冲区。显示 `6927/6927` 不代表打包完成。持久化规则见[输出缓存](output-cache.md)。
+生产将串行翻译与最多四个独立 AIR 线程重叠，库及回放总预算为 512 MiB。这些是拒绝/调度阈值，不是浏览器总体 RAM 保证。输出块具有独立所有权，消费完成后再 dispose；取消或失败会停止线程并擦除保留缓冲区。显示 `6927/6927` 不代表打包完成。持久化规则见[输出缓存](browser-lifecycle.md#generated-output-cache)。
 
 必须同源 HTTP(S) 自托管完整工作线程/编译器闭包，包括 .NET `_framework` 和许可通知；不使用 CDN 回退，也不因私有输入触发代码下载。
 
 ### 构建与检查
 
-在开发机的仓库根目录运行英文段命令。[验证说明](e2e-tooling.md)列出前置工具；重型 profile 可能安装 SDK/系统依赖，仅供本地显式运行。
+在开发机的仓库根目录运行英文段命令。[验证说明](build-policy.md#verification-and-e2e-tooling)列出前置工具；重型 profile 可能安装 SDK/系统依赖，仅供本地显式运行。
 
 IPA 检查需要 Node 22.12+ 或 Bun，仅接受本应用原始 STORE ZIP32/ZIP64（含本应用签名），不支持重新打包文件。检查完全本地只读，成功退出 0、失败 1；可选 `--expected-count 7212` 只适用于相应参考版本。完整性通过不能证明 AIR 语义、编译器来源、签名或 GPU 接受。
 

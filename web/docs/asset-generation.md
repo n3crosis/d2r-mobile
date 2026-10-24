@@ -17,11 +17,41 @@ The authenticated-object API binds private capability identity and selection, no
 
 Verify source and complete encoded-PNG hashes, including paired release/browser digests. Decode complete atlases with real padded-frame layouts. HUD uses archive fonts and exact glyph inventories. Both supported revisions emit the complete 195-file map-goal inventory including Korean. Revision selection belongs to the shell profile.
 
-Vault art must consume the personal sprite after its BC3 round trip. MainPanel preserves native block-copy geometry. Generated C texts feed `dm/derived.tsv`; never execute, compile or package them. Mercenary background generation does not replace overlay layout changes. See [overlay generation](overlay-generation.md) and [CASC storage](casc-storage.md).
+Vault art must consume the personal sprite after its BC3 round trip. MainPanel preserves native block-copy geometry. Generated C texts feed `dm/derived.tsv`; never execute, compile or package them. Mercenary background generation does not replace overlay layout changes. See [overlay generation](asset-generation.md#overlay-generation) and [CASC storage](casc-storage.md).
 
 Keep `secretLifetime: "archive"`. Consume output streams before disposal; propagate cancellation, terminate synchronous raster workers and clear owned intermediates/late results. These are bounded in-memory outputs, not OPFS image streams or secure heap erasure. Small adapters use copied 64-KiB chunks and reject unsafe/colliding paths. Final shell/assembly validation still applies.
 
 Budgets are operation-specific, not total-memory guarantees. The small adapter allows 32 recipes; HUD permits 512 files/32 MiB. Inspect entry-point constants and backend limits before extending an inventory.
+
+### Overlay generation
+
+#### Purpose and entry points
+
+[overlay-recipe-js](../../web/toolchain/overlay-recipe-js/recipe.mjs) implements the bounded native overlay recipe without Python, filesystem access or asset fetching. [generateNativeOverlay](../../web/native-overlay-generator.mjs) supplies authenticated assets/generated artwork, then delegates archive serialization to [CASC storage](casc-storage.md). The recipe itself returns ordered files and separate base/item_notes variants, not an installed game.
+
+#### Revision selection
+
+Both production v2.0.0 [shell profiles](shell-profiles.md) select release recipe `b811b90172f4eb40ec1bc89d903308e0c5ab88d0`: Korean/fifth language option and Xbox mapping, without later PlayStation behavior. Empty operation options use the reviewed b811 release; retired v1.0.18 revisions are rejected.
+
+The internal `e3756f8942b40eba6c851e881828a5b1bda17fd6` revision adds later controller/language behavior; both it and the b811 release emit DM_OVERLAY_V1 manifests. No production profile selects it. Do not equate source availability with matching published shell behavior or relabel historical native parity as v2 proof. All revisions keep MOVIE_FFMPEG=0. Exact dependency closures and translation hashes are recorded in [release-contract-source.json](../../web/toolchain/overlay-recipe-js/release-contract-source.json), [contract-source.json](../../web/toolchain/overlay-recipe-js/contract-source.json).
+
+#### Bounds and lifecycle
+
+Recipe payload/output each cap at 128 MiB; individual files/manifest at 16 MiB. Map, row, asset-total and per-variant replacement bounds remain enforced in source. Canonical base64 and consumed-asset hashes are mandatory. Caller extraction provenance and final receipts remain independent gates. Optional ASTC metadata extends only the exact validated inventory; see [ASTC production](astc-production.md), never embed its external archive in the IPA.
+
+#### Verify
+
+```sh
+node --test web/tests/asset-generation.test.mjs
+node web/toolchain/overlay-recipe-js/scripts/verify-source.mjs
+python3 web/toolchain/overlay-recipe-js/scripts/generate-contract-source.py --check
+# Requires historical b811b901 locally:
+python3 web/toolchain/overlay-recipe-js/scripts/generate-contract-source.py --check --release
+# Independent native recipe gate, currently pending a reviewed aggregate pin:
+node web/toolchain/overlay-recipe-js/test/recipe-parity.mjs
+```
+
+Run from repository root. Native parity requires Python/Pillow and the packaged native source; `--wasm` additionally exercises the built exact PNG codec. Never populate a pending native aggregate with a JS-only digest. Preserve original source attribution and dependency notices. Inert contracts and historical synthetic parity do not establish current full-title, browser or device compatibility.
 
 ## 简体中文
 
@@ -45,6 +75,26 @@ Vault 必须使用个人背景经 BC3 编解码后的像素；MainPanel 保留�
 保留归档级密钥生命周期，所有输出流消费后再释放。取消要传入读取器，终止同步渲染 worker，并清理中间/迟到字节。这里是有界内存输出，不是 OPFS 图像流，也不保证堆安全擦除。小适配器采用 64-KiB 副本块并拒绝危险/冲突路径；最终外壳校验不可省略。
 
 预算按操作分别限制，不保证总内存占用。小适配器最多 32 配方，HUD 最多 512 文件/32 MiB；扩展清单前检查入口常量及后端限制。
+
+### 覆盖层生成
+
+#### 用途与入口
+
+overlay-recipe-js 不依赖 Python、文件系统或资源下载，执行有界原生覆盖层配方。generateNativeOverlay 提供绑定来源的资源/生成图像，再交 CASC serializer 写档。配方返回有序文件和独立 base/item_notes 变体，不负责安装游戏。
+
+#### 配方版本
+
+两个生产 v2.0.0 shell profile 都使用 b811b901 release 配方：韩语/第五语言和 Xbox 映射，不包含后来的 PlayStation 行为。空操作选项使用已审核的 b811 release；已退役的 v1.0.18 版本会被拒绝。
+
+内部 e3756f8 配方增加后续控制器/语言行为；它与 b811 release 都生成 DM_OVERLAY_V1 清单，但没有生产配置选择它。源码存在不代表已发布 shell 支持，也不能把历史原生对照重新称为 v2 证明。所有版本保持 MOVIE_FFMPEG=0。精确依赖闭包和翻译散列见英文节链接的来源记录。
+
+#### 边界与生命周期
+
+配方载荷/总输出各最多 128 MiB，单文件/manifest 16 MiB；映射、行、图像总量和每变体替换数仍按源码限制。规范 base64 和消费资源散列必须验证，调用方来源及最终收据是独立关卡。可选 ASTC 只扩展精确验证清单，不得把外部存档塞入 IPA。
+
+#### 验证
+
+上方命令从仓库根运行；release 闭包检查要求本地有历史提交。原生配方 gate 需要 Python/Pillow 和打包原生源码，仍等待经审核的聚合 pin；不能用 JS 自算摘要填充。加 --wasm 可验证已构建的精确 PNG codec。保留原始来源和依赖声明。惰性合同及历史合成对照不证明当前完整游戏、浏览器或设备兼容性。
 
 ## Build and checks / 构建与验证
 

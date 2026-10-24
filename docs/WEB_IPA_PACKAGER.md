@@ -36,4 +36,4 @@ The experimental **Older-GPU option** also produces a separate `Legacy Device Pa
 
 ## Development
 
-See [developer commands](../web/README.md), [production architecture](../web/docs/browser-lifecycle.md), [runtime builds](../web/docs/build-policy.md) and [testing](../web/docs/e2e-tooling.md).
+See [developer commands](../web/README.md), [production architecture](../web/docs/browser-lifecycle.md), [runtime builds](../web/docs/build-policy.md) and [testing](../web/docs/build-policy.md#verification-and-e2e-tooling).

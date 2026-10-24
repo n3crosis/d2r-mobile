@@ -30,7 +30,7 @@ node --test web/toolchain/synthetic-signed-nca/generate.test.mjs
 bash web/toolchain/synthetic-signed-nca/run-ci.sh
 ```
 
-The build pins [hactool 1d64a834](https://github.com/SciresM/hactool/tree/1d64a83450e025622f3468c28fc4164dad2c5ef6), preserves 64-bit file offsets and caps WASM at 256 MiB. Keep its ISC license, bundled mbedTLS Apache-2.0 and all linked-source notices; never distribute keys/game content or the synthetic test-root runtime. [Atmosphère CNMT](https://github.com/Atmosphere-NX/Atmosphere/blob/master/libraries/libstratosphere/include/stratosphere/ncm/ncm_content_meta.hpp) and [LZ4 block format](https://github.com/lz4/lz4/blob/dev/doc/lz4_Block_format.md) are format references, not copied implementations. Synthetic checks and optional [extraction profiles](e2e-tooling.md) do not establish real-game/XCI/device compatibility.
+The build pins [hactool 1d64a834](https://github.com/SciresM/hactool/tree/1d64a83450e025622f3468c28fc4164dad2c5ef6), preserves 64-bit file offsets and caps WASM at 256 MiB. Keep its ISC license, bundled mbedTLS Apache-2.0 and all linked-source notices; never distribute keys/game content or the synthetic test-root runtime. [Atmosphère CNMT](https://github.com/Atmosphere-NX/Atmosphere/blob/master/libraries/libstratosphere/include/stratosphere/ncm/ncm_content_meta.hpp) and [LZ4 block format](https://github.com/lz4/lz4/blob/dev/doc/lz4_Block_format.md) are format references, not copied implementations. Synthetic checks and optional [extraction profiles](build-policy.md#verification-and-e2e-tooling) do not establish real-game/XCI/device compatibility.
 
 ## 简体中文
 

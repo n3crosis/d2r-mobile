@@ -24,7 +24,7 @@ if [[ "${GITHUB_ACTIONS:-}" == true ]]; then
   export PATH="$RUNNER_TEMP/style-tools/bin:$PATH"
 else
   if [[ "$(ruff --version 2>/dev/null || true)" != "ruff 0.14.0" ]] || [[ "$(clang-format --version 2>/dev/null || true)" != "clang-format version 21.1.2" ]]; then
-    echo "Install ruff==0.14.0 and clang-format==21.1.2 into an isolated environment and add its bin directory to PATH; see web/docs/e2e-tooling.md." >&2
+    echo "Install ruff==0.14.0 and clang-format==21.1.2 into an isolated environment and add its bin directory to PATH; see web/docs/build-policy.md." >&2
     exit 1
   fi
 fi

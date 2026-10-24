@@ -36,4 +36,4 @@ English: [WEB_IPA_PACKAGER.md](WEB_IPA_PACKAGER.md)
 
 ## 开发
 
-参阅[开发命令](../web/README.md)、[生产流程](../web/docs/browser-lifecycle.md)、[运行时构建](../web/docs/build-policy.md)和[测试](../web/docs/e2e-tooling.md)。
+参阅[开发命令](../web/README.md)、[生产流程](../web/docs/browser-lifecycle.md)、[运行时构建](../web/docs/build-policy.md)和[测试](../web/docs/build-policy.md#verification-and-e2e-tooling)。

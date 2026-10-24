@@ -5,6 +5,7 @@ import process from "node:process";
 // Native bootstrap checks only. This is not the browser runtime or iOS acceptance.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { join, dirname } from "node:path";
 import assert from "node:assert/strict";
@@ -13,6 +14,63 @@ assert(process.argv[2], "An explicit externally built fork clang path is require
 const clang = process.argv[2];
 const out = process.env.AIR_TEST_OUTPUT_DIR || join(root, "fixture-results");
 mkdirSync(out, { recursive: true });
+// 此运行器独用的绑定用例；按原文件名写出完全相同的源码字节。
+// Binding cases used only by this runner; materialize identical source bytes under original filenames.
+const bindingFixtures = {
+  "buffer-bindings.metal": {
+    sha256: "c0a21c1ebb3a50f393c7526e5c78af790f45aecb2c08e7322540ae64321f6b1f",
+    source: String.raw`// Compiler fixture, not a complete MSL compatibility test.
+// The fork's existing stage/address-space spellings isolate the new binding path.
+// Expected: AIR location_index 7 for input, 2 for output, not declaration 0/1.
+[[compute_kernel, kernel_dim(3)]]
+void sparse(__attribute__((constant_as)) int *input [[buffer(7)]],
+            __attribute__((global_as)) int *output [[buffer(2)]]) {
+  int total = 0;
+  for (int i = 0; i < input[0]; ++i)
+    total += input[i + 1] * 3;
+  output[0] = total > 9 ? total : -total;
+}
+`,
+  },
+  "buffer-binding-errors.metal": {
+    sha256: "1288783f25b2de5160b1045e0a6cc11d6e5891d24d5fdf91161a635972d87b7e",
+    source: String.raw`#ifdef NEGATIVE
+[[compute_kernel, kernel_dim(3)]] void bad(__attribute__((global_as)) int *p [[buffer(-1)]]) { p[0] = 1; }
+#endif
+#ifdef RANGE
+[[compute_kernel, kernel_dim(3)]] void bad(__attribute__((global_as)) int *p [[buffer(31)]]) { p[0] = 1; }
+#endif
+#ifdef TYPE
+[[compute_kernel, kernel_dim(3)]] void bad(int p [[buffer(0)]]) {}
+#endif
+#ifdef DUPLICATE_ATTRIBUTE
+[[compute_kernel, kernel_dim(3)]] void bad(__attribute__((global_as)) int *p [[buffer(0), buffer(1)]]) { p[0] = 1; }
+#endif
+#ifdef DUPLICATE_INDEX
+[[compute_kernel, kernel_dim(3)]] void bad(__attribute__((global_as)) int *p [[buffer(3)]], __attribute__((global_as)) int *q [[buffer(3)]]) { p[0] = q[0]; }
+#endif
+#ifdef MIXED
+[[compute_kernel, kernel_dim(3)]] void bad(__attribute__((global_as)) int *p [[buffer(3)]], __attribute__((global_as)) int *q) { p[0] = q[0]; }
+#endif
+#ifdef DYNAMIC
+int index();
+[[compute_kernel, kernel_dim(3)]] void bad(__attribute__((global_as)) int *p [[buffer(index())]]) { p[0] = 1; }
+#endif
+#ifdef PRIVATE
+[[compute_kernel, kernel_dim(3)]] void bad(int *p [[buffer(0)]]) { p[0] = 1; }
+#endif
+`,
+  },
+};
+for (const [name, { source, sha256 }] of Object.entries(bindingFixtures)) {
+  assert.equal(
+    createHash("sha256").update(source).digest("hex"),
+    sha256,
+    `${name}: source identity`,
+  );
+  mkdirSync(join(out, "fixtures"), { recursive: true });
+  writeFileSync(join(out, "fixtures", name), source);
+}
 const base = [
   "-cc1",
   "-triple",
@@ -31,7 +89,7 @@ function compile(file, extra = []) {
     maxBuffer: 16 * 1024 * 1024,
   });
 }
-const positive = compile(join(root, "fixtures/buffer-bindings.metal"));
+const positive = compile(join(out, "fixtures/buffer-bindings.metal"));
 writeFileSync(join(out, "positive.stderr"), positive.stderr || String(positive.error || ""));
 assert.equal(positive.status, 0, "compiler rejected positive fixture");
 writeFileSync(join(out, "positive.ll"), positive.stdout);
@@ -60,7 +118,7 @@ const errors = [
   "PRIVATE",
 ];
 for (const define of errors) {
-  const result = compile(join(root, "fixtures/buffer-binding-errors.metal"), [`-D${define}`]);
+  const result = compile(join(out, "fixtures/buffer-binding-errors.metal"), [`-D${define}`]);
   writeFileSync(join(out, `${define}.stderr`), result.stderr || String(result.error || ""));
   assert.notEqual(result.status, 0, `${define} should reject`);
   assert.match(result.stderr, /error:/, `${define} should diagnose rather than crash`);

@@ -34,7 +34,7 @@ Adding a release needs independently established executable identities, reviewed
 
 ### Build and verify
 
-Run from repository root; see [verification guidance](e2e-tooling.md). The heavy profile may install official tools and Chromium dependencies; it is local-only.
+Run from repository root; see [verification guidance](build-policy.md#verification-and-e2e-tooling). The heavy profile may install official tools and Chromium dependencies; it is local-only.
 
 ```sh
 python3 web/toolchain/program-rewrite-spike/audit-apple-source.py
@@ -84,7 +84,7 @@ The build creates directories and audits sources before dependency downloads. Th
 
 ### 构建与验证
 
-在仓库根目录运行英文段命令，前置工具见[验证说明](e2e-tooling.md)。重型 profile 可能安装官方工具和 Chromium 系统依赖，仅供本地显式运行。
+在仓库根目录运行英文段命令，前置工具见[验证说明](build-policy.md#verification-and-e2e-tooling)。重型 profile 可能安装官方工具和 Chromium 系统依赖，仅供本地显式运行。
 
 构建脚本先创建输出目录并执行全部源码审计，再下载依赖。program profile 准备合成夹具、原生 Python oracle，并逐字节比较 Chromium 工作线程输出；合成通过不是真实游戏或设备证明。
 

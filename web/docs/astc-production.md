@@ -6,7 +6,7 @@
 
 Older-GPU mode is experimental, off by default and independent of the iOS target. iOS 18 does not imply it is needed. Enable `legacyAstc=1` before generation; Thorough is default, while `astcPreset=fast` trades potential quality for less encoding work without a measured speed/device guarantee. The operation snapshots options; controls lock during generation and afterward.
 
-The editable UI preloads verified public capability bytes before private input, but starts the producer only when needed. No conversion-time network fallback is allowed. The result includes the profile-bound ASTC overlay entries (15 for production b811, 11 for legacy) inside the IPA and a separate `Legacy Device Pack` folder, suffixed `-2`, `-3`, etc. on collision. Copy the completed folder alongside game resources into the installed app's Files location. IPA, resources and pack completion are distinct; partial packs must never be used.
+The editable UI preloads verified public capability bytes before private input, but starts the producer only when needed. No conversion-time network fallback is allowed. The result includes the profile-bound ASTC overlay entries (15 for the current b811 profiles) inside the IPA and a separate `Legacy Device Pack` folder, suffixed `-2`, `-3`, etc. on collision. Copy the completed folder alongside game resources into the installed app's Files location. IPA, resources and pack completion are distinct; partial packs must never be used.
 
 ### Pipeline and trust
 
@@ -35,7 +35,7 @@ Run from repository root with Emscripten 4.0.20, Git/CMake and Node ≥24 for WA
 
 旧 GPU 模式是默认关闭的实验功能，独立于 iOS 目标，iOS 18 不代表必须启用。生成前设置 legacyAstc=1；默认 Thorough，astcPreset=fast 用可能降低的画质换较少编码工作，不承诺实测加速或设备兼容。本次操作固定选项，生成中及结束后控件锁定。
 
-可编辑界面在选择私有输入前预载已验证公开字节，仅需要时启动生产器，转换不允许网络回退。IPA 内包含按配置验证的 ASTC overlay（生产 b811 为 15 项，legacy 为 11 项），另导出 Legacy Device Pack，冲突时使用 -2、-3 等名称。把完整文件夹与游戏资源一起复制到已安装应用的 Files 位置。IPA、资源、补充包完成状态独立；不要使用部分包。
+可编辑界面在选择私有输入前预载已验证公开字节，仅需要时启动生产器，转换不允许网络回退。IPA 内包含按配置验证的 ASTC overlay（当前 b811 配置为 15 项），另导出 Legacy Device Pack，冲突时使用 -2、-3 等名称。把完整文件夹与游戏资源一起复制到已安装应用的 Files 位置。IPA、资源、补充包完成状态独立；不要使用部分包。
 
 ### 管线与信任
 

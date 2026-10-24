@@ -23,7 +23,7 @@ bun run test
 
 The React/TypeScript frontend uses Tailwind and shadcn/ui [source components](SHADCN_PROVENANCE.md). Bun emits static files to `dist/`. Frontend compilation alone does not build the native browser runtimes; follow [runtime assembly](docs/build-policy.md) for a complete deployment. Serve that output over HTTPS. The development server requires page refreshes after rebuilding and must not be deployed.
 
-[Tooling](docs/build-policy.md) describes linting, formatting and dependency updates. [Testing](docs/e2e-tooling.md) covers the shared Verify command and optional local checks. GitHub Verify builds and validates `web-preview`; eligible trusted-branch pushes deploy the same output to Pages. Pull requests do not deploy.
+[Build and verification](docs/build-policy.md) covers tooling, the shared Verify command and optional local checks. GitHub Verify builds and validates `web-preview`; eligible trusted-branch pushes deploy the same output to Pages. Pull requests do not deploy.
 
 ## Local end-to-end run
 
@@ -53,12 +53,9 @@ Each guide keeps its English and Chinese documentation together and corresponds 
 - [Local IPA signing / 本地 IPA 签名](docs/ipa-signing.md)
 - [Asset generation / 资源生成](docs/asset-generation.md)
 - [ASTC production / ASTC 转换](docs/astc-production.md)
-- [Overlay generation / 覆盖层生成](docs/overlay-generation.md)
 - [Shader pipeline / 着色器流水线](docs/shader-pipeline.md)
 - [AIR compiler / AIR 编译器](docs/air-compiler.md)
 - [Program rewriting / 程序改写](docs/program-rewriting.md)
 - [Sealed runtime / 隔离运行时](docs/sealed-runtime.md)
 - [Shell profiles / 外壳配置](docs/shell-profiles.md)
 - [Build and release policy / 构建与发布策略](docs/build-policy.md)
-- [Verification tooling / 验证工具](docs/e2e-tooling.md)
-- [Output cache / 输出缓存](docs/output-cache.md)

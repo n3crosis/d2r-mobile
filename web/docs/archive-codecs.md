@@ -35,7 +35,7 @@ node --test web/toolchain/texture-spike/texture.test.mjs
 PLAYWRIGHT_ENTRY=/absolute/path/to/playwright/index.mjs node web/toolchain/texture-spike/browser-smoke.mjs
 ```
 
-Build scripts enforce source hashes, compiler versions and memory flags; do not bypass them or commit generated artifacts. Preserve Pillow, both zlib, native repository/bcdec and [deko3d](https://raw.githubusercontent.com/devkitPro/deko3d/master/LICENSE) notices beside distributed artifacts. See [E2E tooling](e2e-tooling.md) for optional texture checks. Synthetic/native/WASM parity have distinct coverage; none alone establishes real-game, browser OPFS or device compatibility.
+Build scripts enforce source hashes, compiler versions and memory flags; do not bypass them or commit generated artifacts. Preserve Pillow, both zlib, native repository/bcdec and [deko3d](https://raw.githubusercontent.com/devkitPro/deko3d/master/LICENSE) notices beside distributed artifacts. See [E2E tooling](build-policy.md#verification-and-e2e-tooling) for optional texture checks. Synthetic/native/WASM parity have distinct coverage; none alone establishes real-game, browser OPFS or device compatibility.
 
 ## 简体中文
 

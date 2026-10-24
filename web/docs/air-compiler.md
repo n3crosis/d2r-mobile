@@ -49,7 +49,7 @@ D2R's [fixtures](../../web/toolchain/metal-air-compiler/fixtures/) and
 [canary](../../web/toolchain/metal-air-compiler/ci-compile-canary.mjs) stay here,
 including four native API smoke inputs. Optional native drivers require explicit
 external fork clang/header paths and never download/build a compiler. Source
-invariant tests authenticate exact reviewed fork inputs; see [test setup](e2e-tooling.md).
+invariant tests authenticate exact reviewed fork inputs; see [test setup](build-policy.md#verification-and-e2e-tooling).
 
 ### Acceptance boundary
 

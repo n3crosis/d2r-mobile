@@ -10,7 +10,6 @@ import * as promisesModule from "node:fs/promises";
 import * as downloadPreparationModule from "../download-preparation.mjs";
 import * as resourceFolderExportModule from "../resource-folder-export.mjs";
 import * as legacyDevicePackExportModule from "../legacy-device-pack-export.mjs";
-import * as resourceOutputLocksModule from "./fixtures/resource-output-locks.mjs";
 import * as resourceWriteBufferModule from "../resource-write-buffer.mjs";
 import * as nodeCryptoModule from "node:crypto";
 import * as syntheticExportModule from "../synthetic-export.mjs";
@@ -26,6 +25,24 @@ import * as nodeUrlModule from "node:url";
 import * as guestTargetStreamModule from "../guest-target-stream.mjs";
 import * as shellProfilesModule from "../shell-profiles.mjs";
 import * as previewManifestModule from "../verification/preview-manifest.mjs";
+
+const resourceOutputLocksModule = (() => {
+  function resourceOutputLocks() {
+    let active = false;
+    return {
+      async request(_name, _options, callback) {
+        if (active) return callback(null);
+        active = true;
+        try {
+          return await callback({});
+        } finally {
+          active = false;
+        }
+      },
+    };
+  }
+  return { resourceOutputLocks };
+})();
 
 // packaging-diagnostics
 {

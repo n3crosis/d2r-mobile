@@ -12,7 +12,7 @@ import * as nodeFsModule from "node:fs";
 import * as nodeChild_processModule from "node:child_process";
 import * as assertIsolatedRunModule from "./helpers/assert-isolated-run.mjs";
 import * as extractedInputModule from "../extracted-input.mjs";
-import * as extractionWorkerModule from "./helpers/extraction-worker.mjs";
+import * as extractionWorkerModule from "./helpers/extraction-adapter-fixture.mjs";
 import * as extractionJobAdapterModule from "../extraction-job-adapter.mjs";
 import * as d2rExpansionPolicyModule from "../d2r-expansion-policy.mjs";
 import * as extractionAdapterFixtureModule from "./helpers/extraction-adapter-fixture.mjs";
@@ -2601,8 +2601,8 @@ import * as extractionWorkerClientModule from "../extraction-worker-client.mjs";
 
 // extraction-job-adapter
 {
-  // 验证 extraction-job-adapter 的约定与边界；依据 ./helpers/extraction-worker.mjs、../extraction-job-adapter.mjs 及本文件的测试断言。
-  // Verify extraction-job-adapter contracts and boundaries against ./helpers/extraction-worker.mjs、../extraction-job-adapter.mjs and this file's assertions.
+  // 验证 extraction-job-adapter 的约定与边界；依据 ./helpers/extraction-adapter-fixture.mjs、../extraction-job-adapter.mjs 及本文件的测试断言。
+  // Verify extraction-job-adapter contracts and boundaries against ./helpers/extraction-adapter-fixture.mjs、../extraction-job-adapter.mjs and this file's assertions.
   const { default: test } = nodeTestModule;
   const { MockWorker } = extractionWorkerModule;
   const { default: assert } = strictModule;
@@ -3006,8 +3006,8 @@ import * as extractionWorkerClientModule from "../extraction-worker-client.mjs";
 
 // extraction-worker-client
 {
-  // 验证 extraction-worker-client 的约定与边界；依据 ../extraction-worker-client.mjs、./helpers/extraction-worker.mjs 及本文件的测试断言。
-  // Verify extraction-worker-client contracts and boundaries against ../extraction-worker-client.mjs、./helpers/extraction-worker.mjs and this file's assertions.
+  // 验证 extraction-worker-client 的约定与边界；依据 ../extraction-worker-client.mjs、./helpers/extraction-adapter-fixture.mjs 及本文件的测试断言。
+  // Verify extraction-worker-client contracts and boundaries against ../extraction-worker-client.mjs、./helpers/extraction-adapter-fixture.mjs and this file's assertions.
   const { default: test } = nodeTestModule;
   const { default: assert } = strictModule;
   const { createExtractionWorkerClient } = extractionWorkerClientModule;

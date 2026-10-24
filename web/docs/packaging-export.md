@@ -26,7 +26,7 @@ Reads remain ≤64 KiB, coalesced into serial ≤1 MiB writes. Progress counts s
 node --test web/tests/packaging-export.test.mjs
 ```
 
-Run from repository root; [E2E tooling](e2e-tooling.md) documents optional `staged-output` and `zip64` profiles. ZIP formatting follows [PKWARE APPNOTE](https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT). Synthetic streams and OPFS test destinations do not prove OS save-picker behavior, crash recovery, real-game disk capacity or device compatibility.
+Run from repository root; [E2E tooling](build-policy.md#verification-and-e2e-tooling) documents optional `staged-output` and `zip64` profiles. ZIP formatting follows [PKWARE APPNOTE](https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT). Synthetic streams and OPFS test destinations do not prove OS save-picker behavior, crash recovery, real-game disk capacity or device compatibility.
 
 ## 简体中文
 

@@ -1,8 +1,7 @@
-// 验证 extraction-adapter-fixture 的约定与边界；依据 ../../extraction-job-adapter.mjs、./extraction-worker.mjs 及本文件的测试断言。
-// Verify extraction-adapter-fixture contracts and boundaries against ../../extraction-job-adapter.mjs、./extraction-worker.mjs and this file's assertions.
+// 验证 extraction-adapter-fixture 的约定与边界；依据 ../../extraction-job-adapter.mjs 及本文件的测试断言。
+// Verify extraction-adapter-fixture contracts and boundaries against ../../extraction-job-adapter.mjs and this file's assertions.
 import assert from "node:assert/strict";
 import { createExtractionJobAdapter } from "../../extraction-job-adapter.mjs";
-import { MockWorker } from "./extraction-worker.mjs";
 import {
   D2R_APPLICATION_ID as app,
   D2R_PATCH_ID as patchId,
@@ -145,4 +144,46 @@ export async function open(f, signal) {
     signal,
   });
   return session;
+}
+
+// 验证 extraction-worker 的约定与边界；依据 web/tests/helpers 及本文件的测试断言。
+// Verify extraction-worker contracts and boundaries against web/tests/helpers and this file's assertions.
+export class MockWorker {
+  listeners = new Map();
+  requests = [];
+  terminated = false;
+  constructor(handler) {
+    this.handler = handler;
+  }
+  addEventListener(type, callback) {
+    this.listeners.set(type, callback);
+  }
+  removeEventListener(type) {
+    this.listeners.delete(type);
+  }
+  terminate() {
+    this.terminated = true;
+  }
+  emit(data) {
+    this.listeners.get("message")?.({ data });
+  }
+  postMessage(data) {
+    this.requests.push(structuredClone(data));
+    if (this.handler)
+      queueMicrotask(async () => {
+        try {
+          const result = await this.handler(data);
+          this.emit({
+            id: data.id,
+            ok: true,
+            result: structuredClone(
+              result,
+              result instanceof Uint8Array ? { transfer: [result.buffer] } : undefined,
+            ),
+          });
+        } catch {
+          this.emit({ id: data.id, ok: false, error: "EXTRACTION_FAILED" });
+        }
+      });
+  }
 }
